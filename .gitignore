@@ -1,0 +1,36 @@
+# Local files and credentials
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+.local/
+.cache/
+
+# Dependencies and output
+node_modules/
+dist/
+build/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Infrastructure state
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.aws-sam/
+cdk.out/
+
+# Editors
+.idea/
+.vscode/
+
+# LaTeX temporary output
+*.aux
+*.out
+*.toc
+*.synctex.gz

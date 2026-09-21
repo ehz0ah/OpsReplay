@@ -1,0 +1,1278 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "checkout-connection-leak",
+  "version": "0.1.0",
+  "engineVersion": "0.1.0",
+  "title": "Checkout failures",
+  "status": "draft",
+  "difficulty": "easy",
+  "domain": "database",
+  "access": "practice",
+  "tickSeconds": 60,
+  "learningObjectives": [
+    "Connect a deployment change to database pressure.",
+    "Explain why scaling can overload a shared dependency.",
+    "Compare early mitigation with delayed recovery after queued work builds."
+  ],
+  "provenance": {
+    "kind": "synthetic",
+    "sources": [],
+    "notes": "Original teaching fixture. Not attributed to a real company incident. Replace or extend provenance before publishing an adapted scenario."
+  },
+  "services": [
+    "checkout-api",
+    "payment-api",
+    "database"
+  ],
+  "variables": {
+    "instances": {
+      "type": "integer",
+      "minimum": 3,
+      "maximum": 6
+    },
+    "leakedConnections": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200
+    },
+    "queuedWork": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200
+    },
+    "faultyVersion": {
+      "type": "boolean"
+    }
+  },
+  "initialState": {
+    "instances": 3,
+    "leakedConnections": 50,
+    "queuedWork": 0,
+    "faultyVersion": true
+  },
+  "initialEvidence": [
+    "checkout-alert"
+  ],
+  "evidence": [
+    {
+      "id": "checkout-alert",
+      "kind": "alert",
+      "title": "Checkout errors above threshold",
+      "data": {
+        "service": "checkout-api",
+        "errorPercent": 27,
+        "message": "Checkout failures require investigation."
+      }
+    },
+    {
+      "id": "db-connections",
+      "kind": "metric",
+      "title": "Database connections",
+      "data": {
+        "service": "database",
+        "metric": "connections"
+      }
+    },
+    {
+      "id": "checkout-errors",
+      "kind": "metric",
+      "title": "Checkout error rate",
+      "data": {
+        "service": "checkout-api",
+        "metric": "error_percent"
+      }
+    },
+    {
+      "id": "checkout-logs",
+      "kind": "logs",
+      "title": "Checkout application logs",
+      "data": {
+        "service": "checkout-api",
+        "templates": [
+          {
+            "event": "database_overload",
+            "severity": "error",
+            "message": "Timed out waiting for a database connection"
+          }
+        ]
+      }
+    },
+    {
+      "id": "checkout-deployments",
+      "kind": "deployments",
+      "title": "Recent checkout deployment",
+      "data": {
+        "service": "checkout-api",
+        "deployments": [
+          {
+            "id": "deploy-2-6-1",
+            "version": "2.6.1",
+            "previousVersion": "2.6.0",
+            "tick": -3
+          }
+        ]
+      }
+    },
+    {
+      "id": "checkout-diff",
+      "kind": "diff",
+      "title": "Checkout deployment diff",
+      "data": {
+        "deploymentId": "deploy-2-6-1",
+        "language": "pseudocode",
+        "lines": [
+          "+ connection = acquireConnection()",
+          "  processCheckout(connection)",
+          "- releaseConnection(connection)"
+        ]
+      }
+    },
+    {
+      "id": "checkout-runbook",
+      "kind": "runbook",
+      "title": "Checkout recovery runbook",
+      "data": {
+        "steps": [
+          "Compare application and database signals.",
+          "Check recent changes before selecting mitigation.",
+          "Monitor dependent services after the intervention."
+        ]
+      }
+    },
+    {
+      "id": "service-map",
+      "kind": "architecture",
+      "title": "Service dependencies",
+      "data": {
+        "services": [
+          "checkout-api",
+          "payment-api",
+          "database"
+        ],
+        "dependencies": [
+          [
+            "checkout-api",
+            "database"
+          ],
+          [
+            "payment-api",
+            "database"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "checkout-status",
+      "kind": "status",
+      "title": "Checkout status",
+      "data": {
+        "service": "checkout-api",
+        "metric": "error_percent"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect-db",
+      "label": "Inspect database connections",
+      "tool": "get_metric",
+      "arguments": {
+        "service": "database",
+        "metric": "connections"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "db-connections"
+      ]
+    },
+    {
+      "id": "inspect-errors",
+      "label": "Inspect checkout error rate",
+      "tool": "get_metric",
+      "arguments": {
+        "service": "checkout-api",
+        "metric": "error_percent"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "checkout-errors"
+      ]
+    },
+    {
+      "id": "inspect-logs",
+      "label": "Inspect checkout logs",
+      "tool": "query_logs",
+      "arguments": {
+        "service": "checkout-api"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "checkout-logs"
+      ]
+    },
+    {
+      "id": "inspect-deployments",
+      "label": "Inspect checkout deployments",
+      "tool": "list_deployments",
+      "arguments": {
+        "service": "checkout-api"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "checkout-deployments"
+      ]
+    },
+    {
+      "id": "inspect-code",
+      "label": "Inspect discovered deployment diff",
+      "tool": "inspect_diff",
+      "arguments": {
+        "deploymentId": "deploy-2-6-1"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [
+        "checkout-deployments"
+      ],
+      "effects": [],
+      "reveals": [
+        "checkout-diff"
+      ]
+    },
+    {
+      "id": "read-guide",
+      "label": "Read checkout recovery runbook",
+      "tool": "read_runbook",
+      "arguments": {
+        "runbookId": "checkout-recovery"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "checkout-runbook"
+      ]
+    },
+    {
+      "id": "inspect-map",
+      "label": "View service dependencies",
+      "tool": "view_architecture",
+      "arguments": {
+        "scope": "checkout"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "service-map"
+      ]
+    },
+    {
+      "id": "inspect-status",
+      "label": "Inspect checkout status",
+      "tool": "get_service_status",
+      "arguments": {
+        "service": "checkout-api"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [
+        "checkout-status"
+      ]
+    },
+    {
+      "id": "rollback",
+      "label": "Roll back checkout to 2.6.0",
+      "tool": "rollback_deployment",
+      "arguments": {
+        "service": "checkout-api",
+        "targetVersion": "2.6.0"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [
+        {
+          "target": "faultyVersion",
+          "value": {
+            "literal": false
+          }
+        },
+        {
+          "target": "leakedConnections",
+          "value": {
+            "literal": 0
+          }
+        }
+      ],
+      "reveals": []
+    },
+    {
+      "id": "scale",
+      "label": "Scale checkout to six instances",
+      "tool": "scale_service",
+      "arguments": {
+        "service": "checkout-api",
+        "instances": 6
+      },
+      "costTicks": 2,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [
+        {
+          "target": "instances",
+          "value": {
+            "arg": "instances"
+          }
+        }
+      ],
+      "reveals": []
+    },
+    {
+      "id": "restart",
+      "label": "Restart checkout",
+      "tool": "restart_service",
+      "arguments": {
+        "service": "checkout-api"
+      },
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [
+        {
+          "target": "leakedConnections",
+          "value": {
+            "literal": 0
+          }
+        }
+      ],
+      "reveals": []
+    },
+    {
+      "id": "wait",
+      "label": "Advance simulated time",
+      "tool": "advance_time",
+      "arguments": {},
+      "costTicks": 1,
+      "prerequisite": {
+        "literal": true
+      },
+      "requiresEvidence": [],
+      "effects": [],
+      "reveals": [],
+      "costFromArgument": "ticks"
+    }
+  ],
+  "tickRules": [
+    {
+      "target": "leakedConnections",
+      "value": {
+        "op": "if",
+        "args": [
+          {
+            "ref": "faultyVersion"
+          },
+          {
+            "op": "min",
+            "args": [
+              {
+                "literal": 200
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "ref": "leakedConnections"
+                  },
+                  {
+                    "op": "mul",
+                    "args": [
+                      {
+                        "ref": "instances"
+                      },
+                      {
+                        "literal": 4
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "leakedConnections"
+          }
+        ]
+      }
+    },
+    {
+      "target": "queuedWork",
+      "value": {
+        "op": "if",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "literal": 40
+                      },
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "sub",
+                            "args": [
+                              {
+                                "ref": "instances"
+                              },
+                              {
+                                "literal": 3
+                              }
+                            ]
+                          },
+                          {
+                            "literal": 10
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "leakedConnections"
+                  }
+                ]
+              },
+              {
+                "literal": 100
+              }
+            ]
+          },
+          {
+            "op": "min",
+            "args": [
+              {
+                "literal": 200
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 20
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "max",
+            "args": [
+              {
+                "literal": 0
+              },
+              {
+                "op": "sub",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 10
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "metrics": [
+    {
+      "service": "database",
+      "metric": "connections",
+      "unit": "connections",
+      "alwaysVisible": false,
+      "expression": {
+        "op": "add",
+        "args": [
+          {
+            "op": "add",
+            "args": [
+              {
+                "literal": 40
+              },
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "op": "sub",
+                    "args": [
+                      {
+                        "ref": "instances"
+                      },
+                      {
+                        "literal": 3
+                      }
+                    ]
+                  },
+                  {
+                    "literal": 10
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "leakedConnections"
+          }
+        ]
+      }
+    },
+    {
+      "service": "checkout-api",
+      "metric": "error_percent",
+      "unit": "percent",
+      "alwaysVisible": true,
+      "expression": {
+        "op": "if",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "literal": 40
+                      },
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "sub",
+                            "args": [
+                              {
+                                "ref": "instances"
+                              },
+                              {
+                                "literal": 3
+                              }
+                            ]
+                          },
+                          {
+                            "literal": 10
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "leakedConnections"
+                  }
+                ]
+              },
+              {
+                "literal": 100
+              }
+            ]
+          },
+          {
+            "literal": 50
+          },
+          {
+            "op": "if",
+            "args": [
+              {
+                "op": "gt",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "literal": 15
+              },
+              {
+                "op": "if",
+                "args": [
+                  {
+                    "op": "gte",
+                    "args": [
+                      {
+                        "op": "add",
+                        "args": [
+                          {
+                            "op": "add",
+                            "args": [
+                              {
+                                "literal": 40
+                              },
+                              {
+                                "op": "mul",
+                                "args": [
+                                  {
+                                    "op": "sub",
+                                    "args": [
+                                      {
+                                        "ref": "instances"
+                                      },
+                                      {
+                                        "literal": 3
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "literal": 10
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "ref": "leakedConnections"
+                          }
+                        ]
+                      },
+                      {
+                        "literal": 80
+                      }
+                    ]
+                  },
+                  {
+                    "literal": 27
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "service": "payment-api",
+      "metric": "error_percent",
+      "unit": "percent",
+      "alwaysVisible": false,
+      "expression": {
+        "op": "if",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "literal": 40
+                      },
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "sub",
+                            "args": [
+                              {
+                                "ref": "instances"
+                              },
+                              {
+                                "literal": 3
+                              }
+                            ]
+                          },
+                          {
+                            "literal": 10
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "leakedConnections"
+                  }
+                ]
+              },
+              {
+                "literal": 100
+              }
+            ]
+          },
+          {
+            "literal": 20
+          },
+          {
+            "op": "if",
+            "args": [
+              {
+                "op": "gt",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "literal": 5
+              },
+              {
+                "literal": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "eventRules": [
+    {
+      "id": "database_overload",
+      "when": {
+        "op": "gte",
+        "args": [
+          {
+            "op": "add",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "literal": 40
+                  },
+                  {
+                    "op": "mul",
+                    "args": [
+                      {
+                        "op": "sub",
+                        "args": [
+                          {
+                            "ref": "instances"
+                          },
+                          {
+                            "literal": 3
+                          }
+                        ]
+                      },
+                      {
+                        "literal": 10
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "leakedConnections"
+              }
+            ]
+          },
+          {
+            "literal": 100
+          }
+        ]
+      },
+      "message": "Database connection demand exceeds capacity."
+    },
+    {
+      "id": "payment_affected",
+      "when": {
+        "op": "gt",
+        "args": [
+          {
+            "op": "if",
+            "args": [
+              {
+                "op": "gte",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "op": "add",
+                        "args": [
+                          {
+                            "literal": 40
+                          },
+                          {
+                            "op": "mul",
+                            "args": [
+                              {
+                                "op": "sub",
+                                "args": [
+                                  {
+                                    "ref": "instances"
+                                  },
+                                  {
+                                    "literal": 3
+                                  }
+                                ]
+                              },
+                              {
+                                "literal": 10
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "ref": "leakedConnections"
+                      }
+                    ]
+                  },
+                  {
+                    "literal": 100
+                  }
+                ]
+              },
+              {
+                "literal": 20
+              },
+              {
+                "op": "if",
+                "args": [
+                  {
+                    "op": "gt",
+                    "args": [
+                      {
+                        "ref": "queuedWork"
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "literal": 5
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "literal": 0
+          }
+        ]
+      },
+      "message": "Payment requests are affected."
+    },
+    {
+      "id": "backlog_remaining",
+      "when": {
+        "op": "and",
+        "args": [
+          {
+            "op": "not",
+            "args": [
+              {
+                "ref": "faultyVersion"
+              }
+            ]
+          },
+          {
+            "op": "gt",
+            "args": [
+              {
+                "ref": "queuedWork"
+              },
+              {
+                "literal": 0
+              }
+            ]
+          }
+        ]
+      },
+      "message": "Queued requests remain after the application change."
+    }
+  ],
+  "impact": {
+    "op": "add",
+    "args": [
+      {
+        "op": "if",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "literal": 40
+                      },
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "sub",
+                            "args": [
+                              {
+                                "ref": "instances"
+                              },
+                              {
+                                "literal": 3
+                              }
+                            ]
+                          },
+                          {
+                            "literal": 10
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "leakedConnections"
+                  }
+                ]
+              },
+              {
+                "literal": 100
+              }
+            ]
+          },
+          {
+            "literal": 50
+          },
+          {
+            "op": "if",
+            "args": [
+              {
+                "op": "gt",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "literal": 15
+              },
+              {
+                "op": "if",
+                "args": [
+                  {
+                    "op": "gte",
+                    "args": [
+                      {
+                        "op": "add",
+                        "args": [
+                          {
+                            "op": "add",
+                            "args": [
+                              {
+                                "literal": 40
+                              },
+                              {
+                                "op": "mul",
+                                "args": [
+                                  {
+                                    "op": "sub",
+                                    "args": [
+                                      {
+                                        "ref": "instances"
+                                      },
+                                      {
+                                        "literal": 3
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "literal": 10
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "ref": "leakedConnections"
+                          }
+                        ]
+                      },
+                      {
+                        "literal": 80
+                      }
+                    ]
+                  },
+                  {
+                    "literal": 27
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "op": "if",
+        "args": [
+          {
+            "op": "gte",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "literal": 40
+                      },
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "sub",
+                            "args": [
+                              {
+                                "ref": "instances"
+                              },
+                              {
+                                "literal": 3
+                              }
+                            ]
+                          },
+                          {
+                            "literal": 10
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "leakedConnections"
+                  }
+                ]
+              },
+              {
+                "literal": 100
+              }
+            ]
+          },
+          {
+            "literal": 20
+          },
+          {
+            "op": "if",
+            "args": [
+              {
+                "op": "gt",
+                "args": [
+                  {
+                    "ref": "queuedWork"
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "literal": 5
+              },
+              {
+                "literal": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "resolution": {
+    "op": "and",
+    "args": [
+      {
+        "op": "not",
+        "args": [
+          {
+            "ref": "faultyVersion"
+          }
+        ]
+      },
+      {
+        "op": "eq",
+        "args": [
+          {
+            "ref": "queuedWork"
+          },
+          {
+            "literal": 0
+          }
+        ]
+      },
+      {
+        "op": "lt",
+        "args": [
+          {
+            "op": "add",
+            "args": [
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "literal": 40
+                  },
+                  {
+                    "op": "mul",
+                    "args": [
+                      {
+                        "op": "sub",
+                        "args": [
+                          {
+                            "ref": "instances"
+                          },
+                          {
+                            "literal": 3
+                          }
+                        ]
+                      },
+                      {
+                        "literal": 10
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "leakedConnections"
+              }
+            ]
+          },
+          {
+            "literal": 80
+          }
+        ]
+      }
+    ]
+  },
+  "failure": {
+    "op": "or",
+    "args": [
+      {
+        "op": "gte",
+        "args": [
+          {
+            "ref": "queuedWork"
+          },
+          {
+            "literal": 120
+          }
+        ]
+      },
+      {
+        "op": "gte",
+        "args": [
+          {
+            "ref": "tick"
+          },
+          {
+            "literal": 20
+          }
+        ]
+      }
+    ]
+  },
+  "checkpoints": [
+    {
+      "id": "start",
+      "label": "Initial alert",
+      "trigger": "start"
+    },
+    {
+      "id": "before-mitigation",
+      "label": "Before your first mitigation",
+      "trigger": "before_first_mitigation"
+    }
+  ],
+  "debrief": {
+    "rootCause": "The faulty checkout deployment leaks database connections.",
+    "causalChain": [
+      "The new deployment leaves acquired connections open.",
+      "Connection demand reaches shared database capacity.",
+      "Checkout and payment requests fail and queued work grows."
+    ],
+    "keyEvidence": [
+      "db-connections",
+      "checkout-deployments",
+      "checkout-diff"
+    ],
+    "recommendedActions": [
+      "inspect-db",
+      "inspect-deployments",
+      "inspect-code",
+      "rollback"
+    ],
+    "explanation": "Rollback stops new leaks and closes leaked connections. Existing queued work takes additional time to drain. Scaling first increases connection demand and delays recovery."
+  }
+}

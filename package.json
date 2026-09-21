@@ -1,0 +1,17 @@
+{
+  "name": "opsreplay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpsReplay specification and implementation workspace",
+  "type": "module",
+  "engines": { "node": ">=22.19.0 <23", "npm": ">=10" },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "contracts:sync": "node scripts/sync-openapi.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

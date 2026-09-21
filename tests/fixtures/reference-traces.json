@@ -1,0 +1,115 @@
+{
+  "scenarioId": "checkout-connection-leak",
+  "scenarioVersion": "0.1.0",
+  "paths": [
+    {
+      "id": "early-rollback",
+      "commands": [
+        {
+          "tool": "rollback_deployment",
+          "arguments": {
+            "service": "checkout-api",
+            "targetVersion": "2.6.0"
+          }
+        }
+      ],
+      "expected": {
+        "tick": 1,
+        "status": "resolved",
+        "impactUnits": 0,
+        "variables": {
+          "instances": 3,
+          "leakedConnections": 0,
+          "queuedWork": 0,
+          "faultyVersion": false
+        }
+      }
+    },
+    {
+      "id": "scale-then-rollback",
+      "commands": [
+        {
+          "tool": "scale_service",
+          "arguments": {
+            "service": "checkout-api",
+            "instances": 6
+          }
+        },
+        {
+          "tool": "rollback_deployment",
+          "arguments": {
+            "service": "checkout-api",
+            "targetVersion": "2.6.0"
+          }
+        },
+        {
+          "tool": "advance_time",
+          "arguments": {
+            "ticks": 3
+          }
+        }
+      ],
+      "expected": {
+        "tick": 6,
+        "status": "resolved",
+        "impactUnits": 200,
+        "variables": {
+          "instances": 6,
+          "leakedConnections": 0,
+          "queuedWork": 0,
+          "faultyVersion": false
+        }
+      }
+    },
+    {
+      "id": "restart-relapse",
+      "commands": [
+        {
+          "tool": "restart_service",
+          "arguments": {
+            "service": "checkout-api"
+          }
+        },
+        {
+          "tool": "advance_time",
+          "arguments": {
+            "ticks": 4
+          }
+        }
+      ],
+      "expected": {
+        "tick": 5,
+        "status": "active",
+        "impactUnits": 97,
+        "variables": {
+          "instances": 3,
+          "leakedConnections": 60,
+          "queuedWork": 20,
+          "faultyVersion": true
+        }
+      }
+    },
+    {
+      "id": "wait-until-failure",
+      "commands": [
+        {
+          "tool": "advance_time",
+          "arguments": {
+            "ticks": 10
+          }
+        }
+      ],
+      "expected": {
+        "tick": 6,
+        "status": "failed",
+        "impactUnits": 420,
+        "variables": {
+          "instances": 3,
+          "leakedConnections": 122,
+          "queuedWork": 120,
+          "faultyVersion": true
+        }
+      }
+    }
+  ]
+}

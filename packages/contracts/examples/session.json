@@ -1,0 +1,319 @@
+{
+  "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "contentId": "checkout-connection-leak",
+  "contentVersion": "0.1.0",
+  "engineVersion": "0.1.0",
+  "version": 0,
+  "tick": 0,
+  "tickSeconds": 60,
+  "status": "active",
+  "mode": "first_attempt",
+  "informedPractice": false,
+  "visibleMetrics": [
+    {
+      "service": "checkout-api",
+      "metric": "error_percent",
+      "value": 27,
+      "unit": "percent"
+    }
+  ],
+  "revealedEvidence": [
+    {
+      "id": "checkout-alert",
+      "kind": "alert",
+      "observedTick": 0,
+      "title": "Checkout errors above threshold",
+      "data": {
+        "service": "checkout-api",
+        "errorPercent": 27,
+        "message": "Checkout failures require investigation."
+      },
+      "observationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:0:checkout-alert",
+      "observedVersion": 0
+    }
+  ],
+  "costs": {
+    "elapsedTicks": 0,
+    "investigationTicks": 0,
+    "impactUnits": 0
+  },
+  "checkpoints": [],
+  "availableOperations": [
+    {
+      "id": "inspect-db",
+      "tool": "get_metric",
+      "label": "Inspect database connections",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "database"
+          },
+          "metric": {
+            "const": "connections"
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "service",
+          "metric",
+          "windowTicks"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "inspect-errors",
+      "tool": "get_metric",
+      "label": "Inspect checkout error rate",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          },
+          "metric": {
+            "const": "error_percent"
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "service",
+          "metric",
+          "windowTicks"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "inspect-logs",
+      "tool": "query_logs",
+      "label": "Inspect checkout logs",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "contains": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "service",
+          "windowTicks"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "inspect-deployments",
+      "tool": "list_deployments",
+      "label": "Inspect checkout deployments",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "service",
+          "windowTicks"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "read-guide",
+      "tool": "read_runbook",
+      "label": "Read checkout recovery runbook",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runbookId": {
+            "const": "checkout-recovery"
+          }
+        },
+        "required": [
+          "runbookId"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "inspect-map",
+      "tool": "view_architecture",
+      "label": "View service dependencies",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "const": "checkout"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "inspect-status",
+      "tool": "get_service_status",
+      "label": "Inspect checkout status",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          }
+        },
+        "required": [
+          "service"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": false
+    },
+    {
+      "id": "rollback",
+      "tool": "rollback_deployment",
+      "label": "Roll back checkout to 2.6.0",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          },
+          "targetVersion": {
+            "const": "2.6.0"
+          }
+        },
+        "required": [
+          "service",
+          "targetVersion"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": true
+    },
+    {
+      "id": "scale",
+      "tool": "scale_service",
+      "label": "Scale checkout to six instances",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          },
+          "instances": {
+            "const": 6
+          }
+        },
+        "required": [
+          "service",
+          "instances"
+        ]
+      },
+      "costTicks": 2,
+      "costFromArgument": null,
+      "requiresConfirmation": true
+    },
+    {
+      "id": "restart",
+      "tool": "restart_service",
+      "label": "Restart checkout",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "const": "checkout-api"
+          }
+        },
+        "required": [
+          "service"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": null,
+      "requiresConfirmation": true
+    },
+    {
+      "id": "wait",
+      "tool": "advance_time",
+      "label": "Advance simulated time",
+      "argumentSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ticks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "ticks"
+        ]
+      },
+      "costTicks": 1,
+      "costFromArgument": "ticks",
+      "requiresConfirmation": false
+    }
+  ],
+  "replayOrigin": null
+}

@@ -1,0 +1,620 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "engineVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published"
+      ]
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ]
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "access": {
+      "type": "string",
+      "enum": [
+        "free",
+        "practice"
+      ]
+    },
+    "tickSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600
+    },
+    "learningObjectives": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "maxItems": 20
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "synthetic",
+            "adapted"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "title",
+              "url"
+            ]
+          },
+          "maxItems": 100
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "kind",
+        "sources",
+        "notes"
+      ]
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "maxItems": 30
+    },
+    "variables": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 50,
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "integer"
+              },
+              "minimum": {
+                "type": "integer"
+              },
+              "maximum": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "type",
+              "minimum",
+              "maximum"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        ]
+      }
+    },
+    "initialState": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "integer",
+          "boolean"
+        ]
+      }
+    },
+    "initialEvidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "maxItems": 100
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "alert",
+              "metric",
+              "logs",
+              "deployments",
+              "diff",
+              "runbook",
+              "architecture",
+              "status"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "data"
+        ]
+      },
+      "maxItems": 100
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "get_metric",
+              "query_logs",
+              "list_deployments",
+              "inspect_diff",
+              "read_runbook",
+              "view_architecture",
+              "get_service_status",
+              "rollback_deployment",
+              "scale_service",
+              "restart_service",
+              "advance_time"
+            ]
+          },
+          "arguments": {
+            "type": "object"
+          },
+          "costTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "costFromArgument": {
+            "const": "ticks"
+          },
+          "prerequisite": {
+            "$ref": "#/$defs/Expression"
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "value": {
+                  "$ref": "#/$defs/Expression"
+                }
+              },
+              "required": [
+                "target",
+                "value"
+              ]
+            },
+            "maxItems": 30
+          },
+          "reveals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "requiresEvidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "tool",
+          "arguments",
+          "costTicks",
+          "prerequisite",
+          "effects",
+          "reveals",
+          "requiresEvidence"
+        ]
+      },
+      "maxItems": 100
+    },
+    "tickRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "value": {
+            "$ref": "#/$defs/Expression"
+          }
+        },
+        "required": [
+          "target",
+          "value"
+        ]
+      },
+      "maxItems": 100
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "metric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "alwaysVisible": {
+            "type": "boolean"
+          },
+          "expression": {
+            "$ref": "#/$defs/Expression"
+          }
+        },
+        "required": [
+          "service",
+          "metric",
+          "unit",
+          "alwaysVisible",
+          "expression"
+        ]
+      },
+      "maxItems": 50
+    },
+    "eventRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "when": {
+            "$ref": "#/$defs/Expression"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "id",
+          "when",
+          "message"
+        ]
+      },
+      "maxItems": 50
+    },
+    "impact": {
+      "$ref": "#/$defs/Expression"
+    },
+    "resolution": {
+      "$ref": "#/$defs/Expression"
+    },
+    "failure": {
+      "$ref": "#/$defs/Expression"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "start",
+              "before_first_mitigation"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "trigger"
+        ]
+      },
+      "maxItems": 2
+    },
+    "debrief": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rootCause": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "causalChain": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "keyEvidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "maxItems": 100
+        },
+        "recommendedActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "maxItems": 100
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "rootCause",
+        "causalChain",
+        "keyEvidence",
+        "recommendedActions",
+        "explanation"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "engineVersion",
+    "title",
+    "status",
+    "difficulty",
+    "domain",
+    "access",
+    "tickSeconds",
+    "learningObjectives",
+    "provenance",
+    "services",
+    "variables",
+    "initialState",
+    "initialEvidence",
+    "evidence",
+    "actions",
+    "tickRules",
+    "metrics",
+    "eventRules",
+    "impact",
+    "resolution",
+    "failure",
+    "checkpoints",
+    "debrief"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsreplay.local/schemas/scenario.schema.json",
+  "$defs": {
+    "Expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "literal": {
+              "type": [
+                "integer",
+                "boolean",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "literal"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "ref"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "arg": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "arg"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "add",
+                "sub",
+                "mul",
+                "min",
+                "max",
+                "eq",
+                "gte",
+                "gt",
+                "lt",
+                "and",
+                "or",
+                "not",
+                "if"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "op",
+            "args"
+          ]
+        }
+      ]
+    }
+  }
+}

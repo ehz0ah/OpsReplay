@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": "checkout-connection-leak",
+      "version": "0.1.0",
+      "title": "Checkout failures",
+      "mode": "challenge",
+      "access": "practice",
+      "difficulty": "easy",
+      "domain": "database"
+    }
+  ],
+  "nextCursor": null,
+  "availableLanguages": [],
+  "availableFilters": {
+    "modes": [
+      "challenge"
+    ],
+    "difficulties": [
+      "easy"
+    ],
+    "domains": [
+      "database"
+    ]
+  }
+}

@@ -1,0 +1,3781 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OpsReplay API",
+    "version": "0.1.0",
+    "description": "Proposed contracts. No API implementation exists yet."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Planned local development endpoint, not a running service"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/catalog": {
+      "get": {
+        "operationId": "listCatalog",
+        "summary": "listCatalog",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "learn",
+                "challenge",
+                "code_review"
+              ]
+            }
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "easy",
+                "medium",
+                "hard"
+              ]
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/v1/learn/{id}": {
+      "get": {
+        "operationId": "getLearnEntry",
+        "summary": "getLearnEntry",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "operationId": "startSession",
+        "summary": "startSession",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSessionRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listOwnedSessions",
+        "summary": "List owned sessions and replay attempts",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owned sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "getSession",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}/events": {
+      "get": {
+        "operationId": "listSessionEvents",
+        "summary": "listSessionEvents",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}/actions": {
+      "post": {
+        "operationId": "executeAction",
+        "summary": "executeAction",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/end": {
+      "post": {
+        "operationId": "endSession",
+        "summary": "endSession",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionedRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/debrief": {
+      "get": {
+        "operationId": "getDebrief",
+        "summary": "getDebrief",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Debrief"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}/replays": {
+      "post": {
+        "operationId": "createReplay",
+        "summary": "createReplay",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/comparison": {
+      "get": {
+        "operationId": "getComparison",
+        "summary": "getComparison",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}/messages": {
+      "post": {
+        "operationId": "sendMessage",
+        "summary": "sendMessage",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: turn_started\ndata: {\"type\": \"turn_started\", \"turnId\": \"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\", \"sequence\": 0, \"sessionVersion\": 0, \"data\": {\"requestId\": \"11111111-1111-4111-8111-111111111111\"}}\n\n"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "description": "SSE frames use the StreamEvent schema as their data payload. Consult docs/api.md for persistence and reconnection semantics."
+      }
+    },
+    "/v1/sessions/{id}/messages/{turnId}": {
+      "get": {
+        "operationId": "getTurn",
+        "summary": "getTurn",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Turn"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "turnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/reviews/{id}": {
+      "get": {
+        "operationId": "getReviewExercise",
+        "summary": "getReviewExercise",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewExercise"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/reviews/{id}/submissions": {
+      "post": {
+        "operationId": "submitReview",
+        "summary": "submitReview",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSubmission"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSubmitRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/review-submissions/{id}": {
+      "get": {
+        "operationId": "getReviewSubmission",
+        "summary": "getReviewSubmission",
+        "responses": {
+          "200": {
+            "description": "Success. Mutations may return a saved idempotent result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSubmission"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/review-submissions": {
+      "get": {
+        "operationId": "listOwnedReviewSubmissions",
+        "summary": "List owned review submissions",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owned submissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSubmissionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Typed error, no hidden scenario data.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Command": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "get_metric"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "metric": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "windowTicks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                },
+                "required": [
+                  "service",
+                  "metric",
+                  "windowTicks"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "query_logs"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "windowTicks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "info",
+                      "warning",
+                      "error"
+                    ]
+                  },
+                  "contains": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "service",
+                  "windowTicks"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "list_deployments"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "windowTicks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                },
+                "required": [
+                  "service",
+                  "windowTicks"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "inspect_diff"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "deploymentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "deploymentId"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "read_runbook"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "runbookId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "runbookId"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "view_architecture"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "scope"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "get_service_status"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "service"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "rollback_deployment"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "targetVersion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "service",
+                  "targetVersion"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "scale_service"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "instances": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": [
+                  "service",
+                  "instances"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "restart_service"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "service"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "const": "advance_time"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "ticks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                },
+                "required": [
+                  "ticks"
+                ]
+              }
+            },
+            "required": [
+              "tool",
+              "arguments"
+            ]
+          }
+        ]
+      },
+      "ActionRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "source": {
+                "const": "direct"
+              },
+              "command": {
+                "$ref": "#/components/schemas/Command"
+              }
+            },
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "source",
+              "command"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "source": {
+                "const": "llm_confirmed"
+              },
+              "proposalId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "command": {
+                "$ref": "#/components/schemas/Command"
+              }
+            },
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "source",
+              "proposalId",
+              "command"
+            ]
+          }
+        ]
+      },
+      "Metric": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "metric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          }
+        },
+        "required": [
+          "service",
+          "metric",
+          "value",
+          "unit"
+        ]
+      },
+      "Evidence": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "alert"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "errorPercent": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "service",
+                  "errorPercent",
+                  "message"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "metric"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "metric": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "samples": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MetricSample"
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "service",
+                  "metric",
+                  "unit",
+                  "samples"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "logs"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LogEntry"
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "service",
+                  "entries"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "deployments"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "deployments": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Deployment"
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "service",
+                  "deployments"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "diff"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "deploymentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "language": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/DiffLine"
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "required": [
+                  "deploymentId",
+                  "language",
+                  "lines"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "runbook"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "steps"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "architecture"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "maxItems": 30
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Dependency"
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "services",
+                  "dependencies"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "observationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+              },
+              "kind": {
+                "const": "status"
+              },
+              "observedTick": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "observedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Metric"
+                    },
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "service",
+                  "metrics"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "observationId",
+              "kind",
+              "observedTick",
+              "observedVersion",
+              "title",
+              "data"
+            ]
+          }
+        ]
+      },
+      "CheckpointSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "tick",
+          "label"
+        ]
+      },
+      "Costs": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "elapsedTicks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "investigationTicks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "impactUnits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          }
+        },
+        "required": [
+          "elapsedTicks",
+          "investigationTicks",
+          "impactUnits"
+        ]
+      },
+      "SessionView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "engineVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "tickSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "resolved",
+              "failed",
+              "ended"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "first_attempt",
+              "replay"
+            ]
+          },
+          "informedPractice": {
+            "type": "boolean"
+          },
+          "visibleMetrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "maxItems": 100
+          },
+          "revealedEvidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "maxItems": 500
+          },
+          "costs": {
+            "$ref": "#/components/schemas/Costs"
+          },
+          "checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointSummary"
+            },
+            "maxItems": 10
+          },
+          "availableOperations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationOffer"
+            },
+            "maxItems": 100
+          },
+          "replayOrigin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReplayOrigin"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "contentId",
+          "contentVersion",
+          "engineVersion",
+          "version",
+          "tick",
+          "tickSeconds",
+          "status",
+          "mode",
+          "informedPractice",
+          "visibleMetrics",
+          "revealedEvidence",
+          "costs",
+          "checkpoints",
+          "availableOperations",
+          "replayOrigin"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "replay"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "informedPractice": {
+                  "const": true
+                },
+                "replayOrigin": {
+                  "$ref": "#/components/schemas/ReplayOrigin"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "replayOrigin": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "LogicalEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session_started",
+              "action_started",
+              "observation",
+              "incident_event",
+              "action_completed",
+              "incident_resolved",
+              "incident_failed",
+              "session_ended",
+              "replay_started"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "sequence",
+          "tick",
+          "kind",
+          "message",
+          "evidenceIds",
+          "observations"
+        ]
+      },
+      "ActionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionView"
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "summary",
+              "evidence"
+            ]
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalEvent"
+            },
+            "maxItems": 100
+          },
+          "executedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "requestId",
+          "replayed",
+          "session",
+          "output",
+          "events",
+          "executedVersion"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "UNAUTHENTICATED",
+              "ACCESS_DENIED",
+              "NOT_FOUND",
+              "VERSION_CONFLICT",
+              "IDEMPOTENCY_CONFLICT",
+              "ACTION_UNAVAILABLE",
+              "PREREQUISITE_FAILED",
+              "SESSION_TERMINAL",
+              "REPLAY_UNAVAILABLE",
+              "LIMIT_EXCEEDED",
+              "PROVIDER_FAILED",
+              "INTERNAL_ERROR"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "currentVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ]
+      },
+      "Source": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "title",
+          "url"
+        ]
+      },
+      "CatalogEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "learn",
+              "challenge",
+              "code_review"
+            ]
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "free",
+              "practice"
+            ]
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "language": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "mode",
+          "access",
+          "domain"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "learn"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "access": {
+                  "const": "free"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "challenge",
+                    "code_review"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "difficulty"
+              ],
+              "properties": {
+                "difficulty": {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "code_review"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "language"
+              ],
+              "properties": {
+                "language": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Catalog": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntry"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "availableLanguages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 100
+          },
+          "availableFilters": {
+            "$ref": "#/components/schemas/CatalogQueryFilters"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "availableLanguages",
+          "availableFilters"
+        ]
+      },
+      "LearnEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "lessons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 100
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "summary",
+          "lessons",
+          "sources"
+        ]
+      },
+      "StartSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          }
+        },
+        "required": [
+          "requestId",
+          "contentId",
+          "contentVersion"
+        ]
+      },
+      "SessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionView"
+          }
+        },
+        "required": [
+          "requestId",
+          "replayed",
+          "session"
+        ]
+      },
+      "VersionedRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion"
+        ]
+      },
+      "ReplayRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "checkpointId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "checkpointId"
+        ]
+      },
+      "EventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalEvent"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "Debrief": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rootCause": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "causalChain": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "maxItems": 100
+          },
+          "foundEvidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "missedEvidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "actionFeedback": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 100
+          },
+          "recommendedPath": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "maxItems": 100
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "maxItems": 100
+          },
+          "costs": {
+            "$ref": "#/components/schemas/Costs"
+          },
+          "checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointSummary"
+            },
+            "maxItems": 10
+          }
+        },
+        "required": [
+          "sessionId",
+          "rootCause",
+          "causalChain",
+          "foundEvidence",
+          "missedEvidence",
+          "actionFeedback",
+          "recommendedPath",
+          "sources",
+          "costs",
+          "checkpoints"
+        ]
+      },
+      "ComparisonPath": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "resolved",
+              "failed",
+              "ended"
+            ]
+          },
+          "observedTicks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "recoveryTicks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "impactUnits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          }
+        },
+        "required": [
+          "sessionId",
+          "status",
+          "observedTicks",
+          "recoveryTicks",
+          "impactUnits"
+        ]
+      },
+      "Comparison": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "checkpointId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "checkpointTick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "informedPractice": {
+            "const": true
+          },
+          "original": {
+            "$ref": "#/components/schemas/ComparisonPath"
+          },
+          "replay": {
+            "$ref": "#/components/schemas/ComparisonPath"
+          },
+          "explanations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "checkpointId",
+          "checkpointTick",
+          "informedPractice",
+          "original",
+          "replay",
+          "explanations"
+        ]
+      },
+      "MessageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "text"
+        ]
+      },
+      "Proposal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "command": {
+            "$ref": "#/components/schemas/Command"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "expectedVersion",
+          "command",
+          "expiresAt"
+        ]
+      },
+      "Turn": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "interrupted"
+            ]
+          },
+          "inputVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "actionResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionResponse"
+            },
+            "maxItems": 3
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "status",
+          "inputVersion",
+          "text",
+          "actionResults",
+          "proposals"
+        ]
+      },
+      "StreamEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "turn_started"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "requestId"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "text_delta"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "action_result"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "$ref": "#/components/schemas/ActionResponse"
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "proposal"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "$ref": "#/components/schemas/Proposal"
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "turn_completed"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "$ref": "#/components/schemas/Turn"
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "turn_failed"
+              },
+              "turnId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "sessionVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "data": {
+                "$ref": "#/components/schemas/Error"
+              }
+            },
+            "required": [
+              "type",
+              "turnId",
+              "sequence",
+              "sessionVersion",
+              "data"
+            ]
+          }
+        ]
+      },
+      "DiffLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "context",
+              "added",
+              "removed"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "id",
+          "file",
+          "line",
+          "kind",
+          "text"
+        ]
+      },
+      "ReviewExercise": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "context": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiffLine"
+            },
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "difficulty",
+          "language",
+          "context",
+          "lines"
+        ]
+      },
+      "Concern": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "lineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "lineId",
+          "text"
+        ]
+      },
+      "ReviewSubmitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "concerns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Concern"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "requestId",
+          "contentVersion",
+          "concerns"
+        ]
+      },
+      "ReviewSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "exerciseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "informedPractice": {
+            "type": "boolean"
+          },
+          "concerns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Concern"
+            },
+            "maxItems": 100
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Concern"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "exerciseId",
+          "contentVersion",
+          "replayed",
+          "informedPractice",
+          "concerns",
+          "findings"
+        ]
+      },
+      "OperationOffer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "get_metric",
+              "query_logs",
+              "list_deployments",
+              "inspect_diff",
+              "read_runbook",
+              "view_architecture",
+              "get_service_status",
+              "rollback_deployment",
+              "scale_service",
+              "restart_service",
+              "advance_time"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "argumentSchema": {
+            "type": "object"
+          },
+          "costTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "costFromArgument": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ticks",
+              null
+            ]
+          },
+          "requiresConfirmation": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tool",
+          "label",
+          "argumentSchema",
+          "costTicks",
+          "costFromArgument",
+          "requiresConfirmation"
+        ]
+      },
+      "MetricSample": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "tick",
+          "value"
+        ]
+      },
+      "LogEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "tick",
+          "service",
+          "severity",
+          "message"
+        ]
+      },
+      "Deployment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "previousVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "tick": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "previousVersion",
+          "tick"
+        ]
+      },
+      "Dependency": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "CatalogQueryFilters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "learn",
+                "challenge",
+                "code_review"
+              ]
+            },
+            "maxItems": 3
+          },
+          "difficulties": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "easy",
+                "medium",
+                "hard"
+              ]
+            },
+            "maxItems": 3
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "modes",
+          "difficulties",
+          "domains"
+        ]
+      },
+      "SessionSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "status": {
+            "enum": [
+              "active",
+              "resolved",
+              "failed",
+              "ended"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "first_attempt",
+              "replay"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "contentId",
+          "contentVersion",
+          "status",
+          "mode",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "SessionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ReviewSubmissionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewSubmission"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ReplayOrigin": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "parentSessionId",
+          "checkpointId",
+          "checkpointTick"
+        ],
+        "properties": {
+          "parentSessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkpointId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "checkpointTick": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,274 @@
+{
+  "version": "0.1.0",
+  "tools": [
+    {
+      "name": "get_metric",
+      "kind": "investigation",
+      "description": "Request a fresh metric observation for an available service and metric. Uses simulated time. Reopening saved evidence does not require this tool.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "metric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "service",
+          "metric",
+          "windowTicks"
+        ]
+      }
+    },
+    {
+      "name": "query_logs",
+      "kind": "investigation",
+      "description": "Request available service logs within a simulated time window. Filters do not grant access to unrevealed services.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "contains": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "service",
+          "windowTicks"
+        ]
+      }
+    },
+    {
+      "name": "list_deployments",
+      "kind": "investigation",
+      "description": "Inspect available deployments for a known service. Use this when the learner asks what changed recently.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "windowTicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "service",
+          "windowTicks"
+        ]
+      }
+    },
+    {
+      "name": "inspect_diff",
+      "kind": "investigation",
+      "description": "Inspect the code diff of a deployment already discovered by the learner.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "deploymentId"
+        ]
+      }
+    },
+    {
+      "name": "read_runbook",
+      "kind": "investigation",
+      "description": "Read an available runbook. It provides authored guidance, not guaranteed resolution.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runbookId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "runbookId"
+        ]
+      }
+    },
+    {
+      "name": "view_architecture",
+      "kind": "investigation",
+      "description": "Reveal the available service topology for a known scope.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      }
+    },
+    {
+      "name": "get_service_status",
+      "kind": "investigation",
+      "description": "Request a fresh status observation for an available service.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "service"
+        ]
+      }
+    },
+    {
+      "name": "rollback_deployment",
+      "kind": "mitigation",
+      "description": "Propose replacing the selected service deployment with an available earlier version. Requires learner confirmation when selected through chat.",
+      "requiresConfirmation": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "targetVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "service",
+          "targetVersion"
+        ]
+      }
+    },
+    {
+      "name": "scale_service",
+      "kind": "mitigation",
+      "description": "Propose a supported instance count for a service. Scaling can increase pressure on dependencies. Requires learner confirmation through chat.",
+      "requiresConfirmation": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "instances": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "service",
+          "instances"
+        ]
+      }
+    },
+    {
+      "name": "restart_service",
+      "kind": "mitigation",
+      "description": "Propose restarting a service without changing its deployment version. Requires learner confirmation through chat.",
+      "requiresConfirmation": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "service"
+        ]
+      }
+    },
+    {
+      "name": "advance_time",
+      "kind": "time",
+      "description": "Advance the incident by an explicit bounded number of simulated ticks. Conditions may become terminal before all requested ticks elapse.",
+      "requiresConfirmation": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ticks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "ticks"
+        ]
+      }
+    }
+  ]
+}
