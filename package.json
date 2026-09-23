@@ -4,14 +4,36 @@
   "private": true,
   "description": "OpsReplay specification and implementation workspace",
   "type": "module",
-  "engines": { "node": ">=22.19.0 <23", "npm": ">=10" },
+  "engines": {
+    "node": ">=22.19.0 <23",
+    "npm": ">=10"
+  },
   "scripts": {
-    "check": "node scripts/check.mjs",
-    "contracts:sync": "node scripts/sync-openapi.mjs"
+    "check": "npm run contracts:check && npm run typecheck && npm run lint && npm run format:check && npm test",
+    "contracts:check": "node scripts/check.mjs && node scripts/generate-contracts.mjs --check",
+    "contracts:sync": "node scripts/sync-openapi.mjs && npm run contracts:generate",
+    "contracts:generate": "node scripts/generate-contracts.mjs",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" --no-error-on-unmatched-pattern",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" --no-error-on-unmatched-pattern",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
-    "ajv": "8.20.0",
-    "ajv-formats": "3.0.1"
-  }
+    "@types/node": "22.20.4",
+    "@vitest/coverage-v8": "5.0.1",
+    "eslint": "10.11.0",
+    "json-schema-to-typescript": "16.0.0",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "5.0.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

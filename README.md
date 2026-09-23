@@ -7,10 +7,10 @@ students and junior software, DevOps, platform, and site reliability engineers.
 Learners investigate simulated incidents, apply recovery actions, and replay
 selected decisions to understand their consequences.
 
-**Status: specification baseline.** The preliminary report is under team review.
-This repository contains design documents, versioned contracts, validation tools,
-and a synthetic reference scenario. The application and cloud deployment are not
-implemented. Contract checks do not prove that an application exists or works.
+**Status: local foundation in progress.** The preliminary report is under team
+review. The repository has strict TypeScript workspaces, schema-derived contracts,
+runtime validation, design documents, and a synthetic reference scenario. The
+application and cloud deployment are not implemented yet.
 
 ## Start here
 
@@ -50,10 +50,14 @@ npm ci
 npm run check
 ```
 
-Checks validate JSON Schema and OpenAPI contracts, local documentation links,
+Checks run TypeScript, ESLint, formatting, and contract unit tests. They also
+validate JSON Schema and OpenAPI contracts, local documentation links,
 scenario references, contract examples, and the synthetic scenario's expected
 traces. The reference calculation is a specification fixture, not the production
 engine. There is no application start command yet.
+
+See the [development guide](docs/development.md) for workspace boundaries and
+commands, and [ADR 001](docs/decisions/001-local-stack.md) for the stack decisions.
 
 ## Repository map
 

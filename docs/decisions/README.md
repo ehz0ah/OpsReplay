@@ -30,7 +30,14 @@ validation in one PR. Do not quietly resolve a conflict by picking a convenient 
 | D09 | Google Wheel of Misfortune is the report's educational reference | Latest report revision |
 | D10 | No deferred enterprise, multiplayer, MCP, or generated-content features | Scope handoffs |
 
-## Proposed engineering defaults
+## Accepted implementation choices
+
+[ADR 001](001-local-stack.md) records the local stack approved after the baseline:
+React with Vite, shadcn/ui and Mantine as needed, Fastify as a modular monolith,
+strict TypeScript workspaces, and schema-derived contracts. Local direct gameplay
+comes before LLM and AWS integration.
+
+## Engineering defaults
 
 These make the first implementation task concrete. Contributors may refine them
 with evidence, provided agreed product behaviour is preserved.
@@ -38,21 +45,21 @@ with evidence, provided agreed product behaviour is preserved.
 | ID | Working default | Rationale and validation |
 | --- | --- | --- |
 | T01 | TypeScript for API, engine, and contracts, Node 22 for tooling | Shared operation types and native Lambda streaming support. Runtime upgrade must be checked before deployment |
-| T02 | Static browser app, frontend framework open | S3 hosting needs static output. The frontend owner can choose the framework without changing contracts |
+| T02 | React with Vite, static browser output | Accepted in ADR 001. Hosting remains compatible with S3 and CloudFront |
 | T03 | Regional REST API, separate gameplay/LLM Lambda handlers, DynamoDB, private S3, Cognito, CloudFront, CloudWatch | Report proposal. Prove regional/runtime streaming, identity, and transactional persistence early |
-| T04 | JSON Schema 2020-12 and OpenAPI 3.1 as language-neutral contracts | This baseline validates them. Choose generated or handwritten runtime types in the first API PR |
+| T04 | JSON Schema 2020-12 and OpenAPI 3.1, generated TypeScript types and AJV runtime validation | Accepted in ADR 001. Checks reject generated-type and OpenAPI drift |
 | T05 | Small declarative state/rule language, integer arithmetic | Enables authored JSON without `eval`. See simulation specification. Prototype complexity before expanding operators |
 | T06 | Action-cost time steps, explicit advance action, no wall-clock progression | Fair replay, no continuously running session worker |
 | T07 | Raw cost and outcome components first | Scoring weights are undecided. Do not ship an invented 0–100 formula |
 | T08 | Server-side access grants in prototype | Proves paid-content access control without adding billing integration |
-| T09 | One hosted API with modular code, not microservices | Separate Lambda handlers provide capacity isolation without service sprawl |
+| T09 | Fastify modular monolith | Accepted in ADR 001. AWS handler and packaging choices still need validation |
 | T10 | LLM proposes mitigation, learner confirms through the action endpoint | Prevents intent errors from making unconfirmed changes |
 
 ## Open choices and decision timing
 
 | Choice | Needed by | Who resolves it |
 | --- | --- | --- |
-| Frontend framework and chart library | First interface task | Frontend contributors |
+| Chart library and detailed component choices | First interface task | Frontend contributors |
 | IaC tool and AWS region | First deployment spike | Cloud contributors |
 | LLM provider/model and limits | First conversational task | LLM contributors using benchmark evidence |
 | Scoring formula | Before learner study | Content and evaluation contributors |

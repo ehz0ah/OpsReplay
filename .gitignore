@@ -8,6 +8,8 @@
 .aws/
 .local/
 .cache/
+.loopx/
+.codex/
 
 # Dependencies and output
 node_modules/

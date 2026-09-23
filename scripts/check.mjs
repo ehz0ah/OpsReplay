@@ -160,7 +160,7 @@ assert.throws(() => execute([{ tool: 'restart_service', arguments: { service: 'h
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    if (['node_modules', '.git'].includes(entry.name)) return [];
+    if (['node_modules', '.git', '.loopx', '.codex', '.local', 'dist', 'coverage'].includes(entry.name)) return [];
     const location = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(location) : [location];
   });
