@@ -9,22 +9,25 @@
     "npm": ">=10"
   },
   "scripts": {
-    "check": "npm run contracts:check && npm run typecheck && npm run lint && npm run format:check && npm test",
+    "check": "npm run contracts:check && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build",
     "contracts:check": "node scripts/check.mjs && node scripts/generate-contracts.mjs --check",
     "contracts:sync": "node scripts/sync-openapi.mjs && npm run contracts:generate",
     "contracts:generate": "node scripts/generate-contracts.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" --no-error-on-unmatched-pattern",
-    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" --no-error-on-unmatched-pattern",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" \"tests/integration/**/*.ts\" \"apps/*/vite.config.ts\" --no-error-on-unmatched-pattern",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.{ts,tsx,css}\" \"*.{ts,mjs}\" \"tests/integration/**/*.ts\" \"apps/*/vite.config.ts\" --no-error-on-unmatched-pattern",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build": "npm run build --workspace @opsreplay/web"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
     "@types/node": "22.20.4",
     "@vitest/coverage-v8": "5.0.1",
+    "axe-core": "4.13.0",
     "eslint": "10.11.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "json-schema-to-typescript": "16.0.0",
     "prettier": "3.9.9",
     "tsx": "4.23.15",

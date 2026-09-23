@@ -96,7 +96,9 @@ export async function buildApp(options: AppOptions) {
     if (
       !signed?.valid ||
       !signed.value ||
-      !options.accounts.some((account) => account.id === signed.value)
+      !options.accounts.some((account) => account.id === signed.value) ||
+      (request.headers['x-opsreplay-owner'] !== undefined &&
+        request.headers['x-opsreplay-owner'] !== signed.value)
     )
       throw new ApiError('UNAUTHENTICATED', 'Select a local learner to continue.');
     return signed.value;
