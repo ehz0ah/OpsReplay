@@ -1,0 +1,21 @@
+{
+  "name": "@opsreplay/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@opsreplay/contracts": "0.1.0",
+    "@opsreplay/engine": "0.1.0",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0"
+  }
+}

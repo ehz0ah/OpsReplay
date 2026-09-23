@@ -10,8 +10,8 @@ selected decisions to understand their consequences.
 **Status: local foundation in progress.** The preliminary report is under team
 review. The repository has strict TypeScript workspaces, schema-derived contracts,
 runtime validation, a tested deterministic engine, design documents, and a
-synthetic reference scenario. The API, web application, and cloud deployment are
-not implemented yet.
+synthetic reference scenario. The local Fastify API persists sessions in SQLite.
+The web application and cloud deployment are not implemented yet.
 
 ## Start here
 
@@ -55,7 +55,8 @@ Checks run TypeScript, ESLint, formatting, and contract and engine tests. They a
 validate JSON Schema and OpenAPI contracts, local documentation links,
 scenario references, contract examples, and the synthetic scenario's expected
 traces. The reference calculation is a specification fixture, not the production
-engine. There is no application start command yet.
+engine. Start the local API with `npm run start --workspace @opsreplay/api`.
+See the [API guide](apps/api/README.md) for local identity and persistence.
 
 See the [development guide](docs/development.md) for workspace boundaries and
 commands, and [ADR 001](docs/decisions/001-local-stack.md) for the stack decisions.

@@ -37,6 +37,9 @@ React with Vite, shadcn/ui and Mantine as needed, Fastify as a modular monolith,
 strict TypeScript workspaces, and schema-derived contracts. Local direct gameplay
 comes before LLM and AWS integration.
 
+[ADR 002](002-local-persistence.md) records SQLite transactions and explicit local
+identity for the first runnable API. These do not replace the proposed AWS adapters.
+
 ## Engineering defaults
 
 These make the first implementation task concrete. Contributors may refine them

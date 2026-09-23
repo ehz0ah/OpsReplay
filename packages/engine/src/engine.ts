@@ -59,7 +59,7 @@ export function start(scenario: CompiledScenario, id: string): EngineResult {
     occurrences: [],
     checkpoints: [],
     commandCount: 0,
-    nextSequence: 0,
+    nextSequence: 1,
   };
   sample(scenario, state);
   // A condition already true at start is recorded once as initial visible evidence.

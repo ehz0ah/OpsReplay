@@ -15,7 +15,7 @@ export function replay(parent: EngineState, checkpointId: string, id: string): E
     mode: 'replay',
     informedPractice: true,
     checkpoints: [],
-    nextSequence: 0,
+    nextSequence: 1,
     replayOrigin: {
       parentSessionId: parent.id,
       checkpointId,

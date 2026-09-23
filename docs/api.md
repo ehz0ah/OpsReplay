@@ -2,7 +2,10 @@
 
 Status: proposed `/v1` contract. [OpenAPI](../packages/contracts/openapi.json) owns
 routes and wire schemas. This document owns stateful behaviour and error semantics.
-No endpoint is implemented in the baseline.
+The local API implements Challenge session creation, reads, history, actions, end,
+debrief, replay, comparison, and a Challenge catalogue. Learn, Code Review, and
+conversation routes remain planned. See [ADR 002](decisions/002-local-persistence.md)
+for the local identity boundary.
 
 ## Common rules
 
