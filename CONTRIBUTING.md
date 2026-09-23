@@ -25,7 +25,8 @@ are introduced. There are no deployable resources in this baseline.
 
 ## Pull requests
 
-1. Branch from `main`, using a short name such as `feat/session-store`.
+1. Fetch `origin` and create an implementation worktree from `origin/main`, using
+   a short branch name such as `feat/session-store`. Keep the main checkout on `main`.
 2. Keep changes focused. Update affected contracts before depending on them.
 3. Include behaviour, rationale, verification, and known limits in the PR.
 4. Request review from another team member. Reviewers check correctness, scope,
@@ -48,8 +49,9 @@ PDF is intentionally tracked as a small review snapshot.
 
 Use tests for meaningful behaviour: ordering, retries, hidden evidence, state
 transitions, and content consistency. Do not add tests that merely restate a type
-definition. Existing repository checks are the baseline, not a substitute for
-future engine, API, UI, and cloud integration tests.
+definition. The local checks include engine, API, and browser-transport tests.
+Use the [handoff smoke path](docs/local-handoff.md) for interface changes. Local
+checks cannot substitute for cloud integration or learner evaluation.
 
 ## Completion criteria
 

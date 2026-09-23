@@ -1,7 +1,8 @@
 # Interface design contract
 
-Status: functional design. Framework, visual identity, chart library, and exact
-layout belong to the frontend team. This file fixes behaviour, not a mockup.
+Status: functional design. The first Challenge uses React/Vite, Mantine controls,
+Recharts, and locally bundled IBM Plex fonts. Frontend contributors can refine
+the layout while preserving this behaviour. Learn and Code Review remain planned.
 
 ## Navigation
 

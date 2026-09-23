@@ -20,7 +20,10 @@ Modules: `app` owns HTTP and local identity, `sessions` coordinates operations,
 The development-only `/dev/accounts`, `/dev/login`, `/dev/logout`, and `/dev/me`
 routes use two explicit local learners. Login accepts `{"accountId":"local-learner"}`.
 All mutations require `X-OpsReplay-Client: web`. Browsers must use an allowed local
-origin. HTTP-only signed cookies persist login across restarts. There is no public
+origin. The browser also sends `X-OpsReplay-Owner` with its expected learner ID.
+This header must match the verified cookie and grants no authority. It prevents
+stale tabs from writing for a different learner. HTTP-only signed cookies persist
+login across restarts. There is no public
 signup or identity provider in this slice. `NODE_ENV=production` is rejected.
 
 The synthetic draft appears in the local catalogue. Published-only selection is
@@ -30,3 +33,6 @@ drafts. No LLM calls or AWS services are used.
 Integration tests exercise real temporary SQLite files, duplicate requests, two
 database connections, injected transaction failure, restart recovery, access,
 pagination, debrief and replay comparison.
+
+Use `npm run dev` at the root to start both API and browser. For storage, port
+overrides, and recovery, read [local development](../../docs/development.md).

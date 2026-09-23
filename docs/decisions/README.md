@@ -40,6 +40,11 @@ comes before LLM and AWS integration.
 [ADR 002](002-local-persistence.md) records SQLite transactions and explicit local
 identity for the first runnable API. These do not replace the proposed AWS adapters.
 
+The first interface uses Mantine for basic controls, Recharts for metrics, React
+Query for server data, and React Router for navigation. Fonts are bundled locally.
+shadcn/ui remains available when a specific component need warrants it. It is not
+installed in this slice. `concurrently` runs and stops the two local processes.
+
 ## Engineering defaults
 
 These make the first implementation task concrete. Contributors may refine them
@@ -62,7 +67,7 @@ with evidence, provided agreed product behaviour is preserved.
 
 | Choice | Needed by | Who resolves it |
 | --- | --- | --- |
-| Chart library and detailed component choices | First interface task | Frontend contributors |
+| Further interface refinements | Subsequent interface tasks | Frontend contributors |
 | IaC tool and AWS region | First deployment spike | Cloud contributors |
 | LLM provider/model and limits | First conversational task | LLM contributors using benchmark evidence |
 | Scoring formula | Before learner study | Content and evaluation contributors |

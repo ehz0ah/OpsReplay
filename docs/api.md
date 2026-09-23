@@ -14,6 +14,11 @@ The server derives the user ID from verified identity, never from a request body
 Ownership failures use `404` to avoid revealing another user's session. Missing
 identity uses `401`. Missing content entitlement uses `403`.
 
+Locally, signed cookies provide identity. The browser sends its expected learner
+in `X-OpsReplay-Owner`. If present, the header must match the cookie. It never
+selects or authorizes a learner. This rejects stale-tab requests after account
+switching. All local mutations require `X-OpsReplay-Client: web`.
+
 All mutation bodies carry `requestId` as a UUID. Session mutations also carry
 `expectedVersion`. A request ID identifies a logical request, not a retry attempt.
 Clients retain it until the outcome is known. Replay of a successful request returns

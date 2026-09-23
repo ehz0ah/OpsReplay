@@ -44,4 +44,6 @@ TypeScript 6.0.3 is used because typescript-eslint 8.70.1 supports versions belo
 
 Node 22.23.1 runs the baseline schema checks and contract unit tests. Tests check
 strict input handling, public evidence boundaries, error isolation, and registry
-isolation. This decision does not claim that an API, UI, or AWS deployment exists.
+isolation. This records the initial stack check. See the
+[local handoff](../local-handoff.md) for later API and UI validation. AWS deployment
+remains unimplemented.
