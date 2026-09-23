@@ -1,7 +1,7 @@
 # Simulation contract
 
-Status: proposed v0.1 domain contract. It makes the agreed deterministic behaviour
-implementable. Numerical values in the reference scenario are synthetic examples,
+Status: v0.1 domain contract implemented by the local engine. Numerical values in
+the reference scenario are synthetic examples,
 not production measurements or final scoring weights.
 
 ## Engine interface
@@ -70,6 +70,9 @@ There is no code evaluation, I/O, random value, or loop expression. The engine
 checks operand types, arity, variable bounds, and finite safe integers.
 Expressions have maximum depth 20 and 200 nodes. Both arms of an `if` must be valid.
 Use strict types without coercing strings to numbers or booleans.
+Before schema validation, reject definitions beyond 50 structural levels or
+100,000 nodes. This prevents recursive input from exhausting the validator stack.
+Per-tick impact is bounded at 200,000 units so 5,000 ticks fit the public cost limit.
 
 Time is available as `tick`. Command arguments are available only in action
 effects or prerequisites, not tick, event, metric, or terminal rules. Predicates

@@ -82,15 +82,103 @@ export interface Scenario {
   /**
    * @maxItems 100
    */
-  evidence: {
-    id: string;
-    kind:
-      'alert' | 'metric' | 'logs' | 'deployments' | 'diff' | 'runbook' | 'architecture' | 'status';
-    title: string;
-    data: {
-      [k: string]: unknown;
-    };
-  }[];
+  evidence: (
+    | {
+        id: string;
+        kind: 'alert';
+        title: string;
+        data: {
+          service: string;
+          errorPercent: number;
+          message: string;
+        };
+      }
+    | {
+        id: string;
+        kind: 'diff';
+        title: string;
+        data: {
+          deploymentId: string;
+          language: string;
+          /**
+           * @maxItems 1000
+           */
+          lines: DiffLine[];
+        };
+      }
+    | {
+        id: string;
+        kind: 'runbook';
+        title: string;
+        data: {
+          /**
+           * @maxItems 100
+           */
+          steps: string[];
+        };
+      }
+    | {
+        id: string;
+        kind: 'architecture';
+        title: string;
+        data: {
+          /**
+           * @maxItems 30
+           */
+          services: string[];
+          /**
+           * @maxItems 100
+           */
+          dependencies: Dependency[];
+        };
+      }
+    | {
+        id: string;
+        kind: 'metric';
+        title: string;
+        data: {
+          service: string;
+          metric: string;
+        };
+      }
+    | {
+        id: string;
+        kind: 'status';
+        title: string;
+        data: {
+          service: string;
+          metric: string;
+        };
+      }
+    | {
+        id: string;
+        kind: 'deployments';
+        title: string;
+        data: {
+          service: string;
+          /**
+           * @maxItems 100
+           */
+          deployments: Deployment[];
+        };
+      }
+    | {
+        id: string;
+        kind: 'logs';
+        title: string;
+        data: {
+          service: string;
+          /**
+           * @maxItems 50
+           */
+          templates: {
+            event: string;
+            severity: 'info' | 'warning' | 'error';
+            message: string;
+          }[];
+        };
+      }
+  )[];
   /**
    * @maxItems 100
    */
@@ -183,4 +271,21 @@ export interface Scenario {
     recommendedActions: string[];
     explanation: string;
   };
+}
+export interface DiffLine {
+  id: string;
+  file: string;
+  line: number;
+  kind: 'context' | 'added' | 'removed';
+  text: string;
+}
+export interface Dependency {
+  from: string;
+  to: string;
+}
+export interface Deployment {
+  id: string;
+  version: string;
+  previousVersion: string;
+  tick: number;
 }

@@ -9,8 +9,9 @@ selected decisions to understand their consequences.
 
 **Status: local foundation in progress.** The preliminary report is under team
 review. The repository has strict TypeScript workspaces, schema-derived contracts,
-runtime validation, design documents, and a synthetic reference scenario. The
-application and cloud deployment are not implemented yet.
+runtime validation, a tested deterministic engine, design documents, and a
+synthetic reference scenario. The API, web application, and cloud deployment are
+not implemented yet.
 
 ## Start here
 
@@ -50,7 +51,7 @@ npm ci
 npm run check
 ```
 
-Checks run TypeScript, ESLint, formatting, and contract unit tests. They also
+Checks run TypeScript, ESLint, formatting, and contract and engine tests. They also
 validate JSON Schema and OpenAPI contracts, local documentation links,
 scenario references, contract examples, and the synthetic scenario's expected
 traces. The reference calculation is a specification fixture, not the production

@@ -121,9 +121,27 @@
         "deploymentId": "deploy-2-6-1",
         "language": "pseudocode",
         "lines": [
-          "+ connection = acquireConnection()",
-          "  processCheckout(connection)",
-          "- releaseConnection(connection)"
+          {
+            "id": "checkout-db-1",
+            "file": "checkout/database.ts",
+            "line": 10,
+            "kind": "added",
+            "text": "connection = acquireConnection()"
+          },
+          {
+            "id": "checkout-db-2",
+            "file": "checkout/database.ts",
+            "line": 11,
+            "kind": "context",
+            "text": "processCheckout(connection)"
+          },
+          {
+            "id": "checkout-db-3",
+            "file": "checkout/database.ts",
+            "line": 12,
+            "kind": "removed",
+            "text": "releaseConnection(connection)"
+          }
         ]
       }
     },
@@ -150,14 +168,14 @@
           "database"
         ],
         "dependencies": [
-          [
-            "checkout-api",
-            "database"
-          ],
-          [
-            "payment-api",
-            "database"
-          ]
+          {
+            "from": "checkout-api",
+            "to": "database"
+          },
+          {
+            "from": "payment-api",
+            "to": "database"
+          }
         ]
       }
     },

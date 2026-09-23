@@ -176,4 +176,4 @@ for (const file of markdown) {
   assert.ok(!content.includes('\u2014'), 'Em dash in ' + file);
 }
 console.log('PASS: OpenAPI, ' + Object.keys(publicSchema.$defs).length + ' public schemas, ' + registry.tools.length + ' tools, scenario references, ' + traces.paths.length + ' deterministic traces, replay fixture, negative cases, and ' + markdown.length + ' Markdown files.');
-console.log('Application, persistence, UI, and AWS integration are not implemented or tested by this check.');
+console.log('This command checks specification fixtures. npm test runs the implemented module tests.');
