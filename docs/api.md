@@ -2,7 +2,10 @@
 
 Status: proposed `/v1` contract. [OpenAPI](../packages/contracts/openapi.json) owns
 routes and wire schemas. This document owns stateful behaviour and error semantics.
-No endpoint is implemented in the baseline.
+The local API implements Challenge session creation, reads, history, actions, end,
+debrief, replay, comparison, and a Challenge catalogue. Learn, Code Review, and
+conversation routes remain planned. See [ADR 002](decisions/002-local-persistence.md)
+for the local identity boundary.
 
 ## Common rules
 
@@ -10,6 +13,11 @@ Authenticated routes require the identity token configured for the deployment.
 The server derives the user ID from verified identity, never from a request body.
 Ownership failures use `404` to avoid revealing another user's session. Missing
 identity uses `401`. Missing content entitlement uses `403`.
+
+Locally, signed cookies provide identity. The browser sends its expected learner
+in `X-OpsReplay-Owner`. If present, the header must match the cookie. It never
+selects or authorizes a learner. This rejects stale-tab requests after account
+switching. All local mutations require `X-OpsReplay-Client: web`.
 
 All mutation bodies carry `requestId` as a UUID. Session mutations also carry
 `expectedVersion`. A request ID identifies a logical request, not a retry attempt.

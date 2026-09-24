@@ -24,6 +24,11 @@ redefined in each module.
 
 ## First milestone
 
+Implemented locally: I01, I02, I03, and I05 for the synthetic reference Challenge.
+The engine, durable Fastify API, React interface, debrief, and replay comparison
+have automated and browser validation. See [local handoff](local-handoff.md) for
+exact coverage and limits. This status does not imply AWS or team UI approval.
+
 Prove this loop locally with direct controls:
 
 ```text

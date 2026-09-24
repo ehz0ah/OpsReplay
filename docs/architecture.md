@@ -1,7 +1,7 @@
 # Architecture
 
-Status: implementation proposal consistent with the report. No cloud resources
-or application handlers are implemented in this baseline.
+Status: the local modular monolith is implemented. The AWS deployment below
+remains a proposal. No cloud resources or LLM handlers are implemented.
 
 ## Application boundaries
 
@@ -80,17 +80,23 @@ lookup. See [data model](data-model.md) and [API](api.md).
 
 ## Local-first development
 
-Build the engine and repository interfaces locally. Start with an in-memory
-repository and development identity for isolated tests. Add a persistent local
-adapter for manual sessions. Restart durability must not be claimed for memory
-storage. The production configuration must reject development identity.
+The React/Vite app calls a loopback Fastify process through a same-origin proxy.
+SQLite uses WAL and atomic transactions for sessions, receipts, checkpoints, and
+events. Tests use temporary database files. Explicit local accounts use signed
+HTTP-only cookies. The entry point rejects `NODE_ENV=production`.
+
+The browser validates public responses and keeps a separate query cache per
+learner. A session version guard prevents late reads or receipts from replacing
+newer state. Pending writes are saved in tab storage before dispatch, and retries
+reuse the request ID. See [local persistence](decisions/002-local-persistence.md).
 
 Run API contract tests against both local and DynamoDB adapters when implemented.
 Local tests prove domain and adapter behaviour, not Cognito, IAM, regional
 streaming, quotas, or AWS failure handling. The cloud spike proves those paths.
 
-There is no local application server yet. Module READMEs define implementation
-entry points without providing commands that pretend the server exists.
+Use `npm run dev` for API and frontend reload, or `npm run build` then `npm start`
+to check the built frontend with the same API. Both stay on loopback addresses.
+See [development](development.md) for storage and recovery procedures.
 
 ## Deployment trade-offs
 

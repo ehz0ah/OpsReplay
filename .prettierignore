@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.local/
+.loopx/
+.codex/
+packages/contracts/src/generated/

@@ -26,6 +26,12 @@ Use the [schema](../packages/contracts/schemas/scenario.schema.json) and
 Every evidence ID and action must exist. Tool arguments must match the registry.
 Every action must define a visible target and cost without naming hidden truth.
 
+Evidence data has a schema for each kind. Diff lines include their file, stable
+line ID, line number, change kind, and text. Architecture dependencies use explicit
+`from` and `to` service names. The engine must not invent filenames or line numbers.
+Metric and status templates select one declared metric. Log templates reference
+declared event IDs and are rendered at the time that each event occurred.
+
 ## Evidence quality
 
 Evidence should support diagnosis without stating the answer. Include realistic
@@ -58,3 +64,8 @@ Learn entries include title, domain, summary, lessons, and official source links
 Keep them free. Code Review includes difficulty, an available language, context,
 diff, allowed line anchors, and private authored findings. Validate that each
 finding points to a real diff line. Do not add a language option without content.
+
+Investigation actions must bind target names in their selectors. Their revealed
+evidence must match the tool kind, service, metric, and deployment where applicable.
+Query windows, log filters, and bounded counts can remain parameters. State
+prerequisites that depend on arguments are checked when the command is submitted.

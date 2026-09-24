@@ -160,7 +160,7 @@ assert.throws(() => execute([{ tool: 'restart_service', arguments: { service: 'h
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    if (['node_modules', '.git'].includes(entry.name)) return [];
+    if (['node_modules', '.git', '.loopx', '.codex', '.local', 'dist', 'coverage'].includes(entry.name)) return [];
     const location = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(location) : [location];
   });
@@ -176,4 +176,4 @@ for (const file of markdown) {
   assert.ok(!content.includes('\u2014'), 'Em dash in ' + file);
 }
 console.log('PASS: OpenAPI, ' + Object.keys(publicSchema.$defs).length + ' public schemas, ' + registry.tools.length + ' tools, scenario references, ' + traces.paths.length + ' deterministic traces, replay fixture, negative cases, and ' + markdown.length + ' Markdown files.');
-console.log('Application, persistence, UI, and AWS integration are not implemented or tested by this check.');
+console.log('This command checks specification fixtures. npm test runs the implemented module tests.');
