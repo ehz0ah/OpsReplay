@@ -2,13 +2,13 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpsReplay API",
-    "version": "0.1.0",
-    "description": "Proposed contracts. No API implementation exists yet."
+    "version": "0.2.0",
+    "description": "Proposed REST contract for API Gateway and Lambda. The terminal gateway WebSocket protocol is in docs/api.md. No implementation exists yet."
   },
   "servers": [
     {
-      "url": "http://localhost:3000",
-      "description": "Planned local development endpoint, not a running service"
+      "url": "https://api.opsreplay.example",
+      "description": "Placeholder hosted endpoint. The domain is not chosen and no service is running."
     }
   ],
   "security": [
@@ -20,43 +20,8 @@
     "/v1/catalog": {
       "get": {
         "operationId": "listCatalog",
-        "summary": "listCatalog",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Catalog"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
+        "summary": "List published content metadata and available filters",
+        "description": "Public. Lists Free and Pro entries with their plan so the client can show locked items. Never returns private content locations.",
         "parameters": [
           {
             "name": "cursor",
@@ -89,7 +54,7 @@
             }
           },
           {
-            "name": "difficulty",
+            "name": "tier",
             "in": "query",
             "schema": {
               "type": "string",
@@ -101,7 +66,7 @@
             }
           },
           {
-            "name": "domain",
+            "name": "category",
             "in": "query",
             "schema": {
               "type": "string",
@@ -117,18 +82,89 @@
               "minLength": 1,
               "maxLength": 80
             }
+          },
+          {
+            "name": "plan",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "free",
+                "pro"
+              ]
+            }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
         "security": []
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "getAccount",
+        "summary": "Current plan and active session",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/learn/{id}": {
       "get": {
         "operationId": "getLearnEntry",
-        "summary": "getLearnEntry",
+        "summary": "Published Learn entry, including Pro entries after an entitlement check",
+        "description": "Free entries are also served as static pages through CloudFront.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Learn entry ID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -137,9 +173,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -149,74 +182,17 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ],
-        "security": []
+        }
       }
     },
     "/v1/sessions": {
       "post": {
         "operationId": "startSession",
-        "summary": "startSession",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
+        "summary": "Start a Challenge attempt in a dedicated environment task",
+        "description": "Idempotent by requestId. A repeated request returns the original session and never launches a second task.",
         "requestBody": {
           "required": true,
           "content": {
@@ -226,11 +202,50 @@
               }
             }
           }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "get": {
-        "operationId": "listOwnedSessions",
-        "summary": "List owned sessions and replay attempts",
+        "operationId": "listSessions",
+        "summary": "List owned Challenge attempts, newest first",
         "parameters": [
           {
             "name": "cursor",
@@ -253,7 +268,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Owned sessions",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -262,7 +277,13 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -271,10 +292,22 @@
     "/v1/sessions/{id}": {
       "get": {
         "operationId": "getSession",
-        "summary": "getSession",
+        "summary": "Current session status, alert, recovery state, hints, and limits",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -283,13 +316,46 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
-          "403": {
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/terminal-tickets": {
+      "post": {
+        "operationId": "createTerminalTicket",
+        "summary": "Issue a short-lived single-use ticket for the terminal gateway",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalTicket"
+                }
+              }
+            }
+          },
+          "401": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -298,41 +364,49 @@
           "409": {
             "$ref": "#/components/responses/Error"
           },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
           "429": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      }
+    },
+    "/v1/sessions/{id}/end": {
+      "post": {
+        "operationId": "endSession",
+        "summary": "End an active attempt and stop its environment",
+        "description": "Idempotent by requestId. Ending a terminal session returns its recorded outcome.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Owned Challenge session ID",
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "format": "uuid"
             }
           }
-        ]
-      }
-    },
-    "/v1/sessions/{id}/events": {
-      "get": {
-        "operationId": "listSessionEvents",
-        "summary": "listSessionEvents",
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventPage"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             }
@@ -343,7 +417,62 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
-          "403": {
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/hints": {
+      "post": {
+        "operationId": "releaseHint",
+        "summary": "Release the next authored hint and record assistance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HintResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -361,16 +490,22 @@
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      }
+    },
+    "/v1/sessions/{id}/timeline": {
+      "get": {
+        "operationId": "listTimeline",
+        "summary": "Cursor-paginated per-command and monitor events in time order",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Owned Challenge session ID",
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "format": "uuid"
             }
           },
           {
@@ -391,20 +526,14 @@
               "maximum": 100
             }
           }
-        ]
-      }
-    },
-    "/v1/sessions/{id}/actions": {
-      "post": {
-        "operationId": "executeAction",
-        "summary": "executeAction",
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ActionResponse"
+                  "$ref": "#/components/schemas/TimelinePage"
                 }
               }
             }
@@ -415,109 +544,11 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
           "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActionRequest"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/sessions/{id}/end": {
-      "post": {
-        "operationId": "endSession",
-        "summary": "endSession",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VersionedRequest"
-              }
-            }
           }
         }
       }
@@ -525,10 +556,22 @@
     "/v1/sessions/{id}/debrief": {
       "get": {
         "operationId": "getDebrief",
-        "summary": "getDebrief",
+        "summary": "Debrief and raw score components for a terminal session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -537,13 +580,7 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -552,116 +589,40 @@
           "409": {
             "$ref": "#/components/responses/Error"
           },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
           "500": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ]
-      }
-    },
-    "/v1/sessions/{id}/replays": {
-      "post": {
-        "operationId": "createReplay",
-        "summary": "createReplay",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReplayRequest"
-              }
-            }
           }
         }
       }
     },
-    "/v1/sessions/{id}/comparison": {
+    "/v1/sessions/{id}/playback": {
       "get": {
-        "operationId": "getComparison",
-        "summary": "getComparison",
+        "operationId": "getPlayback",
+        "summary": "Short-lived playback manifest for recordings, metrics, and captures",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Comparison"
+                  "$ref": "#/components/schemas/Playback"
                 }
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -670,80 +631,26 @@
           "409": {
             "$ref": "#/components/responses/Error"
           },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ]
+        }
       }
     },
     "/v1/sessions/{id}/messages": {
       "post": {
-        "operationId": "sendMessage",
-        "summary": "sendMessage",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string"
-                },
-                "example": "event: turn_started\ndata: {\"type\": \"turn_started\", \"turnId\": \"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\", \"sequence\": 0, \"sessionVersion\": 0, \"data\": {\"requestId\": \"11111111-1111-4111-8111-111111111111\"}}\n\n"
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
+        "operationId": "sendSessionMessage",
+        "summary": "Start or reattach to a Challenge assistant turn",
+        "description": "Idempotent by requestId, which is also the turn ID. See docs/api.md for stream and recovery semantics.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Owned Challenge session ID",
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "format": "uuid"
             }
           }
         ],
@@ -757,16 +664,71 @@
             }
           }
         },
-        "description": "SSE frames use the StreamEvent schema as their data payload. Consult docs/api.md for persistence and reconnection semantics."
+        "responses": {
+          "200": {
+            "description": "Server-sent events. Each data payload is a StreamEvent.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: turn_started\ndata: {\"type\":\"turn_started\",\"turnId\":\"55555555-5555-4555-8555-555555555555\",\"sequence\":0,\"data\":{\"requestId\":\"55555555-5555-4555-8555-555555555555\"}}\n\n"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/sessions/{id}/messages/{turnId}": {
       "get": {
-        "operationId": "getTurn",
-        "summary": "getTurn",
+        "operationId": "getSessionTurn",
+        "summary": "Saved Challenge assistant turn state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned Challenge session ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "turnId",
+            "in": "path",
+            "required": true,
+            "description": "Conversation turn ID, equal to the message request ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -775,62 +737,39 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          },
-          {
-            "name": "turnId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ]
+        }
       }
     },
     "/v1/reviews/{id}": {
       "get": {
         "operationId": "getReviewExercise",
-        "summary": "getReviewExercise",
+        "summary": "Published review diff and context, without findings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Code Review exercise ID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -839,9 +778,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -851,82 +787,27 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ]
+        }
       }
     },
     "/v1/reviews/{id}/submissions": {
       "post": {
         "operationId": "submitReview",
-        "summary": "submitReview",
-        "responses": {
-          "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewSubmission"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
+        "summary": "Submit flagged lines, match them to reference ranges, and release findings",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Code Review exercise ID",
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 100
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
             }
           }
         ],
@@ -939,16 +820,10 @@
               }
             }
           }
-        }
-      }
-    },
-    "/v1/review-submissions/{id}": {
-      "get": {
-        "operationId": "getReviewSubmission",
-        "summary": "getReviewSubmission",
+        },
         "responses": {
           "200": {
-            "description": "Success. Mutations may return a saved idempotent result.",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -981,25 +856,13 @@
           "500": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            }
-          }
-        ]
+        }
       }
     },
     "/v1/review-submissions": {
       "get": {
-        "operationId": "listOwnedReviewSubmissions",
-        "summary": "List owned review submissions",
+        "operationId": "listReviewSubmissions",
+        "summary": "List owned review submissions, newest first",
         "parameters": [
           {
             "name": "cursor",
@@ -1022,7 +885,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Owned submissions",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -1031,7 +894,163 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/review-submissions/{id}": {
+      "get": {
+        "operationId": "getReviewSubmission",
+        "summary": "Owned submission and its released findings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned review submission ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSubmission"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/review-submissions/{id}/messages": {
+      "post": {
+        "operationId": "sendReviewMessage",
+        "summary": "Start or reattach to a Code Review debrief assistant turn",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned review submission ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-sent events. Each data payload is a StreamEvent.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: turn_started\ndata: {\"type\":\"turn_started\",\"turnId\":\"66666666-6666-4666-8666-666666666666\",\"sequence\":0,\"data\":{\"requestId\":\"66666666-6666-4666-8666-666666666666\"}}\n\n"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/review-submissions/{id}/messages/{turnId}": {
+      "get": {
+        "operationId": "getReviewTurn",
+        "summary": "Saved Code Review assistant turn state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Owned review submission ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "turnId",
+            "in": "path",
+            "required": true,
+            "description": "Conversation turn ID, equal to the message request ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Turn"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1043,12 +1062,13 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT"
+        "bearerFormat": "JWT",
+        "description": "Cognito-issued token."
       }
     },
     "responses": {
       "Error": {
-        "description": "Typed error, no hidden scenario data.",
+        "description": "Typed error without hidden Challenge or review answer data.",
         "content": {
           "application/json": {
             "schema": {
@@ -1059,1310 +1079,6 @@
       }
     },
     "schemas": {
-      "Command": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "get_metric"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "metric": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "windowTicks": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10
-                  }
-                },
-                "required": [
-                  "service",
-                  "metric",
-                  "windowTicks"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "query_logs"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "windowTicks": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10
-                  },
-                  "severity": {
-                    "type": "string",
-                    "enum": [
-                      "info",
-                      "warning",
-                      "error"
-                    ]
-                  },
-                  "contains": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200
-                  }
-                },
-                "required": [
-                  "service",
-                  "windowTicks"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "list_deployments"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "windowTicks": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10
-                  }
-                },
-                "required": [
-                  "service",
-                  "windowTicks"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "inspect_diff"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "deploymentId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "deploymentId"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "read_runbook"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "runbookId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "runbookId"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "view_architecture"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "scope": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "scope"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "get_service_status"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "service"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "rollback_deployment"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "targetVersion": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "service",
-                  "targetVersion"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "scale_service"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "instances": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 20
-                  }
-                },
-                "required": [
-                  "service",
-                  "instances"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "restart_service"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": [
-                  "service"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "tool": {
-                "const": "advance_time"
-              },
-              "arguments": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "ticks": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10
-                  }
-                },
-                "required": [
-                  "ticks"
-                ]
-              }
-            },
-            "required": [
-              "tool",
-              "arguments"
-            ]
-          }
-        ]
-      },
-      "ActionRequest": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "requestId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "expectedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "source": {
-                "const": "direct"
-              },
-              "command": {
-                "$ref": "#/components/schemas/Command"
-              }
-            },
-            "required": [
-              "requestId",
-              "expectedVersion",
-              "source",
-              "command"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "requestId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "expectedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "source": {
-                "const": "llm_confirmed"
-              },
-              "proposalId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "command": {
-                "$ref": "#/components/schemas/Command"
-              }
-            },
-            "required": [
-              "requestId",
-              "expectedVersion",
-              "source",
-              "proposalId",
-              "command"
-            ]
-          }
-        ]
-      },
-      "Metric": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "service": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "metric": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "value": {
-            "type": "number"
-          },
-          "unit": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30
-          }
-        },
-        "required": [
-          "service",
-          "metric",
-          "value",
-          "unit"
-        ]
-      },
-      "Evidence": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "alert"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "errorPercent": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100
-                  },
-                  "message": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "service",
-                  "errorPercent",
-                  "message"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "metric"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "metric": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "unit": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 30
-                  },
-                  "samples": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/MetricSample"
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "service",
-                  "metric",
-                  "unit",
-                  "samples"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "logs"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "entries": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/LogEntry"
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "service",
-                  "entries"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "deployments"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "deployments": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/Deployment"
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "service",
-                  "deployments"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "diff"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "deploymentId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "language": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "lines": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/DiffLine"
-                    },
-                    "maxItems": 1000
-                  }
-                },
-                "required": [
-                  "deploymentId",
-                  "language",
-                  "lines"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "runbook"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "steps": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 2000
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "steps"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "architecture"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "services": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 80
-                    },
-                    "maxItems": 30
-                  },
-                  "dependencies": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/Dependency"
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "services",
-                  "dependencies"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "observationId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 150
-              },
-              "kind": {
-                "const": "status"
-              },
-              "observedTick": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "observedVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "data": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "metrics": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/Metric"
-                    },
-                    "maxItems": 100
-                  }
-                },
-                "required": [
-                  "service",
-                  "metrics"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "observationId",
-              "kind",
-              "observedTick",
-              "observedVersion",
-              "title",
-              "data"
-            ]
-          }
-        ]
-      },
-      "CheckpointSummary": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "tick": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          }
-        },
-        "required": [
-          "id",
-          "tick",
-          "label"
-        ]
-      },
-      "Costs": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "elapsedTicks": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "investigationTicks": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "impactUnits": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000000
-          }
-        },
-        "required": [
-          "elapsedTicks",
-          "investigationTicks",
-          "impactUnits"
-        ]
-      },
-      "SessionView": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "contentId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "contentVersion": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30
-          },
-          "engineVersion": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "tick": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "tickSeconds": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 3600
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "resolved",
-              "failed",
-              "ended"
-            ]
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "first_attempt",
-              "replay"
-            ]
-          },
-          "informedPractice": {
-            "type": "boolean"
-          },
-          "visibleMetrics": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Metric"
-            },
-            "maxItems": 100
-          },
-          "revealedEvidence": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Evidence"
-            },
-            "maxItems": 500
-          },
-          "costs": {
-            "$ref": "#/components/schemas/Costs"
-          },
-          "checkpoints": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CheckpointSummary"
-            },
-            "maxItems": 10
-          },
-          "availableOperations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OperationOffer"
-            },
-            "maxItems": 100
-          },
-          "replayOrigin": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ReplayOrigin"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "contentId",
-          "contentVersion",
-          "engineVersion",
-          "version",
-          "tick",
-          "tickSeconds",
-          "status",
-          "mode",
-          "informedPractice",
-          "visibleMetrics",
-          "revealedEvidence",
-          "costs",
-          "checkpoints",
-          "availableOperations",
-          "replayOrigin"
-        ],
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "mode": {
-                  "const": "replay"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "informedPractice": {
-                  "const": true
-                },
-                "replayOrigin": {
-                  "$ref": "#/components/schemas/ReplayOrigin"
-                }
-              }
-            },
-            "else": {
-              "properties": {
-                "replayOrigin": {
-                  "type": "null"
-                }
-              }
-            }
-          }
-        ]
-      },
-      "LogicalEvent": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "sequence": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000000
-          },
-          "tick": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "session_started",
-              "action_started",
-              "observation",
-              "incident_event",
-              "action_completed",
-              "incident_resolved",
-              "incident_failed",
-              "session_ended",
-              "replay_started"
-            ]
-          },
-          "message": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
-          },
-          "evidenceIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
-            },
-            "maxItems": 100
-          },
-          "observations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Evidence"
-            },
-            "maxItems": 100
-          }
-        },
-        "required": [
-          "sequence",
-          "tick",
-          "kind",
-          "message",
-          "evidenceIds",
-          "observations"
-        ]
-      },
-      "ActionResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "replayed": {
-            "type": "boolean"
-          },
-          "session": {
-            "$ref": "#/components/schemas/SessionView"
-          },
-          "output": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "summary": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 2000
-              },
-              "evidence": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Evidence"
-                },
-                "maxItems": 100
-              }
-            },
-            "required": [
-              "summary",
-              "evidence"
-            ]
-          },
-          "events": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LogicalEvent"
-            },
-            "maxItems": 100
-          },
-          "executedVersion": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000000
-          }
-        },
-        "required": [
-          "requestId",
-          "replayed",
-          "session",
-          "output",
-          "events",
-          "executedVersion"
-        ]
-      },
       "Error": {
         "type": "object",
         "additionalProperties": false,
@@ -2374,12 +1090,17 @@
               "UNAUTHENTICATED",
               "ACCESS_DENIED",
               "NOT_FOUND",
-              "VERSION_CONFLICT",
               "IDEMPOTENCY_CONFLICT",
-              "ACTION_UNAVAILABLE",
-              "PREREQUISITE_FAILED",
+              "VERSION_UNAVAILABLE",
+              "ACTIVE_SESSION_EXISTS",
+              "SESSION_NOT_READY",
+              "SESSION_ACTIVE",
               "SESSION_TERMINAL",
-              "REPLAY_UNAVAILABLE",
+              "DEBRIEF_PENDING",
+              "CAPACITY_UNAVAILABLE",
+              "HINT_NOT_AVAILABLE",
+              "NO_HINTS_REMAINING",
+              "TURN_IN_PROGRESS",
               "LIMIT_EXCEEDED",
               "PROVIDER_FAILED",
               "INTERNAL_ERROR"
@@ -2394,16 +1115,43 @@
             "type": "string",
             "format": "uuid"
           },
-          "currentVersion": {
+          "activeSessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "retryAfterSeconds": {
             "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
+            "minimum": 1,
+            "maximum": 3600
           }
         },
         "required": [
           "code",
           "message",
           "requestId"
+        ]
+      },
+      "Plan": {
+        "type": "string",
+        "enum": [
+          "free",
+          "pro"
+        ]
+      },
+      "Tier": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "medium",
+          "hard"
+        ]
+      },
+      "Mode": {
+        "type": "string",
+        "enum": [
+          "learn",
+          "challenge",
+          "code_review"
         ]
       },
       "Source": {
@@ -2417,7 +1165,8 @@
           },
           "url": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "maxLength": 2000
           }
         },
         "required": [
@@ -2432,45 +1181,38 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
           "version": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
           },
           "title": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
           },
-          "mode": {
+          "summary": {
             "type": "string",
-            "enum": [
-              "learn",
-              "challenge",
-              "code_review"
-            ]
+            "minLength": 1,
+            "maxLength": 1000
           },
-          "access": {
-            "type": "string",
-            "enum": [
-              "free",
-              "practice"
-            ]
-          },
-          "difficulty": {
-            "type": "string",
-            "enum": [
-              "easy",
-              "medium",
-              "hard"
-            ]
-          },
-          "domain": {
+          "category": {
             "type": "string",
             "minLength": 1,
             "maxLength": 80
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/Tier"
           },
           "language": {
             "type": "string",
@@ -2481,28 +1223,13 @@
         "required": [
           "id",
           "version",
-          "title",
           "mode",
-          "access",
-          "domain"
+          "title",
+          "summary",
+          "category",
+          "plan"
         ],
         "allOf": [
-          {
-            "if": {
-              "properties": {
-                "mode": {
-                  "const": "learn"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "access": {
-                  "const": "free"
-                }
-              }
-            }
-          },
           {
             "if": {
               "properties": {
@@ -2516,16 +1243,11 @@
             },
             "then": {
               "required": [
-                "difficulty"
+                "tier"
               ],
               "properties": {
-                "difficulty": {
-                  "type": "string",
-                  "enum": [
-                    "easy",
-                    "medium",
-                    "hard"
-                  ]
+                "tier": {
+                  "$ref": "#/components/schemas/Tier"
                 }
               }
             }
@@ -2550,7 +1272,78 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "learn",
+                    "challenge"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "language"
+                ]
+              }
+            }
           }
+        ]
+      },
+      "CatalogFilters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mode"
+            },
+            "maxItems": 3
+          },
+          "tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tier"
+            },
+            "maxItems": 3
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 100
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 100
+          },
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Plan"
+            },
+            "maxItems": 2
+          }
+        },
+        "required": [
+          "modes",
+          "tiers",
+          "categories",
+          "languages",
+          "plans"
         ]
       },
       "Catalog": {
@@ -2568,26 +1361,47 @@
             "type": [
               "string",
               "null"
-            ]
-          },
-          "availableLanguages": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "maxItems": 100
+            ],
+            "minLength": 1,
+            "maxLength": 1000
           },
           "availableFilters": {
-            "$ref": "#/components/schemas/CatalogQueryFilters"
+            "$ref": "#/components/schemas/CatalogFilters"
           }
         },
         "required": [
           "items",
           "nextCursor",
-          "availableLanguages",
           "availableFilters"
+        ]
+      },
+      "RelatedExercise": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "challenge",
+              "code_review"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "mode",
+          "id",
+          "title"
         ]
       },
       "LearnEntry": {
@@ -2597,47 +1411,112 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
           "version": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           },
           "title": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
           },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
           "summary": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 20000
+            "maxLength": 2000
           },
           "lessons": {
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 2000
+              "maxLength": 1000
             },
-            "maxItems": 100
+            "maxItems": 20,
+            "minItems": 1
           },
           "sources": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Source"
             },
-            "maxItems": 100
+            "maxItems": 20,
+            "minItems": 1
+          },
+          "relatedExercises": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedExercise"
+            },
+            "maxItems": 20
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000
           }
         },
         "required": [
           "id",
           "version",
           "title",
+          "category",
+          "plan",
           "summary",
           "lessons",
-          "sources"
+          "sources",
+          "relatedExercises",
+          "html"
+        ]
+      },
+      "Account": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "planSource": {
+            "type": "string",
+            "enum": [
+              "default",
+              "grant",
+              "institution"
+            ]
+          },
+          "planExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activeSessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "plan",
+          "planSource",
+          "planExpiresAt",
+          "activeSessionId"
         ]
       },
       "StartSessionRequest": {
@@ -2648,96 +1527,449 @@
             "type": "string",
             "format": "uuid"
           },
-          "contentId": {
+          "challengeId": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
-          "contentVersion": {
+          "challengeVersion": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          }
+        },
+        "required": [
+          "requestId",
+          "challengeId",
+          "challengeVersion"
+        ]
+      },
+      "MutationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "requestId"
+        ]
+      },
+      "ChallengeRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 30
-          }
-        },
-        "required": [
-          "requestId",
-          "contentId",
-          "contentVersion"
-        ]
-      },
-      "SessionResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "requestId": {
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "version": {
             "type": "string",
-            "format": "uuid"
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           },
-          "replayed": {
-            "type": "boolean"
-          },
-          "session": {
-            "$ref": "#/components/schemas/SessionView"
-          }
-        },
-        "required": [
-          "requestId",
-          "replayed",
-          "session"
-        ]
-      },
-      "VersionedRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "requestId": {
+          "title": {
             "type": "string",
-            "format": "uuid"
+            "minLength": 1,
+            "maxLength": 200
           },
-          "expectedVersion": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          }
-        },
-        "required": [
-          "requestId",
-          "expectedVersion"
-        ]
-      },
-      "ReplayRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "format": "uuid"
+          "tier": {
+            "$ref": "#/components/schemas/Tier"
           },
-          "expectedVersion": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "checkpointId": {
+          "category": {
             "type": "string",
             "minLength": 1,
             "maxLength": 80
           }
         },
         "required": [
-          "requestId",
-          "expectedVersion",
-          "checkpointId"
+          "id",
+          "version",
+          "title",
+          "tier",
+          "category"
         ]
       },
-      "EventPage": {
+      "Attempt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "first",
+              "retry"
+            ]
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "kind",
+          "number"
+        ]
+      },
+      "SessionStatus": {
+        "type": "string",
+        "enum": [
+          "provisioning",
+          "ready",
+          "resolved",
+          "failed",
+          "ended",
+          "abandoned",
+          "error"
+        ]
+      },
+      "StatusReason": {
+        "enum": [
+          "validators_passed",
+          "time_limit",
+          "learner_ended",
+          "heartbeat_missed",
+          "environment_exited",
+          "start_failed",
+          null
+        ]
+      },
+      "Alert": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "critical"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "severity"
+        ]
+      },
+      "MetricDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "requests_per_second",
+              "percent",
+              "milliseconds",
+              "mebibytes"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "unit"
+        ]
+      },
+      "RecoveryState": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "failing",
+              "sustaining",
+              "met"
+            ]
+          },
+          "sustainedSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7200
+          },
+          "requiredSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600
+          }
+        },
+        "required": [
+          "state",
+          "sustainedSeconds",
+          "requiredSeconds"
+        ]
+      },
+      "Hint": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "releasedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "releasedAt"
+        ]
+      },
+      "Assistance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "hintsReleased": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50
+          },
+          "assistantTurns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 500
+          },
+          "proposalsRun": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "hintsReleased",
+          "assistantTurns",
+          "proposalsRun"
+        ]
+      },
+      "SessionView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "challenge": {
+            "$ref": "#/components/schemas/ChallengeRef"
+          },
+          "attempt": {
+            "$ref": "#/components/schemas/Attempt"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "statusReason": {
+            "$ref": "#/components/schemas/StatusReason"
+          },
+          "alert": {
+            "$ref": "#/components/schemas/Alert"
+          },
+          "dashboard": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricDescriptor"
+            },
+            "maxItems": 12,
+            "minItems": 1
+          },
+          "recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecoveryState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 14400
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "hints": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "released": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Hint"
+                },
+                "maxItems": 20
+              },
+              "remaining": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "nextAvailableAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "released",
+              "remaining",
+              "nextAvailableAt"
+            ]
+          },
+          "assistance": {
+            "$ref": "#/components/schemas/Assistance"
+          },
+          "debriefAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "challenge",
+          "attempt",
+          "status",
+          "statusReason",
+          "alert",
+          "dashboard",
+          "recovery",
+          "timeLimitSeconds",
+          "createdAt",
+          "readyAt",
+          "endsAt",
+          "endedAt",
+          "hints",
+          "assistance",
+          "debriefAvailable"
+        ]
+      },
+      "SessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionView"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "session",
+          "replayed"
+        ]
+      },
+      "SessionSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "challenge": {
+            "$ref": "#/components/schemas/ChallengeRef"
+          },
+          "attempt": {
+            "$ref": "#/components/schemas/Attempt"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "challenge",
+          "attempt",
+          "status",
+          "createdAt",
+          "endedAt"
+        ]
+      },
+      "SessionPage": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogicalEvent"
+              "$ref": "#/components/schemas/SessionSummary"
             },
             "maxItems": 100
           },
@@ -2745,12 +1977,374 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "minLength": 1,
+            "maxLength": 1000
           }
         },
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "TerminalTicket": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ticket": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^wss://",
+            "maxLength": 500
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "sessionId",
+          "ticket",
+          "url",
+          "expiresAt"
+        ]
+      },
+      "MetricSample": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "number"
+            },
+            "maxProperties": 12
+          }
+        },
+        "required": [
+          "at",
+          "values"
+        ]
+      },
+      "Counters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "totalRequests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "failedRequests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          }
+        },
+        "required": [
+          "totalRequests",
+          "failedRequests"
+        ]
+      },
+      "TimelineEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "command"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000
+              },
+              "endedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "exitStatus": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 255
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "learner",
+                  "assistant"
+                ]
+              },
+              "proposalId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "changedFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "maxItems": 20
+              },
+              "outputExcerpt": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 4000
+              },
+              "outputTruncated": {
+                "type": "boolean"
+              },
+              "metrics": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MetricSample"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "kind",
+              "seq",
+              "endedAt",
+              "command",
+              "exitStatus",
+              "source",
+              "changedFiles",
+              "outputExcerpt",
+              "outputTruncated",
+              "metrics"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "monitor"
+              },
+              "signal": {
+                "type": "string",
+                "enum": [
+                  "recovery_sustaining",
+                  "recovery_lost",
+                  "recovered",
+                  "outage_started",
+                  "outage_ended"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "kind",
+              "signal",
+              "label"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "assistance"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "hint_released",
+                  "assistant_turn",
+                  "proposal_created",
+                  "proposal_run"
+                ]
+              },
+              "refId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "kind",
+              "action",
+              "refId"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "lifecycle"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/StatusReason"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "kind",
+              "status",
+              "reason"
+            ]
+          }
+        ]
+      },
+      "TimelinePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEvent"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ScoreComponents": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeToRecoverySeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 14400
+          },
+          "totalRequests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "failedRequests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "commandCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5000
+          },
+          "selfInflictedOutages": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "outageSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 14400
+          }
+        },
+        "required": [
+          "timeToRecoverySeconds",
+          "totalRequests",
+          "failedRequests",
+          "commandCount",
+          "selfInflictedOutages",
+          "outageSeconds"
         ]
       },
       "Debrief": {
@@ -2761,10 +2355,26 @@
             "type": "string",
             "format": "uuid"
           },
+          "challenge": {
+            "$ref": "#/components/schemas/ChallengeRef"
+          },
+          "attempt": {
+            "$ref": "#/components/schemas/Attempt"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "failed",
+              "ended",
+              "abandoned",
+              "error"
+            ]
+          },
           "rootCause": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 4000
+            "maxLength": 2000
           },
           "causalChain": {
             "type": "array",
@@ -2773,76 +2383,185 @@
               "minLength": 1,
               "maxLength": 1000
             },
-            "maxItems": 100
+            "maxItems": 20,
+            "minItems": 1
           },
-          "foundEvidence": {
+          "keyEvidence": {
             "type": "array",
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "found": {
+                  "type": "boolean"
+                },
+                "commandSeq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 5000
+                }
+              },
+              "required": [
+                "id",
+                "description",
+                "found",
+                "commandSeq"
+              ]
             },
-            "maxItems": 100
+            "maxItems": 20
           },
-          "missedEvidence": {
+          "harmfulActions": {
             "type": "array",
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "commandSeq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5000
+                }
+              },
+              "required": [
+                "id",
+                "description",
+                "commandSeq"
+              ]
             },
-            "maxItems": 100
+            "maxItems": 50
           },
-          "actionFeedback": {
+          "outages": {
             "type": "array",
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "endedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "afterCommandSeq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 5000
+                }
+              },
+              "required": [
+                "label",
+                "startedAt",
+                "endedAt",
+                "afterCommandSeq"
+              ]
             },
-            "maxItems": 100
+            "maxItems": 50
           },
-          "recommendedPath": {
+          "recommendedRecovery": {
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1,
               "maxLength": 1000
             },
-            "maxItems": 100
+            "maxItems": 20,
+            "minItems": 1
           },
           "sources": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Source"
             },
-            "maxItems": 100
+            "maxItems": 20
           },
-          "costs": {
-            "$ref": "#/components/schemas/Costs"
+          "score": {
+            "$ref": "#/components/schemas/ScoreComponents"
           },
-          "checkpoints": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CheckpointSummary"
-            },
-            "maxItems": 10
+          "assisted": {
+            "type": "boolean"
+          },
+          "assistance": {
+            "$ref": "#/components/schemas/Assistance"
           }
         },
         "required": [
           "sessionId",
+          "challenge",
+          "attempt",
+          "outcome",
           "rootCause",
           "causalChain",
-          "foundEvidence",
-          "missedEvidence",
-          "actionFeedback",
-          "recommendedPath",
+          "keyEvidence",
+          "harmfulActions",
+          "outages",
+          "recommendedRecovery",
           "sources",
-          "costs",
-          "checkpoints"
+          "score",
+          "assisted",
+          "assistance"
         ]
       },
-      "ComparisonPath": {
+      "PlaybackTrack": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2000
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "url",
+          "startedAt",
+          "endedAt"
+        ]
+      },
+      "Playback": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
@@ -2850,81 +2569,120 @@
             "type": "string",
             "format": "uuid"
           },
-          "status": {
+          "expiresAt": {
             "type": "string",
-            "enum": [
-              "active",
-              "resolved",
-              "failed",
-              "ended"
-            ]
+            "format": "date-time"
           },
-          "observedTicks": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
+          "terminal": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackTrack"
+            },
+            "maxItems": 500
           },
-          "recoveryTicks": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackTrack"
+            },
+            "maxItems": 500
           },
-          "impactUnits": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000000
+          "captures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "commandSeq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5000
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "commandSeq",
+                "url"
+              ]
+            },
+            "maxItems": 5000
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "key_evidence",
+                    "harmful_action",
+                    "outage",
+                    "recovery"
+                  ]
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "commandSeq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 5000
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "kind",
+                "at",
+                "commandSeq",
+                "label"
+              ]
+            },
+            "maxItems": 200
           }
         },
         "required": [
           "sessionId",
-          "status",
-          "observedTicks",
-          "recoveryTicks",
-          "impactUnits"
+          "expiresAt",
+          "terminal",
+          "metrics",
+          "captures",
+          "highlights"
         ]
       },
-      "Comparison": {
+      "HintResponse": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "checkpointId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
+          "hint": {
+            "$ref": "#/components/schemas/Hint"
           },
-          "checkpointTick": {
+          "remaining": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 1000000
+            "maximum": 20
           },
-          "informedPractice": {
-            "const": true
-          },
-          "original": {
-            "$ref": "#/components/schemas/ComparisonPath"
-          },
-          "replay": {
-            "$ref": "#/components/schemas/ComparisonPath"
-          },
-          "explanations": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000
-            },
-            "maxItems": 100
+          "replayed": {
+            "type": "boolean"
           }
         },
         "required": [
-          "checkpointId",
-          "checkpointTick",
-          "informedPractice",
-          "original",
-          "replay",
-          "explanations"
+          "hint",
+          "remaining",
+          "replayed"
         ]
       },
       "MessageRequest": {
@@ -2935,11 +2693,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "expectedVersion": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
           "text": {
             "type": "string",
             "minLength": 1,
@@ -2948,7 +2701,6 @@
         },
         "required": [
           "requestId",
-          "expectedVersion",
           "text"
         ]
       },
@@ -2960,13 +2712,26 @@
             "type": "string",
             "format": "uuid"
           },
-          "expectedVersion": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
           "command": {
-            "$ref": "#/components/schemas/Command"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "caution": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "run",
+              "expired"
+            ]
           },
           "expiresAt": {
             "type": "string",
@@ -2975,8 +2740,10 @@
         },
         "required": [
           "id",
-          "expectedVersion",
           "command",
+          "rationale",
+          "caution",
+          "status",
           "expiresAt"
         ]
       },
@@ -2985,10 +2752,6 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "requestId": {
             "type": "string",
             "format": "uuid"
           },
@@ -3001,37 +2764,23 @@
               "interrupted"
             ]
           },
-          "inputVersion": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
           "text": {
             "type": "string",
+            "minLength": 0,
             "maxLength": 20000
-          },
-          "actionResults": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ActionResponse"
-            },
-            "maxItems": 3
           },
           "proposals": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Proposal"
             },
-            "maxItems": 3
+            "maxItems": 1
           }
         },
         "required": [
           "id",
-          "requestId",
           "status",
-          "inputVersion",
           "text",
-          "actionResults",
           "proposals"
         ]
       },
@@ -3051,12 +2800,7 @@
               "sequence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
+                "maximum": 100000
               },
               "data": {
                 "type": "object",
@@ -3076,7 +2820,6 @@
               "type",
               "turnId",
               "sequence",
-              "sessionVersion",
               "data"
             ]
           },
@@ -3094,12 +2837,7 @@
               "sequence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
+                "maximum": 100000
               },
               "data": {
                 "type": "object",
@@ -3120,40 +2858,6 @@
               "type",
               "turnId",
               "sequence",
-              "sessionVersion",
-              "data"
-            ]
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "type": {
-                "const": "action_result"
-              },
-              "turnId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "sequence": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "data": {
-                "$ref": "#/components/schemas/ActionResponse"
-              }
-            },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "sessionVersion",
               "data"
             ]
           },
@@ -3171,12 +2875,7 @@
               "sequence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
+                "maximum": 100000
               },
               "data": {
                 "$ref": "#/components/schemas/Proposal"
@@ -3186,7 +2885,6 @@
               "type",
               "turnId",
               "sequence",
-              "sessionVersion",
               "data"
             ]
           },
@@ -3204,12 +2902,7 @@
               "sequence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
+                "maximum": 100000
               },
               "data": {
                 "$ref": "#/components/schemas/Turn"
@@ -3219,7 +2912,6 @@
               "type",
               "turnId",
               "sequence",
-              "sessionVersion",
               "data"
             ]
           },
@@ -3237,12 +2929,7 @@
               "sequence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000
-              },
-              "sessionVersion": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
+                "maximum": 100000
               },
               "data": {
                 "$ref": "#/components/schemas/Error"
@@ -3252,7 +2939,6 @@
               "type",
               "turnId",
               "sequence",
-              "sessionVersion",
               "data"
             ]
           }
@@ -3262,21 +2948,6 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "file": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "line": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000000
-          },
           "kind": {
             "type": "string",
             "enum": [
@@ -3285,17 +2956,56 @@
               "removed"
             ]
           },
+          "oldLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "newLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 100000
+          },
           "text": {
             "type": "string",
+            "minLength": 0,
             "maxLength": 2000
           }
         },
         "required": [
-          "id",
-          "file",
-          "line",
           "kind",
+          "oldLine",
+          "newLine",
           "text"
+        ]
+      },
+      "DiffFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiffLine"
+            },
+            "maxItems": 2000,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "path",
+          "lines"
         ]
       },
       "ReviewExercise": {
@@ -3305,25 +3015,30 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
           "version": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           },
           "title": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
           },
-          "difficulty": {
+          "tier": {
+            "$ref": "#/components/schemas/Tier"
+          },
+          "category": {
             "type": "string",
-            "enum": [
-              "easy",
-              "medium",
-              "hard"
-            ]
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
           },
           "language": {
             "type": "string",
@@ -3335,42 +3050,59 @@
             "minLength": 1,
             "maxLength": 10000
           },
-          "lines": {
+          "files": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DiffLine"
+              "$ref": "#/components/schemas/DiffFile"
             },
-            "maxItems": 1000
+            "maxItems": 20,
+            "minItems": 1
           }
         },
         "required": [
           "id",
           "version",
           "title",
-          "difficulty",
+          "tier",
+          "category",
+          "plan",
           "language",
           "context",
-          "lines"
+          "files"
         ]
       },
-      "Concern": {
+      "Flag": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "lineId": {
+          "file": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 300
           },
-          "text": {
+          "side": {
+            "type": "string",
+            "enum": [
+              "old",
+              "new"
+            ]
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "concern": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 4000
+            "maxLength": 2000
           }
         },
         "required": [
-          "lineId",
-          "text"
+          "file",
+          "side",
+          "line",
+          "concern"
         ]
       },
       "ReviewSubmitRequest": {
@@ -3381,23 +3113,90 @@
             "type": "string",
             "format": "uuid"
           },
-          "contentVersion": {
+          "exerciseVersion": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           },
-          "concerns": {
+          "flags": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Concern"
+              "$ref": "#/components/schemas/Flag"
             },
-            "maxItems": 100
+            "maxItems": 50
           }
         },
         "required": [
           "requestId",
-          "contentVersion",
-          "concerns"
+          "exerciseVersion",
+          "flags"
+        ]
+      },
+      "ReviewFinding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "old",
+              "new"
+            ]
+          },
+          "startLine": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "matchedFlags": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 49
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "explanation",
+          "file",
+          "side",
+          "startLine",
+          "endLine",
+          "found",
+          "matchedFlags"
         ]
       },
       "ReviewSubmission": {
@@ -3411,251 +3210,84 @@
           "exerciseId": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
-          "contentVersion": {
+          "exerciseVersion": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answerInformed": {
+            "type": "boolean"
           },
           "replayed": {
             "type": "boolean"
           },
-          "informedPractice": {
-            "type": "boolean"
-          },
-          "concerns": {
+          "flags": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Concern"
+              "$ref": "#/components/schemas/Flag"
             },
-            "maxItems": 100
+            "maxItems": 50
           },
           "findings": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Concern"
+              "$ref": "#/components/schemas/ReviewFinding"
             },
-            "maxItems": 100
+            "maxItems": 50,
+            "minItems": 1
+          },
+          "unmatchedFlags": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 49
+            },
+            "maxItems": 50
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "found": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "missed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 50
+              }
+            },
+            "required": [
+              "found",
+              "missed"
+            ]
           }
         },
         "required": [
           "id",
           "exerciseId",
-          "contentVersion",
+          "exerciseVersion",
+          "submittedAt",
+          "answerInformed",
           "replayed",
-          "informedPractice",
-          "concerns",
-          "findings"
+          "flags",
+          "findings",
+          "unmatchedFlags",
+          "summary"
         ]
       },
-      "OperationOffer": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "tool": {
-            "type": "string",
-            "enum": [
-              "get_metric",
-              "query_logs",
-              "list_deployments",
-              "inspect_diff",
-              "read_runbook",
-              "view_architecture",
-              "get_service_status",
-              "rollback_deployment",
-              "scale_service",
-              "restart_service",
-              "advance_time"
-            ]
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "argumentSchema": {
-            "type": "object"
-          },
-          "costTicks": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 10
-          },
-          "costFromArgument": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "ticks",
-              null
-            ]
-          },
-          "requiresConfirmation": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "tool",
-          "label",
-          "argumentSchema",
-          "costTicks",
-          "costFromArgument",
-          "requiresConfirmation"
-        ]
-      },
-      "MetricSample": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "tick": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "value": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "tick",
-          "value"
-        ]
-      },
-      "LogEntry": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "tick": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "service": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "severity": {
-            "enum": [
-              "info",
-              "warning",
-              "error"
-            ]
-          },
-          "message": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
-          }
-        },
-        "required": [
-          "tick",
-          "service",
-          "severity",
-          "message"
-        ]
-      },
-      "Deployment": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "version": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "previousVersion": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "tick": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "version",
-          "previousVersion",
-          "tick"
-        ]
-      },
-      "Dependency": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "from": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "to": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          }
-        },
-        "required": [
-          "from",
-          "to"
-        ]
-      },
-      "CatalogQueryFilters": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "modes": {
-            "type": "array",
-            "items": {
-              "enum": [
-                "learn",
-                "challenge",
-                "code_review"
-              ]
-            },
-            "maxItems": 3
-          },
-          "difficulties": {
-            "type": "array",
-            "items": {
-              "enum": [
-                "easy",
-                "medium",
-                "hard"
-              ]
-            },
-            "maxItems": 3
-          },
-          "domains": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "maxItems": 100
-          }
-        },
-        "required": [
-          "modes",
-          "difficulties",
-          "domains"
-        ]
-      },
-      "SessionSummary": {
+      "ReviewSubmissionSummary": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
@@ -3663,70 +3295,44 @@
             "type": "string",
             "format": "uuid"
           },
-          "contentId": {
+          "exerciseId": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
-          "contentVersion": {
+          "exerciseVersion": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 30
+            "minLength": 5,
+            "maxLength": 30,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           },
-          "status": {
-            "enum": [
-              "active",
-              "resolved",
-              "failed",
-              "ended"
-            ]
-          },
-          "mode": {
-            "enum": [
-              "first_attempt",
-              "replay"
-            ]
-          },
-          "createdAt": {
+          "submittedAt": {
             "type": "string",
             "format": "date-time"
           },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
+          "answerInformed": {
+            "type": "boolean"
+          },
+          "found": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50
+          },
+          "missed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50
           }
         },
         "required": [
           "id",
-          "contentId",
-          "contentVersion",
-          "status",
-          "mode",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "SessionPage": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SessionSummary"
-            },
-            "maxItems": 100
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items",
-          "nextCursor"
+          "exerciseId",
+          "exerciseVersion",
+          "submittedAt",
+          "answerInformed",
+          "found",
+          "missed"
         ]
       },
       "ReviewSubmissionPage": {
@@ -3736,7 +3342,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ReviewSubmission"
+              "$ref": "#/components/schemas/ReviewSubmissionSummary"
             },
             "maxItems": 100
           },
@@ -3744,7 +3350,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "minLength": 1,
+            "maxLength": 1000
           }
         },
         "required": [
@@ -3752,29 +3360,208 @@
           "nextCursor"
         ]
       },
-      "ReplayOrigin": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "parentSessionId",
-          "checkpointId",
-          "checkpointTick"
-        ],
-        "properties": {
-          "parentSessionId": {
-            "type": "string",
-            "format": "uuid"
+      "GatewayClientMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "auth"
+              },
+              "sessionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "ticket": {
+                "type": "string",
+                "minLength": 43,
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              }
+            },
+            "required": [
+              "type",
+              "sessionId",
+              "ticket"
+            ]
           },
-          "checkpointId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "heartbeat"
+              }
+            },
+            "required": [
+              "type"
+            ]
           },
-          "checkpointTick": {
-            "type": "integer",
-            "minimum": 0
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "resize"
+              },
+              "cols": {
+                "type": "integer",
+                "minimum": 20,
+                "maximum": 500
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              }
+            },
+            "required": [
+              "type",
+              "cols",
+              "rows"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "run_proposal"
+              },
+              "proposalId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "type",
+              "proposalId"
+            ]
           }
-        }
+        ]
+      },
+      "GatewayServerMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "ready"
+              },
+              "sessionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              },
+              "resumed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "sessionId",
+              "status",
+              "resumed"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "metrics"
+              },
+              "sample": {
+                "$ref": "#/components/schemas/MetricSample"
+              },
+              "counters": {
+                "$ref": "#/components/schemas/Counters"
+              },
+              "recovery": {
+                "$ref": "#/components/schemas/RecoveryState"
+              }
+            },
+            "required": [
+              "type",
+              "sample",
+              "counters",
+              "recovery"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "timeline"
+              },
+              "event": {
+                "$ref": "#/components/schemas/TimelineEvent"
+              }
+            },
+            "required": [
+              "type",
+              "event"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "status"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/StatusReason"
+              }
+            },
+            "required": [
+              "type",
+              "status",
+              "reason"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "error"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "AUTH_FAILED",
+                  "TICKET_EXPIRED",
+                  "SESSION_NOT_READY",
+                  "SESSION_TERMINAL",
+                  "REPLACED",
+                  "TERMINAL_BUSY",
+                  "PROPOSAL_UNAVAILABLE",
+                  "RATE_LIMITED",
+                  "INTERNAL_ERROR"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "type",
+              "code",
+              "message"
+            ]
+          }
+        ]
       }
     }
   }

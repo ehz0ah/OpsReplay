@@ -1,0 +1,51 @@
+{
+  "client": [
+    {
+      "type": "auth",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "ticket": "q7Xo2m3ZkVdQ8yB1tNcR5wLpE0sHaUfJiGvK4bYx9Tz"
+    },
+    { "type": "resize", "cols": 120, "rows": 32 },
+    { "type": "heartbeat" },
+    { "type": "run_proposal", "proposalId": "77777777-7777-4777-8777-777777777777" }
+  ],
+  "server": [
+    {
+      "type": "ready",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "status": "ready",
+      "resumed": false
+    },
+    {
+      "type": "metrics",
+      "sample": {
+        "at": "2026-10-05T02:01:15Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 312 }
+      },
+      "counters": { "totalRequests": 132, "failedRequests": 132 },
+      "recovery": { "state": "failing", "sustainedSeconds": 0, "requiredSeconds": 60 }
+    },
+    {
+      "type": "timeline",
+      "event": {
+        "id": "c1",
+        "at": "2026-10-05T02:01:10Z",
+        "kind": "command",
+        "seq": 1,
+        "endedAt": "2026-10-05T02:01:10Z",
+        "command": "curl -sI http://127.0.0.1/",
+        "exitStatus": 0,
+        "source": "learner",
+        "changedFiles": [],
+        "outputExcerpt": "HTTP/1.1 502 Bad Gateway\r\nServer: nginx\r\nContent-Type: text/html\r\n",
+        "outputTruncated": false,
+        "metrics": {
+          "at": "2026-10-05T02:01:10Z",
+          "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 312 }
+        }
+      }
+    },
+    { "type": "error", "code": "TERMINAL_BUSY", "message": "The shell is running a command. Confirm the suggestion again at the prompt." },
+    { "type": "status", "status": "resolved", "reason": "validators_passed" }
+  ]
+}

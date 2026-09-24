@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "0.2",
+  "id": "wrong-upstream-port",
+  "version": "0.1.0",
+  "title": "Storefront returns 502",
+  "summary": "Users see 502 Bad Gateway after an application change. Find why the proxy cannot reach the application and restore checkout without taking the proxy down.",
+  "status": "draft",
+  "tier": "easy",
+  "category": "networking",
+  "plan": "free",
+  "learningObjectives": [
+    "Trace a 502 response from the reverse proxy to its upstream.",
+    "Compare the configured upstream with the sockets that services actually listen on.",
+    "Validate proxy configuration before applying it, and prefer a reload to a restart."
+  ],
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Draft written to prove the environment contract. A common upstream misconfiguration, not adapted from a specific incident report.",
+    "sources": []
+  },
+  "environment": {
+    "image": { "repository": "opsreplay/challenge-wrong-upstream-port", "digest": null },
+    "monitorImage": { "repository": "opsreplay/monitor", "digest": null },
+    "cpu": 1024,
+    "memoryMiB": 2048,
+    "timeLimitMinutes": 20,
+    "services": [
+      {
+        "name": "nginx",
+        "kind": "proxy",
+        "listens": ["0.0.0.0:80"],
+        "configFiles": ["/etc/nginx/nginx.conf"],
+        "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
+      },
+      {
+        "name": "shop",
+        "kind": "web",
+        "listens": ["127.0.0.1:8080"],
+        "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
+        "logFiles": ["/var/log/shop/app.log"]
+      },
+      {
+        "name": "postgres",
+        "kind": "database",
+        "listens": ["127.0.0.1:5432"],
+        "configFiles": ["/etc/postgresql/postgresql.conf"],
+        "logFiles": ["/var/log/postgresql/postgresql.log"]
+      }
+    ]
+  },
+  "traffic": {
+    "journeys": [
+      {
+        "id": "checkout",
+        "label": "Browse and check out",
+        "ratePerSecond": 2,
+        "steps": [
+          { "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
+          { "method": "POST", "url": "http://127.0.0.1:80/api/checkout", "expectStatus": [201], "timeoutMs": 3000 }
+        ]
+      }
+    ]
+  },
+  "dashboard": [
+    { "id": "request_rate", "label": "Requests", "unit": "requests_per_second", "source": "request_rate" },
+    { "id": "error_rate", "label": "Errors", "unit": "percent", "source": "error_rate" },
+    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" },
+    { "id": "cpu", "label": "CPU", "unit": "percent", "source": "cpu" },
+    { "id": "memory", "label": "Memory", "unit": "mebibytes", "source": "memory" }
+  ],
+  "alert": {
+    "title": "Checkout error rate above 90%",
+    "summary": "Synthetic checkout checks have returned 502 Bad Gateway from the storefront since the latest application deploy.",
+    "severity": "critical"
+  },
+  "validators": [
+    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 }
+  ],
+  "healthProbes": [
+    {
+      "id": "proxy-listening",
+      "publicLabel": "Storefront proxy stopped accepting connections",
+      "check": { "kind": "tcp", "host": "127.0.0.1", "port": 80, "timeoutMs": 1000 },
+      "graceSeconds": 5
+    }
+  ],
+  "plantedFault": {
+    "summary": "nginx proxy_pass targets 127.0.0.1:8081, but the application now listens on 127.0.0.1:8080.",
+    "files": ["/etc/nginx/nginx.conf"]
+  },
+  "referenceFix": {
+    "description": "Point proxy_pass at port 8080, validate the configuration, and reload.",
+    "commands": [
+      "sed -i 's#proxy_pass http://127.0.0.1:8081;#proxy_pass http://127.0.0.1:8080;#' /etc/nginx/nginx.conf",
+      "nginx -t",
+      "nginx -s reload"
+    ]
+  },
+  "traps": [
+    {
+      "id": "restart-invalid-config",
+      "description": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections.",
+      "commands": [
+        "sed -i 's#proxy_pass http://127.0.0.1:8081;#proxy_pass http://127.0.0.1:8080#' /etc/nginx/nginx.conf",
+        "service nginx restart"
+      ],
+      "probe": "proxy-listening",
+      "commandPatterns": [
+        "^\\s*(sudo\\s+)?(service\\s+nginx\\s+(restart|stop)|systemctl\\s+(restart|stop)\\s+nginx|nginx\\s+-s\\s+(stop|quit))\\b",
+        "^\\s*(sudo\\s+)?(pkill|killall)\\b.*\\bnginx\\b"
+      ],
+      "withinSeconds": 30,
+      "safeAlternative": {
+        "description": "A reload with the same broken configuration fails and keeps the running workers, so the proxy stays up.",
+        "commands": [
+          "sed -i 's#proxy_pass http://127.0.0.1:8081;#proxy_pass http://127.0.0.1:8080#' /etc/nginx/nginx.conf",
+          "nginx -s reload"
+        ]
+      }
+    }
+  ],
+  "hints": [
+    {
+      "id": "read-proxy-error",
+      "text": "The proxy is answering, so its error log should say which upstream address it is trying to reach.",
+      "minElapsedMinutes": 3
+    },
+    {
+      "id": "compare-listeners",
+      "text": "Compare the upstream in the proxy configuration with the sockets that are listening, for example with ss -ltnp.",
+      "minElapsedMinutes": 6
+    }
+  ],
+  "debrief": {
+    "rootCause": "The application moved to port 8080, but nginx still proxies to 127.0.0.1:8081 where nothing listens, so every proxied request fails with 502 Bad Gateway.",
+    "causalChain": [
+      "An application change moved the service from port 8081 to port 8080.",
+      "The nginx upstream still targets port 8081.",
+      "Connections to port 8081 are refused, and nginx answers every proxied request with 502 Bad Gateway."
+    ],
+    "keyEvidence": [
+      {
+        "id": "proxy-error-log",
+        "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.",
+        "commandPatterns": ["/var/log/nginx/error\\.log"]
+      },
+      {
+        "id": "listening-sockets",
+        "description": "The socket list shows the application listening on port 8080, not 8081.",
+        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"]
+      },
+      {
+        "id": "proxy-config",
+        "description": "The nginx configuration sets proxy_pass to port 8081.",
+        "commandPatterns": ["/etc/nginx/nginx\\.conf", "^\\s*(sudo\\s+)?nginx\\s+-T\\b"]
+      }
+    ],
+    "recommendedRecovery": [
+      "Read the nginx error log to identify the failing upstream address.",
+      "Confirm which port the application listens on with ss -ltnp.",
+      "Change proxy_pass to port 8080 and run nginx -t.",
+      "Apply the change with nginx -s reload and watch the error rate fall."
+    ]
+  }
+}

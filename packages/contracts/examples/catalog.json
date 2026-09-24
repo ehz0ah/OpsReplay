@@ -1,26 +1,53 @@
 {
   "items": [
     {
-      "id": "checkout-connection-leak",
+      "id": "wrong-upstream-port",
       "version": "0.1.0",
-      "title": "Checkout failures",
       "mode": "challenge",
-      "access": "practice",
-      "difficulty": "easy",
-      "domain": "database"
+      "title": "Storefront returns 502",
+      "summary": "Users see 502 Bad Gateway after an application change. Find why the proxy cannot reach the application and restore checkout without taking the proxy down.",
+      "category": "networking",
+      "plan": "free",
+      "tier": "easy"
+    },
+    {
+      "id": "stale-dns-record",
+      "version": "0.1.0",
+      "mode": "challenge",
+      "title": "Checkout API unreachable after migration",
+      "summary": "The storefront loads, but every checkout fails after the API moved to a new address. Find where the old address survives and recover without taking the site offline.",
+      "category": "dns",
+      "plan": "pro",
+      "tier": "medium"
+    },
+    {
+      "id": "connection-exhaustion",
+      "version": "0.1.0",
+      "mode": "challenge",
+      "title": "Checkout slows to a halt",
+      "summary": "Checkout latency climbs until requests time out, and the database is close to its connection limit. Find the cause before the obvious fix breaks something else.",
+      "category": "database",
+      "plan": "pro",
+      "tier": "hard"
+    },
+    {
+      "id": "pool-settings",
+      "version": "0.1.0",
+      "mode": "code_review",
+      "title": "Raise connection pool limits",
+      "summary": "A performance fix raises pool and worker limits after a checkout slowdown. Decide whether the change is safe for the shared database.",
+      "category": "database",
+      "plan": "pro",
+      "tier": "medium",
+      "language": "python"
     }
   ],
   "nextCursor": null,
-  "availableLanguages": [],
   "availableFilters": {
-    "modes": [
-      "challenge"
-    ],
-    "difficulties": [
-      "easy"
-    ],
-    "domains": [
-      "database"
-    ]
+    "modes": ["challenge", "code_review"],
+    "tiers": ["easy", "medium", "hard"],
+    "categories": ["database", "dns", "networking"],
+    "languages": ["python"],
+    "plans": ["free", "pro"]
   }
 }

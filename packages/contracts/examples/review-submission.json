@@ -1,0 +1,74 @@
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "exerciseId": "pool-settings",
+  "exerciseVersion": "0.1.0",
+  "submittedAt": "2026-10-06T09:15:00Z",
+  "answerInformed": false,
+  "replayed": false,
+  "flags": [
+    {
+      "file": "app/db.py",
+      "side": "new",
+      "line": 5,
+      "concern": "A pool of 20 per process may be more connections than the database allows."
+    },
+    {
+      "file": "gunicorn.conf.py",
+      "side": "new",
+      "line": 2,
+      "concern": "Eight workers could overload the CPU on the current instance size."
+    },
+    {
+      "file": "app/db.py",
+      "side": "new",
+      "line": 8,
+      "concern": "pool_pre_ping adds a round trip to every checkout."
+    }
+  ],
+  "findings": [
+    {
+      "id": "connection-budget",
+      "title": "Pool limits exceed the database connection budget",
+      "explanation": "Each Gunicorn worker process has its own pool. With 8 workers, pool_size=20 and max_overflow=20 allow up to 320 connections, while PostgreSQL accepts 100 and the job worker shares that limit. Under load the database refuses new connections, including the job worker's.",
+      "file": "app/db.py",
+      "side": "new",
+      "startLine": 5,
+      "endLine": 6,
+      "found": true,
+      "matchedFlags": [
+        0
+      ]
+    },
+    {
+      "id": "long-pool-timeout",
+      "title": "A 60-second pool timeout hides exhaustion",
+      "explanation": "Requests wait up to 60 seconds for a free connection, longer than the 30-second Gunicorn worker timeout. Workers are killed mid-request instead of failing fast with a clear pool error, which makes exhaustion harder to diagnose.",
+      "file": "app/db.py",
+      "side": "new",
+      "startLine": 7,
+      "endLine": 7,
+      "found": false,
+      "matchedFlags": []
+    },
+    {
+      "id": "worker-count",
+      "title": "Doubling workers doubles connection demand",
+      "explanation": "Worker count multiplies every per-process pool. Raising it without reducing pool size or measuring the database budget turns a latency problem into a connection outage.",
+      "file": "gunicorn.conf.py",
+      "side": "new",
+      "startLine": 2,
+      "endLine": 2,
+      "found": true,
+      "matchedFlags": [
+        1
+      ]
+    }
+  ],
+  "unmatchedFlags": [
+    2
+  ],
+  "summary": {
+    "found": 2,
+    "missed": 1
+  }
+}

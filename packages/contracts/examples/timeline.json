@@ -1,0 +1,200 @@
+{
+  "items": [
+    {
+      "id": "l1",
+      "at": "2026-10-05T02:00:42Z",
+      "kind": "lifecycle",
+      "status": "ready",
+      "reason": null
+    },
+    {
+      "id": "c1",
+      "at": "2026-10-05T02:01:10Z",
+      "kind": "command",
+      "seq": 1,
+      "endedAt": "2026-10-05T02:01:10Z",
+      "command": "curl -sI http://127.0.0.1/",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "HTTP/1.1 502 Bad Gateway\r\nServer: nginx\r\nContent-Type: text/html\r\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:01:10Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 312 }
+      }
+    },
+    {
+      "id": "c2",
+      "at": "2026-10-05T02:01:45Z",
+      "kind": "command",
+      "seq": 2,
+      "endedAt": "2026-10-05T02:01:45Z",
+      "command": "tail -n 2 /var/log/nginx/error.log",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "2026/10/05 02:01:44 [error] 41#41: *1203 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: _, request: \"GET / HTTP/1.1\", upstream: \"http://127.0.0.1:8081/\"\n2026/10/05 02:01:45 [error] 41#41: *1204 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: _, request: \"GET / HTTP/1.1\", upstream: \"http://127.0.0.1:8081/\"\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:01:45Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.4, "memory": 312 }
+      }
+    },
+    {
+      "id": "c3",
+      "at": "2026-10-05T02:02:30Z",
+      "kind": "command",
+      "seq": 3,
+      "endedAt": "2026-10-05T02:02:30Z",
+      "command": "ss -ltnp",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process\nLISTEN 0      511          0.0.0.0:80        0.0.0.0:*     users:((\"nginx\",pid=41))\nLISTEN 0      2048       127.0.0.1:8080      0.0.0.0:*     users:((\"gunicorn\",pid=57))\nLISTEN 0      244        127.0.0.1:5432      0.0.0.0:*     users:((\"postgres\",pid=33))\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:02:30Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.6, "memory": 313 }
+      }
+    },
+    {
+      "id": "c4",
+      "at": "2026-10-05T02:03:20Z",
+      "kind": "command",
+      "seq": 4,
+      "endedAt": "2026-10-05T02:04:05Z",
+      "command": "vi /etc/nginx/nginx.conf",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": ["/etc/nginx/nginx.conf"],
+      "outputExcerpt": "",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:04:05Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 314 }
+      }
+    },
+    {
+      "id": "c5",
+      "at": "2026-10-05T02:04:20Z",
+      "kind": "command",
+      "seq": 5,
+      "endedAt": "2026-10-05T02:04:21Z",
+      "command": "service nginx restart",
+      "exitStatus": 1,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "Stopping nginx: nginx.\nStarting nginx: nginx: [emerg] unexpected \"}\" in /etc/nginx/nginx.conf:39\nfailed!\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:04:21Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 1, "cpu": 5.9, "memory": 306 }
+      }
+    },
+    {
+      "id": "m1",
+      "at": "2026-10-05T02:04:22Z",
+      "kind": "monitor",
+      "signal": "outage_started",
+      "label": "Storefront proxy stopped accepting connections"
+    },
+    {
+      "id": "c6",
+      "at": "2026-10-05T02:04:50Z",
+      "kind": "command",
+      "seq": 6,
+      "endedAt": "2026-10-05T02:04:50Z",
+      "command": "nginx -t",
+      "exitStatus": 1,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "nginx: [emerg] unexpected \"}\" in /etc/nginx/nginx.conf:39\nnginx: configuration file /etc/nginx/nginx.conf test failed\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:04:50Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 1, "cpu": 5.8, "memory": 306 }
+      }
+    },
+    {
+      "id": "c7",
+      "at": "2026-10-05T02:05:10Z",
+      "kind": "command",
+      "seq": 7,
+      "endedAt": "2026-10-05T02:05:40Z",
+      "command": "vi /etc/nginx/nginx.conf",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": ["/etc/nginx/nginx.conf"],
+      "outputExcerpt": "",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:05:40Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 1, "cpu": 5.8, "memory": 306 }
+      }
+    },
+    {
+      "id": "c8",
+      "at": "2026-10-05T02:05:50Z",
+      "kind": "command",
+      "seq": 8,
+      "endedAt": "2026-10-05T02:05:50Z",
+      "command": "nginx -t",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\nnginx: configuration file /etc/nginx/nginx.conf test is successful\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:05:50Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 1, "cpu": 5.8, "memory": 306 }
+      }
+    },
+    {
+      "id": "c9",
+      "at": "2026-10-05T02:06:00Z",
+      "kind": "command",
+      "seq": 9,
+      "endedAt": "2026-10-05T02:06:01Z",
+      "command": "service nginx start",
+      "exitStatus": 0,
+      "source": "learner",
+      "changedFiles": [],
+      "outputExcerpt": "Starting nginx: nginx.\n",
+      "outputTruncated": false,
+      "metrics": {
+        "at": "2026-10-05T02:06:01Z",
+        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 1, "cpu": 6.1, "memory": 312 }
+      }
+    },
+    {
+      "id": "m2",
+      "at": "2026-10-05T02:06:02Z",
+      "kind": "monitor",
+      "signal": "outage_ended",
+      "label": "Storefront proxy stopped accepting connections"
+    },
+    {
+      "id": "m3",
+      "at": "2026-10-05T02:06:03Z",
+      "kind": "monitor",
+      "signal": "recovery_sustaining",
+      "label": "Recovery checks passing"
+    },
+    {
+      "id": "m4",
+      "at": "2026-10-05T02:07:03Z",
+      "kind": "monitor",
+      "signal": "recovered",
+      "label": "Recovery checks sustained"
+    },
+    {
+      "id": "l2",
+      "at": "2026-10-05T02:07:03Z",
+      "kind": "lifecycle",
+      "status": "resolved",
+      "reason": "validators_passed"
+    }
+  ],
+  "nextCursor": null
+}

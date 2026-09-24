@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "0.2",
+  "id": "pool-settings",
+  "version": "0.1.0",
+  "title": "Raise connection pool limits",
+  "summary": "A performance fix raises pool and worker limits after a checkout slowdown. Decide whether the change is safe for the shared database.",
+  "status": "draft",
+  "tier": "medium",
+  "category": "database",
+  "plan": "pro",
+  "language": "python",
+  "context": "This change responds to checkout latency spikes during a sale by raising connection pool limits and the worker count. The service runs under Gunicorn with synchronous workers and shares a PostgreSQL 16 database, configured with max_connections = 100, with a background job worker.",
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Draft written to prove the review contract. It introduces the pool setting used in the connection-exhaustion Challenge.",
+    "sources": []
+  },
+  "relatedChallenges": ["connection-exhaustion"],
+  "files": [
+    {
+      "path": "app/db.py",
+      "lines": [
+        { "kind": "context", "oldLine": 1, "newLine": 1, "text": "from sqlalchemy import create_engine" },
+        { "kind": "context", "oldLine": 2, "newLine": 2, "text": "" },
+        { "kind": "context", "oldLine": 3, "newLine": 3, "text": "engine = create_engine(" },
+        { "kind": "context", "oldLine": 4, "newLine": 4, "text": "    settings.database_url," },
+        { "kind": "removed", "oldLine": 5, "newLine": null, "text": "    pool_size=5," },
+        { "kind": "removed", "oldLine": 6, "newLine": null, "text": "    max_overflow=5," },
+        { "kind": "removed", "oldLine": 7, "newLine": null, "text": "    pool_timeout=5," },
+        { "kind": "added", "oldLine": null, "newLine": 5, "text": "    pool_size=20," },
+        { "kind": "added", "oldLine": null, "newLine": 6, "text": "    max_overflow=20," },
+        { "kind": "added", "oldLine": null, "newLine": 7, "text": "    pool_timeout=60," },
+        { "kind": "context", "oldLine": 8, "newLine": 8, "text": "    pool_pre_ping=True," },
+        { "kind": "context", "oldLine": 9, "newLine": 9, "text": ")" }
+      ]
+    },
+    {
+      "path": "gunicorn.conf.py",
+      "lines": [
+        { "kind": "context", "oldLine": 1, "newLine": 1, "text": "bind = \"127.0.0.1:8080\"" },
+        { "kind": "removed", "oldLine": 2, "newLine": null, "text": "workers = 4" },
+        { "kind": "added", "oldLine": null, "newLine": 2, "text": "workers = 8" },
+        { "kind": "context", "oldLine": 3, "newLine": 3, "text": "timeout = 30" }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "connection-budget",
+      "title": "Pool limits exceed the database connection budget",
+      "explanation": "Each Gunicorn worker process has its own pool. With 8 workers, pool_size=20 and max_overflow=20 allow up to 320 connections, while PostgreSQL accepts 100 and the job worker shares that limit. Under load the database refuses new connections, including the job worker's.",
+      "file": "app/db.py",
+      "side": "new",
+      "startLine": 5,
+      "endLine": 6
+    },
+    {
+      "id": "long-pool-timeout",
+      "title": "A 60-second pool timeout hides exhaustion",
+      "explanation": "Requests wait up to 60 seconds for a free connection, longer than the 30-second Gunicorn worker timeout. Workers are killed mid-request instead of failing fast with a clear pool error, which makes exhaustion harder to diagnose.",
+      "file": "app/db.py",
+      "side": "new",
+      "startLine": 7,
+      "endLine": 7
+    },
+    {
+      "id": "worker-count",
+      "title": "Doubling workers doubles connection demand",
+      "explanation": "Worker count multiplies every per-process pool. Raising it without reducing pool size or measuring the database budget turns a latency problem into a connection outage.",
+      "file": "gunicorn.conf.py",
+      "side": "new",
+      "startLine": 2,
+      "endLine": 2
+    }
+  ]
+}

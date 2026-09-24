@@ -1,120 +1,145 @@
 # Data model
 
-Status: proposed v0.1 persistence contract. The engine model and wire model are
-separate. Public DTOs must use explicit allowlists.
+Status: proposed v0.2 persistence contract. Private records and wire types are separate.
+Public responses use explicit allowlists. Never serialise a private record and remove a
+few known fields afterwards.
 
-## Domain records
+## Records
 
-| Record | Identity and contents | Visibility |
+| Record | Contents | Visibility |
 | --- | --- | --- |
-| ContentVersion | Content ID, immutable version, engine version, hash, publication status, difficulty, access, provenance | Catalogue subset public |
-| ScenarioDefinition | Variables, rules, evidence, checkpoints, terminal conditions, debrief | Server only |
-| Session | Owner, pinned content/engine version, version counter, tick, status, state, costs, revealed evidence IDs, event flags | Public projection only |
-| EventBatch | Session ID and commit version, ordered deterministic events and outputs, separate wall-clock audit metadata | Revealed event projection |
-| RequestReceipt | Owner/resource scope, request ID, canonical payload hash, result or pointer, committed version | Owner only |
-| Checkpoint | Parent session, checkpoint ID, full immutable state and prefix position | Metadata only before replay |
-| ReplaySession | Normal Session plus parent/checkpoint reference and informed-practice flag | Owner only |
-| ConversationTurn | Session, turn ID, input version, status, messages, selected operations, usage, outputs | Owner, visible content only |
-| ActionProposal | Session, proposal ID, expected version, canonical command, expiry, consumption status | Owner only |
-| AccessGrant | Owner, library scope, active state, optional expiry | Server only |
-| ReviewSubmission | Owner, exercise/version, marked lines, concerns, submitted status, released authored findings | Owner only |
-| Progress | Owner, content ID, completed first attempts, last attempt, assistance flag | Owner only |
+| ContentVersion | Content ID, immutable version, mode, hash, status, tier, category, plan, provenance. Challenges add the task definition revision and image digests | Catalogue subset public |
+| ChallengeManifest | Environment, traffic, dashboard, alert, validators, probes, planted fault, reference fix, traps, hints, debrief | API, gateway, monitor, and test harness only |
+| ReviewBundle | Diff, context, language, related Challenges, findings | Exercise projection before submission, findings after |
+| LearnEntry | Markdown metadata and body rendered at build time | Free entries public, Pro entries after an entitlement check |
+| Plan | Owner, plan, source, expiry, cohort | Owner, through `GET /v1/me` |
+| Session | Owner, Challenge ID and version, digests, attempt, status, reason, task ARN, task address, monitor secret, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
+| TimelineEvent | Command, monitor, assistance, or lifecycle event | Owner |
+| Capture | Per-command configuration diffs, new log lines, metric sample | Owner, through playback links |
+| Recording | Terminal chunks and metric series chunks | Owner, through playback links |
+| TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
+| Debrief | Derived evidence, harmful actions, outages, score components, assistance | Owner, after the outcome |
+| Proposal | Session, command, rationale, caution flag, expiry, status | Owner |
+| ConversationTurn | Session or submission, status, text, proposals, token usage | Owner |
+| ReviewSubmission | Owner, exercise version, flags and concerns, match result, answer-informed flag | Owner |
+| Progress | Owner, content ID, first-attempt outcome and score, attempt count, last attempt, assisted flag | Owner |
+| Receipt | Owner or resource scope, request ID, payload hash, result pointer | Server only |
 
-Code Review stores text for reflection. Do not infer a numerical correctness score
-from arbitrary free text. Prepared findings are released after submission.
-Learn entries and catalogue reads do not create game sessions.
+Learn entries and catalogue reads never create sessions. Code Review stores written
+concerns for reflection and never scores them.
 
-## Proposed DynamoDB keys
+## DynamoDB keys
 
-One table is sufficient initially. Avoid scans for normal user requests. Item
-names are a working storage convention, not part of the public HTTP contract.
+One table is sufficient initially. Normal requests read by key and never scan. Item
+names are a storage convention, not part of the HTTP contract.
 
-| PK | SK | Contents / access |
+| PK | SK | Contents |
 | --- | --- | --- |
 | `USER#<id>` | `PROFILE` | Minimal account preferences |
-| `USER#<id>` | `GRANT#<scope>` | Active practice entitlement |
+| `USER#<id>` | `PLAN` | Plan, source, expiry, cohort |
+| `USER#<id>` | `ACTIVE` | Active-session lock holding the session ID |
 | `USER#<id>` | `PROGRESS#<contentId>` | Learner progress |
-| `USER#<id>` | `START#<requestId>` | Session/review creation receipt |
-| `SESSION#<id>` | `STATE` | Current private snapshot, owner, content pins |
-| `SESSION#<id>` | `OBSERVATION#<evidenceId>` | Latest bounded observation with its original identity |
-| `SESSION#<id>` | `EVENT#<zero-padded-version>` | One bounded event batch per accepted command |
-| `SESSION#<id>` | `REQUEST#<requestId>` | Persistent idempotency receipt |
-| `SESSION#<id>` | `CHECKPOINT#<checkpointId>` | Immutable checkpoint |
-| `SESSION#<id>` | `TURN#<turnId>` | Bounded conversation metadata/output pointer |
-| `SESSION#<id>` | `PROPOSAL#<proposalId>` | Single-use confirmed-command proposal |
-| `REVIEW#<id>` | `STATE` | Review submission and released findings |
-| `REVIEW#<id>` | `REQUEST#<requestId>` | Submission receipt |
+| `USER#<id>` | `START#<requestId>` | Session start receipt |
+| `USER#<id>` | `REVIEWREQ#<requestId>` | Review submission receipt |
+| `SESSION#<id>` | `STATE` | Private session record |
+| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>` | Timeline event, time-ordered |
+| `SESSION#<id>` | `TICKET#<sha256>` | Terminal ticket with a TTL |
+| `SESSION#<id>` | `REQUEST#<requestId>` | End and hint receipts |
+| `SESSION#<id>` | `HINT#<hintId>` | Released hint and time |
+| `SESSION#<id>` | `PROPOSAL#<proposalId>` | Assistant command proposal |
+| `SESSION#<id>` | `TURN#<turnId>` | Challenge assistant turn |
+| `SESSION#<id>` | `FINALISED` | Marker that the finaliser has run |
+| `SESSION#<id>` | `DEBRIEF` | Derived debrief and score components |
+| `REVIEW#<id>` | `STATE` | Review submission and match result |
+| `REVIEW#<id>` | `TURN#<turnId>` | Code Review assistant turn |
 
-Use a user/status index for listing owned sessions and reviews, with creation time
-as sort key. Indexes are eventually consistent. Point reads of current state and
-request receipts must be strongly consistent when coordinating writes. The API
-returns the committed projection so an index delay does not hide a new session.
+Event sort keys use the event time, a source (`gw` for the gateway, `api` for handlers),
+and a per-source counter, so two writers never collide. The monitor assigns command
+sequence numbers inside the task.
 
-Published content lives under immutable private S3 keys. Store a hash in the
-catalogue manifest. A public catalogue projection excludes solution assets,
-resolution rules, and internal content filenames. Content discovery does not list
-the private bucket directly.
+An owner index keyed by user and creation time lists sessions and submissions. A sparse
+index holds only active sessions, keyed by `lastSeenAt`, for the heartbeat sweep.
+Indexes are eventually consistent. Coordinating writes use strongly consistent point
+reads. Handlers return the committed record, so an index delay never hides a new session.
 
-## Atomic action commit
+## Private S3 layout
 
-The repository port accepts `expectedVersion`, `nextState`, `eventBatch`, receipt,
-optional checkpoint, and optional proposal consumption. One transaction must:
+| Key prefix | Contents | Writer |
+| --- | --- | --- |
+| `content/challenges/<id>/<version>/` | Manifest and debrief assets | Content publication |
+| `content/reviews/<id>/<version>/` | Review bundle | Content publication |
+| `content/learn/<id>/<version>/` | Rendered Pro Learn entry | Learn build step |
+| `sessions/<sessionId>/terminal/<connectionId>/` | asciicast v2 chunks | Gateway |
+| `sessions/<sessionId>/metrics/` | Metric series chunks | Gateway |
+| `sessions/<sessionId>/captures/` | One capture per command | Gateway |
 
-1. Update state only when owner and current version match the expected values.
-2. Insert the event batch and request receipt only if absent.
-3. Insert an eligible checkpoint only if absent.
-4. Consume a confirmed proposal only if its owner, version, command, and expiry match.
-5. Update latest-observation records while retaining immutable payloads in the
-   event batch. Reject writes that exceed bounded transaction limits.
+Published content keys are immutable, with a hash in the catalogue manifest. The
+frontend bucket holds only the static application and free Learn pages. Browsers read
+session objects only through pre-signed links from the playback route. Terminal
+recordings and log captures exceed DynamoDB's item size, which is why they live in S3.
 
-All or none commit. A failed transaction cannot leave the state ahead of history.
-Application receipts, not DynamoDB's ten-minute client-token deduplication, enforce
-idempotency for the life of a session. Canonical request hashing includes command,
-expected version, source, and proposal ID but excludes transport timestamps.
+## Conditional writes
 
-A retry checks ownership, then the receipt, before rejecting an old expected
-version. Same ID/same hash returns the saved result. Same ID/different hash returns
-`IDEMPOTENCY_CONFLICT`. Distinct requests with the same expected version race, and
-only one can commit. Never replay a losing mitigation automatically.
+| Operation | Write and condition |
+| --- | --- |
+| Start | Transaction: start receipt absent, active lock absent, session record created in `provisioning` |
+| Ready | Update conditional on `provisioning`. Also records `readyAt` and the task address |
+| Outcome | Update conditional on status being `provisioning` or `ready`. The first outcome wins |
+| End | Transaction: the outcome update and the end receipt |
+| Heartbeat | Update `lastSeenAt` conditional on `ready` |
+| Ticket use | Delete conditional on existence and an unexpired `expiresAt`, returning the old item |
+| Hint | Transaction: hint item absent, session hint count equal to the expected value, receipt |
+| Proposal run | Update conditional on `pending`, unexpired, and an active session |
+| Finalise | Transaction: `FINALISED` absent, debrief written, progress updated, lock released |
 
-Store a compact action result in the receipt, with a pointer to immutable event
-output if needed. A retry returns that saved result and the current owned public
-session projection. This avoids storing a full session projection per command.
-Output observations identify the original execution version, while the session
-field may be newer. The client must not roll back its displayed state.
+Application receipts, not client-token windows, enforce idempotency for the life of a
+session. `RunTask`'s client token covers only the short gap between the start transaction
+and the task launch. Canonical request hashing covers the request body, not transport
+headers. A retry checks ownership, then the receipt. Same ID and same hash returns the
+saved result. Same ID and a different hash returns `IDEMPOTENCY_CONFLICT`.
 
-Start/replay operations use owner-scoped receipts so a retry cannot create two
-sessions. A replay transaction verifies terminal parent state and an immutable
-checkpoint. Ending a session is idempotent and advances version, not incident time.
-Session creation, first checkpoint, initial event, and owner-scoped receipt commit
-together. Review creation uses the same owner-scoped receipt discipline.
+Stream-triggered handlers, such as the finaliser, must tolerate redelivery. Every effect
+they have is conditional or naturally idempotent, such as `StopTask` on a stopped task.
 
 ## Bounds and retention
 
-DynamoDB has a 400 KB item limit. Store ordered history and evidence snapshots as
-separate bounded items, not an ever-growing session array. Proposed application
-limits are 256 KB per item, 500 commands per attempt, 10 ticks per explicit advance,
-100 events per command, and 4,000 characters per chat/concern input. Reject limits
-before mutation with a stable error. These values require load/content validation.
+DynamoDB has a 400 KB item limit. Proposed application limits, to validate with the
+first image:
 
-Keep checkpoints bounded, including referenced samples rather than copying large
-histories. Large scenario artefacts remain in S3. Cap provider conversation context
-without discarding committed action history from the application.
+| Item | Limit |
+| --- | --- |
+| Timeline event | 16 KB, with command text and output excerpt each capped at 4,000 characters |
+| Commands per attempt | 5,000 |
+| Capture | 256 KB, with at most 200 new lines per watched log |
+| Terminal recording | 20 MB per attempt, after which recording stops and the learner is told |
+| Terminal input | 64 KiB per second per session at the gateway |
+| Chat input | 4,000 characters |
+| Review flags | 50 per submission, 2,000 characters per concern |
 
-Do not expire receipts earlier than their session. Deletion removes session state,
-events, receipts, checkpoints, conversation, and replay descendants consistently.
-Retention and pilot consent must be decided before collecting external data.
+Reject limits before side effects with a stable error.
+
+Recordings contain everything the learner typed or printed, which may include secrets
+they paste by mistake. The retention period is open and must be agreed before the
+external pilot. S3 lifecycle rules then expire session objects. Deleting a learner
+removes their table items, session prefixes, conversations, and submissions.
 
 ## Versioning
 
-Published scenario versions are immutable. Changing constants, actions, evidence,
-or debrief creates a new content version. Semantic changes to rule evaluation
-create a new engine version. Existing sessions keep both pins. A migration must
-not silently reinterpret old actions. The public API starts at `/v1`.
+Published content is immutable. Changing a Challenge image, the monitor image, the
+manifest, validators, traps, hints, or debrief text creates a new Challenge version with
+its own task definition revision and digests. Existing sessions keep their pins.
+Playback of an old session uses only its stored data, never a new environment.
 
-## Repository ports
+## Repository and launcher ports
 
-Implement `createSession`, `getOwnedSession`, `commitAction`, `getReceipt`,
-`listEvents`, `createReplay`, `getContentVersion`, and `getAccessGrant` before LLM
-or UI integration. Local and DynamoDB adapters share concurrency and duplicate
-request tests. Add conversation and review ports when those work packages start.
+Implement these before UI or LLM integration:
+
+- Sessions: `createSession`, `getOwnedSession`, `markReady`, `recordOutcome`,
+  `recordHeartbeat`, `appendTimelineEvent`, `listTimeline`, `issueTicket`,
+  `consumeTicket`, and `finalise`.
+- Content and plans: `getContentVersion` and `getPlan`.
+- Environments: `launch`, `stop`, `describe`, and `listRunning`, with a Fargate adapter
+  and a local Docker adapter.
+
+Local and DynamoDB adapters share concurrency and duplicate-request tests. Add review
+and conversation ports when those work packages start.

@@ -1,13 +1,14 @@
-# Preliminary report snapshot
+# Preliminary report
 
-This is the five-page proposal sent to the team for review on 21 September 2026.
-It is not marked as approved by all members.
+The current proposal is [version 5](Preliminary_CS5224_Report_v5.pdf), adopted as the
+repository source of truth on 25 September 2026. It replaces the simulated-incident
+design with real services in per-session Fargate containers, session playback, and a
+freemium model. Its LaTeX source is not in this repository.
+
+The earlier draft sent for team review on 21 September 2026 is kept for history:
 
 - [PDF](Preliminary.pdf)
-- [LaTeX source](Preliminary.tex)
+- [LaTeX source](Preliminary.tex), compiled with XeLaTeX
 
-Compile the source with XeLaTeX. Figures and references are self-contained.
-The source includes the actual AI-use declaration for the report.
-
-Implementation details live in the repository specifications. If team review
-changes product scope, update the PRD and decision register before implementation.
+Implementation details live in the repository specifications. If team review changes
+product scope, update the PRD and decision register before implementation.

@@ -4,57 +4,81 @@ Status: manual authoring workflow. There is no content-generation or authoring U
 
 ## Source and ownership
 
-Use official engineering incident reports for inspiration. Write original service
-names, logs, code examples, metric values, and explanations. Link to the original
-source and record which failure mechanism was adapted. Public availability does
-not imply permission to copy text, figures, or code. Keep third-party notices when
-licensed material is deliberately reused after review.
+Use official engineering incident reports for inspiration. Write original service names,
+configuration, logs, code, and explanations. Link to the original source and record which
+failure mechanism was adapted. Public availability does not imply permission to copy
+text, figures, or code. Keep third-party notices when licensed material is deliberately
+reused after review.
 
-The current connection-leak definition is synthetic and draft. It has no claimed
-company incident source and cannot be published as historically sourced content.
-Its purpose is to prove the contract and trace calculations.
+The three current Challenges and the review bundle are synthetic drafts. They have no
+claimed incident source and cannot be published as historically sourced content.
 
-## Challenge structure
+## Challenges
 
-A definition contains immutable identity/version, publication status, learning
-objectives, services, declared variables, initial state, fixed tick duration,
-initial evidence, typed actions, tick rules, metric projections, event triggers,
-terminal rules, checkpoint policy, impact expressions, provenance, and debrief.
+A Challenge is a versioned container image plus a
+[manifest](../packages/contracts/schemas/challenge.schema.json). See the
+[draft manifests](../content/challenges/README.md) and the
+[runtime contract](challenges.md).
 
-Use the [schema](../packages/contracts/schemas/scenario.schema.json) and
-[reference scenario](../content/challenges/checkout-connection-leak/scenario.json).
-Every evidence ID and action must exist. Tool arguments must match the registry.
-Every action must define a visible target and cost without naming hidden truth.
+The image contains a small service stack, such as nginx, a web application, PostgreSQL,
+and CoreDNS, under a process supervisor, with exactly one planted misconfiguration. It
+also provides:
+
+- `service <name> start|stop|restart|reload` wrappers over the supervisor;
+- shell integration markers for command recording;
+- every tool the Challenge needs, installed at build time, because environments have no
+  internet access;
+- logs written to the files listed in the manifest.
+
+Fargate constraints apply: no privileged mode, no nested Docker, and no added Linux
+capabilities beyond `SYS_PTRACE`. Loopback addresses such as `127.0.0.2` can stand in for
+separate hosts. Image size affects start-up time, so measure it.
+
+The manifest declares services and watched files, traffic journeys, dashboard metrics,
+the alert, validators, health probes, the planted fault, the reference fix, traps, hints,
+and the debrief.
+
+- The alert and probe labels describe symptoms, never the cause.
+- Validators exercise end-to-end behaviour, such as a complete checkout, so a spoofed
+  response is less likely to pass.
+- Each trap from the Challenge's "why action order matters" has scripted commands, the
+  probe it breaks, command patterns for the debrief, and, where one exists, a safe
+  alternative.
+- Command patterns are case-sensitive JavaScript regular expressions. Make them specific
+  enough not to match the reference fix or the safe alternative.
+- Hints are ordered and released no earlier than their delay after readiness.
 
 ## Evidence quality
 
-Evidence should support diagnosis without stating the answer. Include realistic
-noise only when it teaches prioritisation. Avoid arbitrary irrelevant branches.
-Use units and consistent simulated timestamps. Logs, deployment history, code
-diffs, and metric rules must describe the same failure mechanism.
-
-The numerical model should be explainable. Do not claim it reproduces a real
-database or scheduler. Document simplifications and show how action order changes
-future state. A temporary mitigation can reduce impact even if recovery is incomplete.
+Evidence should support diagnosis without stating the answer. Include realistic noise
+only when it teaches prioritisation. Logs, configuration, metrics, and the debrief must
+describe the same failure mechanism. A temporary mitigation can reduce impact even if
+recovery is incomplete. Document it in the debrief.
 
 ## Publication checks
 
-1. Validate schema, IDs, references, tool parameters, bounds, and source metadata.
-2. Run a successful path, a failed path, a harmful path, and temporary mitigation.
-3. Verify the same commands produce identical engine results.
-4. Restore each checkpoint and compare the repeated suffix with the original.
-5. Check that alternative paths retain earlier consequences and do not overwrite
-   the first attempt.
-6. Inspect browser-visible output and LLM context for accidental answer leakage.
-7. Have another team member review causal realism, evidence, difficulty, and debrief.
-8. Publish a new immutable version and pin existing sessions to their old version.
+1. `npm run check` passes: schema, references, trap patterns, and bounds.
+2. The scenario harness confirms the fault at start, the reference fix, each trap, and
+   each safe alternative, over 20 repeats.
+3. Playback of the reference run matches its recorded output, logs, and metrics.
+4. Isolation tests pass for the image on Fargate.
+5. Browser-visible output and assistant context contain no private manifest data.
+6. Another team member reviews realism, evidence, difficulty, tier, and debrief.
+7. Publish a new immutable version with pinned image digests. Existing sessions keep
+   their old version.
 
-Structural validators cannot prove arbitrary graph reachability. Required recovery
-and failure states need actual engine trace evidence before publication.
+## Learn
 
-## Learn and Code Review
+A Learn entry is Markdown with metadata: title, category, access plan, summary,
+lessons, official source links, and related exercises. A build step renders free
+entries as static pages for CloudFront and puts Pro entries in private S3, where the API
+returns them after an entitlement check. The build sanitises HTML and fails on missing
+metadata or broken related-exercise IDs.
 
-Learn entries include title, domain, summary, lessons, and official source links.
-Keep them free. Code Review includes difficulty, an available language, context,
-diff, allowed line anchors, and private authored findings. Validate that each
-finding points to a real diff line. Do not add a language option without content.
+## Code Review
+
+A Code Review exercise is a [bundle](../packages/contracts/schemas/review.schema.json)
+with a diff, context, language, tier, plan, and reference findings with line ranges and
+explanations. Each finding must cover lines that exist on its side of the diff. Some
+diffs introduce faults that later appear in Challenges. Link them with
+`relatedChallenges`. Do not add a language option without published content.

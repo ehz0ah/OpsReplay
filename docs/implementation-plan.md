@@ -1,57 +1,58 @@
 # Implementation plan
 
-Status: task breakdown for six contributors. No assignments are implied. Agree
-owners in the team's task board before overlapping work. Implementation starts
-with one complete Challenge and a small set of supporting content.
+Status: task breakdown for six contributors. No assignments are implied. Agree owners on
+the team's task board before overlapping work. The team proves one complete Challenge
+first, then a small Learn collection and Code Review set.
 
 ## Work packages
 
 | ID | Work | Dependencies | Completion evidence |
 | --- | --- | --- | --- |
-| I01 | Implement the pure engine, rule validator, projections, and reference scenario | Baseline contracts | All reference traces and invalid-definition cases pass |
-| I02 | Implement local session repository and action coordinator | I01 interface | Atomic commits, receipt retries, version conflicts, ownership, terminal handling |
-| I03 | Build Challenge UI against public examples, then integrate | API contract, then I02 | Direct path from alert to debrief with consistent charts/events |
-| I04 | Prove AWS identity, DynamoDB transactions, private content, and streaming | Architecture contract | Small deployed integration check with recorded region/runtime |
-| I05 | Implement checkpoint creation, child sessions, and comparison | I01–I03 | Parent remains unchanged and repeated suffix matches |
-| I06 | Add provider adapter, bounded turns, proposals, and teaching support | I02–I04 | Benchmark, manual-context test, provider-failure recovery |
-| I07 | Add free Learn and prepared Code Review with access grants | Catalogue/review contract | Source links, tier/language filters, feedback release and saved submissions |
-| I08 | Curate and validate additional scenario content | I01 and authoring guide | Published traces and independent content review |
-| I09 | Run evaluation and cost comparison, prepare demo/report | Complete core flow | Reproducible system results and 5–10 participant pilot report |
+| I01 | Build the reference Challenge image: services under a supervisor, planted fault, service wrappers, shell markers, terminal server | Reference Challenge choice | Runs under local Docker with the fault present |
+| I02 | Build the monitor: traffic, metrics, validators, probes, captures, authenticated control port | Manifest schema | Scenario harness passes the reference fix and each trap locally, 20 repeats |
+| I03 | Build the gateway: tickets, terminal proxy, dashboard relay, recording, command events, heartbeats | I01, I02, gateway protocol | Local session recorded and played back with matching output, logs, and metrics |
+| I04 | Implement session lifecycle: start, readiness, end, time limit, sweep, finaliser, reconciliation | Data model, launcher port | Duplicate starts launch one task. Every ended session leaves no running task |
+| I05 | Prove AWS: VPC and endpoints, ECS cluster, task definitions by digest, gateway behind the ALB, Cognito, Route 53, Scheduler | Architecture | Deployed spike with measured time to a ready terminal, isolation test results, and teardown |
+| I06 | Build the web workspace: terminal, dashboard with command markers, timeline, hints, outcome | API and gateway examples, then I03 and I04 | Alert to outcome without the assistant |
+| I07 | Implement debrief, score components, playback, and retry | I03, I04 | Debrief rules match the fixtures. Retries never change the first attempt |
+| I08 | Add the assistant: context builder, streaming turns, proposals, confirmed runs, review debrief support | I03, I04, I06 | Benchmark, leakage tests, provider-failure recovery |
+| I09 | Add Learn build step, Code Review matcher, submissions, and plans | Catalogue and review contracts | Free and Pro access enforced. Matching fixture passes |
+| I10 | Validate additional Challenges | I01 to I03, authoring guide | Scenario harness evidence and independent content review |
+| I11 | Run evaluation and cost comparison, prepare demo and report | Complete core flow | Reproducible system results and pilot report |
 
-Frontend exploration, cloud validation, and content research can proceed while the
-engine is built. Shared contract changes must be coordinated, not independently
-redefined in each module.
+Frontend exploration, AWS networking, and content research can start while I01 to I03
+are built. Shared contract changes are coordinated, not redefined in each module.
 
 ## First milestone
 
-Prove this loop locally with direct controls:
+Prove this loop locally, then on AWS:
 
 ```text
-Alert -> evidence -> mitigation -> changed metrics/events -> recovery/failure
-      -> debrief -> checkpoint replay -> outcome comparison
+Start -> task ready -> alert -> terminal investigation -> configuration fix
+      -> validators sustained -> debrief -> playback -> retry in a fresh task
 ```
 
-For the reference incident, demonstrate that scaling first creates queued work
-which persists after rollback. This is more important than adding more scenarios
-or a polished chat interface.
+For the reference Challenge, demonstrate at least one trap with its real effect, such as
+a restart with a broken configuration taking the proxy down. This matters more than more
+Challenges or a polished assistant.
 
 ## Planned dates
 
 | Period in 2026 | Target |
 | --- | --- |
-| 21–28 September | Team reviews proposal, confirms first owners, submits preliminary report |
-| 29 September–11 October | Engine/reference paths, local API, AWS spike |
-| 12–25 October | Integrated UI, replay, debrief, LLM, supporting modes |
-| 26 October–5 November | Content checks, load testing, learner pilot |
-| 6–13 November | Fix findings, analyse cost, complete final report, slides, and demo |
+| 21 to 28 September | Finalise the reference Challenge and submit the preliminary report |
+| 29 September to 11 October | Build the reference image, monitor, validators, and session recording, and test them on AWS |
+| 12 to 25 October | Integrate interface, dashboard, persistence, playback, and LLM. Add Learn and Code Review |
+| 26 October to 5 November | Validate additional Challenges and run system tests and the learner study |
+| 6 to 13 November | Resolve findings and complete cost analysis, the final report, slides, and demonstration |
 
-If the core milestone slips, reduce content breadth and visual extras. Do not
-replace deterministic state with LLM-generated outcomes to meet a date. Keep
-mandatory evaluation time and direct gameplay.
+If the core milestone slips, reduce the number of Challenges and visual extras. Do not
+replace real environments with scripted output or LLM-generated results to meet a date.
+Keep evaluation time and assistant-free play.
 
 ## Ready to implement
 
-A task needs a requirement ID, an owner, stable input/output examples, dependencies,
-and observable acceptance criteria. A task does not need every future platform
-choice resolved. Framework and IaC choices can be made by their owners when the
-corresponding work starts, with a brief rationale in the decision register.
+A task needs a requirement ID, an owner, stable input and output examples, dependencies,
+and observable acceptance criteria. Framework, IaC, and monitor language choices can be
+made by their owners when the work starts, with a brief rationale in the decision
+register.

@@ -1,119 +1,189 @@
 # Architecture
 
-Status: implementation proposal consistent with the report. No cloud resources
-or application handlers are implemented in this baseline.
+Status: implementation proposal consistent with the preliminary report. No cloud
+resources, handlers, images, or services are implemented.
 
-## Application boundaries
+## Components
+
+All three modes share one web application, account system, and progress store.
 
 ```mermaid
 flowchart LR
-  UI[Browser: direct controls and chat] --> API[API and session coordinator]
-  API --> Engine[Pure scenario engine]
-  API --> Store[Session repository]
-  API --> Content[Versioned private content]
-  API --> LLM[LLM orchestrator]
-  LLM --> Provider[Provider adapter]
-  LLM --> Tools[Typed tool registry]
-  Tools --> API
+  UI[Browser: app, terminal, dashboard, chat] -->|REST| API[API Lambda handlers]
+  UI -->|WebSocket| GW[Gateway service]
+  API --> DB[(DynamoDB)]
+  API --> S3[(Private S3)]
+  API --> ECS[ECS RunTask and StopTask]
+  API --> SCH[EventBridge Scheduler]
+  API --> LLM[External LLM provider]
+  GW --> DB
+  GW --> S3
+  GW --> ENV
+  subgraph ENV[Environment task per attempt]
+    CH[challenge container]
+    MON[monitor container]
+  end
+  DB -. stream .-> FIN[Finaliser]
+  FIN --> ECS
 ```
 
-The API coordinates authentication, access, requests, and persistence. The engine
-accepts a validated command and state, then returns new state and logical events.
-It has no network, environment-variable, database, or clock dependencies.
+| Component | Responsibility |
+| --- | --- |
+| Web app | Static pages, catalogue, Learn, Code Review, Challenge workspace, debrief, playback |
+| API handlers | Identity, plans, catalogue, sessions, tickets, hints, timeline, debrief, playback, reviews, LLM turns |
+| Lifecycle handlers | Readiness from ECS task events, time limits from Scheduler, heartbeat sweep, reconciliation |
+| Finaliser | Stops the task, releases the lock, derives the debrief and score, updates progress |
+| Gateway service | Ticket checks, terminal proxy, dashboard stream, recording, command events, proposal runs, heartbeats |
+| Challenge container | Service stack, planted fault, supervisor, terminal server |
+| Monitor container | Traffic, metrics, validators, health probes, captures |
 
-The tool registry owns names, argument schemas, operation kind, and confirmation
-requirements. Scenario data selects which operations and targets are available.
-The LLM has no direct repository or engine mutation access. The API executes its
-requests through the same coordinator as direct controls.
-
-Separate public projections from private records with explicit allowlists. Never
-serialize a private session and remove a few known hidden fields afterward.
+The API handlers are separate Lambda functions that share modules and contracts. LLM
+turns run in their own function so they have separate concurrency and timeout limits.
+They are not separate microservices. The gateway is the only component that talks to
+environment tasks. Lambda handlers stay outside the VPC.
 
 ## Proposed AWS deployment
 
+The deployment uses one Region. The Region, domain, and IaC tool are open.
+
 ```mermaid
 flowchart TB
-  Browser --> CF[CloudFront]
-  CF --> Web[S3: static app]
-  Browser --> Auth[Cognito]
-  Browser --> Gateway[Regional API Gateway REST API]
-  Gateway --> Game[Gameplay Lambda]
-  Gateway --> Chat[LLM Lambda]
-  Game --> DB[DynamoDB]
-  Chat --> DB
-  Game --> Assets[Private S3: versioned content]
-  Chat --> External[External LLM provider]
-  Game -. telemetry .-> CW[CloudWatch]
-  Chat -. telemetry .-> CW
+  Browser --> R53[Route 53]
+  R53 --> CF[CloudFront]
+  CF --> Web[Frontend S3: static app and free Learn]
+  R53 --> Cognito
+  R53 --> APIGW[API Gateway REST API]
+  APIGW --> Lambda[Lambda: API and LLM]
+  Lambda --> DDB[DynamoDB: sessions and events]
+  Lambda --> Private[Private S3: content and recordings]
+  Lambda --> Provider[External LLM API]
+  R53 --> ALB[Application Load Balancer, HTTPS]
+  ALB --> Gateway[Gateway service on ECS]
+  subgraph Cluster[ECS cluster on Fargate]
+    Gateway
+    Tasks[Fargate environment tasks]
+  end
+  Gateway -->|WebSocket proxy| Tasks
+  Lambda -. telemetry .-> CW[CloudWatch]
+  Gateway -. telemetry .-> CW
 ```
 
-Separate handlers give LLM requests their own concurrency and timeout limits.
-They share application modules and state contracts. They are not separate
-microservices. Authentication identifies the caller. Every handler also checks
-ownership and content access. Frontend and private content must use separate
-storage and deployment paths.
+**Entry and web tier.** Route 53 hosts the domain and maps each subdomain to its entry
+point with alias records: the web app to CloudFront, the API to API Gateway, terminals
+to the ALB, and sign-in to Cognito. Route 53 health checks can fail over to a static
+maintenance endpoint. CloudFront serves the web app and free Learn pages from S3. Cognito
+identifies users. The backend checks session ownership and plan entitlement on every
+request.
 
-The REST message route uses response streaming to support the complete
-tool-selection, validated-execution, and explanation loop. AWS REST APIs support
-streaming. HTTP APIs do not and have a 30-second integration limit. Node.js managed
-Lambda runtimes support streaming. Region and runtime support must be verified
-in the early deployment spike. See [official references](references.md).
+**API and state.** A Regional API Gateway REST API routes requests to stateless Lambda
+handlers. The LLM route streams responses, which REST APIs support. The cheaper HTTP API
+lacks streaming and has a 30-second integration limit. Lambda remains billed while it
+waits for the model, even after the client disconnects, so provider deadlines, token
+limits, and a separate concurrency budget bound AI use. DynamoDB stores progress,
+sessions, per-command timeline events, review submissions, and conversation history,
+all read by key. Terminal recordings and log captures exceed DynamoDB's item size, so
+they go to private S3. Session start and end use conditional writes keyed by request ID,
+so a retry cannot launch a second task or record a result twice. See the
+[data model](data-model.md).
 
-Streaming does not reduce LLM computation. Lambda can keep running and billing
-after the browser disconnects. Use provider deadlines, token/tool limits, and
-persisted action results. Do not keep a database transaction open during an LLM
-request or across a human confirmation.
+**Challenge environments.** To start a Challenge, a handler calls ECS `RunTask` with the
+Challenge's task definition, pinned to ECR image digests, and later stores the task's
+private address in DynamoDB. An EventBridge Scheduler job stops the task at the time
+limit, and a missed heartbeat stops abandoned tasks sooner. Scheduler fires with
+one-minute precision, which the time limit tolerates. Completed one-time schedules still
+count against the Scheduler quota, so the finaliser deletes them. See
+[Challenge environments](challenges.md).
 
-## State coordination
+**Gateway service.** Terminal and dashboard traffic uses WebSockets. The gateway is our
+own small WebSocket proxy, run as an ECS service in the same Fargate cluster as the
+environment tasks. It validates a short-lived ticket, looks up the learner's task
+address, proxies the terminal, relays the monitor's dashboard stream, and records the
+stream outside the learner's reach. The ALB only terminates HTTPS and spreads connections
+across gateway copies. It does not balance environment tasks. The ALB idle timeout stays
+above the heartbeat interval. See the [gateway protocol](api.md#terminal-gateway-protocol).
 
-For an accepted action, the coordinator authenticates, reads state, validates
-schema/availability/prerequisites, runs the pure engine, and atomically commits
-the next state, logical event batch, receipt, and any checkpoint. The commit
-conditions on the expected state version and absence of the request receipt.
-Concurrent winners are serialized by the database. Losing requests receive a
-conflict and do not silently rerun against different state.
+**Warm pool.** A small pool of started, unassigned tasks can hide start-up time before a
+scheduled class. A session claims a pooled task through a conditional write. Scores and
+counters count from `readyAt`, so time a task spends waiting in the pool is excluded.
+Pooled tasks cost money while idle and expire after a bounded wait. The pool is optional
+and follows the first milestone.
 
-Request receipts survive beyond database transaction-token windows. Repeated
-request IDs with identical payloads return the original result. Reuse with a
-different payload is a conflict. Ownership is always checked before receipt
-lookup. See [data model](data-model.md) and [API](api.md).
+## Network and isolation
+
+| Placement | Resources | Inbound | Outbound |
+| --- | --- | --- | --- |
+| Public subnets | ALB | HTTPS from the internet | Gateway service |
+| Private subnets | Gateway service | ALB only | Environment tasks, VPC endpoints |
+| Private subnets | Environment tasks | Gateway service only, on terminal and monitor ports | VPC endpoints for image pulls and monitor logs |
+
+Each Fargate task has its own isolation boundary and shares no kernel, CPU, memory, or
+network interface with other tasks. Environment tasks have no internet route and no task
+IAM role, so root shells expose no AWS credentials. CPU, memory, and time caps limit
+misuse. Containers inside one task do share a network namespace, which is why the
+monitor's control port requires a per-session secret.
+
+Private subnets use VPC endpoints instead of a NAT gateway: ECR API and Docker registry
+endpoints, an S3 gateway endpoint for image layers and gateway writes, a DynamoDB gateway
+endpoint, and a CloudWatch Logs endpoint. Endpoint policies allow only what the gateway
+and image pulls need. The VPC resolver remains reachable from private subnets. Isolation
+tests must check DNS egress, and a Route 53 Resolver DNS Firewall allow list is the
+proposed control if names outside the endpoint set resolve. Challenge CoreDNS
+configurations never forward to an upstream resolver.
+
+| Principal | Allowed |
+| --- | --- |
+| Session handlers | `ecs:RunTask` on Challenge task definition families, `iam:PassRole` for the environment execution role only, `ecs:StopTask`, `DescribeTasks`, and `ListTasks` on the cluster, Scheduler operations on session schedules, table access, content reads, pre-signed reads of session objects |
+| LLM handler | Table access for turns and proposals, the provider credential |
+| Gateway task role | Session items and tickets in the table, `PutObject` under `sessions/` |
+| Environment execution role | Image pulls and monitor log delivery |
+| Environment task role | None |
+
+The challenge container's output is not shipped to CloudWatch by default, because the
+learner controls it. Enable it only in development environments.
+
+## Trade-offs
+
+Per-session tasks add compute cost, start-up latency of tens of seconds, vCPU quotas that
+cap concurrent sessions, and AWS-specific integration. Fargate also disallows privileged
+containers, so environments cannot run nested Docker. A single Docker host has fewer
+components, but needs provisioned capacity and isolates learners' root shells less
+strongly. The same images run under local Docker for testing and on any container host,
+which supports the on-premise comparison.
+
+Fargate Spot would lower compute cost but can interrupt a task with a two-minute warning.
+Interrupting a learner mid-incident is worse than the saving, so it is not the default.
+AWS can also retire Fargate tasks for platform maintenance, which ends a session as
+`error` without using up the first attempt.
+
+Keep domain logic, repositories, and the environment launcher behind ports, so the same
+behaviour can run on-premise. Compare equivalent authentication, persistence, isolation,
+monitoring, and availability, with the same external LLM.
 
 ## Local-first development
 
-Build the engine and repository interfaces locally. Start with an in-memory
-repository and development identity for isolated tests. Add a persistent local
-adapter for manual sessions. Restart durability must not be claimed for memory
-storage. The production configuration must reject development identity.
+The two environment containers run under local Docker with a shared network namespace
+and a shared volume. Build the monitor and the first Challenge image this way before any
+cloud work. Then run a local gateway and a local API with an in-memory repository, a
+development identity, and a Docker launcher adapter. Production configuration must
+reject development identity.
 
-Run API contract tests against both local and DynamoDB adapters when implemented.
-Local tests prove domain and adapter behaviour, not Cognito, IAM, regional
-streaming, quotas, or AWS failure handling. The cloud spike proves those paths.
-
-There is no local application server yet. Module READMEs define implementation
-entry points without providing commands that pretend the server exists.
-
-## Deployment trade-offs
-
-Serverless hosting suits independent sessions and intermittent classes. It reduces
-idle compute and server maintenance but adds cold starts, service limits, and AWS
-integration. A single application server with PostgreSQL has fewer deployment
-components and flexible queries, but needs capacity planning and maintenance.
-
-Keep the domain and repository ports independent of AWS so the same behaviour can
-be hosted on-premise. Compare equivalent authentication, persistence, monitoring,
-availability assumptions, and the same external LLM. Do not compare a full cloud
-service with an on-premise process that omits required capabilities.
+Local tests prove image behaviour, validators, recording, and domain logic. They do not
+prove Cognito, IAM, VPC isolation, Fargate start-up time, quotas, WebSockets through the
+ALB, or REST API streaming. The AWS spike proves those.
 
 ## Operational requirements before a hosted pilot
 
-- Deployment configuration validates secrets, identity mode, and allowed origins.
-- Least-privilege IAM separates content reads and session writes from deployment.
-- Correlation IDs connect API, action receipts, and provider timings. Logical game
-  events remain separate from application logs.
-- Logs omit credentials, full prompts, hidden evidence, and personal submissions.
-- Alerts cover server errors, write conflicts, provider failure, throttling, and cost.
-- Set request, storage, provider, and per-user rate limits before exposing the app.
-- Verify backup/restore and a small rollback deployment. Published scenario
-  versions remain available to existing sessions.
+- Deployment configuration validates secrets, identity mode, allowed origins, and the
+  cluster, subnets, and security groups each handler may use.
+- Budgets and alarms cover running task count, Fargate vCPU use against quota, LLM spend,
+  API errors, and throttling.
+- The reconciliation sweep runs on a schedule and alarms when it stops an orphaned task.
+- Correlation IDs connect API requests, session events, gateway connections, and
+  provider timings.
+- Logs omit tickets, monitor secrets, provider credentials, full prompts, terminal
+  content, and review concerns.
+- Per-learner rate limits and the one-active-session limit are enforced before exposure.
+- Verify backup and restore, and a small rollback deployment. Published Challenge
+  versions keep their task definition revisions for existing sessions.
 
 These are delivery acceptance criteria, not claims of production readiness.
