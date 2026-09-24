@@ -5,39 +5,47 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import SwaggerParser from '@apidevtools/swagger-parser';
-import { start, step, metrics } from './reference-model.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
 const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
 addFormats(ajv);
-const publicSchema = read('packages/contracts/schemas/public.schema.json');
-const scenarioSchema = read('packages/contracts/schemas/scenario.schema.json');
-ajv.addSchema(publicSchema);
-const validateScenario = ajv.compile(scenarioSchema);
-const registry = read('packages/contracts/tools.json');
-const toolSchemas = new Map(registry.tools.map(tool => [tool.name, ajv.compile(tool.inputSchema)]));
-assert.equal(toolSchemas.size, registry.tools.length, 'Duplicate tool name');
 
 function valid(validate, value, label) {
   assert.ok(validate(value), label + ': ' + JSON.stringify(validate.errors));
 }
+const unique = (values, label) => assert.equal(new Set(values).size, values.length, 'Duplicate ' + label);
+const seconds = (from, to) => (Date.parse(to) - Date.parse(from)) / 1000;
+
+// Public wire types and examples.
+const publicSchema = read('packages/contracts/schemas/public.schema.json');
+ajv.addSchema(publicSchema);
 const validateType = name => ajv.getSchema(publicSchema.$id + '#/$defs/' + name);
 for (const name of Object.keys(publicSchema.$defs)) assert.ok(validateType(name), 'Uncompiled public schema ' + name);
-for (const [file, type] of [
-  ['session.json', 'SessionView'], ['action-request.json', 'ActionRequest'],
-  ['action-response.json', 'ActionResponse'], ['catalog.json', 'Catalog'],
-]) valid(validateType(type), read('packages/contracts/examples/' + file), file);
-assert.equal(validateType('ActionRequest')(read('packages/contracts/examples/invalid-action.json')), false, 'Invalid scale accepted');
-const leakingView = { ...read('packages/contracts/examples/session.json'), rootCause: 'hidden' };
-assert.equal(validateType('SessionView')(leakingView), false, 'Private top-level field accepted');
-const leakingEvidence = structuredClone(read('packages/contracts/examples/session.json'));
-leakingEvidence.revealedEvidence[0].data.rootCause = 'hidden';
-assert.equal(validateType('SessionView')(leakingEvidence), false, 'Private evidence field accepted');
-for (const [name, value] of Object.entries(read('packages/contracts/examples/response-examples.json'))) {
-  valid(validateType(name), value, name);
+const example = file => read('packages/contracts/examples/' + file);
+const typedExamples = [
+  ['catalog.json', 'Catalog'], ['start-session-request.json', 'StartSessionRequest'], ['session.json', 'SessionView'],
+  ['timeline.json', 'TimelinePage'], ['debrief.json', 'Debrief'], ['playback.json', 'Playback'],
+  ['review-exercise.json', 'ReviewExercise'], ['review-submit-request.json', 'ReviewSubmitRequest'],
+  ['review-submission.json', 'ReviewSubmission'],
+];
+for (const [file, type] of typedExamples) valid(validateType(type), example(file), file);
+for (const [type, values] of Object.entries(example('response-examples.json'))) {
+  for (const [index, value] of values.entries()) valid(validateType(type), value, type + ' example ' + index);
 }
+const gateway = example('gateway-messages.json');
+for (const message of gateway.client) valid(validateType('GatewayClientMessage'), message, 'Client frame ' + message.type);
+for (const message of gateway.server) valid(validateType('GatewayServerMessage'), message, 'Server frame ' + message.type);
 
+// Private fields must not fit public shapes.
+const session = example('session.json');
+assert.equal(validateType('SessionView')({ ...session, plantedFault: 'hidden' }), false, 'Private session field accepted');
+assert.equal(validateType('SessionView')({ ...session, taskAddress: '10.0.1.7' }), false, 'Task address accepted');
+const leakingExercise = { ...example('review-exercise.json'), findings: [] };
+assert.equal(validateType('ReviewExercise')(leakingExercise), false, 'Review findings accepted before submission');
+assert.equal(validateType('GatewayClientMessage')({ type: 'input', data: 'ls' }), false, 'Terminal input must use binary frames');
+
+// OpenAPI.
 function rewrite(value) {
   if (Array.isArray(value)) return value.map(rewrite);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [
@@ -49,115 +57,212 @@ const api = read('packages/contracts/openapi.json');
 assert.deepEqual(api.components.schemas, rewrite(publicSchema.$defs), 'Run npm run contracts:sync after public schema changes');
 await SwaggerParser.validate(path.join(root, 'packages/contracts/openapi.json'));
 const apiDoc = fs.readFileSync(path.join(root, 'docs/api.md'), 'utf8');
+let routeCount = 0;
 for (const [route, methods] of Object.entries(api.paths)) {
   for (const method of Object.keys(methods)) {
+    routeCount++;
     assert.ok(apiDoc.includes(method.toUpperCase() + ' ' + route), 'Undocumented route: ' + method + ' ' + route);
   }
 }
-for (const tool of registry.tools) {
-  const branch = publicSchema.$defs.Command.oneOf.find(value => value.properties.tool.const === tool.name);
-  assert.ok(branch, 'Missing command schema: ' + tool.name);
-  assert.deepEqual(branch.properties.arguments, tool.inputSchema, 'Argument schema drift: ' + tool.name);
+for (const message of [...publicSchema.$defs.GatewayClientMessage.oneOf, ...publicSchema.$defs.GatewayServerMessage.oneOf]) {
+  assert.ok(apiDoc.includes('`' + message.properties.type.const + '`'), 'Undocumented gateway frame: ' + message.properties.type.const);
 }
 
-const definition = read('content/challenges/checkout-connection-leak/scenario.json');
-valid(validateScenario, definition, 'Scenario');
-const evidenceIds = new Set(definition.evidence.map(item => item.id));
-const actionIds = new Set(definition.actions.map(item => item.id));
-assert.equal(evidenceIds.size, definition.evidence.length, 'Duplicate evidence ID');
-assert.equal(actionIds.size, definition.actions.length, 'Duplicate action ID');
-assert.equal(new Set(definition.eventRules.map(item => item.id)).size, definition.eventRules.length);
-assert.equal(new Set(definition.checkpoints.map(item => item.id)).size, definition.checkpoints.length);
-assert.deepEqual(Object.keys(definition.variables).sort(), Object.keys(definition.initialState).sort());
-for (const id of [...definition.initialEvidence, ...definition.debrief.keyEvidence]) assert.ok(evidenceIds.has(id), 'Unknown evidence ' + id);
-for (const id of definition.debrief.recommendedActions) assert.ok(actionIds.has(id), 'Unknown recommended action ' + id);
+// Challenge manifests.
+const validateChallenge = ajv.compile(read('packages/contracts/schemas/challenge.schema.json'));
+const pattern = source => new RegExp(source);
+const matchesAny = (patterns, command) => patterns.some(source => pattern(source).test(command));
+const challenges = new Map();
+for (const entry of fs.readdirSync(path.join(root, 'content/challenges'), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const file = 'content/challenges/' + entry.name + '/challenge.json';
+  const manifest = read(file);
+  valid(validateChallenge, manifest, file);
+  assert.equal(manifest.id, entry.name, file + ': directory must match id');
+  const journeys = new Set(manifest.traffic.journeys.map(item => item.id));
+  const probes = new Set(manifest.healthProbes.map(item => item.id));
+  unique(manifest.traffic.journeys.map(item => item.id), 'journey in ' + file);
+  unique(manifest.validators.map(item => item.id), 'validator in ' + file);
+  unique(manifest.healthProbes.map(item => item.id), 'probe in ' + file);
+  unique(manifest.healthProbes.map(item => item.publicLabel), 'probe label in ' + file);
+  unique(manifest.traps.map(item => item.id), 'trap in ' + file);
+  unique(manifest.hints.map(item => item.id), 'hint in ' + file);
+  unique(manifest.dashboard.map(item => item.id), 'dashboard metric in ' + file);
+  unique(manifest.debrief.keyEvidence.map(item => item.id), 'key evidence in ' + file);
+  unique(manifest.environment.services.map(item => item.name), 'service in ' + file);
+  for (const check of [...manifest.validators, ...manifest.healthProbes].map(item => item.check)) {
+    if (check.kind === 'journey') assert.ok(journeys.has(check.journey), file + ': unknown journey ' + check.journey);
+  }
+  const serviceFiles = new Set(manifest.environment.services.flatMap(item => item.configFiles));
+  for (const target of manifest.plantedFault.files) assert.ok(serviceFiles.has(target), file + ': fault file is not a watched config file: ' + target);
+  for (const hint of manifest.hints.slice(1).map((item, index) => [manifest.hints[index], item])) {
+    assert.ok(hint[1].minElapsedMinutes >= hint[0].minElapsedMinutes, file + ': hints must release in order');
+  }
+  for (const source of [...manifest.traps.flatMap(item => item.commandPatterns), ...manifest.debrief.keyEvidence.flatMap(item => item.commandPatterns)]) {
+    assert.doesNotThrow(() => pattern(source), file + ': invalid command pattern ' + source);
+  }
+  for (const trap of manifest.traps) {
+    assert.ok(probes.has(trap.probe), file + ': trap uses unknown probe ' + trap.probe);
+    assert.ok(trap.commands.some(command => matchesAny(trap.commandPatterns, command)), file + ': scripted trap ' + trap.id + ' would not be detected');
+    for (const command of [...manifest.referenceFix.commands, ...(trap.safeAlternative?.commands ?? [])]) {
+      if (trap.commands.includes(command)) continue;
+      assert.ok(!matchesAny(trap.commandPatterns, command), file + ': trap ' + trap.id + ' pattern matches a safe command: ' + command);
+    }
+  }
+  if (manifest.status === 'published') {
+    assert.ok(manifest.environment.image.digest && manifest.environment.monitorImage.digest, file + ': published Challenges pin image digests');
+    if (manifest.provenance.kind === 'adapted') assert.ok(manifest.provenance.sources.length > 0, file + ': adapted content needs sources');
+  }
+  challenges.set(manifest.id, manifest);
+}
+assert.ok(challenges.size > 0, 'No Challenge manifests found');
 
-function checkExpression(expression, allowedArgs = [], depth = 0, counter = { nodes: 0 }) {
-  assert.ok(depth <= 20 && ++counter.nodes <= 200, 'Expression exceeds complexity bound');
-  if ('ref' in expression) assert.ok(expression.ref === 'tick' || Object.hasOwn(definition.variables, expression.ref), 'Unknown reference ' + expression.ref);
-  if ('arg' in expression) assert.ok(allowedArgs.includes(expression.arg), 'Unknown argument ' + expression.arg);
-  if ('op' in expression) {
-    const arity = { sub: 2, eq: 2, gte: 2, gt: 2, lt: 2, not: 1, if: 3 };
-    if (arity[expression.op]) assert.equal(expression.args.length, arity[expression.op], 'Invalid operator arity');
-    else assert.ok(expression.args.length >= 2, 'Operator requires at least two operands');
-    for (const child of expression.args) checkExpression(child, allowedArgs, depth + 1, counter);
+// Code Review bundles and the reference line-range matcher.
+const validateReview = ajv.compile(read('packages/contracts/schemas/review.schema.json'));
+const reviews = new Map();
+for (const entry of fs.readdirSync(path.join(root, 'content/reviews'), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const file = 'content/reviews/' + entry.name + '/review.json';
+  const bundle = read(file);
+  valid(validateReview, bundle, file);
+  assert.equal(bundle.id, entry.name, file + ': directory must match id');
+  unique(bundle.files.map(item => item.path), 'diff file in ' + file);
+  unique(bundle.findings.map(item => item.id), 'finding in ' + file);
+  for (const diff of bundle.files) {
+    for (const line of diff.lines) {
+      assert.equal(line.oldLine === null, line.kind === 'added', file + ': added lines have no old number');
+      assert.equal(line.newLine === null, line.kind === 'removed', file + ': removed lines have no new number');
+    }
   }
-}
-for (let left = 0; left < definition.actions.length; left++) {
-  for (let right = left + 1; right < definition.actions.length; right++) {
-    const a = definition.actions[left], b = definition.actions[right];
-    if (a.tool !== b.tool) continue;
-    const distinct = Object.keys(a.arguments).some(key => Object.hasOwn(b.arguments, key)
-      && a.arguments[key] !== b.arguments[key]);
-    assert.ok(distinct, 'Overlapping action selectors: ' + a.id + ' and ' + b.id);
+  for (const finding of bundle.findings) {
+    const diff = bundle.files.find(item => item.path === finding.file);
+    assert.ok(diff, file + ': finding in unknown file ' + finding.file);
+    assert.ok(finding.startLine <= finding.endLine, file + ': inverted range ' + finding.id);
+    const numbers = new Set(diff.lines.map(line => finding.side === 'new' ? line.newLine : line.oldLine));
+    for (let line = finding.startLine; line <= finding.endLine; line++) {
+      assert.ok(numbers.has(line), file + ': finding ' + finding.id + ' covers a line not in the diff');
+    }
   }
+  for (const id of bundle.relatedChallenges) assert.ok(challenges.has(id), file + ': unknown related Challenge ' + id);
+  reviews.set(bundle.id, bundle);
 }
-for (const action of definition.actions) {
-  const tool = registry.tools.find(item => item.name === action.tool);
-  assert.ok(tool, 'Unknown tool ' + action.tool);
-  for (const [name, value] of Object.entries(action.arguments)) {
-    assert.ok(Object.hasOwn(tool.inputSchema.properties, name), 'Unknown selector ' + name);
-    valid(ajv.compile(tool.inputSchema.properties[name]), value, 'Selector ' + name);
-  }
-  for (const id of [...action.reveals, ...action.requiresEvidence]) assert.ok(evidenceIds.has(id), 'Unknown action evidence ' + id);
-  checkExpression(action.prerequisite, Object.keys(tool.inputSchema.properties));
-  for (const assignment of action.effects) {
-    assert.ok(Object.hasOwn(definition.variables, assignment.target));
-    checkExpression(assignment.value, Object.keys(tool.inputSchema.properties));
-  }
+function matchReview(bundle, flags) {
+  const matched = new Set();
+  const findings = bundle.findings.map(finding => {
+    const matchedFlags = flags.flatMap((flag, index) => flag.file === finding.file && flag.side === finding.side
+      && flag.line >= finding.startLine && flag.line <= finding.endLine ? [index] : []);
+    matchedFlags.forEach(index => matched.add(index));
+    return { ...finding, found: matchedFlags.length > 0, matchedFlags };
+  });
+  return {
+    findings,
+    unmatchedFlags: flags.map((_, index) => index).filter(index => !matched.has(index)),
+    summary: { found: findings.filter(item => item.found).length, missed: findings.filter(item => !item.found).length },
+  };
 }
-for (const rule of definition.tickRules) {
-  assert.ok(Object.hasOwn(definition.variables, rule.target));
-  checkExpression(rule.value);
-}
-for (const expression of [definition.impact, definition.resolution, definition.failure,
-  ...definition.metrics.map(metric => metric.expression), ...definition.eventRules.map(rule => rule.when)]) checkExpression(expression);
-if (definition.status === 'published') {
-  assert.equal(definition.provenance.kind, 'adapted');
-  assert.ok(definition.provenance.sources.length > 0, 'Published adapted content needs sources');
+const exercise = example('review-exercise.json');
+const bundle = reviews.get(exercise.id);
+assert.ok(bundle, 'Review exercise example has no bundle');
+const { findings: _hidden, schemaVersion, status, summary, provenance, relatedChallenges, ...projection } = bundle;
+assert.deepEqual(exercise, projection, 'Review exercise must be the bundle without private fields');
+const submitRequest = example('review-submit-request.json');
+const submission = example('review-submission.json');
+assert.deepEqual(submission.flags, submitRequest.flags);
+const { findings, unmatchedFlags, summary: matchSummary } = submission;
+assert.deepEqual({ findings, unmatchedFlags, summary: matchSummary }, matchReview(bundle, submitRequest.flags), 'Review matching differs from the reference rule');
+for (const [index, flag] of submitRequest.flags.entries()) {
+  const diff = bundle.files.find(item => item.path === flag.file);
+  assert.ok(diff && diff.lines.some(line => (flag.side === 'new' ? line.newLine : line.oldLine) === flag.line), 'Flag ' + index + ' is not on a diff line');
 }
 
-const traces = read('tests/fixtures/reference-traces.json');
-assert.equal(traces.scenarioId, definition.id);
-assert.equal(traces.scenarioVersion, definition.version);
-function execute(commands, initial = start(definition)) {
-  return commands.reduce((state, command) => {
-    valid(toolSchemas.get(command.tool), command.arguments, command.tool);
-    return step(definition, state, command, registry);
-  }, structuredClone(initial));
+// Catalogue and session examples agree with private content without exposing it.
+for (const item of example('catalog.json').items) {
+  const source = item.mode === 'challenge' ? challenges.get(item.id) : reviews.get(item.id);
+  assert.ok(source, 'Catalogue entry without content: ' + item.id);
+  for (const key of ['version', 'title', 'summary', 'category', 'plan', 'tier', 'language']) {
+    if (key in item || key in source) assert.equal(item[key], source[key], item.id + ' catalogue ' + key);
+  }
 }
-for (const trace of traces.paths) {
-  const actual = execute(trace.commands);
-  const summary = { tick: actual.tick, status: actual.status, impactUnits: actual.impactUnits, variables: actual.variables };
-  assert.deepEqual(summary, trace.expected, trace.id);
-  assert.deepEqual(execute(trace.commands), actual, 'Nondeterministic trace: ' + trace.id);
+const manifest = challenges.get(session.challenge.id);
+const challengeRef = { id: manifest.id, version: manifest.version, title: manifest.title, tier: manifest.tier, category: manifest.category };
+assert.deepEqual(session.challenge, challengeRef);
+assert.deepEqual(session.alert, manifest.alert);
+assert.deepEqual(session.dashboard, manifest.dashboard.map(({ id, label, unit }) => ({ id, label, unit })));
+assert.equal(session.recovery.requiredSeconds, Math.max(...manifest.validators.map(item => item.sustainSeconds)));
+assert.equal(session.hints.released.length + session.hints.remaining, manifest.hints.length);
+const nextHint = manifest.hints[session.hints.released.length];
+assert.equal(seconds(session.readyAt, session.hints.nextAvailableAt), nextHint.minElapsedMinutes * 60, 'Hint availability counts from readiness');
+assert.equal(session.timeLimitSeconds, manifest.environment.timeLimitMinutes * 60, 'Free-plan limit comes from the manifest');
+assert.equal(seconds(session.readyAt, session.endsAt), session.timeLimitSeconds, 'The time limit starts when the terminal is ready');
+for (const hint of example('response-examples.json').HintResponse.map(item => item.hint)) {
+  assert.ok([...challenges.values()].some(item => item.hints.some(entry => entry.id === hint.id && entry.text === hint.text)), 'Unknown hint example');
 }
-const alternate = traces.paths.find(trace => trace.id === 'scale-then-rollback');
-const checkpoint = execute(alternate.commands.slice(0, 1));
-const checkpointCopy = structuredClone(checkpoint);
-assert.deepEqual(execute(alternate.commands.slice(1), checkpoint), execute(alternate.commands), 'Checkpoint suffix differs');
-assert.deepEqual(checkpoint, checkpointCopy, 'Replay mutated parent fixture');
-const request = read('packages/contracts/examples/action-request.json');
-const response = read('packages/contracts/examples/action-response.json');
-const observed = execute([request.command]);
-assert.equal(response.session.tick, observed.tick);
-assert.equal(response.session.costs.impactUnits, observed.impactUnits);
-assert.equal(response.executedVersion, response.session.version);
-assert.deepEqual(response.session.visibleMetrics, metrics(definition, observed).filter(metric => definition.metrics.find(spec => spec.service === metric.service && spec.metric === metric.metric).alwaysVisible));
-const sample = response.output.evidence[0].data.samples.at(-1);
-assert.deepEqual(sample, { tick: observed.tick, value: metrics(definition, observed).find(metric => metric.metric === 'connections').value });
-const initialView = read('packages/contracts/examples/session.json');
-assert.deepEqual(initialView.revealedEvidence.map(item => item.id), definition.initialEvidence);
-for (const offer of initialView.availableOperations) {
-  const action = definition.actions.find(item => item.id === offer.id);
-  assert.ok(action && action.requiresEvidence.length === 0, 'Unavailable operation exposed');
-  ajv.compile(offer.argumentSchema);
-  assert.equal(offer.tool, action.tool);
-  assert.equal(offer.costTicks, action.costTicks);
-}
-assert.throws(() => execute([{ tool: 'inspect_diff', arguments: { deploymentId: 'deploy-2-6-1' } }]), /Evidence prerequisite/);
-assert.throws(() => execute([{ tool: 'restart_service', arguments: { service: 'hidden-service' } }]), /exactly one/);
 
+// Reference debrief derivation from a recorded timeline.
+function deriveDebrief(challenge, events) {
+  const commands = events.filter(item => item.kind === 'command');
+  const ready = events.find(item => item.kind === 'lifecycle' && item.status === 'ready');
+  const lastCommandBefore = at => commands.filter(item => item.at <= at).at(-1)?.seq ?? null;
+  const outages = [];
+  for (const event of events.filter(item => item.kind === 'monitor')) {
+    if (event.signal === 'outage_started') outages.push({ label: event.label, startedAt: event.at, endedAt: null, afterCommandSeq: lastCommandBefore(event.at) });
+    if (event.signal === 'outage_ended') outages.findLast(item => item.label === event.label && item.endedAt === null).endedAt = event.at;
+  }
+  const keyEvidence = challenge.debrief.keyEvidence.map(({ id, description, commandPatterns }) => {
+    const found = commands.find(item => matchesAny(commandPatterns, item.command));
+    return { id, description, found: Boolean(found), commandSeq: found?.seq ?? null };
+  });
+  const harmfulActions = challenge.traps.flatMap(trap => {
+    const label = challenge.healthProbes.find(item => item.id === trap.probe).publicLabel;
+    return commands.filter(command => matchesAny(trap.commandPatterns, command.command) && outages.some(outage => outage.label === label
+      && seconds(command.at, outage.startedAt) >= 0 && seconds(command.at, outage.startedAt) <= trap.withinSeconds))
+      .map(command => ({ id: trap.id, description: trap.description, commandSeq: command.seq }));
+  });
+  const recoveryStart = events.filter(item => item.kind === 'monitor' && item.signal === 'recovery_sustaining').at(-1);
+  const recovered = events.some(item => item.kind === 'monitor' && item.signal === 'recovered');
+  const end = events.filter(item => item.kind === 'lifecycle').at(-1);
+  return {
+    keyEvidence, harmfulActions, outages,
+    timeToRecoverySeconds: recovered ? seconds(ready.at, recoveryStart.at) : null,
+    commandCount: commands.length,
+    selfInflictedOutages: outages.length,
+    outageSeconds: outages.reduce((sum, item) => sum + seconds(item.startedAt, item.endedAt ?? end.at), 0),
+    recoveryStart: recovered ? recoveryStart : null,
+    lastCommandBefore,
+  };
+}
+const timeline = example('timeline.json');
+const debrief = example('debrief.json');
+const playback = example('playback.json');
+assert.equal(timeline.nextCursor, null, 'The debrief fixture needs the complete timeline');
+const sorted = [...timeline.items].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+assert.deepEqual(timeline.items, sorted, 'Timeline events are in time order');
+unique(timeline.items.map(item => item.id), 'timeline event ID');
+const commandEvents = timeline.items.filter(item => item.kind === 'command');
+assert.deepEqual(commandEvents.map(item => item.seq), commandEvents.map((_, index) => index + 1), 'Command sequence numbers are contiguous');
+const timelineChallenge = challenges.get(debrief.challenge.id);
+const derived = deriveDebrief(timelineChallenge, timeline.items);
+assert.deepEqual(debrief.keyEvidence, derived.keyEvidence, 'Debrief key evidence');
+assert.deepEqual(debrief.harmfulActions, derived.harmfulActions, 'Debrief harmful actions');
+assert.deepEqual(debrief.outages, derived.outages, 'Debrief outages');
+for (const key of ['timeToRecoverySeconds', 'commandCount', 'selfInflictedOutages', 'outageSeconds']) {
+  assert.equal(debrief.score[key], derived[key], 'Debrief score ' + key);
+}
+assert.ok(debrief.score.failedRequests <= debrief.score.totalRequests);
+for (const key of ['rootCause', 'causalChain', 'recommendedRecovery']) assert.deepEqual(debrief[key], timelineChallenge.debrief[key]);
+assert.equal(debrief.outcome, timeline.items.at(-1).status);
+assert.equal(debrief.assisted, Object.values(debrief.assistance).some(Boolean));
+const expectedHighlights = [
+  ...derived.keyEvidence.filter(item => item.found).map(item => ({ kind: 'key_evidence', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
+  ...derived.harmfulActions.map(item => ({ kind: 'harmful_action', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
+  ...derived.outages.map(item => ({ kind: 'outage', at: item.startedAt, commandSeq: item.afterCommandSeq, label: item.label })),
+  ...(derived.recoveryStart ? [{ kind: 'recovery', at: derived.recoveryStart.at, commandSeq: derived.lastCommandBefore(derived.recoveryStart.at), label: derived.recoveryStart.label }] : []),
+].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+assert.deepEqual(playback.highlights, expectedHighlights, 'Playback highlights follow the debrief');
+assert.deepEqual(playback.captures.map(item => item.commandSeq), commandEvents.map(item => item.seq), 'One capture per command');
+assert.equal(playback.sessionId, debrief.sessionId);
+
+// Markdown links and style.
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     if (['node_modules', '.git'].includes(entry.name)) return [];
@@ -173,7 +278,9 @@ for (const file of markdown) {
     if (!target || /^(https?:|mailto:)/.test(target)) continue;
     assert.ok(fs.existsSync(path.resolve(path.dirname(file), target)), 'Broken link in ' + path.relative(root, file) + ': ' + target);
   }
-  assert.ok(!content.includes('\u2014'), 'Em dash in ' + file);
+  assert.ok(!content.includes('—'), 'Em dash in ' + file);
 }
-console.log('PASS: OpenAPI, ' + Object.keys(publicSchema.$defs).length + ' public schemas, ' + registry.tools.length + ' tools, scenario references, ' + traces.paths.length + ' deterministic traces, replay fixture, negative cases, and ' + markdown.length + ' Markdown files.');
-console.log('Application, persistence, UI, and AWS integration are not implemented or tested by this check.');
+console.log('PASS: OpenAPI with ' + routeCount + ' routes, ' + Object.keys(publicSchema.$defs).length + ' public schemas, '
+  + challenges.size + ' Challenge manifests, ' + reviews.size + ' review bundle, examples, debrief and review-matching fixtures, '
+  + 'leakage cases, and ' + markdown.length + ' Markdown files.');
+console.log('Challenge images, the monitor, the gateway, the API, the UI, and AWS integration are not implemented or tested by this check.');

@@ -1,69 +1,81 @@
 # Decision register
 
-This register separates agreed product direction from proposed engineering choices.
-The baseline is dated 21 September 2026. No technical proposal below implies a
-team vote or an implemented feature.
+This register separates product direction from proposed engineering choices. No
+technical proposal below implies a team vote or an implemented feature.
 
 ## Precedence
 
 1. An explicit later team decision recorded here overrides earlier material.
-2. [PRD](../PRD.md) owns product scope.
-3. Normative domain documents own behaviour. JSON Schema and OpenAPI express
-   their machine-readable contracts. Conflicts are bugs to fix together.
-4. The report is a proposal snapshot, not a separate evolving implementation spec.
+2. The [PRD](../PRD.md) owns product scope.
+3. Normative domain documents own behaviour. JSON Schema and OpenAPI express their
+   machine-readable contracts. Conflicts are bugs to fix together.
+4. The report is a proposal snapshot, not an evolving implementation specification.
 
-When changing a contract, update the domain document, schema, examples, and
-validation in one PR. Do not quietly resolve a conflict by picking a convenient file.
+When changing a contract, update the domain document, schema, examples, and validation in
+one PR. Do not quietly resolve a conflict by picking a convenient file.
 
-## Agreed product decisions
+## Change record
+
+| Date | Change |
+| --- | --- |
+| 21 September 2026 | Baseline: simulated incidents with a deterministic engine, typed actions, and checkpoint replay |
+| 25 September 2026 | Preliminary report version 5 adopted as the source of truth. Real per-session containers replace the simulated engine. Session playback and fresh-task retry replace checkpoint replay. Freemium access replaces free Learn with paid practice. Contracts moved to v0.2 |
+
+## Product decisions
 
 | ID | Decision | Source |
 | --- | --- | --- |
-| D01 | Learn, Challenges, and Code Review, with Challenges the main focus | Handoff v2 and later discussion |
-| D02 | Free Learn and authored paid practice, no fixed prices | User correction |
-| D03 | Single-player deterministic simulation with lasting effects | Handoffs and replay direction |
-| D04 | Direct UI and optional LLM share validated operations | Handoffs |
-| D05 | Engine owns truth, time, scoring, and transitions | Handoffs |
-| D06 | Replay selected checkpoints after an attempt, preserving first-attempt results | Accepted replay direction |
-| D07 | Easy, Medium, Hard tiers and available-language filters | User correction |
-| D08 | 5–10 participant formative pilot | User correction |
-| D09 | Google Wheel of Misfortune is the report's educational reference | Latest report revision |
-| D10 | No deferred enterprise, multiplayer, MCP, or generated-content features | Scope handoffs |
+| D01 | Learn, Challenges, and Code Review, with Challenges the main focus | Report v5 |
+| D02 | Freemium across all modes: Free, Pro, and per-seat Institutional. No fixed prices | Report v5, replaces free Learn and paid practice |
+| D03 | Single-player Challenges run real services with one planted misconfiguration in an isolated per-session container | Report v5, replaces the simulated engine |
+| D04 | No fixed action list. Learners use a root shell. Validators define recovery | Report v5, replaces typed operations |
+| D05 | Gateway and monitor record the session outside the learner's reach | Report v5 |
+| D06 | Session playback after the debrief, and retries in a fresh task that never change the first attempt | Report v5, replaces checkpoint replay |
+| D07 | Easy, Medium, Hard tiers and available-language filters | Earlier decision, kept |
+| D08 | Optional assistant explains and may propose a command that runs only after confirmation | Report v5 |
+| D09 | 5 to 10 participant formative pilot, AI off | Report v5 |
+| D10 | Google Wheel of Misfortune is the educational reference | Earlier decision, kept |
+| D11 | No multiplayer, MCP, generated content, or enterprise features | Earlier decision, kept |
 
 ## Proposed engineering defaults
 
-These make the first implementation task concrete. Contributors may refine them
-with evidence, provided agreed product behaviour is preserved.
+Contributors may refine these with evidence, provided product behaviour is preserved.
 
 | ID | Working default | Rationale and validation |
 | --- | --- | --- |
-| T01 | TypeScript for API, engine, and contracts, Node 22 for tooling | Shared operation types and native Lambda streaming support. Runtime upgrade must be checked before deployment |
-| T02 | Static browser app, frontend framework open | S3 hosting needs static output. The frontend owner can choose the framework without changing contracts |
-| T03 | Regional REST API, separate gameplay/LLM Lambda handlers, DynamoDB, private S3, Cognito, CloudFront, CloudWatch | Report proposal. Prove regional/runtime streaming, identity, and transactional persistence early |
-| T04 | JSON Schema 2020-12 and OpenAPI 3.1 as language-neutral contracts | This baseline validates them. Choose generated or handwritten runtime types in the first API PR |
-| T05 | Small declarative state/rule language, integer arithmetic | Enables authored JSON without `eval`. See simulation specification. Prototype complexity before expanding operators |
-| T06 | Action-cost time steps, explicit advance action, no wall-clock progression | Fair replay, no continuously running session worker |
-| T07 | Raw cost and outcome components first | Scoring weights are undecided. Do not ship an invented 0–100 formula |
-| T08 | Server-side access grants in prototype | Proves paid-content access control without adding billing integration |
-| T09 | One hosted API with modular code, not microservices | Separate Lambda handlers provide capacity isolation without service sprawl |
-| T10 | LLM proposes mitigation, learner confirms through the action endpoint | Prevents intent errors from making unconfirmed changes |
+| T01 | TypeScript on Node 22 for the API, gateway, and contracts | Shared types and native Lambda streaming. Check the runtime before deployment |
+| T02 | Static browser app, frontend framework open | Static hosting on S3 and CloudFront |
+| T03 | Route 53, CloudFront, S3, Cognito, Regional REST API, Lambda, DynamoDB, ECS on Fargate, ALB, EventBridge Scheduler, CloudWatch | Report deployment. Prove isolation, WebSockets, and streaming early |
+| T04 | JSON Schema 2020-12 and OpenAPI 3.1 contracts | Validated by `npm run check` |
+| T05 | Two containers per task: challenge and monitor | Separates measurement from the learner's root shell |
+| T06 | Gateway is the only component that reaches environment tasks. Lambda stays outside the VPC | Keeps tasks private without a NAT gateway |
+| T07 | Raw score components first | Weights are undecided. Do not ship an invented combined score |
+| T08 | Server-side plan grants in the prototype | Proves entitlement checks without billing integration |
+| T09 | One active session per learner | Bounds cost and Fargate quota use |
+| T10 | Time limit starts at readiness. Pro extension is a platform setting | Start-up latency is not charged to the learner |
+| T11 | Opaque single-use terminal tickets stored as hashes | No shared signing key between API and gateway. Tickets stay out of URLs |
+| T12 | Shell integration markers for command boundaries, input lines as fallback | Standard terminal technique. Tampering affects only the learner's own events |
+| T13 | Case-sensitive regular expressions for evidence and trap detection | Simple and testable. Revisit if authors need more |
 
 ## Open choices and decision timing
 
 | Choice | Needed by | Who resolves it |
 | --- | --- | --- |
-| Frontend framework and chart library | First interface task | Frontend contributors |
-| IaC tool and AWS region | First deployment spike | Cloud contributors |
-| LLM provider/model and limits | First conversational task | LLM contributors using benchmark evidence |
-| Scoring formula | Before learner study | Content and evaluation contributors |
-| Scenario count and language coverage | Content planning, then freeze before pilot | Team based on capacity |
-| Open-source licence | Before accepting outside reuse/contributions | Team |
-| Retention period for account/session/conversation data | Before external pilot | Team and evaluation owner |
-| Real billing, prices, and institutional operations | Beyond core prototype unless explicitly approved | Team |
+| Reference Challenge, from the three drafts. Working default: Wrong upstream port, the smallest stack | 28 September | Team |
+| Monitor implementation language and process supervisor | First image task | Environment contributors |
+| Terminal server in the challenge image | First image task | Environment contributors |
+| Frontend framework, terminal emulator, and chart library | First interface task | Frontend contributors |
+| IaC tool, AWS Region, and domain | First deployment spike | Cloud contributors |
+| LLM provider, model, and limits | First assistant task | LLM contributors, using benchmark evidence |
+| Scoring weights and investigation-effort measure | Before learner study | Content and evaluation contributors |
+| Pro time-limit extension and Free content set | Before pilot | Team |
+| Exercise counts and language coverage | Content planning, frozen before pilot | Team |
+| Warm pool size and schedule | After first performance tests | Cloud contributors |
+| Retention period for recordings, sessions, and conversations | Before external pilot | Team and evaluation owner |
+| Open-source licence | Before accepting outside reuse | Team |
+| Real billing, prices, and institutional operations | Beyond the prototype unless approved | Team |
 
 ## Recording a change
 
-Use [the ADR template](template.md) for a significant technical change. Record
-context, selected option, alternatives, consequences, status, and verification.
-Routine decisions can be a short register update. Do not create a new process
-layer for every small refactor.
+Use [the ADR template](template.md) for a significant technical change. Routine decisions
+can be a short register update.

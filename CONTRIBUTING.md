@@ -7,8 +7,8 @@ contract for the module you will change. Choose one work package from the
 [implementation plan](docs/implementation-plan.md). Record an owner and intended
 files in an issue or the team's task board before overlapping work begins.
 
-The report is under review. Detailed technical proposals are working defaults,
-not evidence that every teammate has approved them. Raise conflicting requirements
+The preliminary report, version 5, is the source of truth. Detailed technical proposals
+are working defaults, not evidence that every teammate has approved them. Raise conflicting requirements
 early and record the outcome.
 
 ## Local checks
@@ -21,7 +21,8 @@ npm run check
 Use your own Git identity. Keep personal and work credentials separate. This
 repository must not contain `.env` files, tokens, provider responses with personal
 data, or cloud state. Use unprivileged development credentials when cloud tests
-are introduced. There are no deployable resources in this baseline.
+are introduced. Challenge image and gateway work will need local Docker. There are no
+deployable resources in this baseline.
 
 ## Pull requests
 
@@ -33,7 +34,7 @@ are introduced. There are no deployable resources in this baseline.
 5. Merge after review and successful checks. Branch protection must be enabled
    separately in GitHub settings. It is not configured by adding this document.
 
-Use clear commits such as `docs: define checkpoint replay semantics`. Do not add
+Use clear commits such as `docs: define session playback semantics`. Do not add
 generated binaries, dependency directories, or AI co-author trailers. The report
 PDF is intentionally tracked as a small review snapshot.
 
@@ -41,15 +42,17 @@ PDF is intentionally tracked as a small review snapshot.
 
 - Product changes update the PRD and decision register.
 - API changes update OpenAPI and examples, with compatibility notes.
-- Scenario changes produce a new immutable content version after publication.
-- Engine changes preserve old replay behaviour or introduce a new engine version.
-- A metric or action formula needs an example trace that demonstrates its effect.
+- Challenge image, monitor, or manifest changes produce a new immutable Challenge
+  version with pinned digests after publication.
+- A Challenge change needs scenario harness evidence: fault at start, reference fix,
+  and each trap.
+- Gateway protocol changes update the public schemas, examples, and `docs/api.md`.
 - A published exercise needs source attribution and an independent team review.
 
 Use tests for meaningful behaviour: ordering, retries, hidden evidence, state
-transitions, and content consistency. Do not add tests that merely restate a type
-definition. Existing repository checks are the baseline, not a substitute for
-future engine, API, UI, and cloud integration tests.
+transitions, isolation, and content consistency. Do not add tests that merely restate
+a type definition. Existing repository checks are the baseline, not a substitute for
+future image, monitor, gateway, API, UI, and cloud integration tests.
 
 ## Completion criteria
 

@@ -1,14 +1,14 @@
 # Web application boundary
 
 Status: not implemented. Follow [design](../../docs/design.md) and
-[API](../../docs/api.md). The frontend framework is open. The output must support
-static hosting unless the deployment decision is explicitly revised.
+[API](../../docs/api.md). The frontend framework, terminal emulator, and chart library
+are open. The output must support static hosting.
 
-Own navigation, evidence views, charts, accessible action controls, saved progress,
-debrief, replay comparison, and optional chat. Consume public contracts only.
-Never import private content or calculate authoritative transitions and scores.
+Own navigation, plan display, Learn, the Challenge workspace with terminal, dashboard,
+and timeline, hints, the optional assistant, debrief, playback, retry, and Code Review.
+Consume public contracts only. Never import files from `content/` or calculate recovery,
+evidence, or scores.
 
-First task: build the Challenge workspace against the contract examples, then
-connect it to the local API. Include loading, retry, stale-version, terminal, and
-provider-failure states. Add the actual development command when a runnable app
-exists. Do not add a fake start command to this baseline.
+First task: build the workspace against the contract examples, including provisioning,
+reconnecting, replaced, outcome, and provider-failure states. Then connect it to the
+local gateway and API. Do not add a fake start command before a runnable app exists.

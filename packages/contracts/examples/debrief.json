@@ -1,0 +1,55 @@
+{
+  "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "challenge": {
+    "id": "wrong-upstream-port",
+    "version": "0.1.0",
+    "title": "Storefront returns 502",
+    "tier": "easy",
+    "category": "networking"
+  },
+  "attempt": { "kind": "first", "number": 1 },
+  "outcome": "resolved",
+  "rootCause": "The application moved to port 8080, but nginx still proxies to 127.0.0.1:8081 where nothing listens, so every proxied request fails with 502 Bad Gateway.",
+  "causalChain": [
+    "An application change moved the service from port 8081 to port 8080.",
+    "The nginx upstream still targets port 8081.",
+    "Connections to port 8081 are refused, and nginx answers every proxied request with 502 Bad Gateway."
+  ],
+  "keyEvidence": [
+    { "id": "proxy-error-log", "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.", "found": true, "commandSeq": 2 },
+    { "id": "listening-sockets", "description": "The socket list shows the application listening on port 8080, not 8081.", "found": true, "commandSeq": 3 },
+    { "id": "proxy-config", "description": "The nginx configuration sets proxy_pass to port 8081.", "found": true, "commandSeq": 4 }
+  ],
+  "harmfulActions": [
+    {
+      "id": "restart-invalid-config",
+      "description": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections.",
+      "commandSeq": 5
+    }
+  ],
+  "outages": [
+    {
+      "label": "Storefront proxy stopped accepting connections",
+      "startedAt": "2026-10-05T02:04:22Z",
+      "endedAt": "2026-10-05T02:06:02Z",
+      "afterCommandSeq": 5
+    }
+  ],
+  "recommendedRecovery": [
+    "Read the nginx error log to identify the failing upstream address.",
+    "Confirm which port the application listens on with ss -ltnp.",
+    "Change proxy_pass to port 8080 and run nginx -t.",
+    "Apply the change with nginx -s reload and watch the error rate fall."
+  ],
+  "sources": [],
+  "score": {
+    "timeToRecoverySeconds": 321,
+    "totalRequests": 884,
+    "failedRequests": 640,
+    "commandCount": 9,
+    "selfInflictedOutages": 1,
+    "outageSeconds": 100
+  },
+  "assisted": false,
+  "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 }
+}

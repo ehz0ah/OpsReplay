@@ -1,129 +1,194 @@
 {
-  "Debrief": {
-    "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    "rootCause": "The faulty checkout deployment leaks database connections.",
-    "causalChain": [
-      "The new deployment leaves acquired connections open.",
-      "Connection demand reaches shared database capacity.",
-      "Checkout and payment requests fail and queued work grows."
-    ],
-    "foundEvidence": [
-      "checkout-alert"
-    ],
-    "missedEvidence": [
-      "db-connections",
-      "checkout-deployments",
-      "checkout-diff"
-    ],
-    "actionFeedback": [
-      "An early rollback closed leaked connections before shared capacity was exhausted."
-    ],
-    "recommendedPath": [
-      "Inspect database connections.",
-      "Inspect deployment history and the discovered diff.",
-      "Roll back the faulty deployment and observe recovery."
-    ],
-    "sources": [],
-    "costs": {
-      "elapsedTicks": 1,
-      "investigationTicks": 0,
-      "impactUnits": 0
-    },
-    "checkpoints": [
-      {
-        "id": "start",
-        "tick": 0,
-        "label": "Initial alert"
-      }
-    ]
-  },
-  "Comparison": {
-    "checkpointId": "start",
-    "checkpointTick": 0,
-    "informedPractice": true,
-    "original": {
-      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      "status": "resolved",
-      "observedTicks": 6,
-      "recoveryTicks": 6,
-      "impactUnits": 200
-    },
-    "replay": {
-      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      "status": "resolved",
-      "observedTicks": 1,
-      "recoveryTicks": 1,
-      "impactUnits": 0
-    },
-    "explanations": [
-      "Scaling first accumulated queued work. An immediate rollback avoided the overload."
-    ]
-  },
-  "Turn": {
-    "id": "11111111-1111-4111-8111-111111111111",
-    "requestId": "11111111-1111-4111-8111-111111111111",
-    "status": "completed",
-    "inputVersion": 0,
-    "text": "The proposed rollback targets checkout-api version 2.6.0. Confirm it to execute.",
-    "actionResults": [],
-    "proposals": [
-      {
-        "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        "expectedVersion": 0,
-        "command": {
-          "tool": "rollback_deployment",
-          "arguments": {
-            "service": "checkout-api",
-            "targetVersion": "2.6.0"
-          }
-        },
-        "expiresAt": "2026-09-21T13:00:00Z"
-      }
-    ]
-  },
-  "StreamEvent": {
-    "type": "turn_started",
-    "turnId": "11111111-1111-4111-8111-111111111111",
-    "sequence": 0,
-    "sessionVersion": 0,
-    "data": {
-      "requestId": "11111111-1111-4111-8111-111111111111"
+  "Account": [
+    {
+      "plan": "free",
+      "planSource": "default",
+      "planExpiresAt": null,
+      "activeSessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     }
-  },
-  "ReviewExercise": {
-    "id": "synthetic-review",
-    "version": "0.1.0",
-    "title": "Review a connection cleanup change",
-    "difficulty": "easy",
-    "language": "pseudocode",
-    "context": "Check whether a request releases resources.",
-    "lines": [
-      {
-        "id": "checkout-1",
-        "file": "checkout.pseudo",
-        "line": 1,
-        "kind": "removed",
-        "text": "releaseConnection(connection)"
+  ],
+  "SessionResponse": [
+    {
+      "session": {
+        "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "challenge": {
+          "id": "wrong-upstream-port",
+          "version": "0.1.0",
+          "title": "Storefront returns 502",
+          "tier": "easy",
+          "category": "networking"
+        },
+        "attempt": { "kind": "first", "number": 1 },
+        "status": "provisioning",
+        "statusReason": null,
+        "alert": {
+          "title": "Checkout error rate above 90%",
+          "summary": "Synthetic checkout checks have returned 502 Bad Gateway from the storefront since the latest application deploy.",
+          "severity": "critical"
+        },
+        "dashboard": [
+          { "id": "request_rate", "label": "Requests", "unit": "requests_per_second" },
+          { "id": "error_rate", "label": "Errors", "unit": "percent" },
+          { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds" },
+          { "id": "cpu", "label": "CPU", "unit": "percent" },
+          { "id": "memory", "label": "Memory", "unit": "mebibytes" }
+        ],
+        "recovery": null,
+        "timeLimitSeconds": 1200,
+        "createdAt": "2026-10-05T02:00:00Z",
+        "readyAt": null,
+        "endsAt": null,
+        "endedAt": null,
+        "hints": { "released": [], "remaining": 2, "nextAvailableAt": null },
+        "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 },
+        "debriefAvailable": false
+      },
+      "replayed": false
+    }
+  ],
+  "SessionPage": [
+    {
+      "items": [
+        {
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "challenge": {
+            "id": "wrong-upstream-port",
+            "version": "0.1.0",
+            "title": "Storefront returns 502",
+            "tier": "easy",
+            "category": "networking"
+          },
+          "attempt": { "kind": "first", "number": 1 },
+          "status": "resolved",
+          "createdAt": "2026-10-05T02:00:00Z",
+          "endedAt": "2026-10-05T02:07:03Z"
+        }
+      ],
+      "nextCursor": null
+    }
+  ],
+  "TerminalTicket": [
+    {
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "ticket": "q7Xo2m3ZkVdQ8yB1tNcR5wLpE0sHaUfJiGvK4bYx9Tz",
+      "url": "wss://terminal.opsreplay.example/v1/terminal",
+      "expiresAt": "2026-10-05T02:01:02Z"
+    }
+  ],
+  "HintResponse": [
+    {
+      "hint": {
+        "id": "read-proxy-error",
+        "text": "The proxy is answering, so its error log should say which upstream address it is trying to reach.",
+        "releasedAt": "2026-10-05T02:04:00Z"
+      },
+      "remaining": 1,
+      "replayed": false
+    }
+  ],
+  "Turn": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "status": "completed",
+      "text": "A 502 from nginx means the proxy is running but could not get a valid response from its upstream. The error log records the upstream address for each failed request, so it is the quickest way to see where nginx is trying to connect.",
+      "proposals": [
+        {
+          "id": "77777777-7777-4777-8777-777777777777",
+          "command": "tail -n 20 /var/log/nginx/error.log",
+          "rationale": "Shows recent proxy errors, including the upstream address nginx is connecting to.",
+          "caution": false,
+          "status": "pending",
+          "expiresAt": "2026-10-05T02:12:00Z"
+        }
+      ]
+    }
+  ],
+  "StreamEvent": [
+    {
+      "type": "turn_started",
+      "turnId": "55555555-5555-4555-8555-555555555555",
+      "sequence": 0,
+      "data": { "requestId": "55555555-5555-4555-8555-555555555555" }
+    },
+    {
+      "type": "text_delta",
+      "turnId": "55555555-5555-4555-8555-555555555555",
+      "sequence": 1,
+      "data": { "text": "A 502 from nginx means the proxy is running but could not get a valid response from its upstream." }
+    },
+    {
+      "type": "proposal",
+      "turnId": "55555555-5555-4555-8555-555555555555",
+      "sequence": 2,
+      "data": {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "command": "tail -n 20 /var/log/nginx/error.log",
+        "rationale": "Shows recent proxy errors, including the upstream address nginx is connecting to.",
+        "caution": false,
+        "status": "pending",
+        "expiresAt": "2026-10-05T02:12:00Z"
       }
-    ]
-  },
-  "ReviewSubmission": {
-    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    "exerciseId": "synthetic-review",
-    "contentVersion": "0.1.0",
-    "replayed": false,
-    "informedPractice": false,
-    "concerns": [
-      {
-        "lineId": "checkout-1",
-        "text": "The connection may remain open."
+    },
+    {
+      "type": "turn_failed",
+      "turnId": "88888888-8888-4888-8888-888888888888",
+      "sequence": 1,
+      "data": {
+        "code": "PROVIDER_FAILED",
+        "message": "The assistant is unavailable. The terminal and dashboard are unaffected.",
+        "requestId": "88888888-8888-4888-8888-888888888888"
       }
-    ],
-    "findings": [
-      {
-        "lineId": "checkout-1",
-        "text": "Keep connection cleanup on both success and failure paths."
-      }
-    ]
-  }
+    }
+  ],
+  "LearnEntry": [
+    {
+      "id": "example-stale-dns",
+      "version": "0.1.0",
+      "title": "Example entry: a stale DNS record after a migration",
+      "category": "dns",
+      "plan": "free",
+      "summary": "Synthetic wire-shape example. A service moved, its DNS record did not, and clients that cached the old answer kept failing after the record was fixed.",
+      "lessons": [
+        "Clients cache DNS answers for different lengths of time.",
+        "Correcting a record does not update answers already cached."
+      ],
+      "sources": [
+        { "title": "Placeholder incident report", "url": "https://status.example.com/incidents/stale-dns" }
+      ],
+      "relatedExercises": [
+        { "mode": "challenge", "id": "stale-dns-record", "title": "Checkout API unreachable after migration" }
+      ],
+      "html": "<h2>What happened</h2><p>Synthetic example body rendered from Markdown at build time.</p>"
+    }
+  ],
+  "ReviewSubmissionPage": [
+    {
+      "items": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "exerciseId": "pool-settings",
+          "exerciseVersion": "0.1.0",
+          "submittedAt": "2026-10-06T09:15:00Z",
+          "answerInformed": false,
+          "found": 2,
+          "missed": 1
+        }
+      ],
+      "nextCursor": null
+    }
+  ],
+  "Error": [
+    {
+      "code": "ACTIVE_SESSION_EXISTS",
+      "message": "Finish or end your current Challenge before starting another.",
+      "requestId": "44444444-4444-4444-8444-444444444444",
+      "activeSessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    {
+      "code": "CAPACITY_UNAVAILABLE",
+      "message": "No environment capacity is available. Try again shortly.",
+      "requestId": "99999999-9999-4999-8999-999999999999",
+      "retryAfterSeconds": 30
+    }
+  ]
 }

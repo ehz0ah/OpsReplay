@@ -1,0 +1,172 @@
+{
+  "schemaVersion": "0.2",
+  "id": "connection-exhaustion",
+  "version": "0.1.0",
+  "title": "Checkout slows to a halt",
+  "summary": "Checkout latency climbs until requests time out, and the database is close to its connection limit. Find the cause before the obvious fix breaks something else.",
+  "status": "draft",
+  "tier": "hard",
+  "category": "database",
+  "plan": "pro",
+  "learningObjectives": [
+    "Relate application worker and pool settings to the database connection limit.",
+    "Distinguish a capacity symptom from the slow query that causes it.",
+    "Predict how adding workers affects other clients of a shared database."
+  ],
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Draft written to prove the environment contract. The pool exhaustion pattern is common, but this version is not adapted from a specific incident report.",
+    "sources": []
+  },
+  "environment": {
+    "image": { "repository": "opsreplay/challenge-connection-exhaustion", "digest": null },
+    "monitorImage": { "repository": "opsreplay/monitor", "digest": null },
+    "cpu": 2048,
+    "memoryMiB": 4096,
+    "timeLimitMinutes": 30,
+    "services": [
+      {
+        "name": "nginx",
+        "kind": "proxy",
+        "listens": ["0.0.0.0:80"],
+        "configFiles": ["/etc/nginx/nginx.conf"],
+        "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
+      },
+      {
+        "name": "shop",
+        "kind": "web",
+        "listens": ["127.0.0.1:8080"],
+        "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
+        "logFiles": ["/var/log/shop/app.log"]
+      },
+      {
+        "name": "jobs",
+        "kind": "worker",
+        "listens": ["127.0.0.1:9090"],
+        "configFiles": ["/etc/shop/worker.env"],
+        "logFiles": ["/var/log/shop/worker.log"]
+      },
+      {
+        "name": "postgres",
+        "kind": "database",
+        "listens": ["127.0.0.1:5432"],
+        "configFiles": ["/etc/postgresql/postgresql.conf"],
+        "logFiles": ["/var/log/postgresql/postgresql.log"]
+      }
+    ]
+  },
+  "traffic": {
+    "journeys": [
+      {
+        "id": "checkout",
+        "label": "Browse order history and check out",
+        "ratePerSecond": 4,
+        "steps": [
+          { "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
+          { "method": "GET", "url": "http://127.0.0.1:80/api/orders?customer=synthetic", "expectStatus": [200], "timeoutMs": 2000 },
+          { "method": "POST", "url": "http://127.0.0.1:80/api/checkout", "expectStatus": [201], "timeoutMs": 3000 }
+        ]
+      }
+    ]
+  },
+  "dashboard": [
+    { "id": "request_rate", "label": "Requests", "unit": "requests_per_second", "source": "request_rate" },
+    { "id": "error_rate", "label": "Errors", "unit": "percent", "source": "error_rate" },
+    { "id": "latency_p50", "label": "Latency p50", "unit": "milliseconds", "source": "latency_p50" },
+    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" },
+    { "id": "cpu", "label": "CPU", "unit": "percent", "source": "cpu" },
+    { "id": "memory", "label": "Memory", "unit": "mebibytes", "source": "memory" }
+  ],
+  "alert": {
+    "title": "Checkout latency p95 above 2 seconds",
+    "summary": "Checkout latency has risen steadily and some requests time out. Database connections are near their configured limit.",
+    "severity": "warning"
+  },
+  "validators": [
+    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 }
+  ],
+  "healthProbes": [
+    {
+      "id": "job-worker",
+      "publicLabel": "Background job worker lost its database connection",
+      "check": { "kind": "http", "method": "GET", "url": "http://127.0.0.1:9090/healthz", "expectStatus": [200], "timeoutMs": 2000 },
+      "graceSeconds": 10
+    }
+  ],
+  "plantedFault": {
+    "summary": "orders.customer_id has no index, so the order history query scans the table. Four Gunicorn workers with SQLAlchemy pool_size 10 and max_overflow 10 can open 80 connections, and the job worker uses 10 more, against PostgreSQL max_connections 100.",
+    "files": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env", "/etc/postgresql/postgresql.conf"]
+  },
+  "referenceFix": {
+    "description": "Create the missing index without blocking writes, then watch latency and connection use fall.",
+    "commands": [
+      "psql -U postgres -d shop -c 'CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_customer_id_idx ON orders (customer_id);'"
+    ]
+  },
+  "traps": [
+    {
+      "id": "add-workers",
+      "description": "Raising the Gunicorn worker count multiplies pooled connections past max_connections, so the job worker sharing the database can no longer connect.",
+      "commands": [
+        "sed -i 's/^workers = 4$/workers = 8/' /etc/shop/gunicorn.conf.py",
+        "service shop restart"
+      ],
+      "probe": "job-worker",
+      "commandPatterns": [
+        "^\\s*(sudo\\s+)?(service\\s+shop\\s+(restart|reload)|systemctl\\s+(restart|reload)\\s+shop)\\b",
+        "^\\s*(sudo\\s+)?kill\\s+-(HUP|TTIN|1)\\b",
+        "\\bgunicorn\\b.*(\\s-w\\s*[0-9]+|--workers)"
+      ],
+      "withinSeconds": 90
+    }
+  ],
+  "hints": [
+    {
+      "id": "connection-activity",
+      "text": "Check how many database connections are open and what they are waiting on, for example in pg_stat_activity.",
+      "minElapsedMinutes": 5
+    },
+    {
+      "id": "query-plan",
+      "text": "Look at the query plan for the slowest request path before changing capacity.",
+      "minElapsedMinutes": 10
+    }
+  ],
+  "debrief": {
+    "rootCause": "A missing index on orders.customer_id makes the order history query scan the table. Slow queries hold pooled connections longer, and workers multiplied by pool size already approach PostgreSQL max_connections, so requests time out waiting for a connection.",
+    "causalChain": [
+      "The order history query has no usable index and scans the orders table.",
+      "Each slow query holds a pooled connection for longer.",
+      "The application pools approach max_connections and requests wait for a free connection until they time out.",
+      "Adding workers raises connection demand past the limit and starves the job worker that shares the database."
+    ],
+    "keyEvidence": [
+      {
+        "id": "connection-activity",
+        "description": "pg_stat_activity shows connections close to max_connections, many active on the order history query.",
+        "commandPatterns": ["pg_stat_activity"]
+      },
+      {
+        "id": "query-plan",
+        "description": "The query plan for the order history query shows a sequential scan on orders.",
+        "commandPatterns": ["(EXPLAIN|explain|Explain)\\b", "\\\\d\\+?\\s+orders\\b"]
+      },
+      {
+        "id": "pool-timeouts",
+        "description": "The application log shows SQLAlchemy QueuePool timeouts.",
+        "commandPatterns": ["/var/log/shop/app\\.log"]
+      },
+      {
+        "id": "pool-configuration",
+        "description": "Worker and pool settings show the connection budget: 4 workers with pool_size 10 and max_overflow 10.",
+        "commandPatterns": ["/etc/shop/gunicorn\\.conf\\.py", "/etc/shop/shop\\.env"]
+      }
+    ],
+    "recommendedRecovery": [
+      "Inspect pg_stat_activity to see connection use and the queries holding connections.",
+      "Run EXPLAIN on the order history query and identify the sequential scan.",
+      "Create the index with CREATE INDEX CONCURRENTLY so writes continue.",
+      "Keep workers multiplied by pool size within the database connection budget."
+    ]
+  }
+}

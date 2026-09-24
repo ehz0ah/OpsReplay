@@ -1,5 +1,7 @@
 # Learn content
 
-Status: no published entries yet. Create original summaries, lessons, and links to
-official sources using the [authoring guide](../../docs/content-authoring.md).
-All Learn content is free. Avoid copied articles and unlicensed images.
+Status: no published entries yet. Each entry is Markdown with metadata for title,
+category, access plan, summary, lessons, official source links, and related exercises.
+A build step renders free entries as static pages and keeps Pro entries in private S3.
+Follow the [authoring guide](../../docs/content-authoring.md). Avoid copied articles and
+unlicensed images.

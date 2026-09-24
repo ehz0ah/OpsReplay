@@ -1,9 +1,16 @@
 # Challenge content
 
-The connection-leak example is synthetic, draft, and intended for contract
-validation. It is not a published scenario reconstructed from a named company.
+Each directory holds one Challenge manifest. The image build context will live beside
+it. All three manifests are synthetic drafts with no image digests, taken from the
+preliminary report's initial Challenges:
 
-Follow the [simulation contract](../../docs/simulation.md) and
-[authoring guide](../../docs/content-authoring.md). Private definitions may be
-available in this public source repository but must not be shipped as browser
-assets or exposed by runtime APIs.
+| Challenge | Tier | Plan |
+| --- | --- | --- |
+| [Wrong upstream port](wrong-upstream-port/challenge.json) | Easy | Free |
+| [Stale DNS record](stale-dns-record/challenge.json) | Medium | Pro |
+| [Connection exhaustion](connection-exhaustion/challenge.json) | Hard | Pro |
+
+Follow the [runtime contract](../../docs/challenges.md) and the
+[authoring guide](../../docs/content-authoring.md). Manifests are visible in this public
+repository but must never be shipped as browser assets, returned by the API, or sent to
+the assistant.

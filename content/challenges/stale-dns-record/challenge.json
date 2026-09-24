@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "0.2",
+  "id": "stale-dns-record",
+  "version": "0.1.0",
+  "title": "Checkout API unreachable after migration",
+  "summary": "The storefront loads, but every checkout fails after the API moved to a new address. Find where the old address survives and recover without taking the site offline.",
+  "status": "draft",
+  "tier": "medium",
+  "category": "dns",
+  "plan": "pro",
+  "learningObjectives": [
+    "Follow a failing request from the proxy through name resolution to the service address.",
+    "Explain why nginx keeps using an address it resolved at startup.",
+    "Order DNS and proxy changes so that a fix does not create a larger outage."
+  ],
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Draft written to prove the environment contract. The stale record and start-up resolution pattern is common, but this version is not adapted from a specific incident report.",
+    "sources": []
+  },
+  "environment": {
+    "image": { "repository": "opsreplay/challenge-stale-dns-record", "digest": null },
+    "monitorImage": { "repository": "opsreplay/monitor", "digest": null },
+    "cpu": 1024,
+    "memoryMiB": 2048,
+    "timeLimitMinutes": 25,
+    "services": [
+      {
+        "name": "nginx",
+        "kind": "proxy",
+        "listens": ["0.0.0.0:80"],
+        "configFiles": ["/etc/nginx/nginx.conf"],
+        "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
+      },
+      {
+        "name": "shop-api",
+        "kind": "api",
+        "listens": ["127.0.0.2:8080"],
+        "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
+        "logFiles": ["/var/log/shop/api.log"]
+      },
+      {
+        "name": "coredns",
+        "kind": "dns",
+        "listens": ["127.0.0.1:53"],
+        "configFiles": ["/etc/coredns/Corefile", "/etc/coredns/internal.db"],
+        "logFiles": ["/var/log/coredns/coredns.log"]
+      },
+      {
+        "name": "postgres",
+        "kind": "database",
+        "listens": ["127.0.0.1:5432"],
+        "configFiles": ["/etc/postgresql/postgresql.conf"],
+        "logFiles": ["/var/log/postgresql/postgresql.log"]
+      }
+    ]
+  },
+  "traffic": {
+    "journeys": [
+      {
+        "id": "checkout",
+        "label": "Browse and check out",
+        "ratePerSecond": 2,
+        "steps": [
+          { "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
+          { "method": "POST", "url": "http://127.0.0.1:80/api/checkout", "expectStatus": [201], "timeoutMs": 3000 }
+        ]
+      }
+    ]
+  },
+  "dashboard": [
+    { "id": "request_rate", "label": "Requests", "unit": "requests_per_second", "source": "request_rate" },
+    { "id": "error_rate", "label": "Errors", "unit": "percent", "source": "error_rate" },
+    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" },
+    { "id": "cpu", "label": "CPU", "unit": "percent", "source": "cpu" },
+    { "id": "memory", "label": "Memory", "unit": "mebibytes", "source": "memory" }
+  ],
+  "alert": {
+    "title": "Checkout requests failing",
+    "summary": "Checkout requests return 502 Bad Gateway since the API migration, while the storefront home page still loads.",
+    "severity": "critical"
+  },
+  "validators": [
+    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 }
+  ],
+  "healthProbes": [
+    {
+      "id": "storefront-home",
+      "publicLabel": "Storefront home page stopped responding",
+      "check": { "kind": "http", "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
+      "graceSeconds": 5
+    }
+  ],
+  "plantedFault": {
+    "summary": "The CoreDNS zone maps api.internal to the retired address 127.0.0.3. The API now listens on 127.0.0.2, and nginx cached the retired address when it started.",
+    "files": ["/etc/coredns/internal.db"]
+  },
+  "referenceFix": {
+    "description": "Correct the api.internal record and serial, restart CoreDNS with the valid zone, then reload nginx so it resolves the name again.",
+    "commands": [
+      "sed -i -e 's/127\\.0\\.0\\.3/127.0.0.2/' -e 's/2026090101 ; serial/2026090102 ; serial/' /etc/coredns/internal.db",
+      "service coredns restart",
+      "nginx -t",
+      "nginx -s reload"
+    ]
+  },
+  "traps": [
+    {
+      "id": "restart-proxy-while-zone-broken",
+      "description": "Restarting nginx while the zone fails to load leaves api.internal unresolvable, so nginx cannot start and the whole site goes offline.",
+      "commands": [
+        "sed -i 's/127\\.0\\.0\\.3/127.0.0.2 )/' /etc/coredns/internal.db",
+        "service coredns restart",
+        "service nginx restart"
+      ],
+      "probe": "storefront-home",
+      "commandPatterns": [
+        "^\\s*(sudo\\s+)?(service\\s+nginx\\s+(restart|stop)|systemctl\\s+(restart|stop)\\s+nginx|nginx\\s+-s\\s+(stop|quit))\\b",
+        "^\\s*(sudo\\s+)?(pkill|killall)\\b.*\\bnginx\\b"
+      ],
+      "withinSeconds": 30,
+      "safeAlternative": {
+        "description": "A reload while the name cannot be resolved fails and keeps the running workers, so the storefront stays up while DNS is repaired.",
+        "commands": [
+          "sed -i 's/127\\.0\\.0\\.3/127.0.0.2 )/' /etc/coredns/internal.db",
+          "service coredns restart",
+          "nginx -s reload"
+        ]
+      }
+    }
+  ],
+  "hints": [
+    {
+      "id": "upstream-address",
+      "text": "The nginx error log names the upstream address it connects to. Check what api.internal resolves to now.",
+      "minElapsedMinutes": 4
+    },
+    {
+      "id": "startup-resolution",
+      "text": "nginx resolves upstream host names when it starts or reloads, not on every request.",
+      "minElapsedMinutes": 8
+    }
+  ],
+  "debrief": {
+    "rootCause": "The API moved to 127.0.0.2, but the CoreDNS zone still maps api.internal to the retired address 127.0.0.3. nginx resolved the name at startup and keeps using that address until it reloads.",
+    "causalChain": [
+      "The API was migrated to a new address without updating its DNS record.",
+      "nginx resolved api.internal at startup and cached the retired address.",
+      "Connections to the retired address are refused, so checkout requests fail with 502 Bad Gateway.",
+      "Correcting the record alone changes nothing until nginx resolves the name again."
+    ],
+    "keyEvidence": [
+      {
+        "id": "proxy-upstream-address",
+        "description": "The nginx error log shows refused connections to 127.0.0.3:8080.",
+        "commandPatterns": ["/var/log/nginx/error\\.log"]
+      },
+      {
+        "id": "dns-answer",
+        "description": "A DNS query shows api.internal resolving to the retired address 127.0.0.3.",
+        "commandPatterns": ["^\\s*(dig|nslookup|host|getent)\\b.*api\\.internal"]
+      },
+      {
+        "id": "api-listener",
+        "description": "The socket list shows the API listening on 127.0.0.2:8080.",
+        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"]
+      },
+      {
+        "id": "zone-file",
+        "description": "The zone file still contains the retired A record for api.internal.",
+        "commandPatterns": ["/etc/coredns/internal\\.db"]
+      }
+    ],
+    "recommendedRecovery": [
+      "Read the nginx error log to find the upstream address.",
+      "Compare the DNS answer for api.internal with the address the API listens on.",
+      "Correct the record, update the serial, and confirm the new answer with dig.",
+      "Validate with nginx -t and apply with nginx -s reload rather than a restart."
+    ]
+  }
+}

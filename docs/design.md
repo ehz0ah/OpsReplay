@@ -1,73 +1,94 @@
 # Interface design contract
 
-Status: functional design. Framework, visual identity, chart library, and exact
-layout belong to the frontend team. This file fixes behaviour, not a mockup.
+Status: functional design. Framework, terminal emulator library, visual identity, chart
+library, and exact layout belong to the frontend team. This file fixes behaviour, not a
+mockup.
 
-## Navigation
+## Navigation and plans
 
-The primary navigation has Learn, Challenges, and Code Review. Practice catalogue
-entries show title, difficulty, domain, and access. Code Review also shows language.
-Only filters represented by published content appear. Free Learn remains usable
-without purchasing or starting an incident.
+The primary navigation has Learn, Challenges, and Code Review. Catalogue entries show
+title, tier, category, and plan. Code Review entries also show language. Only filters
+represented by published content appear. Pro entries stay visible on the Free plan with
+a clear locked state. Free Learn pages work without an account.
+
+## Starting a Challenge
+
+Starting a Challenge shows a provisioning state while the environment starts, which can
+take tens of seconds. Say that the clock starts only when the terminal is ready. If
+capacity is unavailable, show the retry delay and keep the catalogue usable. If the
+learner already has an active attempt, offer to resume or end it.
 
 ## Challenge workspace
 
-The workspace presents incident identity, current simulated time, visible service
-status, monitoring, resource exploration, an event timeline, and action controls.
-An optional assistant panel shares the same workspace. A learner must be able to
-complete the Challenge with that panel closed.
+The workspace presents the alert, time remaining, the aggregate recovery indicator, a
+terminal, a dashboard, and a timeline. The terminal is the primary control. There is no
+action menu. Hints and an optional assistant panel share the workspace. A learner must
+be able to complete the Challenge with the assistant closed.
 
-Use one clock and one session version. Place action markers on metric charts.
-Evidence panels show when the observation was made. Keep older observations
-available for comparison and clearly distinguish them from current status.
-Refreshing the page restores the session without advancing incident time.
-
-Separate investigation controls from mitigation. Show the target, requested
-parameters, and simulated time cost before a mitigation is confirmed. Do not show
-its hidden result as a tooltip. No repeated notification overlays that interrupt
-investigation. New events appear in the timeline with a restrained indicator.
+- The dashboard shows request rate, errors, latency, and resource use. Commands appear
+  as markers on the charts, and selecting a marker shows the command and its output
+  excerpt.
+- The timeline lists commands, outages, and recovery signals in time order.
+- The recovery indicator shows failing, sustaining with progress, or met. It never names
+  individual validators.
+- Time is real. Say so plainly: traffic and failures continue while the learner reads,
+  waits for the assistant, or is disconnected.
+- Releasing a hint needs a confirmation that it is recorded as assistance.
+- Ending an attempt needs a confirmation that it cannot be resumed.
 
 ## Interaction states
 
 | State | Behaviour |
 | --- | --- |
-| Loading | Preserve layout, show progress, disable only the pending operation |
-| Action pending | Retain request ID, prevent duplicate clicks, show pending state |
-| Network outcome unknown | Retry the same request or read its saved result, never issue a new mitigation automatically |
-| Version conflict | Refresh current state and ask the learner to reconsider the stale action |
-| Provider failure | Show saved deterministic output and keep direct controls available |
-| Terminal session | Freeze actions, open debrief, make eligible replay choices available |
-| Replay | Show the parent checkpoint and an informed-practice label |
-| Comparison | Align chart time and cost deltas to the shared checkpoint |
+| Provisioning | Show progress, allow leaving the page, poll with backoff |
+| Ready | Connect the terminal with a fresh ticket and restore the existing shell |
+| Reconnecting | Keep the last dashboard values visible, say that the clock is still running, reconnect with a new ticket |
+| Replaced | The attempt was opened elsewhere. Offer to take it back here |
+| Assistant proposal | Show the command, rationale, and caution flag. Run it only when the learner confirms. Show `TERMINAL_BUSY` as a prompt to wait for the shell |
+| Provider failure | Show the error in the assistant panel only. Terminal, dashboard, and hints are unaffected |
+| Outcome | Stop terminal input, show the outcome and reason, open the debrief when it is ready |
+| Debrief pending | Show progress and retry after the returned delay |
 
-## Debrief and comparison
+Never issue a new start, end, or hint request automatically after an unknown network
+outcome. Repeat the same request ID or read the current state.
 
-The debrief follows the learner's path, connects evidence to the causal chain, and
-explains temporary, harmful, and effective mitigations. Include important missed
-evidence and official incident inspiration. Keep authored explanations available
-without an LLM.
+## Debrief, playback, and retry
 
-Replay starts from an eligible saved decision point. It does not overwrite the
-first attempt or present a better informed score as a first-attempt improvement.
-Comparison shows status, recovery duration when achieved, cumulative impact, and
-the actions that caused divergence. Failed paths remain visible as failed paths.
+The debrief follows the learner's timeline. It connects found and missed evidence to the
+root cause, shows each harmful action beside the outage it caused and its effect on the
+metrics, and gives the recommended recovery and sources. Score components are shown as
+raw values. Do not invent a combined grade.
+
+Playback is a timeline with a scrubber and speed control. The terminal recording plays
+in step with the metric charts and, at each command, the captured configuration diffs
+and new log lines. Key evidence, harmful actions, outages, and the start of recovery are
+highlighted and can be reached from a list. Playback never starts an environment.
+
+Retry is labelled "Retry in a fresh environment". Retries are labelled separately in
+history and progress. The first attempt and its score never change, and a retry result
+is never presented as an improvement to the first attempt.
 
 ## Code Review
 
-Show context and a readable diff with stable line anchors. Learners mark suspicious
-lines and explain concerns. After submission, show authored findings and compare
-locations and explanations. Do not display a false objective grade for free text.
+Show the context and a readable diff with stable anchors for file, side, and line.
+Learners flag lines with the mouse or keyboard and write a concern for each. Submission
+is final for that submission. The results show each finding as found or missed, with its
+explanation beside the learner's concerns. Unmatched flags appear neutrally, without a
+penalty. Never show a grade for written concerns. An assistant panel can explain the
+released findings after submission.
 
 ## Accessibility and responsive behaviour
 
-All actions work with a keyboard and have visible focus. Labels and status text
-must not depend on colour alone. Charts provide units, legends, and a text/table
-alternative. Diffs and logs support horizontal scrolling without shrinking text
-to fit. On narrow screens, switch panels through labelled tabs and preserve context.
-Avoid interface motion that interferes with reading or changes logical time.
+All controls work with a keyboard and have visible focus. The terminal offers a
+screen-reader mode and a documented shortcut that moves focus out of the terminal
+without sending keys to the shell. Labels and status never depend on colour alone.
+Charts give units, legends, and a table alternative. Diffs, logs, and terminal output
+scroll horizontally rather than shrinking text. On narrow screens, switch between
+terminal, dashboard, and timeline with labelled tabs and preserve context. Respect
+reduced-motion preferences.
 
 ## Frontend data boundary
 
-Consume the public contract only. Do not import `content/challenges` or private
-answer assets. Do not calculate authoritative impact, success, or state transitions
-in browser code. A local visual estimate must never replace server results.
+Consume the public contract only. Never import Challenge manifests, review bundles, or
+other files from `content/`. Do not calculate recovery, outcomes, evidence, or scores in
+browser code. Displayed recovery state comes from the gateway and the API.

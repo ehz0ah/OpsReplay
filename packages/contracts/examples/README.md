@@ -1,12 +1,16 @@
 # Contract examples
 
-These JSON examples are synthetic fixtures for schema validation and frontend
-integration. They are not captured production sessions. The initial session
-reveals only the initial alert and visible status, not private state or answers.
+These JSON examples are synthetic fixtures for schema validation and frontend work. They
+are not captured sessions.
 
-The action example requests a database metric. The response is the observation
-after the action's simulated cost. This is a new observation, while rereading a
-saved observation costs no time.
+Most examples describe one first attempt of the Wrong upstream port Challenge. The
+learner reads the proxy error log, checks listening sockets, edits `nginx.conf` with a
+syntax error, and restarts nginx, which takes the proxy down. They then validate the
+configuration, start nginx, and recover. The [timeline](timeline.json),
+[debrief](debrief.json), and [playback](playback.json) agree, and `npm run check`
+re-derives the debrief and highlights from the timeline and manifest.
 
-The catalogue example shows the wire shape if an exercise were published. It does
-not publish the draft reference scenario or constitute a production catalogue.
+The [review submission](review-submission.json) is the result of matching the
+[submit request](review-submit-request.json) against the pool settings bundle. The
+catalogue shows the wire shape as if the drafts were published. It is not a production
+catalogue.
