@@ -65,7 +65,10 @@ stateDiagram-v2
 1. **Provisioning.** The monitor starts traffic and verifies the initial state: every
    validator fails and every health probe passes. Only then does its health check pass.
    A failed verification is an image defect. The session ends as `error` with
-   `start_failed` and is logged for authors.
+   `start_failed` and is logged for authors. One lifecycle routine owns launch,
+   readiness, schedules, and cleanup. API calls, session stream events, ECS events,
+   and the sweep invoke it from saved state. It repairs interrupted starts without a
+   browser retry. See the [start contract](api.md#start).
 2. **Ready.** The time limit starts at `readyAt`, so start-up latency is not charged to
    the learner. The alert is shown.
 3. **Outcome.** The first outcome wins through a conditional write:

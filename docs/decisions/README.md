@@ -20,6 +20,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | --- | --- |
 | 21 September 2026 | Baseline: simulated incidents with a deterministic engine, typed actions, and checkpoint replay |
 | 25 September 2026 | Preliminary report version 5 adopted as the source of truth. Real per-session containers replace the simulated engine. Session playback and fresh-task retry replace checkpoint replay. Freemium access replaces free Learn with paid practice. Contracts moved to v0.2 |
+| 27 September 2026 | Repair interrupted startup through one lifecycle routine, fixed launch arguments, and deadline reconciliation. The submitted report remains a snapshot |
 
 ## Product decisions
 

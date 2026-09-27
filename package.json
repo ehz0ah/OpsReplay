@@ -6,7 +6,7 @@
   "type": "module",
   "engines": { "node": ">=22.19.0 <23", "npm": ">=10" },
   "scripts": {
-    "check": "node scripts/check.mjs",
+    "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs"
   },
   "devDependencies": {
