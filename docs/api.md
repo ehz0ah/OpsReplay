@@ -89,17 +89,26 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
    lock, and the session record in `provisioning`. The receipt and lock are conditional
    on absence. An existing lock returns `409 ACTIVE_SESSION_EXISTS` with `activeSessionId`.
-3. Calls ECS `RunTask` with the Challenge's task definition revision, which pins both
-   images by digest. The request ID is the `clientToken`, and the session ID is
-   `startedBy` and a tag. It then stores the task ARN.
-4. Creates the session's EventBridge Scheduler job at the provisioning deadline.
+3. Invokes the shared lifecycle routine, which first ensures the session's named
+   EventBridge Scheduler job exists at the persisted provisioning deadline.
+4. Calls ECS `RunTask` with the persisted launch arguments, then stores the task ARN.
+   These arguments pin the task definition, images, monitor secret, and network settings.
+   The request ID is the `clientToken`, and the session ID is `startedBy` and a tag.
 5. Returns `200` with the session in `provisioning`.
 
-A repeated request returns the saved session. If the saved session has no task ARN
-because the first handler stopped between steps 2 and 3, the retry calls `RunTask`
-again with the same client token, which returns the existing task instead of a second
-one. A capacity or quota rejection marks the session `error` with `start_failed`,
-releases the lock, and returns `503 CAPACITY_UNAVAILABLE`.
+A repeated request returns the saved session and can invoke the same lifecycle routine.
+Recovery does not require a client retry. The session stream and scheduled reconciliation
+sweep also resume incomplete starts. They repair the schedule even when the ARN is
+already saved. If the ARN is missing, they recover the tagged task or repeat `RunTask`
+with exactly the same arguments and token, only before the provisioning deadline.
+
+The deadline is persisted in the start transaction, proposed at three minutes after
+creation and within ECS's client-token validity window. After it, no handler launches
+a task for that receipt. The session becomes `error` with `start_failed`. A late task
+is stopped by the lifecycle routine. An uncertain launch result stays `provisioning`
+until recovered or expired. A confirmed capacity or quota rejection returns
+`503 CAPACITY_UNAVAILABLE` and records the same terminal error. Cleanup releases the
+lock. The start receipt remains, so a later retry cannot launch another task.
 
 The attempt label is `first` when the learner has no earlier attempt of that Challenge
 ID with an outcome other than `error`. Otherwise it is `retry` with the next number.
@@ -112,7 +121,10 @@ The client polls `GET /v1/sessions/{id}` with backoff until the status leaves
 container reports healthy. The monitor passes its health check only after it confirms
 the planted fault is present: validators fail and health probes pass. The lifecycle
 handler then records `readyAt` and the task's private address, and moves the Scheduler
-job to `readyAt` plus the time limit. If the deadline passes first, the session ends as
+job to `readyAt` plus the time limit. The lifecycle routine repairs a missed schedule
+update from the saved session. Every timer callback reads the current deadline before
+acting, so a stale provisioning timer cannot end a ready session early. The sweep also
+checks deadlines if a schedule is missing. If the provisioning deadline passes first, the session ends as
 `error` with `start_failed`.
 
 `timeLimitSeconds` comes from the manifest for the Free plan and is extended for Pro.

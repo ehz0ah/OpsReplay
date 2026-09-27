@@ -11,7 +11,7 @@ versions, deployment settings, provider and model, workload, and sample size.
 | Playback | Playback of each reference run matches its recorded output, logs, and metrics |
 | Isolation | Tasks cannot reach the internet, other tasks, or AWS credentials. DNS egress is tested separately |
 | Access | Users cannot open another learner's session, ticket, recording, or submission, or content outside their plan |
-| Lifecycle | Retries, interrupted writes, and provider failures do not launch duplicate tasks or repeat score penalties. Every ended session leaves no running task |
+| Lifecycle | Interrupt startup after each external effect and saved write, with no client retry. Reconciliation repairs the timer and task link or ends the attempt. Late task events and stale timers cannot revive or end the wrong state. Every ended session leaves no running task |
 | Visibility | No planted fault, validator, probe, trap, unreleased hint, or review finding appears in responses, errors, prompts, or browser assets |
 | Performance | At 10, 50, and 100 concurrent sessions: time to a ready terminal with and without a warm pool, terminal round-trip latency, median and 95th-percentile API latency, errors, and DynamoDB throttling |
 

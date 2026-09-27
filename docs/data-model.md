@@ -13,7 +13,7 @@ few known fields afterwards.
 | ReviewBundle | Diff, context, language, related Challenges, findings | Exercise projection before submission, findings after |
 | LearnEntry | Markdown metadata and body rendered at build time | Free entries public, Pro entries after an entitlement check |
 | Plan | Owner, plan, source, expiry, cohort | Owner, through `GET /v1/me` |
-| Session | Owner, Challenge ID and version, digests, attempt, status, reason, task ARN, task address, monitor secret, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
+| Session | Owner, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
 | TimelineEvent | Command, monitor, assistance, or lifecycle event | Owner |
 | Capture | Per-command configuration diffs, new log lines, metric sample | Owner, through playback links |
 | Recording | Terminal chunks and metric series chunks | Owner, through playback links |
@@ -58,7 +58,9 @@ and a per-source counter, so two writers never collide. The monitor assigns comm
 sequence numbers inside the task.
 
 An owner index keyed by user and creation time lists sessions and submissions. A sparse
-index holds only active sessions, keyed by `lastSeenAt`, for the heartbeat sweep.
+index holds unfinished lifecycle work, including provisioning and terminal sessions
+awaiting cleanup, keyed by the next check time. The sweep handles startup deadlines,
+missing schedules, heartbeats, and cleanup, even if the client never retries.
 Indexes are eventually consistent. Coordinating writes use strongly consistent point
 reads. Handlers return the committed record, so an index delay never hides a new session.
 
@@ -82,7 +84,8 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 
 | Operation | Write and condition |
 | --- | --- |
-| Start | Transaction: start receipt absent, active lock absent, session record created in `provisioning` |
+| Start | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments |
+| Save task | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning` |
 | Ready | Update conditional on `provisioning`. Also records `readyAt` and the task address |
 | Outcome | Update conditional on status being `provisioning` or `ready`. The first outcome wins |
 | End | Transaction: the outcome update and the end receipt |
@@ -94,7 +97,10 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 
 Application receipts, not client-token windows, enforce idempotency for the life of a
 session. `RunTask`'s client token covers only the short gap between the start transaction
-and the task launch. Canonical request hashing covers the request body, not transport
+and the task launch. Recovery never calls `RunTask` beyond the saved provisioning
+deadline or after an outcome. It discovers late tasks by session tag, `startedBy`, and
+ECS task events and stops them. All callers use the same saved launch arguments.
+Canonical request hashing covers the request body, not transport
 headers. A retry checks ownership, then the receipt. Same ID and same hash returns the
 saved result. Same ID and a different hash returns `IDEMPOTENCY_CONFLICT`.
 
