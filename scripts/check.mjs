@@ -217,7 +217,9 @@ unique(timeline.items.map(item => item.id), 'timeline event ID');
 const commandEvents = timeline.items.filter(item => item.kind === 'command');
 assert.deepEqual(commandEvents.map(item => item.seq), commandEvents.map((_, index) => index + 1), 'Command sequence numbers are contiguous');
 const timelineChallenge = challenges.get(debrief.challenge.id);
-const derived = deriveDebrief(timelineChallenge, timeline.items);
+const derived = deriveDebrief(timelineChallenge, timeline.items, {
+  readyAt: session.readyAt, endedAt: timeline.items.at(-1).at, status: debrief.outcome,
+});
 assert.deepEqual(debrief.keyEvidence, derived.keyEvidence, 'Debrief key evidence');
 assert.deepEqual(debrief.possibleHarmfulActions, derived.possibleHarmfulActions, 'Debrief harmful actions');
 assert.deepEqual(debrief.outages, derived.outages, 'Debrief outages');

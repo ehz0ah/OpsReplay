@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
-import { deriveDebrief, matchEvidence } from './reference/debrief.mjs';
+import { deriveDebrief as derive, matchEvidence } from './reference/debrief.mjs';
 
 const read = file => JSON.parse(fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8'));
 const challenge = read('content/challenges/wrong-upstream-port/challenge.json');
 const timeline = read('packages/contracts/examples/timeline.json').items;
 const commands = timeline.filter(item => item.kind === 'command');
 const log = challenge.debrief.keyEvidence[0];
+const completedSession = { readyAt: '2026-10-05T02:00:42Z', endedAt: '2026-10-05T02:07:03Z', status: 'resolved' };
+const deriveDebrief = (manifest, events) => derive(manifest, events, completedSession);
 
 test('mentioning a log path does not prove its evidence was observed', () => {
   const echoed = { ...commands[1], command: 'echo /var/log/nginx/error.log', outputExcerpt: '/var/log/nginx/error.log' };
@@ -65,6 +67,15 @@ test('commands and observations after the first outcome are excluded', () => {
   const straddling = structuredClone(timeline);
   straddling.find(item => item.kind === 'command' && item.seq === 2).endedAt = '2026-10-05T02:08:01Z';
   assert.equal(deriveDebrief(challenge, straddling).keyEvidence[0].status, 'attempted');
+});
+
+test('partial or empty recordings use the committed session boundaries', () => {
+  const partial = timeline.filter(item => item.kind !== 'lifecycle');
+  assert.deepEqual(deriveDebrief(challenge, partial), deriveDebrief(challenge, timeline));
+  const empty = deriveDebrief(challenge, []);
+  assert.ok(empty.keyEvidence.every(item => item.status === 'not_observed'));
+  assert.equal(empty.timeToRecoverySeconds, null);
+  assert.throws(() => derive(challenge, [], { ...completedSession, readyAt: null }), /became ready/);
 });
 
 // Authored output examples, not results from running the draft images.

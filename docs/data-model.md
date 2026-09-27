@@ -93,7 +93,7 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 | --- | --- |
 | Start | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments |
 | Save task | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning` |
-| Ready | Update conditional on `provisioning`, monitor health, and the current recorder acknowledgement. Save `readyAt` and `endsAt`. The task address is already saved for recorder attachment |
+| Ready | Update conditional on `provisioning`, time before its deadline, monitor health, and the current recorder acknowledgement. Save `readyAt` and `endsAt`. The task address is already saved for recorder attachment |
 | Outcome | Transaction conditional on active status: outcome and `endedAt`, recording set to `draining` with a fixed cutoff and drain deadline. The first outcome wins |
 | End | Transaction: the outcome update and the end receipt |
 | Heartbeat | Update `lastSeenAt` conditional on `ready` |
