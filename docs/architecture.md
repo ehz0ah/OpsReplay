@@ -32,8 +32,8 @@ flowchart LR
 | Web app | Static pages, catalogue, Learn, Code Review, Challenge workspace, debrief, playback |
 | API handlers | Identity, plans, catalogue, sessions, tickets, hints, timeline, debrief, playback, reviews, LLM turns |
 | Lifecycle handlers | Readiness from ECS task events, time limits from Scheduler, heartbeat sweep, reconciliation |
-| Finaliser | Stops the task, releases the lock, derives the debrief and score, updates progress |
-| Gateway service | Ticket checks, terminal proxy, dashboard stream, recording, command events, proposal runs, heartbeats |
+| Finaliser | Waits for a bounded recording drain, stops the task, releases the lock, derives the debrief and score from sealed data, updates progress |
+| Gateway service | Ticket checks, terminal proxy, dashboard stream, session recording across browser disconnects, final drain, command events, proposal runs, heartbeats |
 | Challenge container | Service stack, planted fault, supervisor, terminal server |
 | Monitor container | Traffic, metrics, validators, health probes, captures |
 

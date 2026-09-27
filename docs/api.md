@@ -6,7 +6,9 @@ also define the terminal gateway frames. This document owns stateful behaviour, 
 gateway protocol, and error semantics. No endpoint or gateway is implemented.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
-engine with typed actions. Nothing depended on 0.1.
+engine with typed actions. Nothing depended on 0.1. This pre-release revision adds
+recording status and permits a null debrief score when recording is incomplete. Clients
+must handle these fields before the first runtime release.
 
 ## Common rules
 
@@ -117,8 +119,9 @@ Environment faults never use up the first attempt.
 ### Readiness and status
 
 The client polls `GET /v1/sessions/{id}` with backoff until the status leaves
-`provisioning`. A session becomes `ready` when the task is running and the monitor
-container reports healthy. The monitor passes its health check only after it confirms
+`provisioning`. A session becomes `ready` when the task is running, the monitor
+container reports healthy, and a gateway has acknowledged recording ownership. The
+monitor passes its health check only after it confirms
 the planted fault is present: validators fail and health probes pass. The lifecycle
 handler then records `readyAt` and the task's private address, and moves the Scheduler
 job to `readyAt` plus the time limit. The lifecycle routine repairs a missed schedule
@@ -157,7 +160,8 @@ needs a new ticket. The ticket never appears in a URL.
 
 `POST /v1/sessions/{id}/end` moves an active session to `ended` with `learner_ended`
 through a conditional write and a receipt. Ending a session that already has an outcome
-returns that outcome. The finaliser then stops the task.
+returns that outcome. The gateway drains recording before the finaliser stops the task,
+with a fixed deadline. See [the lifecycle](challenges.md#lifecycle).
 
 ### Hints
 
@@ -172,7 +176,9 @@ The timeline lists events in time order, during and after the attempt. It contai
 learner's own command text and bounded output excerpts. It never contains validator or
 probe definitions.
 
-The finaliser computes the debrief once, after the session reaches an outcome. Until
+The finaliser computes the debrief once, after the session reaches an outcome and the
+recording is sealed as `complete` or `incomplete`. `SessionView.recording` exposes this
+separate state. Until
 then, `GET /v1/sessions/{id}/debrief` returns `409 SESSION_ACTIVE` for an active session
 and `409 DEBRIEF_PENDING` with `retryAfterSeconds` while it runs. A session that never
 became ready has no debrief and returns `404`. See
@@ -181,7 +187,9 @@ became ready has no debrief and returns `404`. See
 `GET /v1/sessions/{id}/playback` is available with the debrief. It returns pre-signed
 S3 GET URLs, valid for five minutes (proposed), for terminal recording chunks, metric
 chunks, and one capture per command, plus the highlights the debrief identified. The
-client requests a new manifest when the links expire.
+client requests a new manifest when the links expire. The debrief and playback both
+carry the final recording status and reason. Incomplete playback lists only saved
+objects, and its debrief has `score: null`. The client shows the missing-data notice.
 
 A retry is a new `POST /v1/sessions` with a new request ID. It never changes the first
 attempt's session, debrief, or first-attempt progress.
@@ -209,6 +217,9 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    cumulative request counters, and the aggregate recovery state. It sends `timeline`
    when a command completes or a monitor signal occurs, and `status` when the session
    status changes.
+   Recording continues independently when the browser disconnects. Each input batch
+   and proposal checks that the session is still active before forwarding. The outcome
+   timestamp remains the scoring cutoff for any input already in flight.
 5. `run_proposal` runs a confirmed assistant proposal. The gateway checks that the
    proposal belongs to this session and learner, is pending, and has not expired. It
    checks that the shell is idle at a prompt, marks the proposal run through a

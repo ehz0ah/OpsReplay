@@ -812,6 +812,9 @@
         },
         "debriefAvailable": {
           "type": "boolean"
+        },
+        "recording": {
+          "$ref": "#/$defs/RecordingState"
         }
       },
       "required": [
@@ -830,7 +833,8 @@
         "endedAt",
         "hints",
         "assistance",
-        "debriefAvailable"
+        "debriefAvailable",
+        "recording"
       ]
     },
     "SessionResponse": {
@@ -1436,13 +1440,23 @@
           "maxItems": 20
         },
         "score": {
-          "$ref": "#/$defs/ScoreComponents"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScoreComponents"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "assisted": {
           "type": "boolean"
         },
         "assistance": {
           "$ref": "#/$defs/Assistance"
+        },
+        "recording": {
+          "$ref": "#/$defs/RecordingState"
         }
       },
       "required": [
@@ -1459,7 +1473,53 @@
         "sources",
         "score",
         "assisted",
-        "assistance"
+        "assistance",
+        "recording"
+      ],
+      "allOf": [
+        {
+          "properties": {
+            "recording": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "complete",
+                    "incomplete"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recording": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "const": "incomplete"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "score": {
+                "$ref": "#/$defs/ScoreComponents"
+              }
+            }
+          }
+        }
       ]
     },
     "PlaybackTrack": {
@@ -1577,6 +1637,9 @@
             ]
           },
           "maxItems": 200
+        },
+        "recording": {
+          "$ref": "#/$defs/RecordingState"
         }
       },
       "required": [
@@ -1585,7 +1648,25 @@
         "terminal",
         "metrics",
         "captures",
-        "highlights"
+        "highlights",
+        "recording"
+      ],
+      "allOf": [
+        {
+          "properties": {
+            "recording": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "complete",
+                    "incomplete"
+                  ]
+                }
+              }
+            }
+          }
+        }
       ]
     },
     "HintResponse": {
@@ -2484,6 +2565,55 @@
             "type",
             "code",
             "message"
+          ]
+        }
+      ]
+    },
+    "RecordingState": {
+      "description": "Recording is separate from the session outcome. An incomplete recording has no final numeric score.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "pending",
+                "recording",
+                "draining",
+                "complete"
+              ]
+            },
+            "reason": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "status",
+            "reason"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "incomplete"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "task_lost",
+                "recorder_lost",
+                "drain_timeout",
+                "limit_exceeded",
+                "data_gap"
+              ]
+            }
+          },
+          "required": [
+            "status",
+            "reason"
           ]
         }
       ]

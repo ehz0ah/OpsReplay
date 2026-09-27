@@ -30,5 +30,6 @@
   "endedAt": null,
   "hints": { "released": [], "remaining": 2, "nextAvailableAt": "2026-10-05T02:03:42Z" },
   "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 },
-  "debriefAvailable": false
+  "debriefAvailable": false,
+  "recording": { "status": "recording", "reason": null }
 }

@@ -57,6 +57,7 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T11 | Opaque single-use terminal tickets stored as hashes | No shared signing key between API and gateway. Tickets stay out of URLs |
 | T12 | Shell integration markers for command boundaries, input lines as fallback | Standard terminal technique. Tampering affects only the learner's own events |
 | T13 | Case-sensitive regular expressions for evidence and trap detection | Simple and testable. Revisit if authors need more |
+| T14 | Separate the session outcome from recording completion, with a bounded gateway drain before task stop | Avoid losing buffered evidence. Incomplete recording has no numeric score. Validate disconnect, timeout, and late-writer paths |
 
 ## Open choices and decision timing
 

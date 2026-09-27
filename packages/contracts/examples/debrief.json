@@ -51,5 +51,6 @@
     "outageSeconds": 100
   },
   "assisted": false,
-  "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 }
+  "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 },
+  "recording": { "status": "complete", "reason": null }
 }
