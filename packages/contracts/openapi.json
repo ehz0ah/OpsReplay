@@ -1103,7 +1103,8 @@
               "TURN_IN_PROGRESS",
               "LIMIT_EXCEEDED",
               "PROVIDER_FAILED",
-              "INTERNAL_ERROR"
+              "INTERNAL_ERROR",
+              "TURN_INTERRUPTED"
             ]
           },
           "message": {
@@ -2884,13 +2885,42 @@
               "$ref": "#/components/schemas/Proposal"
             },
             "maxItems": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fixed worker deadline. Retries never extend it."
           }
         },
         "required": [
           "id",
           "status",
           "text",
-          "proposals"
+          "proposals",
+          "expiresAt"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "running",
+                    "failed",
+                    "interrupted"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "proposals": {
+                  "type": "array",
+                  "maxItems": 0
+                }
+              }
+            }
+          }
         ]
       },
       "StreamEvent": {

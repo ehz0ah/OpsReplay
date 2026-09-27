@@ -56,8 +56,10 @@ npm run check
 
 Checks validate the JSON Schema and OpenAPI contracts, contract examples, Challenge
 manifests and review bundles, trap and evidence patterns, the reference debrief and
-review-matching rules against the examples, local documentation links, and style. There
-is no application start command yet.
+review-matching rules against the examples, local documentation links, and style.
+Regression tests also exercise reference models for interrupted startup, recording
+drain, evidence matching, and assistant expiry. These models do not call AWS, run
+containers, or use an LLM provider. There is no application start command yet.
 
 ## Repository map
 

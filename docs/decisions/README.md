@@ -20,7 +20,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | --- | --- |
 | 21 September 2026 | Baseline: simulated incidents with a deterministic engine, typed actions, and checkpoint replay |
 | 25 September 2026 | Preliminary report version 5 adopted as the source of truth. Real per-session containers replace the simulated engine. Session playback and fresh-task retry replace checkpoint replay. Freemium access replaces free Learn with paid practice. Contracts moved to v0.2 |
-| 27 September 2026 | Repair interrupted startup through one lifecycle routine, fixed launch arguments, and deadline reconciliation. The submitted report remains a snapshot |
+| 27 September 2026 | Refine v0.2 startup recovery, recording drain, evidence claims, and assistant expiry. Update schemas, examples, and executable reference checks. The submitted report remains a snapshot |
 
 ## Product decisions
 
@@ -58,6 +58,7 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T12 | Shell integration markers for command boundaries, input lines as fallback | Standard terminal technique. Tampering affects only the learner's own events |
 | T13 | Command and saved-output patterns for observed evidence. Trap timing indicates possible harm only | Avoid credit for path mentions or empty editor output. Monitor measurements own recovery and impact |
 | T14 | Separate the session outcome from recording completion, with a bounded gateway drain before task stop | Avoid losing buffered evidence. Incomplete recording has no numeric score. Validate disconnect, timeout, and late-writer paths |
+| T15 | Fixed assistant-turn expiry with conditional interruption and completion | A crashed worker cannot block the conversation or overwrite a later turn. Same request ID never recalls the provider |
 
 ## Open choices and decision timing
 

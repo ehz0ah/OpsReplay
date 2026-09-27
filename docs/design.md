@@ -46,6 +46,7 @@ be able to complete the Challenge with the assistant closed.
 | Replaced | The attempt was opened elsewhere. Offer to take it back here |
 | Assistant proposal | Show the command, rationale, and caution flag. Run it only when the learner confirms. Show `TERMINAL_BUSY` as a prompt to wait for the shell |
 | Provider failure | Show the error in the assistant panel only. Terminal, dashboard, and hints are unaffected |
+| Interrupted turn | Show that the reply could not finish. Keep the saved state and let the learner send a new request. Do not rerun the old turn |
 | Outcome | Stop terminal input, show the outcome and reason, open the debrief when it is ready |
 | Debrief pending | Show progress and retry after the returned delay |
 

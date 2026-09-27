@@ -10,7 +10,8 @@ engine with typed actions. Nothing depended on 0.1. This pre-release revision ad
 recording status and permits a null debrief score when recording is incomplete. Evidence
 uses `status` instead of `found`. `possibleHarmfulActions` replaces `harmfulActions`,
 outages no longer have `afterCommandSeq`, and `observedOutages` replaces
-`selfInflictedOutages`. Duration components accept fractional seconds. Clients
+`selfInflictedOutages`. Duration components accept fractional seconds. Assistant turns
+add a required `expiresAt` and a `TURN_INTERRUPTED` stream error. Clients
 must handle these fields before the first runtime release.
 
 ## Common rules
@@ -42,7 +43,7 @@ validator or probe definitions, unreleased hints, or review findings.
 | 503 | `CAPACITY_UNAVAILABLE`, with `retryAfterSeconds` |
 | 500 | `INTERNAL_ERROR` |
 
-`PROVIDER_FAILED` appears only inside a `turn_failed` stream event.
+`PROVIDER_FAILED` and `TURN_INTERRUPTED` appear only inside a `turn_failed` stream event.
 
 ## Routes
 
@@ -146,7 +147,7 @@ validators. `hints.nextAvailableAt` is `readyAt` plus the next hint's authored d
 | `failed` | Time limit reached, or the challenge container exited | Yes |
 | `ended` | Learner ended the attempt | Yes |
 | `abandoned` | Heartbeat missed while no learner was connected | Yes |
-| `error` | Environment never became ready | Yes |
+| `error` | Startup failed or the platform stopped the environment | Yes |
 
 The first terminal outcome wins through a conditional write. A later outcome, such as
 the time limit firing just after resolution, has no effect.
@@ -244,12 +245,19 @@ gateway never forwards browser frames to the monitor.
 turn ID, so recovery does not depend on receiving the first event.
 
 The server validates identity, ownership, and session status before opening the
-stream. It persists the turn before calling the provider. A repeated request ID
-reattaches to the saved turn and never calls the provider again. One turn per session
-runs at a time, and another returns `409 TURN_IN_PROGRESS`. After the stream opens,
+stream. It persists the turn, worker token, fixed expiry, and active-turn slot before
+calling the provider. A repeated request ID reattaches to the saved turn and never
+calls the provider again. Reads, new requests, and the sweep mark expired running turns
+`interrupted` and release their slot conditionally. A live running turn blocks another
+with `409 TURN_IN_PROGRESS`. An expired old worker cannot save a result or proposal.
+`Turn.expiresAt` exposes the fixed deadline for recovery. After the stream opens,
 failures use `turn_failed` because the HTTP status cannot change. Use `fetch` with a
 streamed response body, since `EventSource` cannot send a POST body or an
 authorization header.
+
+Reattaching to an interrupted turn sends `turn_failed` with `TURN_INTERRUPTED`.
+`GET` returns that saved terminal state. Starting another turn requires a new request
+ID. Proposals become available only after successful turn completion is saved.
 
 This route never runs a command. A proposal waits for the learner to confirm it in the
 workspace, which sends `run_proposal` through the gateway. Proposals expire after ten
