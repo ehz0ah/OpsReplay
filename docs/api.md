@@ -7,7 +7,10 @@ gateway protocol, and error semantics. No endpoint or gateway is implemented.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
 engine with typed actions. Nothing depended on 0.1. This pre-release revision adds
-recording status and permits a null debrief score when recording is incomplete. Clients
+recording status and permits a null debrief score when recording is incomplete. Evidence
+uses `status` instead of `found`. `possibleHarmfulActions` replaces `harmfulActions`,
+outages no longer have `afterCommandSeq`, and `observedOutages` replaces
+`selfInflictedOutages`. Duration components accept fractional seconds. Clients
 must handle these fields before the first runtime release.
 
 ## Common rules

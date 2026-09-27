@@ -214,7 +214,7 @@
         "Connections to port 8081 are refused, and nginx answers every proxied request with 502 Bad Gateway."
       ],
       "keyEvidence": [],
-      "harmfulActions": [],
+      "possibleHarmfulActions": [],
       "outages": [],
       "recommendedRecovery": [
         "Read the nginx error log to identify the failing upstream address.",

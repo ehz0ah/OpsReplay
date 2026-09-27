@@ -54,14 +54,16 @@ outcome. Repeat the same request ID or read the current state.
 
 ## Debrief, playback, and retry
 
-The debrief follows the learner's timeline. It connects found and missed evidence to the
-root cause, shows each harmful action beside the outage it caused and its effect on the
-metrics, and gives the recommended recovery and sources. Score components are shown as
-raw values. Do not invent a combined grade.
+The debrief follows the learner's timeline. It separates observed evidence, attempted
+checks, and evidence not observed in the recording. It shows possible harmful actions
+beside the nearby outage and metrics, without claiming that timing proves the cause.
+It gives the root cause, recommended recovery, and sources. Score components are raw
+values. An incomplete recording has a visible reason and no numeric score. Missing
+records are not shown as learner mistakes. Do not invent a combined grade.
 
 Playback is a timeline with a scrubber and speed control. The terminal recording plays
 in step with the metric charts and, at each command, the captured configuration diffs
-and new log lines. Key evidence, harmful actions, outages, and the start of recovery are
+and new log lines. Key evidence, possible harmful actions, outages, and the start of recovery are
 highlighted and can be reached from a list. Playback never starts an environment.
 
 Retry is labelled "Retry in a fresh environment". Retries are labelled separately in

@@ -143,23 +143,27 @@
     "keyEvidence": [
       {
         "id": "connection-activity",
-        "description": "pg_stat_activity shows connections close to max_connections, many active on the order history query.",
-        "commandPatterns": ["pg_stat_activity"]
+        "description": "Connection activity output lists active order history queries.",
+        "commandPatterns": ["^\\s*(sudo\\s+)?psql\\b"],
+        "outputPatterns": ["active", "(SELECT|select)[^\\n]*orders"]
       },
       {
         "id": "query-plan",
         "description": "The query plan for the order history query shows a sequential scan on orders.",
-        "commandPatterns": ["(EXPLAIN|explain|Explain)\\b", "\\\\d\\+?\\s+orders\\b"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?psql\\b"],
+        "outputPatterns": ["Seq Scan on (?:public\\.)?orders"]
       },
       {
         "id": "pool-timeouts",
         "description": "The application log shows SQLAlchemy QueuePool timeouts.",
-        "commandPatterns": ["/var/log/shop/app\\.log"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/shop/app\\.log"],
+        "outputPatterns": ["QueuePool limit", "connection timed out"]
       },
       {
         "id": "pool-configuration",
-        "description": "Worker and pool settings show the connection budget: 4 workers with pool_size 10 and max_overflow 10.",
-        "commandPatterns": ["/etc/shop/gunicorn\\.conf\\.py", "/etc/shop/shop\\.env"]
+        "description": "The application pool settings allow 10 pooled and 10 overflow connections per worker.",
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/shop/shop\\.env"],
+        "outputPatterns": ["(pool_size|POOL_SIZE)\\s*[=:]\\s*10", "(max_overflow|MAX_OVERFLOW)\\s*[=:]\\s*10"]
       }
     ],
     "recommendedRecovery": [

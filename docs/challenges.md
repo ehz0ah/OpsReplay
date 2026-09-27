@@ -114,7 +114,9 @@ not end in `error`. Environment faults never use up the first attempt.
 **Traffic.** The monitor runs each manifest journey at its rate. A journey stops at its
 first failed step. A step fails on an unexpected status, a connection error, or a
 timeout. Every step counts toward `totalRequests`, and failed steps toward
-`failedRequests`, from `readyAt` to the outcome.
+`failedRequests`, from `readyAt` to the outcome. Request completion timestamps define
+the cutoff. The monitor retains enough timestamped data to seal counters at `endedAt`
+even when the gateway learns of the outcome later.
 
 **Dashboard.** Request rate, error rate, and latency percentiles come from the monitor's
 own traffic. CPU and memory for the challenge container come from the task metadata
@@ -191,27 +193,39 @@ remain open.
 | `timeToRecoverySeconds` | From `readyAt` to the start of the final sustained passing window. Null unless resolved |
 | `totalRequests`, `failedRequests` | Monitor counters from `readyAt` to the outcome |
 | `commandCount` | Recorded commands, as the proposed measure of investigation effort |
-| `selfInflictedOutages`, `outageSeconds` | Health probe outages and their total duration |
+| `observedOutages`, `outageSeconds` | Health probe outage count and summed duration per probe. These do not assert who caused an outage |
 | Assistance | Hints released, assistant turns, and proposals run |
 
 Reduced impact counts even when the root cause remains, because a mitigation lowers
 `failedRequests`. Time to recovery starts at the passing window, not at its end, so the
 sustain period is confirmation rather than a penalty.
+Durations are seconds and may include fractions. Overlapping outages of different probes
+each contribute their duration, so this component can exceed the session's elapsed time.
 
 ## Debrief derivation
 
 The finaliser derives the debrief from the manifest and the recorded timeline:
 
-1. **Key evidence** is found when a command line, or a line typed inside a program it
-   started, matches one of its patterns. The first match gives `commandSeq`. Patterns are
-   JavaScript regular expressions, matched case-sensitively against at most 4,000
-   characters.
-2. **Outages** come from monitor outage events. Each is attributed to the last command
-   that started at or before it.
-3. **Harmful actions** are commands that match a trap's patterns and are followed by an
-   outage of that trap's probe within the trap's window.
+1. **Key evidence** has a status. `observed` requires a matching `commandPatterns` rule
+   and every `outputPatterns` rule to match the saved output excerpt of that same
+   completed command. The first observed match gives `commandSeq`. A command match
+   without matching output is `attempted`, with the first attempt's sequence. Otherwise
+   it is `not_observed`, with a null sequence. This does not prove the learner missed or
+   understood the evidence. Patterns are case-sensitive JavaScript regular expressions
+   over at most 4,000 characters. A path mention, file-change capture, or full-screen
+   editor with no saved output cannot establish that the original evidence was seen.
+2. **Outages** come from monitor outage events. They have no automatic command cause.
+3. **Possible harmful actions** match a trap's command pattern and precede an outage
+   of its probe within the authored window. Each association includes `commandSeq` and
+   `outageStartedAt`. This is a possible explanation based on timing, not proof of cause.
 4. **Root cause, causal chain, and recommended recovery** are authored text.
 5. **Assisted** is true when any hint, assistant turn, or proposal was used.
+
+Only events within readiness and the first outcome enter the derivation. A command
+that completes after the cutoff cannot supply observed evidence. Terminal output is
+learner-controlled, so these matches support reflection, not trusted assessment.
+Unsupported command forms may remain `not_observed`. Monitor data alone determines
+recovery and request impact.
 
 The debrief aligns commands with metric samples and captures, so it can show what each
 action changed. The repository check runs these rules against the
@@ -227,7 +241,8 @@ Progress saves the outcome and the missing-score status without a numeric rankin
 
 After the debrief, the learner can play back the attempt as a timeline. The terminal
 recording runs in step with the metric series and the capture for each command. Key
-evidence, harmful actions, outages, and the start of recovery are highlighted. Playback
+evidence, possible harmful actions, outages, and the start of recovery are highlighted.
+Outage and recovery highlights point to their event time with a null `commandSeq`. Playback
 reads stored data. It never restarts an environment.
 
 A retry starts a fresh task from the current published version. It is labelled `retry`

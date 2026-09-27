@@ -153,22 +153,26 @@
       {
         "id": "proxy-upstream-address",
         "description": "The nginx error log shows refused connections to 127.0.0.3:8080.",
-        "commandPatterns": ["/var/log/nginx/error\\.log"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"],
+        "outputPatterns": ["Connection refused", "127\\.0\\.0\\.3:8080"]
       },
       {
         "id": "dns-answer",
         "description": "A DNS query shows api.internal resolving to the retired address 127.0.0.3.",
-        "commandPatterns": ["^\\s*(dig|nslookup|host|getent)\\b.*api\\.internal"]
+        "commandPatterns": ["^\\s*(dig|nslookup|host|getent)\\b.*api\\.internal"],
+        "outputPatterns": ["127\\.0\\.0\\.3"]
       },
       {
         "id": "api-listener",
         "description": "The socket list shows the API listening on 127.0.0.2:8080.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"],
+        "outputPatterns": ["LISTEN[^\\n]*127\\.0\\.0\\.2:8080"]
       },
       {
         "id": "zone-file",
         "description": "The zone file still contains the retired A record for api.internal.",
-        "commandPatterns": ["/etc/coredns/internal\\.db"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/coredns/internal\\.db"],
+        "outputPatterns": ["api(?:\\.internal\\.?)?\\s+(?:\\d+\\s+)?IN\\s+A\\s+127\\.0\\.0\\.3"]
       }
     ],
     "recommendedRecovery": [

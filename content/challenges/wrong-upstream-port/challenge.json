@@ -142,17 +142,20 @@
       {
         "id": "proxy-error-log",
         "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.",
-        "commandPatterns": ["/var/log/nginx/error\\.log"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"],
+        "outputPatterns": ["Connection refused", "upstream: \"http://127\\.0\\.0\\.1:8081/"]
       },
       {
         "id": "listening-sockets",
-        "description": "The socket list shows the application listening on port 8080, not 8081.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"]
+        "description": "The socket list shows the application listening on port 8080.",
+        "commandPatterns": ["^\\s*(sudo\\s+)?(ss|netstat)\\b", "^\\s*(sudo\\s+)?lsof\\b.*\\s-i"],
+        "outputPatterns": ["LISTEN[^\\n]*127\\.0\\.0\\.1:8080"]
       },
       {
         "id": "proxy-config",
         "description": "The nginx configuration sets proxy_pass to port 8081.",
-        "commandPatterns": ["/etc/nginx/nginx\\.conf", "^\\s*(sudo\\s+)?nginx\\s+-T\\b"]
+        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/nginx/nginx\\.conf", "^\\s*(sudo\\s+)?nginx\\s+-T\\b"],
+        "outputPatterns": ["proxy_pass\\s+http://127\\.0\\.0\\.1:8081;"]
       }
     ],
     "recommendedRecovery": [

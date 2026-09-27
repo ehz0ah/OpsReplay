@@ -18,7 +18,7 @@ few known fields afterwards.
 | Capture | Per-command configuration diffs, new log lines, metric sample | Owner, through playback links |
 | Recording | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references | Status public, objects through playback links |
 | TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
-| Debrief | Derived evidence, harmful actions, outages, score components, assistance | Owner, after the outcome |
+| Debrief | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance | Owner, after recording is sealed |
 | Proposal | Session, command, rationale, caution flag, expiry, status | Owner |
 | ConversationTurn | Session or submission, status, text, proposals, token usage | Owner |
 | ReviewSubmission | Owner, exercise version, flags and concerns, match result, answer-informed flag | Owner |

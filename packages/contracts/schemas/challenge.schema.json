@@ -795,12 +795,22 @@
                 },
                 "maxItems": 10,
                 "minItems": 1
+              },
+              "outputPatterns": {
+                "description": "All patterns must match the saved output excerpt of the same completed command. A command match alone is only an attempted check.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/CommandPattern"
+                },
+                "minItems": 1,
+                "maxItems": 10
               }
             },
             "required": [
               "id",
               "description",
-              "commandPatterns"
+              "commandPatterns",
+              "outputPatterns"
             ]
           },
           "maxItems": 20,

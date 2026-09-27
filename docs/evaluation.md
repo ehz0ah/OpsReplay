@@ -10,6 +10,7 @@ versions, deployment settings, provider and model, workload, and sample size.
 | Scenario validity | Scripted runs confirm the fault is present at start, validators fail before the reference fix and pass after it, and each trap behaves as stated. Twenty repeats per Challenge expose flaky environments and measure recovery-time variance |
 | Playback | Playback of each reference run matches its recorded output, logs, and metrics |
 | Recording failure | Disconnect the browser, replace the recorder, lose the task, exceed a buffer limit, and delay the final upload. Stop follows a completed drain or an explicit incomplete result. Late writers cannot change the sealed debrief |
+| Debrief evidence | Path mentions, failed reads, and empty editor output do not count as observed evidence. An unrelated command before an outage is not labelled as its cause. Request impact remains monitor-derived |
 | Isolation | Tasks cannot reach the internet, other tasks, or AWS credentials. DNS egress is tested separately |
 | Access | Users cannot open another learner's session, ticket, recording, or submission, or content outside their plan |
 | Lifecycle | Interrupt startup after each external effect and saved write, with no client retry. Reconciliation repairs the timer and task link or ends the attempt. Late task events and stale timers cannot revive or end the wrong state. Every ended session leaves no running task |
@@ -39,7 +40,7 @@ off, isolating the environment and debrief workflow.
 
 Questions before and after each condition assess diagnosis and causal reasoning with a
 common rubric. After each condition, learners diagnose a short new scenario and justify a
-recovery plan, which tests transfer. Record completion, self-inflicted outages, and
+recovery plan, which tests transfer. Record completion, observed outages, and
 explanation quality. Brief tasks check Learn, Code Review, and optional AI support.
 Participants complete the System Usability Scale and a short interview on usability and
 playback.
