@@ -20,7 +20,7 @@ few known fields afterwards.
 | TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
 | Debrief | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance | Owner, after recording is sealed |
 | Proposal | Session, command, rationale, caution flag, expiry, status | Owner |
-| ConversationTurn | Session or submission, status, text, proposals, token usage | Owner |
+| ConversationTurn | Session or submission, request hash, worker token, fixed expiry, status, text, proposals, token usage | Owner projection, excluding hash and worker token |
 | ReviewSubmission | Owner, exercise version, flags and concerns, match result, answer-informed flag | Owner |
 | Progress | Owner, content ID, first-attempt outcome and score, attempt count, last attempt, assisted flag | Owner |
 | Receipt | Owner or resource scope, request ID, payload hash, result pointer | Server only |
@@ -50,10 +50,12 @@ names are a storage convention, not part of the HTTP contract.
 | `SESSION#<id>` | `HINT#<hintId>` | Released hint and time |
 | `SESSION#<id>` | `PROPOSAL#<proposalId>` | Assistant command proposal |
 | `SESSION#<id>` | `TURN#<turnId>` | Challenge assistant turn |
+| `SESSION#<id>` | `CONVERSATION` | Active turn ID and fixed expiry |
 | `SESSION#<id>` | `FINALISED` | Marker that the finaliser has run |
 | `SESSION#<id>` | `DEBRIEF` | Derived debrief and score components |
 | `REVIEW#<id>` | `STATE` | Review submission and match result |
 | `REVIEW#<id>` | `TURN#<turnId>` | Code Review assistant turn |
+| `REVIEW#<id>` | `CONVERSATION` | Active turn ID and fixed expiry |
 
 Event sort keys use the event time, a stable source stream ID, and its sequence number.
 Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
@@ -65,6 +67,9 @@ awaiting cleanup, keyed by the next check time. The sweep handles startup deadli
 missing schedules, heartbeats, and cleanup, even if the client never retries.
 Indexes are eventually consistent. Coordinating writes use strongly consistent point
 reads. Handlers return the committed record, so an index delay never hides a new session.
+Active conversations also enter the work index by turn expiry. Expiry is an application
+condition, not a DynamoDB TTL deletion. A delayed sweep cannot block a new request,
+because admission also recovers an expired turn through a conditional write.
 
 ## Private S3 layout
 
@@ -88,7 +93,7 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 | --- | --- |
 | Start | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments |
 | Save task | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning` |
-| Ready | Update conditional on `provisioning`. Also records `readyAt` and the task address |
+| Ready | Update conditional on `provisioning`, monitor health, and the current recorder acknowledgement. Save `readyAt` and `endsAt`. The task address is already saved for recorder attachment |
 | Outcome | Transaction conditional on active status: outcome and `endedAt`, recording set to `draining` with a fixed cutoff and drain deadline. The first outcome wins |
 | End | Transaction: the outcome update and the end receipt |
 | Heartbeat | Update `lastSeenAt` conditional on `ready` |
@@ -99,6 +104,9 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 | Recording append | Save cursors and object references only after upload, with the current unexpired lease and recording still open. Event identity makes retries idempotent |
 | Seal recording | Conditional on `draining`. `complete` requires the current recorder lease, all final cursors saved without gaps, and time before the drain deadline. Otherwise use `incomplete` and a reason |
 | Finalise | Transaction: `FINALISED` absent, recording sealed, task confirmed stopped, debrief written if ready was reached, progress updated, lock released only if it still names this session |
+| Start turn | Transaction: turn ID absent and conversation slot absent. Store hash, worker token, fixed expiry, `running` turn, and active slot |
+| Expire turn | Transaction: turn still `running`, expiry reached, slot still names the turn. Set `interrupted` and clear the slot |
+| Finish turn | Transaction: `running`, matching worker token and active slot, before expiry. Save terminal result and allowed proposal, then clear the slot |
 
 Application receipts, not client-token windows, enforce idempotency for the life of a
 session. `RunTask`'s client token covers only the short gap between the start transaction

@@ -53,7 +53,7 @@ shared network namespace and volume.
 ```mermaid
 stateDiagram-v2
   [*] --> provisioning: POST /v1/sessions
-  provisioning --> ready: task running and monitor healthy
+  provisioning --> ready: monitor healthy and recorder attached
   provisioning --> error: deadline passed or capacity rejected
   ready --> resolved: all validators sustained
   ready --> failed: time limit or challenge container exited
@@ -162,6 +162,10 @@ discover unclaimed or expired leases through the session work index. A replaceme
 increments the recorder generation and resumes from saved cursors. The terminal server
 must buffer sequenced output for bounded reconnects, as the monitor does for its data.
 A buffer overflow or missing range is recorded, never treated as an empty interval.
+Only the recorder creates command events and requests captures. A browser may connect
+through another gateway copy, which proxies input and output but does not record them
+again. The terminal server supports a separate read-only recording stream. Recorder
+loss detection and reconnection do not require an open browser.
 
 Chunks have immutable keys that include the recorder generation and sequence range.
 The gateway saves object references and event cursors only after successful uploads,

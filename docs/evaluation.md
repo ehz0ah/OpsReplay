@@ -11,6 +11,7 @@ versions, deployment settings, provider and model, workload, and sample size.
 | Playback | Playback of each reference run matches its recorded output, logs, and metrics |
 | Recording failure | Disconnect the browser, replace the recorder, lose the task, exceed a buffer limit, and delay the final upload. Stop follows a completed drain or an explicit incomplete result. Late writers cannot change the sealed debrief |
 | Debrief evidence | Path mentions, failed reads, and empty editor output do not count as observed evidence. An unrelated command before an outage is not labelled as its cause. Request impact remains monitor-derived |
+| Assistant recovery | Kill a worker after saving a running turn. Expiry frees the slot for a new request in both conversation types. The old ID never calls the provider again, and late completion cannot publish a proposal or clear a newer slot |
 | Isolation | Tasks cannot reach the internet, other tasks, or AWS credentials. DNS egress is tested separately |
 | Access | Users cannot open another learner's session, ticket, recording, or submission, or content outside their plan |
 | Lifecycle | Interrupt startup after each external effect and saved write, with no client retry. Reconciliation repairs the timer and task link or ends the attempt. Late task events and stale timers cannot revive or end the wrong state. Every ended session leaves no running task |

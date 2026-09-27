@@ -48,6 +48,10 @@ assert.equal(validateType('GatewayClientMessage')({ type: 'input', data: 'ls' })
 const incompleteDebrief = example('response-examples.json').Debrief[0];
 assert.equal(validateType('Debrief')({ ...incompleteDebrief, score: example('debrief.json').score }), false, 'Incomplete recording must not carry a numeric score');
 assert.equal(validateType('Playback')({ ...example('playback.json'), recording: { status: 'draining', reason: null } }), false, 'Playback cannot expose an unsealed recording');
+const completedTurn = example('response-examples.json').Turn[0];
+assert.equal(validateType('Turn')({ ...completedTurn, status: 'interrupted' }), false, 'Interrupted turns cannot expose runnable proposals');
+assert.equal(validateType('Turn')({ ...completedTurn, workerToken: 'private' }), false, 'Worker token must not be public');
+valid(validateType('ScoreComponents'), { ...example('debrief.json').score, outageSeconds: 99.75 }, 'Fractional monitor duration');
 
 // OpenAPI.
 function rewrite(value) {
