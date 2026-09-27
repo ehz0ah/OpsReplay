@@ -13,10 +13,14 @@ export function matchEvidence(evidence, commands) {
   };
 }
 
-export function deriveDebrief(challenge, events) {
+export function deriveDebrief(challenge, events, session) {
+  if (!session.readyAt || !session.endedAt || ['provisioning', 'ready'].includes(session.status)) {
+    throw new Error('Debrief requires a session that became ready and has an outcome');
+  }
   const ordered = [...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const ready = ordered.find(item => item.kind === 'lifecycle' && item.status === 'ready');
-  const end = ordered.find(item => item.kind === 'lifecycle' && !['provisioning', 'ready'].includes(item.status));
+  // Use committed boundaries even if recording loss removed lifecycle events.
+  const ready = { at: session.readyAt };
+  const end = { at: session.endedAt, status: session.status };
   const saved = ordered.filter(item => seconds(ready.at, item.at) >= 0 && seconds(item.at, end.at) >= 0);
   const commands = saved.filter(item => item.kind === 'command').map(item =>
     item.endedAt && seconds(item.endedAt, end.at) < 0

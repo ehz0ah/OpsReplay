@@ -9,6 +9,10 @@ syntax error, and restarts nginx, which takes the proxy down. They then validate
 configuration, start nginx, and recover. The [timeline](timeline.json),
 [debrief](debrief.json), and [playback](playback.json) agree, and `npm run check`
 re-derives the debrief and highlights from the timeline and manifest.
+The empty editor output records an attempted check, not observed configuration evidence.
+The restart is a possible cause based on its command pattern and timing. The response
+examples also include an incomplete recording with no score and an interrupted assistant
+turn with no proposal.
 
 The [review submission](review-submission.json) is the result of matching the
 [submit request](review-submit-request.json) against the pool settings bundle. The

@@ -86,6 +86,14 @@ test('lost task or expired drain seals an incomplete recording before cleanup', 
   }
 });
 
+test('a task found after finalisation is stopped without counting the result again', () => {
+  const session = { status: 'error', finalised: true };
+  const recording = { ...drain(), status: 'incomplete', reason: 'task_lost' };
+  assert.equal(nextStartupAction(session, { taskArn: 'late-task' }, 200_000).type, 'wait');
+  assert.equal(nextFinalisationAction(session, recording, { taskStopped: false }, 200_000).type, 'stop_task');
+  assert.equal(nextFinalisationAction(session, recording, { taskStopped: true, scheduleExists: false }, 200_001).type, 'wait');
+});
+
 test('stale, incomplete, gapped, and expired recorder acknowledgements cannot seal data', () => {
   const recording = drain();
   for (const [ack, now] of [

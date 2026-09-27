@@ -225,7 +225,8 @@ The finaliser derives the debrief from the manifest and the recorded timeline:
 4. **Root cause, causal chain, and recommended recovery** are authored text.
 5. **Assisted** is true when any hint, assistant turn, or proposal was used.
 
-Only events within readiness and the first outcome enter the derivation. A command
+The saved session's `readyAt` and `endedAt` define the bounds, even if recording loss
+removed lifecycle events. Only events within those bounds enter the derivation. A command
 that completes after the cutoff cannot supply observed evidence. Terminal output is
 learner-controlled, so these matches support reflection, not trusted assessment.
 Unsupported command forms may remain `not_observed`. Monitor data alone determines
