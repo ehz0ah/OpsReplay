@@ -1235,7 +1235,7 @@
       "properties": {
         "timeToRecoverySeconds": {
           "type": [
-            "integer",
+            "number",
             "null"
           ],
           "minimum": 0,
@@ -1256,15 +1256,15 @@
           "minimum": 0,
           "maximum": 5000
         },
-        "selfInflictedOutages": {
+        "outageSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 144000
+        },
+        "observedOutages": {
           "type": "integer",
           "minimum": 0,
           "maximum": 1000
-        },
-        "outageSeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 14400
         }
       },
       "required": [
@@ -1272,7 +1272,7 @@
         "totalRequests",
         "failedRequests",
         "commandCount",
-        "selfInflictedOutages",
+        "observedOutages",
         "outageSeconds"
       ]
     },
@@ -1331,9 +1331,6 @@
                 "minLength": 1,
                 "maxLength": 500
               },
-              "found": {
-                "type": "boolean"
-              },
               "commandSeq": {
                 "type": [
                   "integer",
@@ -1341,46 +1338,50 @@
                 ],
                 "minimum": 1,
                 "maximum": 5000
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "observed",
+                  "attempted",
+                  "not_observed"
+                ],
+                "description": "Observed means matching saved output, not proof of understanding. Not observed means no matching record, not proof the learner missed it."
               }
             },
             "required": [
               "id",
               "description",
-              "found",
+              "status",
               "commandSeq"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "not_observed"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "commandSeq": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "commandSeq": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
             ]
           },
           "maxItems": 20
-        },
-        "harmfulActions": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 60
-              },
-              "description": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 500
-              },
-              "commandSeq": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5000
-              }
-            },
-            "required": [
-              "id",
-              "description",
-              "commandSeq"
-            ]
-          },
-          "maxItems": 50
         },
         "outages": {
           "type": "array",
@@ -1403,21 +1404,12 @@
                   "null"
                 ],
                 "format": "date-time"
-              },
-              "afterCommandSeq": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 1,
-                "maximum": 5000
               }
             },
             "required": [
               "label",
               "startedAt",
-              "endedAt",
-              "afterCommandSeq"
+              "endedAt"
             ]
           },
           "maxItems": 50
@@ -1457,6 +1449,42 @@
         },
         "recording": {
           "$ref": "#/$defs/RecordingState"
+        },
+        "possibleHarmfulActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "commandSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000
+              },
+              "outageStartedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "commandSeq",
+              "outageStartedAt"
+            ]
+          },
+          "maxItems": 50,
+          "description": "Command-pattern and timing associations. These do not establish the cause of an outage."
         }
       },
       "required": [
@@ -1467,7 +1495,7 @@
         "rootCause",
         "causalChain",
         "keyEvidence",
-        "harmfulActions",
+        "possibleHarmfulActions",
         "outages",
         "recommendedRecovery",
         "sources",
@@ -1606,7 +1634,7 @@
                 "type": "string",
                 "enum": [
                   "key_evidence",
-                  "harmful_action",
+                  "possible_harmful_action",
                   "outage",
                   "recovery"
                 ]

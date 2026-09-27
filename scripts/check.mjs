@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import SwaggerParser from '@apidevtools/swagger-parser';
+import { deriveDebrief } from './reference/debrief.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
@@ -101,8 +102,8 @@ for (const entry of fs.readdirSync(path.join(root, 'content/challenges'), { with
   for (const hint of manifest.hints.slice(1).map((item, index) => [manifest.hints[index], item])) {
     assert.ok(hint[1].minElapsedMinutes >= hint[0].minElapsedMinutes, file + ': hints must release in order');
   }
-  for (const source of [...manifest.traps.flatMap(item => item.commandPatterns), ...manifest.debrief.keyEvidence.flatMap(item => item.commandPatterns)]) {
-    assert.doesNotThrow(() => pattern(source), file + ': invalid command pattern ' + source);
+  for (const source of [...manifest.traps.flatMap(item => item.commandPatterns), ...manifest.debrief.keyEvidence.flatMap(item => [...item.commandPatterns, ...item.outputPatterns])]) {
+    assert.doesNotThrow(() => pattern(source), file + ': invalid evidence or command pattern ' + source);
   }
   for (const trap of manifest.traps) {
     assert.ok(probes.has(trap.probe), file + ': trap uses unknown probe ' + trap.probe);
@@ -202,38 +203,6 @@ for (const hint of example('response-examples.json').HintResponse.map(item => it
 }
 
 // Reference debrief derivation from a recorded timeline.
-function deriveDebrief(challenge, events) {
-  const commands = events.filter(item => item.kind === 'command');
-  const ready = events.find(item => item.kind === 'lifecycle' && item.status === 'ready');
-  const lastCommandBefore = at => commands.filter(item => item.at <= at).at(-1)?.seq ?? null;
-  const outages = [];
-  for (const event of events.filter(item => item.kind === 'monitor')) {
-    if (event.signal === 'outage_started') outages.push({ label: event.label, startedAt: event.at, endedAt: null, afterCommandSeq: lastCommandBefore(event.at) });
-    if (event.signal === 'outage_ended') outages.findLast(item => item.label === event.label && item.endedAt === null).endedAt = event.at;
-  }
-  const keyEvidence = challenge.debrief.keyEvidence.map(({ id, description, commandPatterns }) => {
-    const found = commands.find(item => matchesAny(commandPatterns, item.command));
-    return { id, description, found: Boolean(found), commandSeq: found?.seq ?? null };
-  });
-  const harmfulActions = challenge.traps.flatMap(trap => {
-    const label = challenge.healthProbes.find(item => item.id === trap.probe).publicLabel;
-    return commands.filter(command => matchesAny(trap.commandPatterns, command.command) && outages.some(outage => outage.label === label
-      && seconds(command.at, outage.startedAt) >= 0 && seconds(command.at, outage.startedAt) <= trap.withinSeconds))
-      .map(command => ({ id: trap.id, description: trap.description, commandSeq: command.seq }));
-  });
-  const recoveryStart = events.filter(item => item.kind === 'monitor' && item.signal === 'recovery_sustaining').at(-1);
-  const recovered = events.some(item => item.kind === 'monitor' && item.signal === 'recovered');
-  const end = events.filter(item => item.kind === 'lifecycle').at(-1);
-  return {
-    keyEvidence, harmfulActions, outages,
-    timeToRecoverySeconds: recovered ? seconds(ready.at, recoveryStart.at) : null,
-    commandCount: commands.length,
-    selfInflictedOutages: outages.length,
-    outageSeconds: outages.reduce((sum, item) => sum + seconds(item.startedAt, item.endedAt ?? end.at), 0),
-    recoveryStart: recovered ? recoveryStart : null,
-    lastCommandBefore,
-  };
-}
 const timeline = example('timeline.json');
 const debrief = example('debrief.json');
 const playback = example('playback.json');
@@ -246,9 +215,9 @@ assert.deepEqual(commandEvents.map(item => item.seq), commandEvents.map((_, inde
 const timelineChallenge = challenges.get(debrief.challenge.id);
 const derived = deriveDebrief(timelineChallenge, timeline.items);
 assert.deepEqual(debrief.keyEvidence, derived.keyEvidence, 'Debrief key evidence');
-assert.deepEqual(debrief.harmfulActions, derived.harmfulActions, 'Debrief harmful actions');
+assert.deepEqual(debrief.possibleHarmfulActions, derived.possibleHarmfulActions, 'Debrief harmful actions');
 assert.deepEqual(debrief.outages, derived.outages, 'Debrief outages');
-for (const key of ['timeToRecoverySeconds', 'commandCount', 'selfInflictedOutages', 'outageSeconds']) {
+for (const key of ['timeToRecoverySeconds', 'commandCount', 'observedOutages', 'outageSeconds']) {
   assert.equal(debrief.score[key], derived[key], 'Debrief score ' + key);
 }
 assert.ok(debrief.score.failedRequests <= debrief.score.totalRequests);
@@ -256,10 +225,10 @@ for (const key of ['rootCause', 'causalChain', 'recommendedRecovery']) assert.de
 assert.equal(debrief.outcome, timeline.items.at(-1).status);
 assert.equal(debrief.assisted, Object.values(debrief.assistance).some(Boolean));
 const expectedHighlights = [
-  ...derived.keyEvidence.filter(item => item.found).map(item => ({ kind: 'key_evidence', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
-  ...derived.harmfulActions.map(item => ({ kind: 'harmful_action', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
-  ...derived.outages.map(item => ({ kind: 'outage', at: item.startedAt, commandSeq: item.afterCommandSeq, label: item.label })),
-  ...(derived.recoveryStart ? [{ kind: 'recovery', at: derived.recoveryStart.at, commandSeq: derived.lastCommandBefore(derived.recoveryStart.at), label: derived.recoveryStart.label }] : []),
+  ...derived.keyEvidence.filter(item => item.status === 'observed').map(item => ({ kind: 'key_evidence', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
+  ...derived.possibleHarmfulActions.map(item => ({ kind: 'possible_harmful_action', at: commandEvents[item.commandSeq - 1].at, commandSeq: item.commandSeq, label: item.description })),
+  ...derived.outages.map(item => ({ kind: 'outage', at: item.startedAt, commandSeq: null, label: item.label })),
+  ...(derived.recoveryStart ? [{ kind: 'recovery', at: derived.recoveryStart.at, commandSeq: null, label: derived.recoveryStart.label }] : []),
 ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 assert.deepEqual(playback.highlights, expectedHighlights, 'Playback highlights follow the debrief');
 assert.deepEqual(playback.captures.map(item => item.commandSeq), commandEvents.map(item => item.seq), 'One capture per command');

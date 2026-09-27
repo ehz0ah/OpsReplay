@@ -20,11 +20,10 @@
   ],
   "highlights": [
     { "kind": "key_evidence", "at": "2026-10-05T02:01:45Z", "commandSeq": 2, "label": "The nginx error log shows refused connections to upstream 127.0.0.1:8081." },
-    { "kind": "key_evidence", "at": "2026-10-05T02:02:30Z", "commandSeq": 3, "label": "The socket list shows the application listening on port 8080, not 8081." },
-    { "kind": "key_evidence", "at": "2026-10-05T02:03:20Z", "commandSeq": 4, "label": "The nginx configuration sets proxy_pass to port 8081." },
-    { "kind": "harmful_action", "at": "2026-10-05T02:04:20Z", "commandSeq": 5, "label": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections." },
-    { "kind": "outage", "at": "2026-10-05T02:04:22Z", "commandSeq": 5, "label": "Storefront proxy stopped accepting connections" },
-    { "kind": "recovery", "at": "2026-10-05T02:06:03Z", "commandSeq": 9, "label": "Recovery checks passing" }
+    { "kind": "key_evidence", "at": "2026-10-05T02:02:30Z", "commandSeq": 3, "label": "The socket list shows the application listening on port 8080." },
+    { "kind": "possible_harmful_action", "at": "2026-10-05T02:04:20Z", "commandSeq": 5, "label": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections." },
+    { "kind": "outage", "at": "2026-10-05T02:04:22Z", "commandSeq": null, "label": "Storefront proxy stopped accepting connections" },
+    { "kind": "recovery", "at": "2026-10-05T02:06:03Z", "commandSeq": null, "label": "Recovery checks passing" }
   ],
   "recording": { "status": "complete", "reason": null }
 }

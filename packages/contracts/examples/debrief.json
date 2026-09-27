@@ -16,23 +16,23 @@
     "Connections to port 8081 are refused, and nginx answers every proxied request with 502 Bad Gateway."
   ],
   "keyEvidence": [
-    { "id": "proxy-error-log", "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.", "found": true, "commandSeq": 2 },
-    { "id": "listening-sockets", "description": "The socket list shows the application listening on port 8080, not 8081.", "found": true, "commandSeq": 3 },
-    { "id": "proxy-config", "description": "The nginx configuration sets proxy_pass to port 8081.", "found": true, "commandSeq": 4 }
+    { "id": "proxy-error-log", "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.", "status": "observed", "commandSeq": 2 },
+    { "id": "listening-sockets", "description": "The socket list shows the application listening on port 8080.", "status": "observed", "commandSeq": 3 },
+    { "id": "proxy-config", "description": "The nginx configuration sets proxy_pass to port 8081.", "status": "attempted", "commandSeq": 4 }
   ],
-  "harmfulActions": [
+  "possibleHarmfulActions": [
     {
       "id": "restart-invalid-config",
       "description": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections.",
-      "commandSeq": 5
+      "commandSeq": 5,
+      "outageStartedAt": "2026-10-05T02:04:22Z"
     }
   ],
   "outages": [
     {
       "label": "Storefront proxy stopped accepting connections",
       "startedAt": "2026-10-05T02:04:22Z",
-      "endedAt": "2026-10-05T02:06:02Z",
-      "afterCommandSeq": 5
+      "endedAt": "2026-10-05T02:06:02Z"
     }
   ],
   "recommendedRecovery": [
@@ -47,7 +47,7 @@
     "totalRequests": 884,
     "failedRequests": 640,
     "commandCount": 9,
-    "selfInflictedOutages": 1,
+    "observedOutages": 1,
     "outageSeconds": 100
   },
   "assisted": false,

@@ -46,6 +46,11 @@ and the debrief.
   alternative.
 - Command patterns are case-sensitive JavaScript regular expressions. Make them specific
   enough not to match the reference fix or the safe alternative.
+- Evidence rules also need output patterns. All must match one saved command excerpt.
+  Use narrow descriptions that the output can support. Split evidence across separate
+  items when it needs output from different commands. Include a valid output example,
+  a failed read, and unrelated output in the reference checks. Timing rules for traps
+  identify possible harmful actions, not proven causes.
 - Hints are ordered and released no earlier than their delay after readiness.
 
 ## Evidence quality

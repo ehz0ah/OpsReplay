@@ -56,7 +56,7 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T10 | Time limit starts at readiness. Pro extension is a platform setting | Start-up latency is not charged to the learner |
 | T11 | Opaque single-use terminal tickets stored as hashes | No shared signing key between API and gateway. Tickets stay out of URLs |
 | T12 | Shell integration markers for command boundaries, input lines as fallback | Standard terminal technique. Tampering affects only the learner's own events |
-| T13 | Case-sensitive regular expressions for evidence and trap detection | Simple and testable. Revisit if authors need more |
+| T13 | Command and saved-output patterns for observed evidence. Trap timing indicates possible harm only | Avoid credit for path mentions or empty editor output. Monitor measurements own recovery and impact |
 | T14 | Separate the session outcome from recording completion, with a bounded gateway drain before task stop | Avoid losing buffered evidence. Incomplete recording has no numeric score. Validate disconnect, timeout, and late-writer paths |
 
 ## Open choices and decision timing
