@@ -9,6 +9,7 @@ versions, deployment settings, provider and model, workload, and sample size.
 | --- | --- |
 | Scenario validity | Scripted runs confirm the fault is present at start, validators fail before the reference fix and pass after it, and each trap behaves as stated. Twenty repeats per Challenge expose flaky environments and measure recovery-time variance |
 | Playback | Playback of each reference run matches its recorded output, logs, and metrics |
+| Recording failure | Disconnect the browser, replace the recorder, lose the task, exceed a buffer limit, and delay the final upload. Stop follows a completed drain or an explicit incomplete result. Late writers cannot change the sealed debrief |
 | Isolation | Tasks cannot reach the internet, other tasks, or AWS credentials. DNS egress is tested separately |
 | Access | Users cannot open another learner's session, ticket, recording, or submission, or content outside their plan |
 | Lifecycle | Interrupt startup after each external effect and saved write, with no client retry. Reconciliation repairs the timer and task link or ends the attempt. Late task events and stale timers cannot revive or end the wrong state. Every ended session leaves no running task |

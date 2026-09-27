@@ -44,6 +44,9 @@ assert.equal(validateType('SessionView')({ ...session, taskAddress: '10.0.1.7' }
 const leakingExercise = { ...example('review-exercise.json'), findings: [] };
 assert.equal(validateType('ReviewExercise')(leakingExercise), false, 'Review findings accepted before submission');
 assert.equal(validateType('GatewayClientMessage')({ type: 'input', data: 'ls' }), false, 'Terminal input must use binary frames');
+const incompleteDebrief = example('response-examples.json').Debrief[0];
+assert.equal(validateType('Debrief')({ ...incompleteDebrief, score: example('debrief.json').score }), false, 'Incomplete recording must not carry a numeric score');
+assert.equal(validateType('Playback')({ ...example('playback.json'), recording: { status: 'draining', reason: null } }), false, 'Playback cannot expose an unsealed recording');
 
 // OpenAPI.
 function rewrite(value) {

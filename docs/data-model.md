@@ -16,7 +16,7 @@ few known fields afterwards.
 | Session | Owner, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
 | TimelineEvent | Command, monitor, assistance, or lifecycle event | Owner |
 | Capture | Per-command configuration diffs, new log lines, metric sample | Owner, through playback links |
-| Recording | Terminal chunks and metric series chunks | Owner, through playback links |
+| Recording | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references | Status public, objects through playback links |
 | TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
 | Debrief | Derived evidence, harmful actions, outages, score components, assistance | Owner, after the outcome |
 | Proposal | Session, command, rationale, caution flag, expiry, status | Owner |
@@ -42,6 +42,8 @@ names are a storage convention, not part of the HTTP contract.
 | `USER#<id>` | `START#<requestId>` | Session start receipt |
 | `USER#<id>` | `REVIEWREQ#<requestId>` | Review submission receipt |
 | `SESSION#<id>` | `STATE` | Private session record |
+| `SESSION#<id>` | `RECORDING` | Recorder lease, saved cursors, and final recording state |
+| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range |
 | `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>` | Timeline event, time-ordered |
 | `SESSION#<id>` | `TICKET#<sha256>` | Terminal ticket with a TTL |
 | `SESSION#<id>` | `REQUEST#<requestId>` | End and hint receipts |
@@ -53,8 +55,8 @@ names are a storage convention, not part of the HTTP contract.
 | `REVIEW#<id>` | `STATE` | Review submission and match result |
 | `REVIEW#<id>` | `TURN#<turnId>` | Code Review assistant turn |
 
-Event sort keys use the event time, a source (`gw` for the gateway, `api` for handlers),
-and a per-source counter, so two writers never collide. The monitor assigns command
+Event sort keys use the event time, a stable source stream ID, and its sequence number.
+Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
 sequence numbers inside the task.
 
 An owner index keyed by user and creation time lists sessions and submissions. A sparse
@@ -71,9 +73,9 @@ reads. Handlers return the committed record, so an index delay never hides a new
 | `content/challenges/<id>/<version>/` | Manifest and debrief assets | Content publication |
 | `content/reviews/<id>/<version>/` | Review bundle | Content publication |
 | `content/learn/<id>/<version>/` | Rendered Pro Learn entry | Learn build step |
-| `sessions/<sessionId>/terminal/<connectionId>/` | asciicast v2 chunks | Gateway |
-| `sessions/<sessionId>/metrics/` | Metric series chunks | Gateway |
-| `sessions/<sessionId>/captures/` | One capture per command | Gateway |
+| `sessions/<sessionId>/terminal/<generation>/` | asciicast v2 chunks | Gateway |
+| `sessions/<sessionId>/metrics/<generation>/` | Metric series chunks | Gateway |
+| `sessions/<sessionId>/captures/<generation>/` | Per-command captures | Gateway |
 
 Published content keys are immutable, with a hash in the catalogue manifest. The
 frontend bucket holds only the static application and free Learn pages. Browsers read
@@ -87,13 +89,16 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 | Start | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments |
 | Save task | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning` |
 | Ready | Update conditional on `provisioning`. Also records `readyAt` and the task address |
-| Outcome | Update conditional on status being `provisioning` or `ready`. The first outcome wins |
+| Outcome | Transaction conditional on active status: outcome and `endedAt`, recording set to `draining` with a fixed cutoff and drain deadline. The first outcome wins |
 | End | Transaction: the outcome update and the end receipt |
 | Heartbeat | Update `lastSeenAt` conditional on `ready` |
 | Ticket use | Delete conditional on existence and an unexpired `expiresAt`, returning the old item |
 | Hint | Transaction: hint item absent, session hint count equal to the expected value, receipt |
 | Proposal run | Update conditional on `pending`, unexpired, and an active session |
-| Finalise | Transaction: `FINALISED` absent, debrief written, progress updated, lock released |
+| Recorder claim | Claim an absent or expired lease and increment its generation. Renewal requires the same owner and generation |
+| Recording append | Save cursors and object references only after upload, with the current unexpired lease and recording still open. Event identity makes retries idempotent |
+| Seal recording | Conditional on `draining`. `complete` requires the current recorder lease, all final cursors saved without gaps, and time before the drain deadline. Otherwise use `incomplete` and a reason |
+| Finalise | Transaction: `FINALISED` absent, recording sealed, task confirmed stopped, debrief written if ready was reached, progress updated, lock released only if it still names this session |
 
 Application receipts, not client-token windows, enforce idempotency for the life of a
 session. `RunTask`'s client token covers only the short gap between the start transaction
@@ -106,6 +111,16 @@ saved result. Same ID and a different hash returns `IDEMPOTENCY_CONFLICT`.
 
 Stream-triggered handlers, such as the finaliser, must tolerate redelivery. Every effect
 they have is conditional or naturally idempotent, such as `StopTask` on a stopped task.
+The finaliser does not call `StopTask` before recording is sealed. The sweep seals a
+timed-out drain as incomplete and resumes cleanup. Late recorder completions cannot
+overwrite a sealed recording or its debrief. Terminal sessions remain in the work index
+until all cleanup finishes, including sessions that never became ready.
+
+Recording chunks use the recorder generation and source sequence in their keys. Event
+IDs preserve the original source and sequence across reconnects, so replaying a buffered
+event does not append it twice. The final debrief uses the sealed set of references,
+not a fresh scan of the S3 prefix. Terminal outcomes with incomplete recording store a
+null score. They never substitute zero for missing counters.
 
 ## Bounds and retention
 

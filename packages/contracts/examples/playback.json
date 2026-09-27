@@ -25,5 +25,6 @@
     { "kind": "harmful_action", "at": "2026-10-05T02:04:20Z", "commandSeq": 5, "label": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections." },
     { "kind": "outage", "at": "2026-10-05T02:04:22Z", "commandSeq": 5, "label": "Storefront proxy stopped accepting connections" },
     { "kind": "recovery", "at": "2026-10-05T02:06:03Z", "commandSeq": 9, "label": "Recovery checks passing" }
-  ]
+  ],
+  "recording": { "status": "complete", "reason": null }
 }

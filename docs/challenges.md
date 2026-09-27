@@ -69,8 +69,10 @@ stateDiagram-v2
    readiness, schedules, and cleanup. API calls, session stream events, ECS events,
    and the sweep invoke it from saved state. It repairs interrupted starts without a
    browser retry. See the [start contract](api.md#start).
-2. **Ready.** The time limit starts at `readyAt`, so start-up latency is not charged to
-   the learner. The alert is shown.
+2. **Ready.** The lifecycle handler saves the healthy task's address. A gateway claims
+   recording ownership and acknowledges its initial terminal and monitor cursors before
+   readiness is committed. The time limit starts at `readyAt`, so start-up latency is
+   not charged to the learner. The alert is shown.
 3. **Outcome.** The first outcome wins through a conditional write:
    - `resolved` when every validator has passed continuously for its sustain period;
    - `failed` with `time_limit` when the EventBridge Scheduler job fires;
@@ -81,11 +83,28 @@ stateDiagram-v2
      (proposed), found by a sweep that runs every minute;
    - `error` with `environment_exited` when the platform stops the task for another
      reason.
-4. **Finalisation.** A DynamoDB stream on the session record invokes the finaliser. It
-   stops the task, deletes the Scheduler job, releases the learner's active-session lock,
-   computes the debrief and score, and updates progress. Each write is conditional, so
-   stream redelivery cannot count a result twice. A reconciliation sweep lists running
-   tasks by `startedBy` and stops any whose session already has an outcome.
+4. **Drain.** The outcome write also fixes `endedAt`, sets recording to `draining`, and
+   sets `drainDeadlineAt`, proposed at 30 seconds later. These values never move on a
+   retry. Input closes when the gateway observes the outcome. Activity after `endedAt`
+   is excluded from scoring, even if a command was still running. The gateway asks the
+   monitor to seal measurements at that cutoff and uploads the remaining terminal,
+   metric, event, and capture data. It acknowledges `complete` only after the saved
+   objects and events cover the final cursors with no gaps. A limit or unrecoverable gap
+   produces `incomplete` with a reason. Neither state changes the session outcome.
+5. **Finalisation.** The session stream and sweep call the same finaliser. It waits for
+   recording completion before `StopTask`. If the recorder or task is lost, or the drain
+   deadline expires, it seals the saved data as `incomplete` and stops the task. It never
+   waits indefinitely for an acknowledgement. Once the task is confirmed stopped, it
+   deletes the schedule and commits the debrief, progress, and finalisation marker once.
+   Lock release is conditional on the lock still naming this session. A session that
+   never became ready has no debrief. Reconciliation retries each unfinished step and
+   discovers late tasks through ECS events and session tags, including pending tasks.
+   It follows the drain rule before stopping a task with an outcome.
+
+The drain deadline bounds the wait for recording, not AWS service recovery. Stop failures
+remain pending for reconciliation and raise an alarm. The active-session lock remains
+until cleanup is confirmed. Lambda never contacts the monitor. Gateway acknowledgements
+and finalisation requests pass through stored session state.
 
 An attempt labelled `first` is the learner's first attempt of that Challenge ID that did
 not end in `error`. Environment faults never use up the first attempt.
@@ -133,6 +152,20 @@ link could make it capture its own secret or another file from the monitor conta
 
 The gateway records terminal input and output as timestamped asciicast v2 chunks outside
 the learner's reach. Playback shows output. Input supports command reconstruction.
+
+Recording belongs to the session, not the browser connection. One gateway holds a
+renewable recorder lease, proposed at 15 seconds with renewal every five seconds. It
+keeps reading the terminal and monitor after the browser disconnects. Gateway workers
+discover unclaimed or expired leases through the session work index. A replacement
+increments the recorder generation and resumes from saved cursors. The terminal server
+must buffer sequenced output for bounded reconnects, as the monitor does for its data.
+A buffer overflow or missing range is recorded, never treated as an empty interval.
+
+Chunks have immutable keys that include the recorder generation and sequence range.
+The gateway saves object references and event cursors only after successful uploads,
+conditional on its current lease and recording still being open. Stale writers cannot
+publish objects or complete a drain. Finalisation fixes the accepted references so late
+uploads cannot change playback or scores. Unreferenced objects expire under retention.
 
 The image's shell configuration emits prompt and command markers, such as the OSC 133
 sequences terminals use for shell integration. They mark prompt start, command start with
@@ -184,6 +217,11 @@ The debrief aligns commands with metric samples and captures, so it can show wha
 action changed. The repository check runs these rules against the
 [example timeline](../packages/contracts/examples/timeline.json) and compares the result
 with the [example debrief](../packages/contracts/examples/debrief.json).
+
+An incomplete recording still permits a debrief of the saved data, with a visible
+`recording.status: incomplete` and reason. Its `score` is null. Missing measurements
+must not become zero, and missing records must not be described as learner mistakes.
+Progress saves the outcome and the missing-score status without a numeric ranking.
 
 ## Playback and retry
 
