@@ -1051,6 +1051,7 @@
               "format": "uuid"
             },
             "changedFiles": {
+              "description": "Files observed changed in the associated capture interval. This does not attribute each change to this command.",
               "type": "array",
               "items": {
                 "type": "string",
@@ -1608,6 +1609,7 @@
             "additionalProperties": false,
             "properties": {
               "commandSeq": {
+                "description": "Command that requested this capture, not proof of who changed each file.",
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 5000
@@ -1616,11 +1618,26 @@
                 "type": "string",
                 "format": "uri",
                 "maxLength": 2000
+              },
+              "baselineAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "completedAt": {
+                "type": "string",
+                "format": "date-time"
               }
             },
             "required": [
               "commandSeq",
-              "url"
+              "url",
+              "baselineAt",
+              "startedAt",
+              "completedAt"
             ]
           },
           "maxItems": 5000
@@ -1739,6 +1756,11 @@
         "text"
       ]
     },
+    "ProposalStatus": {
+      "type": "string",
+      "description": "Accepted means terminal input acceptance, not successful command execution. Unknown delivery must not be resent automatically.",
+      "enum": ["pending", "dispatching", "accepted", "unknown", "expired"]
+    },
     "Proposal": {
       "type": "object",
       "additionalProperties": false,
@@ -1761,12 +1783,7 @@
           "type": "boolean"
         },
         "status": {
-          "type": "string",
-          "enum": [
-            "pending",
-            "run",
-            "expired"
-          ]
+          "$ref": "#/$defs/ProposalStatus"
         },
         "expiresAt": {
           "type": "string",
@@ -2507,6 +2524,16 @@
     },
     "GatewayServerMessage": {
       "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "proposal_status" },
+            "proposalId": { "type": "string", "format": "uuid" },
+            "status": { "$ref": "#/$defs/ProposalStatus" }
+          },
+          "required": ["type", "proposalId", "status"]
+        },
         {
           "type": "object",
           "additionalProperties": false,

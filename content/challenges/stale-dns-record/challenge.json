@@ -81,7 +81,8 @@
     "severity": "critical"
   },
   "validators": [
-    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 }
+    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
+    { "id": "checkout-persisted", "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 }, "sustainSeconds": 60 }
   ],
   "healthProbes": [
     {

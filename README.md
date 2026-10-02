@@ -10,7 +10,8 @@ configuration files, and see real consequences. Afterwards they can play back th
 beside the logs and metrics, or retry in a fresh environment.
 
 **Status: specification baseline.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
-is the source of truth. This repository contains design documents, versioned contracts,
+defines the accepted product direction. The [decision register](docs/decisions/README.md)
+defines precedence for later refinements. This repository contains design documents, versioned contracts,
 validation tools, and three synthetic draft Challenge manifests. No Challenge image,
 monitor, gateway, application, or cloud deployment exists. Contract checks do not prove
 that anything works.
@@ -59,7 +60,10 @@ manifests and review bundles, trap and evidence patterns, the reference debrief 
 review-matching rules against the examples, local documentation links, and style.
 Regression tests also exercise reference models for interrupted startup, recording
 drain, evidence matching, and assistant expiry. These models do not call AWS, run
-containers, or use an LLM provider. There is no application start command yet.
+containers, or use an LLM provider. Additional models check receipt lookup order,
+terminal input generations, uncertain proposal delivery, and checkout responses through
+an injected transport. They do not test a real PTY, TLS, or database. There is no
+application start command yet.
 
 ## Repository map
 

@@ -6,7 +6,7 @@
   "category": "database",
   "plan": "pro",
   "language": "python",
-  "context": "This change responds to checkout latency spikes during a sale by raising connection pool limits and the worker count. The service runs under Gunicorn with synchronous workers and shares a PostgreSQL 16 database, configured with max_connections = 100, with a background job worker.",
+  "context": "This change responds to checkout latency spikes during a sale by raising connection pool limits and the worker count. Gunicorn uses synchronous workers. Each request checks out one SQLAlchemy connection and returns it before completion. There are no background threads or retained checkouts in a web worker. Each worker creates its own engine after fork. The service shares PostgreSQL 16, configured with max_connections = 100, with a background job worker. No load measurements accompany the change.",
   "files": [
     {
       "path": "app/db.py",

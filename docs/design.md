@@ -44,7 +44,8 @@ be able to complete the Challenge with the assistant closed.
 | Ready | Connect the terminal with a fresh ticket and restore the existing shell |
 | Reconnecting | Keep the last dashboard values visible, say that the clock is still running, reconnect with a new ticket |
 | Replaced | The attempt was opened elsewhere. Offer to take it back here |
-| Assistant proposal | Show the command, rationale, and caution flag. Run it only when the learner confirms. Show `TERMINAL_BUSY` as a prompt to wait for the shell |
+| Assistant proposal | Show the command, rationale, and caution flag. Confirm only at a verified empty prompt. Show `TERMINAL_BUSY` if a command runs, text is partly typed, or prompt state is unknown. Allow manual copying |
+| Proposal delivery | Show dispatching, accepted, or unknown. Accepted means the terminal accepted input, not that the command succeeded. Unknown requires checking output, not automatic retry |
 | Provider failure | Show the error in the assistant panel only. Terminal, dashboard, and hints are unaffected |
 | Interrupted turn | Show that the reply could not finish. Keep the saved state and let the learner send a new request. Do not rerun the old turn |
 | Outcome | Stop terminal input, show the outcome and reason, open the debrief when it is ready |
@@ -63,8 +64,9 @@ values. An incomplete recording has a visible reason and no numeric score. Missi
 records are not shown as learner mistakes. Do not invent a combined grade.
 
 Playback is a timeline with a scrubber and speed control. The terminal recording plays
-in step with the metric charts and, at each command, the captured configuration diffs
-and new log lines. Key evidence, possible harmful actions, outages, and the start of recovery are
+in step with the metric charts and timestamped configuration and log capture intervals.
+Show the capture times, and do not imply that the linked command caused every change.
+Key evidence, possible harmful actions, outages, and the start of recovery are
 highlighted and can be reached from a list. Playback never starts an environment.
 
 Retry is labelled "Retry in a fresh environment". Retries are labelled separately in

@@ -51,6 +51,8 @@ assert.equal(validateType('Playback')({ ...example('playback.json'), recording: 
 const completedTurn = example('response-examples.json').Turn[0];
 assert.equal(validateType('Turn')({ ...completedTurn, status: 'interrupted' }), false, 'Interrupted turns cannot expose runnable proposals');
 assert.equal(validateType('Turn')({ ...completedTurn, workerToken: 'private' }), false, 'Worker token must not be public');
+assert.equal(validateType('Proposal')({ ...completedTurn.proposals[0], status: 'run' }), false, 'A database write cannot claim a command ran');
+assert.equal(validateType('Proposal')({ ...completedTurn.proposals[0], deliveryToken: 'private' }), false, 'Delivery tokens must not be public');
 valid(validateType('ScoreComponents'), { ...example('debrief.json').score, outageSeconds: 99.75 }, 'Fractional monitor duration');
 
 // OpenAPI.
@@ -238,6 +240,19 @@ const expectedHighlights = [
 ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 assert.deepEqual(playback.highlights, expectedHighlights, 'Playback highlights follow the debrief');
 assert.deepEqual(playback.captures.map(item => item.commandSeq), commandEvents.map(item => item.seq), 'One capture per command');
+let previousCaptureStart = null;
+for (const capture of playback.captures) {
+  const command = commandEvents.find(item => item.seq === capture.commandSeq);
+  if (previousCaptureStart) {
+    assert.equal(Date.parse(capture.baselineAt), Date.parse(previousCaptureStart), 'Capture interval includes prior non-atomic reads');
+  } else {
+    assert.ok(Date.parse(capture.baselineAt) <= Date.parse(session.readyAt), 'Initial baseline starts before readiness');
+  }
+  assert.ok(Date.parse(capture.baselineAt) <= Date.parse(capture.startedAt), 'Capture baseline after its start');
+  assert.ok(Date.parse(command.endedAt) <= Date.parse(capture.startedAt), 'Capture cannot precede its requesting command end');
+  assert.ok(Date.parse(capture.startedAt) <= Date.parse(capture.completedAt), 'Inverted capture interval');
+  previousCaptureStart = capture.startedAt;
+}
 assert.equal(playback.sessionId, debrief.sessionId);
 
 // Markdown links and style.

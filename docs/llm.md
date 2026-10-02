@@ -47,8 +47,10 @@ mistakes are part of learning, but the interface warns before confirmation. Prop
 matching a deny list that would end the environment, such as killing PID 1, are dropped
 and logged for evaluation.
 
-The learner confirms in the workspace, and the gateway types the command at an idle
-prompt. See the [gateway protocol](api.md#terminal-gateway-protocol). The resulting
+The learner confirms in the workspace. The terminal server serializes proposal delivery
+with manual input and accepts it only at a verified empty prompt. If the terminal adapter
+cannot verify that state, the learner can copy the command manually. See the
+[gateway protocol](api.md#terminal-gateway-protocol). The resulting
 command event records the proposal ID. The learner can also copy, edit, and run a
 command manually. That counts as a learner command.
 
@@ -86,8 +88,12 @@ request ID reads the saved turn instead of calling the provider again.
   `turn_failed` with `TURN_INTERRUPTED`. The saved turn read returns `interrupted`.
   Do not rerun the old request automatically. A new learner request uses a new ID.
 - Invalid function call: drop it and complete the turn with text only.
-- Expired or already-run proposal: the gateway returns `PROPOSAL_UNAVAILABLE`.
-- Busy shell: the gateway returns `TERMINAL_BUSY` and the proposal stays pending.
+- Expired proposal: the gateway returns `PROPOSAL_UNAVAILABLE`.
+- Duplicate confirmation: return the saved delivery status. Never send the command again.
+- Busy, partially typed, or unknown prompt: return `TERMINAL_BUSY`. The proposal stays
+  pending only if it was definitely not sent.
+- Lost delivery acknowledgement: return `unknown` until the terminal receipt or command
+  event proves acceptance. Do not claim execution or retry the command automatically.
 - Session ended: pending proposals expire. A concurrent turn may finish with text, but
   its completion transaction must not publish a runnable proposal for a terminal session.
 

@@ -34,6 +34,21 @@
         {
           "type": "object",
           "additionalProperties": false,
+          "description": "Create a checkout with a fresh reference and verify it through an order read. Fixed protocol in docs/challenges.md, not a status-only check.",
+          "properties": {
+            "kind": { "const": "checkout" },
+            "baseUrl": {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^http://127\\.0\\.0\\.[0-9]{1,3}(:[0-9]{1,5})?$"
+            },
+            "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 30000 }
+          },
+          "required": ["kind", "baseUrl", "timeoutMs"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "journey"
@@ -168,6 +183,12 @@
         "draft",
         "published"
       ]
+    },
+    "publicationBlockers": {
+      "description": "Unresolved content assumptions. Must be empty or absent before publication, backed by scenario-harness evidence.",
+      "type": "array",
+      "maxItems": 10,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
     },
     "tier": {
       "type": "string",
@@ -835,6 +856,12 @@
       ]
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "published" } }, "required": ["status"] },
+      "then": { "properties": { "publicationBlockers": { "type": "array", "maxItems": 0 } } }
+    }
+  ],
   "required": [
     "schemaVersion",
     "id",

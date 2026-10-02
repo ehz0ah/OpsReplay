@@ -9,8 +9,8 @@ first, then a small Learn collection and Code Review set.
 | ID | Work | Dependencies | Completion evidence |
 | --- | --- | --- | --- |
 | I01 | Build the reference Challenge image: services under a supervisor, planted fault, service wrappers, shell markers, terminal server | Reference Challenge choice | Runs under local Docker with the fault present |
-| I02 | Build the monitor: traffic, metrics, validators, probes, captures, authenticated control port | Manifest schema | Scenario harness passes the reference fix and each trap locally, 20 repeats |
-| I03 | Build the gateway: tickets, terminal proxy, dashboard relay, recording, command events, heartbeats | I01, I02, gateway protocol | Local session recorded and played back with matching output, logs, and metrics |
+| I02 | Build the monitor: traffic, checkout validation, probes, timestamped captures, authenticated TLS control port | Manifest schema | Scenario harness passes the reference fix and each trap locally, 20 repeats. Status-only checkout stubs fail |
+| I03 | Build the gateway: tickets, fenced terminal input, dashboard relay, recording, proposal delivery, heartbeats | I01, I02, gateway protocol | Matching playback, two-gateway reconnect tests, and explicit results for uncertain command delivery |
 | I04 | Implement session lifecycle: start, readiness, end, time limit, sweep, finaliser, reconciliation | Data model, launcher port | Duplicate starts launch one task. Every ended session leaves no running task |
 | I05 | Prove AWS: VPC and endpoints, ECS cluster, task definitions by digest, gateway behind the ALB, Cognito, Route 53, Scheduler | Architecture | Deployed spike with measured time to a ready terminal, isolation test results, and teardown |
 | I06 | Build the web workspace: terminal, dashboard with command markers, timeline, hints, outcome | API and gateway examples, then I03 and I04 | Alert to outcome without the assistant |

@@ -13,15 +13,16 @@ few known fields afterwards.
 | ReviewBundle | Diff, context, language, related Challenges, findings | Exercise projection before submission, findings after |
 | LearnEntry | Markdown metadata and body rendered at build time | Free entries public, Pro entries after an entitlement check |
 | Plan | Owner, plan, source, expiry, cohort | Owner, through `GET /v1/me` |
-| Session | Owner, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
+| Session | Owner, saved access grant and limits, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret and certificate pin, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
 | TimelineEvent | Command, monitor, assistance, or lifecycle event | Owner |
-| Capture | Per-command configuration diffs, new log lines, metric sample | Owner, through playback links |
+| Capture | Requesting command sequence, `baselineAt`, `startedAt`, `completedAt`, configuration diffs, new log lines, metric sample. Association is not causation | Owner, through playback links |
 | Recording | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references | Status public, objects through playback links |
 | TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
+| TerminalInput | Monotonic connection generation and owning connection ID. The terminal server enforces the installed generation | Gateway only |
 | Debrief | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance | Owner, after recording is sealed |
-| Proposal | Session, command, rationale, caution flag, expiry, status | Owner |
+| Proposal | Session, owner, command, rationale, caution flag, expiry, delivery status, private delivery token, fixed acknowledgement deadline and input generation | Owner projection without delivery token or generation |
 | ConversationTurn | Session or submission, request hash, worker token, fixed expiry, status, text, proposals, token usage | Owner projection, excluding hash and worker token |
-| ReviewSubmission | Owner, exercise version, flags and concerns, match result, answer-informed flag | Owner |
+| ReviewSubmission | Owner, saved access grant, exercise version, flags and concerns, match result, answer-informed flag | Owner |
 | Progress | Owner, content ID, first-attempt outcome and score, attempt count, last attempt, assisted flag | Owner |
 | Receipt | Owner or resource scope, request ID, payload hash, result pointer | Server only |
 
@@ -46,6 +47,7 @@ names are a storage convention, not part of the HTTP contract.
 | `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range |
 | `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>` | Timeline event, time-ordered |
 | `SESSION#<id>` | `TICKET#<sha256>` | Terminal ticket with a TTL |
+| `SESSION#<id>` | `INPUT` | Input generation and owning connection, independent of recorder lease |
 | `SESSION#<id>` | `REQUEST#<requestId>` | End and hint receipts |
 | `SESSION#<id>` | `HINT#<hintId>` | Released hint and time |
 | `SESSION#<id>` | `PROPOSAL#<proposalId>` | Assistant command proposal |
@@ -99,7 +101,9 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 | Heartbeat | Update `lastSeenAt` conditional on `ready` |
 | Ticket use | Delete conditional on existence and an unexpired `expiresAt`, returning the old item |
 | Hint | Transaction: hint item absent, session hint count equal to the expected value, receipt |
-| Proposal run | Update conditional on `pending`, unexpired, and an active session |
+| Input claim | Increment generation and set connection owner conditional on the previous generation and an active session. Terminal acknowledgement is required before browser readiness |
+| Proposal dispatch | Change `pending` to `dispatching` with a fixed token, conditional on expiry, active session, and input owner |
+| Proposal acknowledgement | Same token only. Record `accepted` after terminal acceptance, `pending` only after definite non-delivery, otherwise `unknown`. No automatic resend |
 | Recorder claim | Claim an absent or expired lease and increment its generation. Renewal requires the same owner and generation |
 | Recording append | Save cursors and object references only after upload, with the current unexpired lease and recording still open. Event identity makes retries idempotent |
 | Seal recording | Conditional on `draining`. `complete` requires the current recorder lease, all final cursors saved without gaps, and time before the drain deadline. Otherwise use `incomplete` and a reason |
@@ -116,6 +120,17 @@ ECS task events and stops them. All callers use the same saved launch arguments.
 Canonical request hashing covers the request body, not transport
 headers. A retry checks ownership, then the receipt. Same ID and same hash returns the
 saved result. Same ID and a different hash returns `IDEMPOTENCY_CONFLICT`.
+
+Receipt scope includes the operation and owner, and its hash includes the target resource
+and version. Current publication, plan, and admission limits apply only after a receipt
+miss. Existing resources use their saved access grant, including after plan expiry.
+Cleanup is never conditional on the current paid plan. See the [API rules](api.md#common-rules).
+
+Input generations and recorder generations are different counters. The terminal server
+serializes generation installation, manual input, and proposal delivery. It keeps a
+bounded per-attempt delivery ledger keyed by proposal token, with a no-resend marker
+before a PTY write and acceptance after the write. Losing this ledger ends the attempt
+as a platform error. A database `dispatching` write alone never proves a command ran.
 
 Stream-triggered handlers, such as the finaliser, must tolerate redelivery. Every effect
 they have is conditional or naturally idempotent, such as `StopTask` on a stopped task.

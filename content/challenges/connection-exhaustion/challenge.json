@@ -3,8 +3,12 @@
   "id": "connection-exhaustion",
   "version": "0.1.0",
   "title": "Checkout slows to a halt",
-  "summary": "Checkout latency climbs until requests time out, and the database is close to its connection limit. Find the cause before the obvious fix breaks something else.",
+  "summary": "Draft investigation of slow queries and database connection pressure. The workload and worker-scaling trap require validation before publication.",
   "status": "draft",
+  "publicationBlockers": [
+    "Define the worker class, request concurrency, connection lifetime, job-worker demand, and database budget. Pool capacity alone does not establish connection exhaustion.",
+    "Measure the missing-index fault, reference fix, and worker-scaling trap. Confirm the actual error type and update the alert, evidence, and debrief before publication."
+  ],
   "tier": "hard",
   "category": "database",
   "plan": "pro",
@@ -79,11 +83,12 @@
   ],
   "alert": {
     "title": "Checkout latency p95 above 2 seconds",
-    "summary": "Checkout latency has risen steadily and some requests time out. Database connections are near their configured limit.",
+    "summary": "Checkout latency has risen and some requests time out. Investigate query time, worker capacity, and actual database connection use.",
     "severity": "warning"
   },
   "validators": [
-    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 }
+    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
+    { "id": "checkout-persisted", "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 }, "sustainSeconds": 60 }
   ],
   "healthProbes": [
     {
@@ -94,11 +99,11 @@
     }
   ],
   "plantedFault": {
-    "summary": "orders.customer_id has no index, so the order history query scans the table. Four Gunicorn workers with SQLAlchemy pool_size 10 and max_overflow 10 can open 80 connections, and the job worker uses 10 more, against PostgreSQL max_connections 100.",
+    "summary": "Proposed fault: orders.customer_id has no index, so order-history queries scan the table. Four pools with size 10 and overflow 10 permit at most 80 connections, but open them only on demand. The worker model and workload needed to produce connection pressure have not been established.",
     "files": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env", "/etc/postgresql/postgresql.conf"]
   },
   "referenceFix": {
-    "description": "Create the missing index without blocking writes, then watch latency and connection use fall.",
+    "description": "Proposed fix: create the missing index without blocking writes, then measure query latency and request recovery. Idle pooled connections can remain open after load falls.",
     "commands": [
       "psql -U postgres -d shop -c 'CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_customer_id_idx ON orders (customer_id);'"
     ]
@@ -106,7 +111,7 @@
   "traps": [
     {
       "id": "add-workers",
-      "description": "Raising the Gunicorn worker count multiplies pooled connections past max_connections, so the job worker sharing the database can no longer connect.",
+      "description": "Proposed trap to validate: more workers increase actual concurrent database demand until the job worker cannot acquire a connection. Larger configured pool capacity alone is not sufficient to cause this failure.",
       "commands": [
         "sed -i 's/^workers = 4$/workers = 8/' /etc/shop/gunicorn.conf.py",
         "service shop restart"
@@ -133,12 +138,12 @@
     }
   ],
   "debrief": {
-    "rootCause": "A missing index on orders.customer_id makes the order history query scan the table. Slow queries hold pooled connections longer, and workers multiplied by pool size already approach PostgreSQL max_connections, so requests time out waiting for a connection.",
+    "rootCause": "Proposed root cause: a missing index on orders.customer_id makes the order-history query scan the table and hold connections longer. Whether requests wait for workers, pool checkouts, or database admission depends on the workload. This draft needs measurements before those symptoms can be attributed.",
     "causalChain": [
       "The order history query has no usable index and scans the orders table.",
       "Each slow query holds a pooled connection for longer.",
-      "The application pools approach max_connections and requests wait for a free connection until they time out.",
-      "Adding workers raises connection demand past the limit and starves the job worker that shares the database."
+      "Measure whether the observed limit is worker concurrency, pool checkout, or PostgreSQL connection admission.",
+      "Validate whether adding workers under this load prevents the job worker from acquiring a connection."
     ],
     "keyEvidence": [
       {
@@ -170,7 +175,7 @@
       "Inspect pg_stat_activity to see connection use and the queries holding connections.",
       "Run EXPLAIN on the order history query and identify the sequential scan.",
       "Create the index with CREATE INDEX CONCURRENTLY so writes continue.",
-      "Keep workers multiplied by pool size within the database connection budget."
+      "Budget connections across all clients using worker concurrency and measured demand. Pool limits are upper bounds, not preallocated connections."
     ]
   }
 }

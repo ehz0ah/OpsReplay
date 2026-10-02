@@ -7,7 +7,8 @@ contract for the module you will change. Choose one work package from the
 [implementation plan](docs/implementation-plan.md). Record an owner and intended
 files in an issue or the team's task board before overlapping work begins.
 
-The preliminary report, version 5, is the source of truth. Detailed technical proposals
+The preliminary report, version 5, defines the product direction. The decision register
+and domain contracts record later refinements. Detailed technical proposals
 are working defaults, not evidence that every teammate has approved them. Raise conflicting requirements
 early and record the outcome.
 

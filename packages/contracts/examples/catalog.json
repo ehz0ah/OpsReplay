@@ -25,7 +25,7 @@
       "version": "0.1.0",
       "mode": "challenge",
       "title": "Checkout slows to a halt",
-      "summary": "Checkout latency climbs until requests time out, and the database is close to its connection limit. Find the cause before the obvious fix breaks something else.",
+      "summary": "Draft investigation of slow queries and database connection pressure. The workload and worker-scaling trap require validation before publication.",
       "category": "database",
       "plan": "pro",
       "tier": "hard"

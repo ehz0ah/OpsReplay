@@ -26,8 +26,10 @@ Starting a Challenge runs one Fargate task with two containers:
 
 The containers share the task's network namespace, so the monitor reaches services over
 localhost. Watched configuration and log paths are shared with the monitor read-only
-through a task volume. The exact volume layout is proven with the first image. Keeping
-the monitor in its own container stops learners from altering measurements.
+through a task volume. The exact volume layout is proven with the first image. A separate
+container protects the monitor's files and processes only when its storage and PID
+namespace are private. Shared networking still needs the controls below. Learners can
+alter the service responses and files being measured, but not the saved recording.
 
 The challenge container is essential. The monitor starts after the challenge container
 reports its services running. Images provide `service <name> start|stop|restart|reload`
@@ -44,6 +46,10 @@ Task settings:
 - Images are pinned by digest in the task definition revision for each Challenge version.
 - Fargate disallows privileged containers, so there is no nested Docker. It allows adding
   only the `SYS_PTRACE` capability. See the [Fargate references](references.md).
+- Do not add `SYS_PTRACE` or `NET_ADMIN`. Drop `NET_RAW` and every default capability
+  the image does not need. Record the tested capability set with each image. Keep the
+  monitor's root filesystem read-only, with a private bounded buffer volume. Reserve
+  monitor CPU and memory so challenge load cannot silently stop measurement.
 
 The same two images run under local Docker for development and scenario tests, with a
 shared network namespace and volume.
@@ -62,8 +68,9 @@ stateDiagram-v2
   ready --> error: platform stopped the task
 ```
 
-1. **Provisioning.** The monitor starts traffic and verifies the initial state: every
-   validator fails and every health probe passes. Only then does its health check pass.
+1. **Provisioning.** The monitor starts traffic and verifies the initial state: aggregate
+   recovery fails (at least one validator fails) and every health probe passes. Only then
+   does its health check pass.
    A failed verification is an image defect. The session ends as `error` with
    `start_failed` and is logged for authors. One lifecycle routine owns launch,
    readiness, schedules, and cleanup. API calls, session stream events, ECS events,
@@ -83,6 +90,8 @@ stateDiagram-v2
      (proposed), found by a sweep that runs every minute;
    - `error` with `environment_exited` when the platform stops the task for another
      reason.
+   A lost or unhealthy monitor ends the attempt as a platform `error`, not recovery or
+   zero impact. Recording becomes incomplete if its final samples cannot be recovered.
 4. **Drain.** The outcome write also fixes `endedAt`, sets recording to `draining`, and
    sets `drainDeadlineAt`, proposed at 30 seconds later. These values never move on a
    retry. Input closes when the gateway observes the outcome. Activity after `endedAt`
@@ -128,20 +137,53 @@ recovery state is `sustaining` while all pass, and `met` when each has passed
 continuously for its own sustain period. Any failure resets the state to `failing` and
 emits `recovery_lost`. The learner sees only the aggregate state.
 
+HTTP status checks prove availability only. The `checkout` check also proves a minimum
+business operation. For each run, generate a fresh reference, POST
+`{"reference":"<reference>"}` to `/api/checkout`, require 201 with a JSON object whose
+`id` is a non-empty identifier, `reference` matches, and `status` is `confirmed`, then
+GET `/api/orders/<id>`. Require 200 and the same three fields. IDs use 1 to 128 ASCII
+letters, digits, underscores, or hyphens. Both requests use the authored loopback
+`baseUrl`, no redirects, a per-request timeout, and a 64 KiB response limit. Invalid JSON,
+missing fields, a stale reference, or a failed read fails the check. This fixed check is
+not a general assertion language and does not prove resistance to a deliberately forged
+service. Image tests must verify the stored order and bound the test data volume.
+Ordinary traffic may omit `reference`, in which case the image generates one. Validator
+requests supply their own fresh reference so an old response cannot satisfy a new run.
+
+Run each validator without overlap. A failed or missing scheduled evaluation resets its
+passing window. Validator and probe requests are separate from the journey counters.
+The three draft Challenges require both their journey and the checkout check, so the
+slow order-history path is still tested where applicable.
+
 **Health probes.** Probes pass at the start. A probe that fails continuously for its
 grace period starts an outage. The outage event's time is the first failed check. The
 outage ends when the probe passes again. Each probe has a public label that names the
 symptom without revealing the cause.
 
-**Captures.** After each command the gateway asks the monitor for a capture. The
-monitor assigns the next command sequence number and records the changed watched
-configuration files as bounded diffs, new lines in each watched log, and the current
-metric sample. The gateway stores the capture in S3.
+**Captures.** After each command the recorder asks the monitor for a capture using a
+stable command event ID. The monitor assigns a sequence on first receipt and replays it
+for duplicate requests. It records changed watched files as bounded diffs, new log
+lines, and a metric sample. Each capture includes `baselineAt` (the prior capture's start,
+or the initial baseline's start), `startedAt`, and `completedAt`. These times and
+`commandSeq` appear in the saved object and playback manifest. The gateway stores the
+object in S3.
+
+Reads are not an atomic filesystem snapshot. A later command or background process can
+change a file before it is read. `commandSeq` identifies the capture request, not the
+cause of every change. Show the interval and do not label a diff as changes made by that
+command. The interval begins at the prior read start because files can change while a
+capture is in progress. Serialize captures, not shell input. Establish the initial
+watched-file baseline before readiness. Truncated or missing captures carry the recording's
+missing-data notice.
 
 **Control port.** Because the learner's shell shares the network namespace, it can reach
-the monitor's port. The monitor therefore requires a per-session secret, passed only to
-the monitor container as a `RunTask` environment override and stored on the private
-session record for the gateway. The control port never returns validator or probe
+the monitor's port. Use TLS with the monitor's task identity verified by the gateway and
+a per-session secret for gateway authentication. The working default is a per-task
+certificate pinned in the private session record. Its key and the secret go only to the
+monitor, never to the challenge container, a shared volume, or logs. The gateway must
+verify the certificate before sending the secret. Plaintext control connections fail
+closed. Bound request sizes and rates, including unauthenticated requests. Keep health
+checks local and free of secrets. The control port never returns validator or probe
 definitions. The monitor keeps the session's samples, signals, and captures locally,
 bounded, and serves them from a sequence number, so a reconnecting gateway can fetch
 anything it missed.
@@ -232,8 +274,9 @@ learner-controlled, so these matches support reflection, not trusted assessment.
 Unsupported command forms may remain `not_observed`. Monitor data alone determines
 recovery and request impact.
 
-The debrief aligns commands with metric samples and captures, so it can show what each
-action changed. The repository check runs these rules against the
+The debrief aligns commands with metric samples and capture intervals. It shows state
+observed around those commands, not proven per-command causation. The repository check
+runs these rules against the
 [example timeline](../packages/contracts/examples/timeline.json) and compares the result
 with the [example debrief](../packages/contracts/examples/debrief.json).
 
@@ -245,7 +288,7 @@ Progress saves the outcome and the missing-score status without a numeric rankin
 ## Playback and retry
 
 After the debrief, the learner can play back the attempt as a timeline. The terminal
-recording runs in step with the metric series and the capture for each command. Key
+recording runs in step with the metric series and timestamped capture intervals. Key
 evidence, possible harmful actions, outages, and the start of recovery are highlighted.
 Outage and recovery highlights point to their event time with a null `commandSeq`. Playback
 reads stored data. It never restarts an environment.
@@ -258,7 +301,7 @@ and never changes the first attempt, its debrief, or its score.
 Each image version needs scripted evidence before publication:
 
 1. Start a fresh environment and confirm the fault is present: validators fail and
-   probes pass.
+   probes pass. With multiple validators, at least one must fail. Unaffected checks may pass.
 2. Run the reference fix and confirm every validator is met within its sustain period
    plus a margin.
 3. For each trap, in a fresh environment, run its commands and confirm its probe fails.
