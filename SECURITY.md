@@ -9,9 +9,11 @@ Nothing is deployed yet. Before the pilot, verify the controls in
 - Learners get root shells by design. Environment tasks must have no task IAM role, no
   internet route, inbound traffic only from the gateway, and CPU, memory, and time caps.
   Isolation tests must pass before any external user.
-- Containers in one task share a network namespace. The monitor's control port requires
-  a per-session secret, and the monitor never follows links or reads non-regular files
-  from shared paths.
+- Containers in one task share a network namespace. Protect gateway-to-monitor traffic
+  with authenticated TLS and verified task identity. A plaintext secret is insufficient.
+  Drop `NET_RAW` and unnecessary capabilities. Do not share the monitor's PID namespace,
+  secrets, or writable storage with the challenge container. Bound control requests and
+  watched-file reads. Never follow links or read non-regular files from shared paths.
 - Terminal tickets are short-lived, single-use, stored only as hashes, and never placed
   in URLs or logs.
 - Public source code can reveal authored solutions. Runtime controls support learning,

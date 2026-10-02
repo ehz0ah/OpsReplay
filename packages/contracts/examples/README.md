@@ -12,7 +12,9 @@ re-derives the debrief and highlights from the timeline and manifest.
 The empty editor output records an attempted check, not observed configuration evidence.
 The restart is a possible cause based on its command pattern and timing. The response
 examples also include an incomplete recording with no score and an interrupted assistant
-turn with no proposal.
+turn with no proposal. Playback includes capture intervals, which do not attribute file
+changes to one command. Gateway fixtures include uncertain proposal delivery followed
+by a recovered acceptance receipt. Neither status means the command succeeded.
 
 The [review submission](review-submission.json) is the result of matching the
 [submit request](review-submit-request.json) against the pool settings bundle. The

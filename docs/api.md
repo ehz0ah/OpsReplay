@@ -12,7 +12,9 @@ uses `status` instead of `found`. `possibleHarmfulActions` replaces `harmfulActi
 outages no longer have `afterCommandSeq`, and `observedOutages` replaces
 `selfInflictedOutages`. Duration components accept fractional seconds. Assistant turns
 add a required `expiresAt` and a `TURN_INTERRUPTED` stream error. Clients
-must handle these fields before the first runtime release.
+must handle these fields before the first runtime release. This revision also replaces
+proposal `run` with `dispatching`, `accepted`, and `unknown`, adds a `proposal_status`
+gateway frame, and requires capture interval timestamps in playback.
 
 ## Common rules
 
@@ -26,6 +28,19 @@ Mutations that create, end, or release something carry `requestId` as a UUID. A 
 ID identifies one logical request, not a transport attempt. Clients keep it until the
 outcome is known. Repeating it with the same body returns the saved result with
 `replayed: true`. Reusing it with a different body is `409 IDEMPOTENCY_CONFLICT`.
+
+After identity, request-shape, and ownership checks, read the receipt by owner, operation,
+and request ID before checking current publication, plan, or new-operation limits.
+The hash includes the target resource and version. A matching receipt returns the saved
+result even if a new version was published or the current plan expired. A changed body
+still conflicts. Only a missing receipt proceeds to new-operation validation. A concurrent
+receipt creation is resolved by rereading the committed receipt, not repeating effects.
+
+Starting an attempt or submitting a review saves an access grant for that resource and
+its admitted limits. Plan expiry does not revoke the existing attempt, hints, bounded
+assistant access, cleanup, or saved result while retained. It affects new paid operations
+and unopened content. Every request still checks identity, ownership, the saved grant,
+and the resource state. This is not access to other paid content.
 
 Errors contain `code`, `message`, and `requestId`, which is the client request ID for
 mutations and a server correlation ID otherwise. Errors never contain the planted fault,
@@ -90,10 +105,13 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
-1. Verifies identity, that the version is the current published version
-   (`422 VERSION_UNAVAILABLE` otherwise), and that the plan includes the Challenge.
+1. Verifies identity, shape, and ownership, then resolves an existing start receipt.
+   Only a new request checks that the version is currently published
+   (`422 VERSION_UNAVAILABLE` otherwise), that the plan includes the Challenge, and
+   that new-operation limits permit admission.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
-   lock, and the session record in `provisioning`. The receipt and lock are conditional
+   lock, and the session record in `provisioning`, including its access grant and limits.
+   The receipt and lock are conditional
    on absence. An existing lock returns `409 ACTIVE_SESSION_EXISTS` with `activeSessionId`.
 3. Invokes the shared lifecycle routine, which first ensures the session's named
    EventBridge Scheduler job exists at the persisted provisioning deadline.
@@ -126,7 +144,7 @@ The client polls `GET /v1/sessions/{id}` with backoff until the status leaves
 `provisioning`. A session becomes `ready` when the task is running, the monitor
 container reports healthy, and a gateway has acknowledged recording ownership. The
 monitor passes its health check only after it confirms the planted fault is present:
-validators fail and health probes pass. The lifecycle handler saves the task's private
+aggregate recovery fails and health probes pass. The lifecycle handler saves the task's private
 address for recorder attachment, then commits `readyAt` and moves the Scheduler
 job to `readyAt` plus the time limit. The lifecycle routine repairs a missed schedule
 update from the saved session. Every timer callback reads the current deadline before
@@ -208,8 +226,10 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    gateway checks the `Origin` header, consumes the ticket through a conditional delete,
    checks that the session is `ready`, and reads the task address and the per-session
    monitor secret from the session record.
-2. The gateway connects to the terminal server in the challenge container and to the
-   monitor, then sends `ready`. `resumed` is true when the shell already existed. The
+2. The gateway claims a new terminal input generation through a conditional write,
+   installs it at the terminal server, and waits for acknowledgement before sending
+   `ready`. It also connects to the monitor through authenticated TLS. `resumed` is true
+   when the shell already existed. The
    terminal server keeps one shell per session across reconnects.
 3. The client sends `resize` with columns and rows, and `heartbeat` every 20 seconds
    (proposed), which is below the ALB's default 60-second idle timeout. At most every
@@ -223,11 +243,39 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    Recording continues independently when the browser disconnects. Each input batch
    and proposal checks that the session is still active before forwarding. The outcome
    timestamp remains the scoring cutoff for any input already in flight.
-5. `run_proposal` runs a confirmed assistant proposal. The gateway checks that the
-   proposal belongs to this session and learner, is pending, and has not expired. It
-   checks that the shell is idle at a prompt, marks the proposal run through a
-   conditional write, and types the command followed by Enter. The resulting command
-   event has `source: assistant` and the proposal ID.
+5. `run_proposal` requests delivery of a confirmed proposal. The gateway checks the
+   owner, session, expiry, and input generation. It conditionally changes `pending` to
+   `dispatching` with a fixed delivery token before sending anything. The terminal
+   server serializes this request with manual input, checks a verified empty prompt,
+   and records the token before attempting one PTY write. It records `accepted` only
+   after the PTY accepts the complete command and Enter. The resulting command event
+   has `source: assistant` and the proposal ID. Acceptance is not command success.
+
+The terminal server rejects every input batch from an older generation after a new
+generation is installed. This includes proposals, resize, and buffered input. Installation
+and input handling are serialized. A delayed older installation cannot replace a newer
+one. Recorder leases are separate and do not grant input rights. No gateway-to-gateway
+routing service is needed. If the terminal server loses its generation or delivery
+ledger, end the attempt as `error` instead of reopening an unfenced shell.
+
+The terminal adapter must know that the shell is at a prompt with an empty edit buffer.
+An idle process or a prompt marker alone is insufficient. If state is busy, non-empty,
+or unknown, reject with `TERMINAL_BUSY` without sending bytes. A definite rejection can
+restore `pending` using the same delivery token. Never append a proposal to typed text.
+A later explicit confirmation after definite non-delivery creates a new token. Late
+acknowledgements for the old token cannot change that new delivery.
+
+`proposal_status` returns the proposal ID and current delivery status. Repeated
+confirmation reads that status or queries the terminal's receipt, never resends the
+command. A crash, partial PTY write, or lost acknowledgement leaves `unknown` unless a
+terminal receipt or recorded command proves acceptance. Recovery may change `unknown`
+to `accepted` for the same token, but cannot dispatch it again. Do not claim exactly-once
+shell execution across crashes. Tell the learner to inspect output before acting again.
+Bound the dispatch acknowledgement wait, proposed at five seconds. Recovery changes an
+unsettled dispatch to `unknown` after that wait. A pending proposal becomes `expired` at
+its expiry, while already accepted and uncertain deliveries keep their factual status.
+Only accepted proposals increment `proposalsRun`, once per proposal ID. Unknown delivery
+still marks the attempt as assisted through its assistant turn.
 
 Only one terminal connection per session is active. A new authenticated connection
 replaces the old one, which receives `error` with `REPLACED` and closes. Other `error`
@@ -274,7 +322,9 @@ entitlement check. It never returns findings.
 `POST /v1/reviews/{id}/submissions` takes `requestId`, `exerciseVersion`, and up to 50
 flags. Each flag names a file, a side, a line that exists in the diff, and a short
 concern. Flags on lines not in the diff are `400`. A version that is no longer published
-is `422 VERSION_UNAVAILABLE`. The Lambda handler matches flags against the reference
+is `422 VERSION_UNAVAILABLE` for a new request only. Resolve the owned submission receipt
+first, so a lost response remains recoverable after content publication or plan expiry.
+The Lambda handler matches flags against the reference
 ranges:
 
 - A finding is found when any flag has the same file and side and a line within its

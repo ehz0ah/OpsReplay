@@ -45,6 +45,20 @@ Region, runtime, quotas, and rates before deployment.
   documents one-time schedules, one-minute precision, and quota use after completion.
 - [AWS: Application Load Balancers](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html)
   documents the default 60-second idle timeout.
+- [AWS: ECS task definition parameters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html)
+  documents capability removal and container resource settings.
+- [Docker: Runtime privilege and Linux capabilities](https://docs.docker.com/engine/containers/run/)
+  describes default capabilities, including `NET_RAW`.
+
+## Database content
+
+- [Gunicorn: Sync workers](https://docs.gunicorn.org/en/stable/design.html#sync-workers)
+  describes one request at a time per synchronous worker.
+- [SQLAlchemy: Connection pooling](https://docs.sqlalchemy.org/en/20/core/pooling.html)
+  explains on-demand connection creation, pool capacity, and checkout timeouts.
+
+These references support distinguishing configured capacity from actual connection
+demand. They do not prove the draft Challenge's workload or its worker-scaling trap.
 
 The team retains the course specification separately. Do not publish course materials in
 this public repository without permission.

@@ -31,7 +31,8 @@ also provides:
 - logs written to the files listed in the manifest.
 
 Fargate constraints apply: no privileged mode, no nested Docker, and no added Linux
-capabilities beyond `SYS_PTRACE`. Loopback addresses such as `127.0.0.2` can stand in for
+capabilities in our images. Drop `NET_RAW` and other unused defaults. Do not add
+`SYS_PTRACE` merely because Fargate permits it. Loopback addresses such as `127.0.0.2` can stand in for
 separate hosts. Image size affects start-up time, so measure it.
 
 The manifest declares services and watched files, traffic journeys, dashboard metrics,
@@ -39,8 +40,10 @@ the alert, validators, health probes, the planted fault, the reference fix, trap
 and the debrief.
 
 - The alert and probe labels describe symptoms, never the cause.
-- Validators exercise end-to-end behaviour, such as a complete checkout, so a spoofed
-  response is less likely to pass.
+- Validators state the minimum behaviour that proves recovery. The fixed `checkout`
+  check verifies creation and a follow-up read with a fresh reference, in addition to
+  journey availability. Implement its API in the image and test missing orders, stale
+  responses, and status-only stubs. Do not claim this proves a tamper-proof assessment.
 - Each trap from the Challenge's "why action order matters" has scripted commands, the
   probe it breaks, command patterns for the debrief, and, where one exists, a safe
   alternative.
@@ -59,6 +62,13 @@ Evidence should support diagnosis without stating the answer. Include realistic 
 only when it teaches prioritisation. Logs, configuration, metrics, and the debrief must
 describe the same failure mechanism. A temporary mitigation can reduce impact even if
 recovery is incomplete. Document it in the debrief.
+
+Database content must separate pool capacity from actual connections. Record worker
+class, concurrency, connection lifetime, load, and database limits. A synchronous worker
+with one checkout per request can reuse one connection. Multiplying workers by pool
+limits is an upper bound, not proof of demand. Distinguish a pool checkout timeout from
+PostgreSQL refusing a new connection. The connection-exhaustion draft remains blocked
+from publication until its workload produces the stated fault, fix, and job-worker trap.
 
 ## Publication checks
 

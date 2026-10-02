@@ -3,6 +3,11 @@
 Status: implementation proposal consistent with the preliminary report. No cloud
 resources, handlers, images, or services are implemented.
 
+This document owns the service layout. The domain contracts own detailed behaviour, as
+defined in the [decision register](decisions/README.md). Diagrams are views of these
+contracts, not independent requirements. Record the revision and proposal status when
+sharing one. A detailed drawing does not make an open choice settled.
+
 ## Components
 
 All three modes share one web application, account system, and progress store.
@@ -48,16 +53,16 @@ The deployment uses one Region. The Region, domain, and IaC tool are open.
 
 ```mermaid
 flowchart TB
-  Browser --> R53[Route 53]
-  R53 --> CF[CloudFront]
+  Browser -. DNS lookup and answer .-> R53[Route 53]
+  Browser -->|GET app| CF[CloudFront]
   CF --> Web[Frontend S3: static app and free Learn]
-  R53 --> Cognito
-  R53 --> APIGW[API Gateway REST API]
+  Browser -->|Sign in| Cognito
+  Browser -->|Authenticated REST and SSE| APIGW[API Gateway REST API]
   APIGW --> Lambda[Lambda: API and LLM]
   Lambda --> DDB[DynamoDB: sessions and events]
   Lambda --> Private[Private S3: content and recordings]
   Lambda --> Provider[External LLM API]
-  R53 --> ALB[Application Load Balancer, HTTPS]
+  Browser -->|Terminal WebSocket| ALB[Application Load Balancer, HTTPS]
   ALB --> Gateway[Gateway service on ECS]
   subgraph Cluster[ECS cluster on Fargate]
     Gateway
@@ -67,6 +72,9 @@ flowchart TB
   Lambda -. telemetry .-> CW[CloudWatch]
   Gateway -. telemetry .-> CW
 ```
+
+These figures show component relationships, not every request and response. Route 53
+resolves names. Application traffic goes directly to the resolved entry point.
 
 **Entry and web tier.** Route 53 hosts the domain and maps each subdomain to its entry
 point with alias records: the web app to CloudFront, the API to API Gateway, terminals
@@ -119,8 +127,13 @@ and follows the first milestone.
 Each Fargate task has its own isolation boundary and shares no kernel, CPU, memory, or
 network interface with other tasks. Environment tasks have no internet route and no task
 IAM role, so root shells expose no AWS credentials. CPU, memory, and time caps limit
-misuse. Containers inside one task do share a network namespace, which is why the
-monitor's control port requires a per-session secret.
+misuse. Containers inside one task share a network namespace. A sidecar and a plaintext
+secret do not protect monitor traffic from a root shell. Require authenticated TLS with
+task identity verification, remove `NET_RAW` and other unnecessary capabilities, and do
+not share the monitor's process namespace or secret storage. See the
+[monitor controls](challenges.md#monitor). Validate these controls on Fargate before
+hosted access. They protect the measurement process, not the truth of learner-written
+logs or configuration.
 
 Private subnets use VPC endpoints instead of a NAT gateway: ECR API and Docker registry
 endpoints, an S3 gateway endpoint for image layers and gateway writes, a DynamoDB gateway

@@ -9,7 +9,7 @@
   "category": "database",
   "plan": "pro",
   "language": "python",
-  "context": "This change responds to checkout latency spikes during a sale by raising connection pool limits and the worker count. The service runs under Gunicorn with synchronous workers and shares a PostgreSQL 16 database, configured with max_connections = 100, with a background job worker.",
+  "context": "This change responds to checkout latency spikes during a sale by raising connection pool limits and the worker count. Gunicorn uses synchronous workers. Each request checks out one SQLAlchemy connection and returns it before completion. There are no background threads or retained checkouts in a web worker. Each worker creates its own engine after fork. The service shares PostgreSQL 16, configured with max_connections = 100, with a background job worker. No load measurements accompany the change.",
   "provenance": {
     "kind": "synthetic",
     "notes": "Draft written to prove the review contract. It introduces the pool setting used in the connection-exhaustion Challenge.",
@@ -47,8 +47,8 @@
   "findings": [
     {
       "id": "connection-budget",
-      "title": "Pool limits exceed the database connection budget",
-      "explanation": "Each Gunicorn worker process has its own pool. With 8 workers, pool_size=20 and max_overflow=20 allow up to 320 connections, while PostgreSQL accepts 100 and the job worker shares that limit. Under load the database refuses new connections, including the job worker's.",
+      "title": "Larger pools do not add request concurrency",
+      "explanation": "A synchronous worker handles one request at a time and this code uses one connection per request. It can reuse one connection, so raising each pool to 20 plus 20 overflow does not increase request concurrency. The 8 x 40 = 320 figure is a configured upper bound, not actual demand. Measure active connections and query time before treating the pool limit as the bottleneck.",
       "file": "app/db.py",
       "side": "new",
       "startLine": 5,
@@ -56,8 +56,8 @@
     },
     {
       "id": "long-pool-timeout",
-      "title": "A 60-second pool timeout hides exhaustion",
-      "explanation": "Requests wait up to 60 seconds for a free connection, longer than the 30-second Gunicorn worker timeout. Workers are killed mid-request instead of failing fast with a clear pool error, which makes exhaustion harder to diagnose.",
+      "title": "Pool wait is not a query timeout",
+      "explanation": "pool_timeout limits waiting for a pool checkout. It does not limit query execution or waiting for a free Gunicorn worker. With one returned checkout per synchronous worker, normal requests do not fill this pool. Raising the timeout therefore does not address the stated slowdown. If pool waiting is later demonstrated, align it with request and worker deadlines instead of assuming a longer wait fixes it.",
       "file": "app/db.py",
       "side": "new",
       "startLine": 7,
@@ -65,8 +65,8 @@
     },
     {
       "id": "worker-count",
-      "title": "Doubling workers doubles connection demand",
-      "explanation": "Worker count multiplies every per-process pool. Raising it without reducing pool size or measuring the database budget turns a latency problem into a connection outage.",
+      "title": "More workers need workload evidence",
+      "explanation": "Changing four synchronous workers to eight permits up to eight concurrent request checkouts under the stated model, not 320. More query concurrency can increase database load, but an outage is not established by these settings. Measure throughput, query latency, CPU, and other clients before choosing this worker count.",
       "file": "gunicorn.conf.py",
       "side": "new",
       "startLine": 2,
