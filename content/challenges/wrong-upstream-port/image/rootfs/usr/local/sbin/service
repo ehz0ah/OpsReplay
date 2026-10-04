@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ]; then
+    echo 'Usage: service nginx|shop|postgres start|stop|restart|reload|status' >&2
+    exit 2
+fi
+case "$1" in nginx|shop|postgres) ;; *) echo 'Unknown service' >&2; exit 2 ;; esac
+
+control() {
+    supervisorctl -c /etc/supervisor/supervisord.conf "$@"
+}
+
+case "$2" in
+    start|stop|status) control "$2" "$1" ;;
+    restart) control stop "$1" || :; control start "$1" ;;
+    reload)
+        case "$1" in
+            nginx) nginx -t && nginx -s reload ;;
+            shop) control signal HUP shop ;;
+            postgres) control signal HUP postgres ;;
+        esac
+        ;;
+    *) echo 'Unknown service action' >&2; exit 2 ;;
+esac

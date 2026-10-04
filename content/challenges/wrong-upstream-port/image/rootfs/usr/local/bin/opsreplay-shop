@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+set -a
+. /etc/shop/shop.env
+set +a
+exec /usr/bin/gunicorn -c /etc/shop/gunicorn.conf.py app:app
