@@ -85,9 +85,21 @@ function sql(id, statement) {
     '-At', '-v', 'ON_ERROR_STOP=1', '-c', statement));
 }
 
+function nginxWorkers(id) {
+  const processes = success(exec(id, 'ps', '-C', 'nginx', '-o', 'pid=,args='));
+  return new Set([...processes.matchAll(/^\s*(\d+)\s+nginx: worker process\b/gm)].map(match => match[1]));
+}
+
 async function repair(id) {
+  const oldWorkers = nginxWorkers(id);
+  assert.ok(oldWorkers.size > 0, 'nginx must have workers before the repair');
   for (const command of manifest.referenceFix.commands) success(exec(id, 'sh', '-ec', command));
-  await eventually(() => http(id, '/').status === 200, 'nginx did not apply the reference repair');
+  // Reload is asynchronous: one new worker can return 200 while old workers still return 502.
+  await eventually(() => {
+    const workers = nginxWorkers(id);
+    return workers.size > 0 && [...oldWorkers].every(pid => !workers.has(pid));
+  }, 'Old nginx workers did not exit after the reference repair');
+  expectHttp(http(id, '/'), 200);
 }
 
 test('fresh image has real services, observable 502 evidence, and restricted local settings', async t => {
