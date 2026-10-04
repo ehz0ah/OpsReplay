@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+cd /
+
+data_dir=/var/lib/postgresql/data
+pg_ctl=/usr/lib/postgresql/15/bin/pg_ctl
+
+if [ ! -f "$data_dir/PG_VERSION" ]; then
+    runuser -u postgres -- /usr/lib/postgresql/15/bin/initdb \
+        -D "$data_dir" --auth-local=peer --auth-host=reject --no-instructions
+    trap 'runuser -u postgres -- "$pg_ctl" -D "$data_dir" -m fast -w stop' EXIT
+    runuser -u postgres -- "$pg_ctl" -D "$data_dir" \
+        -o '-c config_file=/etc/postgresql/postgresql.conf' \
+        -l /var/log/postgresql/postgresql.log -w start
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 \
+        -f /usr/local/share/opsreplay/init.sql
+    runuser -u postgres -- "$pg_ctl" -D "$data_dir" -m fast -w stop
+    trap - EXIT
+    touch "$data_dir/.opsreplay-initialized"
+elif [ ! -f "$data_dir/.opsreplay-initialized" ]; then
+    echo 'Database setup was interrupted. Start a fresh environment.' >&2
+    exit 1
+fi
+
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf

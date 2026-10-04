@@ -1,0 +1,74 @@
+# Wrong upstream port: local image
+
+This implements the service stack in [the draft manifest](challenge.json), not a
+complete Challenge session. There is no monitor, terminal server, gateway, or AWS
+deployment. The manifest remains unpublished.
+
+## Build and enter
+
+From the repository root, with Docker running:
+
+```sh
+docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image
+sh content/challenges/wrong-upstream-port/run-local.sh opsreplay-port
+docker inspect --format '{{.State.Health.Status}}' opsreplay-port
+docker exec -it opsreplay-port bash
+```
+
+Wait for `healthy` before entering. This checks the three service listeners, not
+successful checkout. The initial 502 is intentional.
+
+The container includes `nano`, `vi` / `vim` (Vim tiny), `curl`, `ss`, `ps`, `less`,
+and `psql`. Inspect the real services and logs:
+
+```sh
+curl -i http://127.0.0.1/
+tail /var/log/nginx/error.log
+ss -ltnp
+service nginx status
+```
+
+There is no background traffic yet. Requests made with `curl` generate real logs.
+nginx listens on port 80, the shop on loopback port 8080, and PostgreSQL on loopback
+port 5432. The shop provides `GET /`, `POST /api/checkout`, and `GET /api/orders/<id>`.
+Checkout accepts an optional JSON `reference` and returns a stored, confirmed order.
+
+## Reference repair
+
+Inside the container:
+
+```sh
+sed -i 's#proxy_pass http://127.0.0.1:8081;#proxy_pass http://127.0.0.1:8080;#' /etc/nginx/nginx.conf
+nginx -t
+nginx -s reload
+curl --json '{"reference":"local-check"}' http://127.0.0.1/api/checkout
+```
+
+Use the returned ID with `GET /api/orders/<id>`. nginx, shop, and postgres support
+`service <name> start|stop|restart|reload|status`. These commands control Supervisor,
+not systemd. Stopped services are not automatically restarted. A restart with invalid
+nginx configuration stops the proxy. A failed reload keeps its current workers.
+
+## Storage and cleanup
+
+Files and database data stay in this container's writable layer. Restarting a service
+or this same container preserves edits and orders. Creating a new container restores
+the original fault and empty database. Interrupted database initialisation requires a
+fresh container. Shared watched-file volumes are deferred to monitor integration.
+
+After leaving the shell, discard this local attempt and its edits:
+
+```sh
+docker rm -f opsreplay-port
+```
+
+The run script has no internet route, published ports, host mounts, or Docker socket.
+It uses 1 CPU, 2 GiB memory, 128 PIDs, and no-new-privileges. It drops `NET_RAW`,
+`MKNOD`, `AUDIT_WRITE`, `SETFCAP`, `SETPCAP`, `SYS_CHROOT`, and `FSETID` from Docker's
+defaults. Remaining defaults support service user changes, file ownership, signals,
+and port 80. This is a local development setup, not proof of Fargate isolation.
+
+The Debian base image is pinned by multi-platform digest. Debian packages are resolved
+at build time, so clean rebuilds can receive security updates. There are no embedded
+platform credentials. The practice database permits only the shop role on loopback
+TCP, and uses peer authentication for local administration.

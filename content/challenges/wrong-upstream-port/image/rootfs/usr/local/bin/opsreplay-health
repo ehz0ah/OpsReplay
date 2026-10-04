@@ -1,0 +1,8 @@
+#!/usr/bin/python3
+"""Check service listeners, not recovery. A running proxy may correctly return 502."""
+
+import socket
+
+for port in (80, 8080, 5432):
+    with socket.create_connection(("127.0.0.1", port), timeout=1):
+        pass
