@@ -44,6 +44,9 @@ nginx -s reload
 curl --json '{"reference":"local-check"}' http://127.0.0.1/api/checkout
 ```
 
+Reload is asynchronous. A request can still receive 502 while the old workers exit.
+If this happens, wait briefly and try the request again.
+
 Use the returned ID with `GET /api/orders/<id>`. nginx, shop, and postgres support
 `service <name> start|stop|restart|reload|status`. These commands control Supervisor,
 not systemd. Stopped services are not automatically restarted. A restart with invalid
