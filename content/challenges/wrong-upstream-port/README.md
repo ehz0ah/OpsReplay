@@ -72,3 +72,22 @@ The Debian base image is pinned by multi-platform digest. Debian packages are re
 at build time, so clean rebuilds can receive security updates. There are no embedded
 platform credentials. The practice database permits only the shop role on loopback
 TCP, and uses peer authentication for local administration.
+
+## Automated image checks
+
+From the repository root, with Docker and Node 22:
+
+```sh
+npm run challenge:build
+npm run challenge:test
+```
+
+The tests start fresh containers with the same run script and execute the manifest's
+reference fix, trap, and safe alternative through `docker exec`. They verify real HTTP
+responses, stored orders, service and container restarts, fresh-attempt reset, and local
+runtime restrictions. Each test removes its containers and data, including on failure.
+The suite makes a bounded number of requests and keeps no database volumes. Set
+`OPSREPLAY_CHALLENGE_IMAGE` to test a different already-built image reference.
+
+These are image integration checks, not the full publication harness. They do not prove
+60-second sustained recovery, monitor isolation, recording, playback, or Fargate behaviour.

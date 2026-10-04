@@ -6,6 +6,8 @@
   "type": "module",
   "engines": { "node": ">=22.19.0 <23", "npm": ">=10" },
   "scripts": {
+    "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
+    "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
     "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs"
   },
