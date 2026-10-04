@@ -9,12 +9,13 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: specification baseline.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
+**Status: first local Challenge image.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
-validation tools, and three synthetic draft Challenge manifests. No Challenge image,
-monitor, gateway, application, or cloud deployment exists. Contract checks do not prove
-that anything works.
+validation tools, three synthetic draft Challenge manifests, and a
+[runnable local reference image](content/challenges/wrong-upstream-port/README.md).
+The monitor, gateway, platform API, web application, and cloud deployment are not
+implemented. The image is not a published Challenge or a complete session.
 
 ## Start here
 
@@ -63,7 +64,9 @@ drain, evidence matching, and assistant expiry. These models do not call AWS, ru
 containers, or use an LLM provider. Additional models check receipt lookup order,
 terminal input generations, uncertain proposal delivery, and checkout responses through
 an injected transport. They do not test a real PTY, TLS, or database. There is no
-application start command yet.
+platform application start command yet. To build and test the local Challenge image
+with Docker, run `npm run challenge:build` and `npm run challenge:test`. These separate
+integration tests execute the repair and traps against real services through `docker exec`.
 
 ## Repository map
 
@@ -76,7 +79,7 @@ apps/
 packages/
   contracts/            JSON Schema, OpenAPI, examples
 content/
-  challenges/           Challenge manifests, later with image build contexts
+  challenges/           Challenge manifests and the first image build context
   learn/                Learn entries
   reviews/              Code Review bundles and private findings
 infra/                  Deployment boundary and first spike

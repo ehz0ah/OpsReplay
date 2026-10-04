@@ -2,8 +2,10 @@
 
 Status: proposed v0.2 runtime contract, following the preliminary report. It replaces the
 earlier simulated engine. The three [Challenge manifests](../content/challenges/README.md)
-are drafts. No Challenge image, monitor, or gateway exists yet. Numbers marked proposed
-are starting values to measure, not results.
+are drafts. A [local reference image](../content/challenges/wrong-upstream-port/README.md)
+implements the wrong-upstream-port service stack and image tests. The monitor, terminal
+server, and gateway do not exist yet. Numbers marked proposed are starting values to
+measure, not results. The full task and publication requirements below remain unproven.
 
 ## Principle
 
@@ -26,7 +28,7 @@ Starting a Challenge runs one Fargate task with two containers:
 
 The containers share the task's network namespace, so the monitor reaches services over
 localhost. Watched configuration and log paths are shared with the monitor read-only
-through a task volume. The exact volume layout is proven with the first image. A separate
+through a task volume. Prove the volume layout when integrating the first monitor. A separate
 container protects the monitor's files and processes only when its storage and PID
 namespace are private. Shared networking still needs the controls below. Learners can
 alter the service responses and files being measured, but not the saved recording.

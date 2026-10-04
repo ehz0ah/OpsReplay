@@ -1,7 +1,8 @@
 # Architecture
 
-Status: implementation proposal consistent with the preliminary report. No cloud
-resources, handlers, images, or services are implemented.
+Status: implementation proposal consistent with the preliminary report. The
+[reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
+locally. Platform handlers, the gateway, the monitor, and cloud resources are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
@@ -174,11 +175,12 @@ monitoring, and availability, with the same external LLM.
 
 ## Local-first development
 
-The two environment containers run under local Docker with a shared network namespace
-and a shared volume. Build the monitor and the first Challenge image this way before any
-cloud work. Then run a local gateway and a local API with an in-memory repository, a
-development identity, and a Docker launcher adapter. Production configuration must
-reject development identity.
+Start with the local reference image, then connect session control through a Docker
+launcher adapter, an in-memory repository, and a development identity. Add the monitor
+and gateway in focused increments. The integrated environment has two containers with
+a shared network namespace and watched-file volume. Prove that local environment path
+before the AWS spike, without waiting for every subsystem to be complete. Production
+configuration must reject development identity.
 
 Local tests prove image behaviour, validators, recording, and domain logic. They do not
 prove Cognito, IAM, VPC isolation, Fargate start-up time, quotas, WebSockets through the

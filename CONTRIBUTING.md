@@ -23,7 +23,7 @@ Use your own Git identity. Keep personal and work credentials separate. This
 repository must not contain `.env` files, tokens, provider responses with personal
 data, or cloud state. Use unprivileged development credentials when cloud tests
 are introduced. Challenge image and gateway work will need local Docker. There are no
-deployable resources in this baseline.
+cloud resources deployed by this baseline.
 
 ## Pull requests
 

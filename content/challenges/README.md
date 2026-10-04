@@ -1,7 +1,8 @@
 # Challenge content
 
-Each directory holds one Challenge manifest. The image build context will live beside
-it. All three manifests are synthetic drafts with no image digests, taken from the
+Each directory holds one Challenge manifest. Wrong upstream port also has a
+[local image and integration tests](wrong-upstream-port/README.md). The other images
+are not implemented. All three manifests remain synthetic drafts with no published image digests, taken from the
 preliminary report's initial Challenges:
 
 | Challenge | Tier | Plan |

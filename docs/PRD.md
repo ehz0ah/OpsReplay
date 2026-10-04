@@ -59,8 +59,9 @@ and P13 to P14 for one reference Challenge before Learn and Code Review are adde
 | [Stale DNS record](../content/challenges/stale-dns-record/challenge.json) | Medium | The CoreDNS zone maps `api.internal` to the retired API address, which nginx cached at startup | The fix needs an nginx reload. Restarting nginx while the zone fails to load takes the site offline |
 | [Connection exhaustion](../content/challenges/connection-exhaustion/challenge.json) | Hard | Proposed missing-index and connection-pressure scenario. Pool limits are capacity, not measured demand | The worker model, workload, and job-worker failure must be demonstrated before this draft can be published |
 
-These manifests are synthetic drafts. The reference Challenge for the first slice is an
-open choice in the [decision register](decisions/README.md).
+These manifests are synthetic drafts. Wrong upstream port is the first local reference
+image, as recorded in the [decision register](decisions/README.md). It remains unpublished
+until the complete environment and publication checks pass.
 
 ## Scope boundaries
 

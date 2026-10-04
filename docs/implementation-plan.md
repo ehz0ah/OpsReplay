@@ -4,6 +4,13 @@ Status: task breakdown for six contributors. No assignments are implied. Agree o
 the team's task board before overlapping work. The team proves one complete Challenge
 first, then a small Learn collection and Code Review set.
 
+The first increment is the [local wrong-upstream-port image](../content/challenges/wrong-upstream-port/README.md),
+tracked in [task 4](https://github.com/ehz0ah/OpsReplay/issues/4). It covers part of I01,
+not the complete work package. Next, connect local session start, status, and end to a
+real launch target. Add monitor and gateway capabilities in later focused PRs. Work
+packages are responsibility groups, not a requirement to complete one subsystem before
+integrating another.
+
 ## Work packages
 
 | ID | Work | Dependencies | Completion evidence |
