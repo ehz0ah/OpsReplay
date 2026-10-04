@@ -24,6 +24,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 25 September 2026 | Preliminary report version 5 adopted as the source of truth. Real per-session containers replace the simulated engine. Session playback and fresh-task retry replace checkpoint replay. Freemium access replaces free Learn with paid practice. Contracts moved to v0.2 |
 | 27 September 2026 | Refine v0.2 startup recovery, recording drain, evidence claims, and assistant expiry. Update schemas, examples, and executable reference checks. The submitted report remains a snapshot |
 | 2 October 2026 | Correct monitor trust boundaries, terminal input ownership and proposal delivery, receipt lookup order, capture attribution, checkout validation, and pool-capacity claims. Keep the AWS service layout and mark unproven content as draft |
+| 4 October 2026 | Implement Wrong upstream port as the first local image increment. Use small PRs and integrate session control before completing the environment subsystem. No Challenge is published by this increment |
 
 ## Product decisions
 
@@ -66,15 +67,16 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T17 | Resolve owned request receipts before new-operation version and plan checks | A lost response remains recoverable after publication or plan expiry. Saved grants cover the existing attempt and result, not new paid content |
 | T18 | A bounded checkout validator verifies creation and a follow-up read | HTTP status alone cannot prove a completed checkout. Start with this fixed operation, not a general test language |
 | T19 | Timestamp capture intervals and qualify causal claims | Later commands and background processes can change files before a capture. Do not pause the shell to imply exact per-command snapshots |
+| T20 | Wrong upstream port is the first local reference image | Small real stack with an observable fault, repair, and restart trap. Other scenario drafts remain unvalidated |
+| T21 | Debian 12, Flask with Gunicorn, PostgreSQL 15, and Supervisor for this image | Distribution packages avoid a second package installer. The manifest already uses Gunicorn. Supervisor supports the required service controls without systemd or privileged mode. This does not choose the monitor language |
 
 ## Open choices and decision timing
 
 | Choice | Needed by | Who resolves it |
 | --- | --- | --- |
-| Reference Challenge, from the three drafts. Working default: Wrong upstream port, the smallest stack | 28 September | Team |
-| Monitor implementation language and process supervisor | First image task | Environment contributors |
+| Monitor implementation language | First monitor task | Environment contributors |
 | Database draft workload, worker concurrency, and connection budget | Before publishing that Challenge | Content contributors, with measured fault, fix, and trap evidence |
-| Terminal server in the challenge image | First image task | Environment contributors |
+| Terminal server in the challenge image | Terminal and gateway integration | Environment contributors |
 | Frontend framework, terminal emulator, and chart library | First interface task | Frontend contributors |
 | IaC tool, AWS Region, and domain | First deployment spike | Cloud contributors |
 | LLM provider, model, and limits | First assistant task | LLM contributors, using benchmark evidence |
