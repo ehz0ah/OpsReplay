@@ -3,7 +3,8 @@
 Status: proposed `/v1` contract, version 0.2. [OpenAPI](../packages/contracts/openapi.json)
 owns REST routes and wire schemas. [Public schemas](../packages/contracts/schemas/public.schema.json)
 also define the terminal gateway frames. This document owns stateful behaviour, the
-gateway protocol, and error semantics. No endpoint or gateway is implemented.
+gateway protocol, and error semantics. Session-start admission has a local-tested
+Lambda handler. No public endpoint or gateway is connected or deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
 engine with typed actions. Nothing depended on 0.1. This pre-release revision adds
@@ -103,6 +104,12 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 
 ### Start
 
+This increment implements only identity, request validation, access, and the admission
+transaction. Local tests receive a `provisioning` response. Task launch, schedules,
+recovery, and cleanup below remain unimplemented. The Lambda is disabled and has no
+public route until these are connected. Shared lifecycle routines are ordinary code,
+not one Lambda invoking another Lambda.
+
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
 1. Verifies identity, shape, and ownership, then resolves an existing start receipt.
@@ -137,6 +144,14 @@ lock. The start receipt remains, so a later retry cannot launch another task.
 The attempt label is `first` when the learner has no earlier attempt of that Challenge
 ID with an outcome other than `error`. Otherwise it is `retry` with the next number.
 Environment faults never use up the first attempt.
+
+Admission normalises UUID request IDs to lower case. Its hash covers `challengeId` and
+`challengeVersion` in a fixed order. JSON property order and whitespace do not change
+request identity. Bodies larger than 8 KiB decoded are rejected before storage access.
+The transaction checks that content, plan, and progress still match the snapshots used
+for admission. Known conditional conflicts are retried at most three times. Other write
+failures recheck the receipt and otherwise return a generic `500`. Clients keep the same
+request ID after an uncertain response.
 
 ### Readiness and status
 

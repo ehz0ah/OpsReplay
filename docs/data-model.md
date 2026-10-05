@@ -42,6 +42,7 @@ names are a storage convention, not part of the HTTP contract.
 | `USER#<id>` | `PROGRESS#<contentId>` | Learner progress |
 | `USER#<id>` | `START#<requestId>` | Session start receipt |
 | `USER#<id>` | `REVIEWREQ#<requestId>` | Review submission receipt |
+| `CONTENT#<id>` | `VERSION#<version>` | Server-only published Challenge admission snapshot |
 | `SESSION#<id>` | `STATE` | Private session record |
 | `SESSION#<id>` | `RECORDING` | Recorder lease, saved cursors, and final recording state |
 | `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range |
@@ -182,8 +183,38 @@ Implement these before UI or LLM integration:
   `recordHeartbeat`, `appendTimelineEvent`, `listTimeline`, `issueTicket`,
   `consumeTicket`, and `finalise`.
 - Content and plans: `getContentVersion` and `getPlan`.
-- Environments: `launch`, `stop`, `describe`, and `listRunning`, with a Fargate adapter
-  and a local Docker adapter.
+- Environments: `launch`, `stop`, `describe`, and `listRunning`, with a Fargate adapter.
 
-Local and DynamoDB adapters share concurrency and duplicate-request tests. Add review
-and conversation ports when those work packages start.
+Use the real DynamoDB adapter against DynamoDB Local for concurrency and duplicate-request
+tests. Local Docker is for image and component checks, not a second platform launcher.
+Add review and conversation ports when those work packages start.
+
+## Implemented admission records
+
+The start adapter stores `{ PK, SK, data }`. It reads keys consistently and writes the
+receipt, active lock, and session in one transaction. Each put requires an absent key.
+The same transaction checks the complete `data` snapshots for content, plan, and progress.
+Missing plan/progress records are checked as absent. Concurrent publication, grant, or
+finalisation changes cannot use stale admission data.
+
+- Content admission data contains the public Challenge reference, alert, dashboard
+  descriptors, hint count, plan, per-plan time limits, and pinned task/image references.
+  It does not load the full manifest or unreleased hints. A future publication step
+  writes this snapshot only after content checks pass. Test fixtures are synthetic.
+- Plan data is `{ plan, expiresAt }`. A missing grant uses Free. Invalid stored data
+  fails closed. A Pro grant must not have expired at admission. Its time limit must be
+  explicitly configured and longer than the Free limit, never invented in code.
+- Progress admission data is `{ completedAttempts }`, counting finalised non-error
+  attempts for that Challenge ID. The later finaliser must update it before releasing
+  the active lock. Zero means the next attempt is `first`. At 1000, admission rejects
+  another attempt because the public schema caps the attempt number at 1000.
+- A receipt contains the owner, canonical request ID, payload hash, and session ID.
+  It has no TTL. Replay reads the owned session, including a later terminal result.
+- The private session contains the public view, owner, saved access grant, content pins,
+  provisioning deadline, and schedule name. The active lock contains its session and
+  request IDs. Public responses use explicit nested projections, never the whole item.
+
+This increment does not fabricate launch arguments, monitor secrets, task ARNs, indexes,
+or schedules. The launch increment must persist the exact ECS arguments and secret before
+calling ECS, and implement deadlines and cleanup before the API is enabled. The complete
+lifecycle contract above remains the target.

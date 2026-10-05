@@ -25,6 +25,27 @@ jobs:
       - run: npm ci
       - run: npm run check
 
+  session-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm audit --omit=dev
+      - run: docker pull amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
+      - run: npm run api:test
+      - run: npm run infra:test
+      - run: npm run infra:synth
+      - name: Remove test databases after failure or cancellation
+        if: always()
+        run: |
+          docker ps -aq --filter label=opsreplay.test=session-start | xargs -r docker rm -f
+
   challenge-image:
     runs-on: ubuntu-latest
     timeout-minutes: 10

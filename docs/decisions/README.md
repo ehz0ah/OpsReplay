@@ -25,6 +25,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 27 September 2026 | Refine v0.2 startup recovery, recording drain, evidence claims, and assistant expiry. Update schemas, examples, and executable reference checks. The submitted report remains a snapshot |
 | 2 October 2026 | Correct monitor trust boundaries, terminal input ownership and proposal delivery, receipt lookup order, capture attribution, checkout validation, and pool-capacity claims. Keep the AWS service layout and mark unproven content as draft |
 | 4 October 2026 | Implement Wrong upstream port as the first local image increment. Use small PRs and integrate session control before completing the environment subsystem. No Challenge is published by this increment |
+| 5 October 2026 | Implement cloud-targeted session admission with local DynamoDB checks. Use one Lambda per action with no direct Lambda-to-Lambda calls. Add disabled CDK definitions. First cloud use will be a temporary integrated test in the NUS account, not an idle development stack |
 
 ## Product decisions
 
@@ -70,6 +71,15 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T20 | Wrong upstream port is the first local reference image | Small real stack with an observable fault, repair, and restart trap. Other scenario drafts remain unvalidated |
 | T21 | Debian 12, Flask with Gunicorn, PostgreSQL 15, and Supervisor for this image | Distribution packages avoid a second package installer. The manifest already uses Gunicorn. Supervisor supports the required service controls without systemd or privileged mode. This does not choose the monitor language |
 | T22 | Check initial service listeners before learner access, not as ongoing container health | Stops and valid alternative repairs can change the listeners. Local tests use an explicit startup command. Do not turn these checks into Docker or ECS liveness checks |
+| T23 | One deployed Lambda per action, with a separate role, bundle, timeout, and concurrency limit | Explicit user requirement. Share code, not synchronous Lambda calls. Keep learner state external. Bound retries, validate input, and test failures |
+| T24 | CDK TypeScript definitions with local synthesis, then temporary AWS integration runs | Fits the backend language. No deployment, bootstrap, or personal AWS profile use in local checks. School permissions and budget still need verification |
+| T25 | DynamoDB adapter from the start, tested against DynamoDB Local | Exercises transactions and conflicts without a second local platform runtime. Does not prove AWS IAM or distributed-service behaviour |
+
+T23 follows the action boundary and client-reuse guidance in
+[AWS Lambda best practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
+and the warnings about direct function chains in
+[AWS event-driven architecture guidance](https://docs.aws.amazon.com/lambda/latest/operatorguide/functions-calling-functions.html).
+These are engineering rules, not a reason to add a queue or workflow service without a need.
 
 ## Open choices and decision timing
 
@@ -79,7 +89,7 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | Database draft workload, worker concurrency, and connection budget | Before publishing that Challenge | Content contributors, with measured fault, fix, and trap evidence |
 | Terminal server in the challenge image | Terminal and gateway integration | Environment contributors |
 | Frontend framework, terminal emulator, and chart library | First interface task | Frontend contributors |
-| IaC tool, AWS Region, and domain | First deployment spike | Cloud contributors |
+| AWS Region, domain, and school-account deployment permissions | First deployment spike | Cloud contributors |
 | LLM provider, model, and limits | First assistant task | LLM contributors, using benchmark evidence |
 | Scoring weights and investigation-effort measure | Before learner study | Content and evaluation contributors |
 | Pro time-limit extension and Free content set | Before pilot | Team |

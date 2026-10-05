@@ -4,15 +4,35 @@
   "private": true,
   "description": "OpsReplay specification and implementation workspace",
   "type": "module",
-  "engines": { "node": ">=22.19.0 <23", "npm": ">=10" },
+  "engines": {
+    "node": ">=22.19.0 <23",
+    "npm": ">=10"
+  },
   "scripts": {
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
     "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
-    "contracts:sync": "node scripts/sync-openapi.mjs"
+    "contracts:sync": "node scripts/sync-openapi.mjs",
+    "typecheck": "tsc --noEmit",
+    "api:build": "node scripts/build-start-session.mjs",
+    "api:test": "npm run api:build && node --import tsx --test apps/api/test/*.test.ts",
+    "infra:test": "npm run api:build && node --import tsx --test infra/*.test.ts",
+    "infra:synth": "npm run api:build && node --import tsx infra/synth.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
+    "@types/aws-lambda": "8.10.164",
+    "@types/node": "22.20.5",
+    "aws-cdk-lib": "2.272.0",
+    "constructs": "10.8.1",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1146.0",
+    "@aws-sdk/lib-dynamodb": "3.1146.0",
+    "@smithy/node-http-handler": "4.12.1",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1"
   }

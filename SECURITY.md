@@ -27,3 +27,16 @@ Nothing is deployed yet. Before the pilot, verify the controls in
 If you find an exposed credential, an isolation gap, or an access-control issue, contact
 the project owner privately through the team's agreed channel. Do not post secrets or
 learner data in a public issue. Revoke exposed credentials before cleaning Git history.
+
+## Current dependency finding
+
+As checked on 5 October 2026, CDK `2.272.0` bundles `brace-expansion` `5.0.9`. The full npm audit
+reports a high-severity denial-of-service finding in this development dependency:
+[GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7). It also reports
+related brace-expansion advisories. The package is used by CDK file-pattern handling,
+not included in the Lambda bundle. `npm audit --omit=dev` reports no known findings.
+
+The current CDK release bundles the affected package. `npm audit fix` and a nested npm
+override do not replace it. Do not patch `node_modules`, hide the finding, or process
+untrusted file patterns through CDK. Recheck for a fixed CDK release before the first
+AWS run. Cloud deployment is not enabled by this increment.
