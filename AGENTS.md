@@ -5,6 +5,16 @@ before changing code. Use [docs/decisions/README.md](docs/decisions/README.md) t
 distinguish product decisions from proposed technical choices.
 
 - Implement a bounded task. Do not add product modes or services without a need.
+- Use one deployed Lambda per action. Keep its handler, bundle, IAM role, timeout,
+  and concurrency limit separate. No multi-route server inside a Lambda.
+- Lambda functions must not invoke other Lambda functions. Reuse ordinary code
+  modules. Introduce event-driven coordination only for a concrete requirement.
+- Keep handlers stateless. Reuse SDK clients, not learner data. Bound requests,
+  retries, and execution time. Use atomic writes and saved request receipts.
+- Give each function only the permissions its action needs. Validate identity and
+  input before effects, and keep private data out of responses and logs.
+- Test failure paths and concurrency, not only success. Validate cloud behaviour on
+  AWS before claiming it works there. Do not replace tests with assumptions.
 - Keep Challenge manifests, validators, probes, traps, unreleased hints, and review
   findings out of browser payloads, errors, logs, and prompts.
 - Environment tasks have no task IAM role and no internet route. Only the gateway
