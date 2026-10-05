@@ -2,8 +2,9 @@
 
 Status: implementation proposal consistent with the preliminary report. The
 [reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
-locally. Session-start admission has a Lambda handler and disabled CDK definitions.
-The remaining handlers, gateway, monitor, and cloud deployment are not implemented.
+locally. Session admission, ECS launch orchestration, and provisioning-expiry cleanup
+have separate disabled Lambda definitions. The remaining handlers, gateway, monitor,
+and cloud deployment are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
@@ -179,12 +180,11 @@ monitoring, and availability, with the same external LLM.
 
 ## Local-first development
 
-Start with the local reference image, then connect session control through a Docker
-launcher adapter, an in-memory repository, and a development identity. Add the monitor
-and gateway in focused increments. The integrated environment has two containers with
-a shared network namespace and watched-file volume. Prove that local environment path
-before the AWS spike, without waiting for every subsystem to be complete. Production
-configuration must reject development identity.
+Start with the local reference image, then implement the production Lambda, DynamoDB,
+Scheduler, and ECS boundaries behind injected ports. Use DynamoDB Local and controlled
+fake service adapters for local failure tests. Do not build a second local SaaS runtime,
+development identity, or Docker launcher. Add the monitor and gateway in focused
+increments before the first temporary AWS spike.
 
 Local tests prove image behaviour, validators, recording, and domain logic. They do not
 prove Cognito, IAM, VPC isolation, Fargate start-up time, quotas, WebSockets through the

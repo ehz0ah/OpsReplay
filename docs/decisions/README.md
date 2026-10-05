@@ -26,6 +26,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 2 October 2026 | Correct monitor trust boundaries, terminal input ownership and proposal delivery, receipt lookup order, capture attribution, checkout validation, and pool-capacity claims. Keep the AWS service layout and mark unproven content as draft |
 | 4 October 2026 | Implement Wrong upstream port as the first local image increment. Use small PRs and integrate session control before completing the environment subsystem. No Challenge is published by this increment |
 | 5 October 2026 | Implement cloud-targeted session admission with local DynamoDB checks. Use one Lambda per action with no direct Lambda-to-Lambda calls. Add disabled CDK definitions. First cloud use will be a temporary integrated test in the NUS account, not an idle development stack |
+| 6 October 2026 | Extend session start with saved ECS arguments and idempotent launch. Use the server-generated session ID as the cluster-scoped ECS idempotency token. Create the expiry schedule before `RunTask`. Use a separate expiry Lambda that keeps the active lock until task cleanup is confirmed. Keep both actions disabled until readiness and access are integrated |
 
 ## Product decisions
 

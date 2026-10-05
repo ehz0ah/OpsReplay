@@ -216,7 +216,9 @@ finalisation changes cannot use stale admission data.
   provisioning deadline, and schedule name. The active lock contains its session and
   request IDs. Public responses use explicit nested projections, never the whole item.
 
-This increment does not fabricate launch arguments, monitor secrets, task ARNs, indexes,
-or schedules. The launch increment must persist the exact ECS arguments and secret before
-calling ECS, and implement deadlines and cleanup before the API is enabled. The complete
-lifecycle contract above remains the target.
+The current start increment stores the exact ECS arguments, monitor secret, task ARN,
+provisioning and launch-recovery deadlines, schedule name, and cleanup state. It creates
+the expiry schedule before `RunTask`. Provisioning timeout cleanup releases the active
+lock only after a saved task is stopped or the bounded launch-recovery period passes with
+no active task. Readiness, lifecycle indexes, and the reconciliation sweep remain to be
+implemented before the API is enabled.

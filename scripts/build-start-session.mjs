@@ -1,16 +1,22 @@
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 
-// One deployable action. SDK and validation versions are bundled from package-lock.json.
-await build({
-  absWorkingDir: fileURLToPath(new URL('..', import.meta.url)),
-  entryPoints: ['apps/api/src/start-session/index.ts'],
-  outfile: 'dist/start-session/index.cjs',
-  bundle: true,
-  platform: 'node',
-  target: 'node22',
-  format: 'cjs',
-  minify: true,
-  sourcemap: false,
-  logLevel: 'info',
-});
+// Each entry point becomes one deployable action with its own bundle.
+const root = fileURLToPath(new URL('..', import.meta.url));
+for (const [entryPoint, outfile] of [
+  ['apps/api/src/start-session/index.ts', 'dist/start-session/index.cjs'],
+  ['apps/api/src/expire-provisioning/index.ts', 'dist/expire-provisioning/index.cjs'],
+]) {
+  await build({
+    absWorkingDir: root,
+    entryPoints: [entryPoint],
+    outfile,
+    bundle: true,
+    platform: 'node',
+    target: 'node22',
+    format: 'cjs',
+    minify: true,
+    sourcemap: false,
+    logLevel: 'info',
+  });
+}

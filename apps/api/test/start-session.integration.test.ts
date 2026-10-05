@@ -9,10 +9,11 @@ import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanComm
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { createStartHandler, publicView } from '../src/start-session/handler.js';
 import { StartStore, keys } from '../src/start-session/store.js';
-import type { ContentVersion, SessionRecord, StartRequest } from '../src/start-session/types.js';
+import type { ContentVersion, LaunchConfiguration, SessionRecord, StartRequest } from '../src/start-session/types.js';
 import { validSession, validView } from '../src/start-session/validation.js';
 import { startLocalDatabase } from './local-dynamodb.js';
 import { createDynamoTransport } from '../src/start-session/transport.js';
+import type { ProvisionResult } from '../src/session-lifecycle/provision.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(async () => { database = await startLocalDatabase(); }, { timeout: 60_000 });
@@ -23,6 +24,14 @@ const context = {
   awsRequestId: '22222222-2222-4222-8222-222222222222',
   getRemainingTimeInMillis: () => 10_000,
 };
+const launchConfiguration: LaunchConfiguration = {
+  clusterArn: 'arn:aws:ecs:ap-southeast-1:123456789012:cluster/opsreplay-test',
+  subnetIds: ['subnet-0123456789abcdef0'],
+  securityGroupIds: ['sg-0123456789abcdef0'],
+  platformVersion: '1.4.0',
+  monitorContainerName: 'monitor',
+};
+const noopProvision = async () => 'launched' as const;
 const request = (): StartRequest => ({ requestId: randomUUID(), challengeId: 'wrong-upstream-port', challengeVersion: '0.1.0' });
 function event(body: unknown, actor: unknown = owner): APIGatewayProxyEvent {
   // Synthetic API Gateway event. No development identity exists in the deployed handler.
@@ -60,14 +69,18 @@ async function fixture() {
   await put(keys.content('wrong-upstream-port', '0.1.0'), content());
   const store = new StartStore(database.document, table);
   const logs: unknown[] = [];
-  const makeHandler = (overrides: Partial<Store> = {}) => createStartHandler({
+  const provisions: string[] = [];
+  const defaultProvision = async (sessionId: string) => { provisions.push(sessionId); return 'launched' as const; };
+  const makeHandler = (overrides: Partial<Store> = {},
+    provision: (sessionId: string, abortSignal?: AbortSignal) => Promise<ProvisionResult> = defaultProvision) => createStartHandler({
     store: {
       receipt: store.receipt.bind(store), session: store.session.bind(store), active: store.active.bind(store),
       snapshot: store.snapshot.bind(store), commit: store.commit.bind(store), ...overrides,
     },
-    now: () => new Date(current), log: entry => logs.push(entry),
+    launchConfiguration, provision,
+    now: () => new Date(current), newSecret: () => 's'.repeat(43), log: entry => logs.push(entry),
   });
-  return { table, store, put, remove, get, rows, logs, makeHandler, handler: makeHandler() };
+  return { table, store, put, remove, get, rows, logs, provisions, makeHandler, handler: makeHandler() };
 }
 const bodyOf = (response: { body: string }) => JSON.parse(response.body);
 
@@ -89,12 +102,28 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.ok(validSession(saved));
   assert.equal(saved.accessGrant.plan, 'free');
   assert.equal(saved.provisioningDeadline, '2026-10-05T02:03:00.000Z');
+  assert.equal(saved.launchRecoveryDeadline, '2026-10-05T02:08:00.000Z');
+  assert.equal(saved.launchArguments.clientToken, session.id);
+  assert.equal(saved.launchArguments.startedBy, session.id);
+  assert.equal(saved.launchArguments.overrides.containerOverrides[0].environment[1].value, saved.monitorSecret);
+  assert.equal(saved.taskArn, null);
+  assert.deepEqual(saved.provisioningCleanup, { status: 'pending', completedAt: null });
   assert.deepEqual(saved.pins, content().pins);
   assert.equal((await f.store.active(owner))?.sessionId, session.id);
   assert.equal((await f.store.receipt(owner, input.requestId))?.sessionId, session.id);
+  assert.deepEqual(f.provisions, [session.id]);
   assert.equal((await f.rows()).length, 4); // One content fixture plus three admission writes.
   assert.equal(/taskDefinition|sha256|ownerId|accessGrant|pins/.test(response.body), false);
   assert.deepEqual(Object.keys(f.logs[0] as object).sort(), ['durationMs', 'operation', 'requestId', 'result']);
+});
+
+test('a confirmed launch rejection returns capacity unavailable after admission', async () => {
+  const f = await fixture();
+  const response = await f.makeHandler({}, async () => 'capacity_unavailable')(event(request()), context);
+  assert.equal(response.statusCode, 503);
+  assert.equal(bodyOf(response).code, 'CAPACITY_UNAVAILABLE');
+  assert.equal(bodyOf(response).retryAfterSeconds, 30);
+  assert.equal((await f.rows()).length, 4);
 });
 
 test('whitespace, property order, and UUID case do not create a new request', async () => {
@@ -152,7 +181,10 @@ test('a receipt committed during access checks wins over a new-operation rejecti
 
 test('identity and request validation reject bad input before any database access', async () => {
   const fail = async (): Promise<never> => { throw new Error('Database must not be called'); };
-  const handler = createStartHandler({ store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail } });
+  const handler = createStartHandler({
+    store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
+    launchConfiguration, provision: noopProvision,
+  });
   for (const actor of [null, '', 'a#b', { sub: owner }, 'x'.repeat(129)]) {
     assert.equal((await handler(event(request(), actor), context)).statusCode, 401);
   }
@@ -273,6 +305,7 @@ test('the handler preserves time to return an error when its work deadline expir
       },
       session: fail, active: fail, snapshot: fail, commit: fail,
     },
+    launchConfiguration, provision: noopProvision,
     log: entry => logs.push(entry),
   });
   const response = await handler(event(input), {
@@ -289,6 +322,7 @@ test('the handler starts no storage work when only the response margin remains',
   const fail = async (): Promise<never> => { calls++; throw new Error('Unexpected storage call'); };
   const handler = createStartHandler({
     store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
+    launchConfiguration, provision: noopProvision,
   });
   const response = await handler(event(request()), {
     ...context, getRemainingTimeInMillis: () => 1000,
@@ -339,7 +373,11 @@ test('different learners can use the same request ID without sharing a session',
   const [a, b] = await Promise.all([f.handler(event(input), context), f.handler(event(input, randomUUID()), context)]);
   assert.equal(a.statusCode, 200);
   assert.equal(b.statusCode, 200);
-  assert.notEqual(bodyOf(a).session.id, bodyOf(b).session.id);
+  const firstId = bodyOf(a).session.id;
+  const secondId = bodyOf(b).session.id;
+  assert.notEqual(firstId, secondId);
+  assert.equal((await f.store.session(firstId))?.launchArguments.clientToken, firstId);
+  assert.equal((await f.store.session(secondId))?.launchArguments.clientToken, secondId);
 });
 
 test('plan, publication, and progress races cancel the whole write', async () => {
@@ -452,18 +490,24 @@ test('replay returns the current saved outcome, not a stale provisioning respons
   saved.view.status = 'error';
   saved.view.statusReason = 'start_failed';
   saved.view.endedAt = '2026-10-05T02:03:00Z';
-  await f.put(keys.session(initial.session.id), { ...saved, monitorSecret: 'never public' });
+  const privateSecret = 'z'.repeat(43);
+  saved.monitorSecret = privateSecret;
+  saved.launchArguments.overrides.containerOverrides[0].environment[1].value = privateSecret;
+  await f.put(keys.session(initial.session.id), saved);
   await f.remove(keys.active(owner));
   const response = await f.handler(event(input), context);
   assert.equal(bodyOf(response).session.status, 'error');
   assert.equal(bodyOf(response).replayed, true);
-  assert.equal(response.body.includes('never public'), false);
+  assert.equal(response.body.includes(privateSecret), false);
   assert.equal(await f.store.active(owner), undefined);
 });
 
 test('projection drops private nested fields and logging failures do not fail admission', async () => {
   const f = await fixture();
-  const handler = createStartHandler({ store: f.store, log: () => { throw new Error('logger failed'); } });
+  const handler = createStartHandler({
+    store: f.store, launchConfiguration, provision: noopProvision,
+    log: () => { throw new Error('logger failed'); },
+  });
   const response = await handler(event(request()), context);
   assert.equal(response.statusCode, 200);
   const view = bodyOf(response).session;
@@ -475,15 +519,28 @@ test('projection drops private nested fields and logging failures do not fail ad
 });
 
 test('the bundled Lambda loads on Node 22 and rejects unauthenticated input without AWS calls', async () => {
-  const previous = process.env.SESSION_TABLE_NAME;
+  const names = ['SESSION_TABLE_NAME', 'ECS_CLUSTER_ARN', 'ECS_SUBNET_IDS', 'ECS_SECURITY_GROUP_IDS',
+    'ECS_PLATFORM_VERSION', 'MONITOR_CONTAINER_NAME', 'SCHEDULER_GROUP_NAME',
+    'PROVISIONING_EXPIRY_FUNCTION_ARN', 'SCHEDULER_TARGET_ROLE_ARN'] as const;
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
   try {
     process.env.SESSION_TABLE_NAME = 'test-unused';
+    process.env.ECS_CLUSTER_ARN = launchConfiguration.clusterArn;
+    process.env.ECS_SUBNET_IDS = launchConfiguration.subnetIds.join(',');
+    process.env.ECS_SECURITY_GROUP_IDS = launchConfiguration.securityGroupIds.join(',');
+    process.env.ECS_PLATFORM_VERSION = launchConfiguration.platformVersion;
+    process.env.MONITOR_CONTAINER_NAME = launchConfiguration.monitorContainerName;
+    process.env.SCHEDULER_GROUP_NAME = 'test-sessions';
+    process.env.PROVISIONING_EXPIRY_FUNCTION_ARN = 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry';
+    process.env.SCHEDULER_TARGET_ROLE_ARN = 'arn:aws:iam::123456789012:role/test-scheduler';
     const bundled = createRequire(import.meta.url)('../../../dist/start-session/index.cjs');
     const response = await bundled.handler(event(request(), null), context);
     assert.equal(response.statusCode, 401);
   } finally {
-    if (previous === undefined) delete process.env.SESSION_TABLE_NAME;
-    else process.env.SESSION_TABLE_NAME = previous;
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
   }
 });
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { DynamoDBDocumentClient, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { ValidateFunction } from 'ajv';
-import { validContent, validLock, validPlan, validProgress, validReceipt, validSession } from './validation.js';
+import { validContent, validLock, validPlan, validProgress, validReceipt, validSession, validSessionRelations } from './validation.js';
 import type { Admission, StartRequest } from './types.js';
 
 export const keys = {
@@ -31,7 +31,11 @@ export class StartStore {
   receipt(owner: string, request: string, abortSignal?: AbortSignal) {
     return this.get(keys.receipt(owner, request), validReceipt, abortSignal);
   }
-  session(id: string, abortSignal?: AbortSignal) { return this.get(keys.session(id), validSession, abortSignal); }
+  async session(id: string, abortSignal?: AbortSignal) {
+    const session = await this.get(keys.session(id), validSession, abortSignal);
+    if (session && !validSessionRelations(session)) throw new Error('Invalid stored session relationships');
+    return session;
+  }
   active(owner: string, abortSignal?: AbortSignal) { return this.get(keys.active(owner), validLock, abortSignal); }
 
   async snapshot(owner: string, request: StartRequest, abortSignal?: AbortSignal) {

@@ -7,8 +7,9 @@ first, then a small Learn collection and Code Review set.
 The first increment is the [local wrong-upstream-port image](../content/challenges/wrong-upstream-port/README.md),
 tracked in [task 4](https://github.com/ehz0ah/OpsReplay/issues/4). It covers part of I01,
 not the complete work package. The next increment implements session-start admission:
-a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. Then add ECS
-launch and cleanup, followed by monitor and gateway integration in focused PRs. Work
+a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. The following
+increment adds ECS launch and provisioning-timeout cleanup. Monitor and gateway
+integration follow in focused PRs. Work
 packages are responsibility groups, not a requirement to complete one subsystem before
 integrating another.
 

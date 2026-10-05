@@ -62,13 +62,55 @@ export interface Progress {
   // Only finalised, non-error attempts count. Platform failures preserve the first attempt.
   completedAttempts: number;
 }
+
+export interface LaunchConfiguration {
+  clusterArn: string;
+  subnetIds: string[];
+  securityGroupIds: string[];
+  platformVersion: string;
+  monitorContainerName: string;
+}
+
+export interface EcsLaunchArguments {
+  cluster: string;
+  taskDefinition: string;
+  clientToken: string;
+  startedBy: string;
+  count: 1;
+  enableExecuteCommand: false;
+  launchType: 'FARGATE';
+  platformVersion: string;
+  networkConfiguration: {
+    awsvpcConfiguration: {
+      subnets: string[];
+      securityGroups: string[];
+      assignPublicIp: 'DISABLED';
+    };
+  };
+  overrides: {
+    containerOverrides: [{
+      name: string;
+      environment: [
+        { name: 'OPSREPLAY_SESSION_ID'; value: string },
+        { name: 'OPSREPLAY_MONITOR_SECRET'; value: string },
+      ];
+    }];
+  };
+  tags: [{ key: 'opsreplay:session-id'; value: string }];
+}
+
 export interface SessionRecord {
   ownerId: string;
   view: SessionView;
   accessGrant: { plan: PlanName; admittedAt: string; timeLimitSeconds: number };
   pins: ContentVersion['pins'];
+  launchArguments: EcsLaunchArguments;
+  monitorSecret: string;
   provisioningDeadline: string;
+  launchRecoveryDeadline: string;
   scheduleName: string;
+  taskArn: string | null;
+  provisioningCleanup: { status: 'pending' | 'complete'; completedAt: string | null };
 }
 export interface Receipt {
   ownerId: string;

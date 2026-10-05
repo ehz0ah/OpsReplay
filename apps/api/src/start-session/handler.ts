@@ -1,10 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { setTimeout } from 'node:timers/promises';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import type { StartStore } from './store.js';
-import type { Receipt, SessionRecord, SessionView, StartRequest } from './types.js';
-import { isStartableContent, validOwner, validRequest, validUuid, validView } from './validation.js';
+import type { LaunchConfiguration, Receipt, SessionRecord, SessionView, StartRequest } from './types.js';
+import { isStartableContent, validOwner, validRequest, validSession, validSessionRelations, validUuid, validView } from './validation.js';
 
 const RESPONSE_MARGIN_MS = 1000;
 
@@ -17,6 +17,7 @@ const errors = {
   ACTIVE_SESSION_EXISTS: [409, 'Finish or end your current Challenge before starting another.'],
   VERSION_UNAVAILABLE: [422, 'This Challenge version is not available.'],
   LIMIT_EXCEEDED: [429, 'The attempt limit for this Challenge has been reached.'],
+  CAPACITY_UNAVAILABLE: [503, 'No environment capacity is available. Try again shortly.'],
   INTERNAL_ERROR: [500, 'The request could not be completed. Retry with the same request ID.'],
 } as const;
 class RequestError extends Error {
@@ -39,8 +40,11 @@ export interface StartLog {
 }
 interface Dependencies {
   store: Pick<StartStore, 'receipt' | 'session' | 'active' | 'snapshot' | 'commit'>;
+  launchConfiguration: LaunchConfiguration;
+  provision: (sessionId: string, abortSignal?: AbortSignal) => Promise<'launched' | 'already_launched' | 'expired' | 'terminal' | 'capacity_unavailable'>;
   now?: () => Date;
   newId?: () => string;
+  newSecret?: () => string;
   log?: (entry: StartLog) => void;
 }
 const response = (statusCode: number, body: object): APIGatewayProxyResult => ({
@@ -84,7 +88,8 @@ function parseBody(event: APIGatewayProxyEvent): StartRequest {
   return { ...value, requestId: value.requestId.toLowerCase() };
 }
 
-export function createStartHandler({ store, now = () => new Date(), newId = randomUUID, log = () => {} }: Dependencies) {
+export function createStartHandler({ store, launchConfiguration, provision, now = () => new Date(), newId = randomUUID,
+  newSecret = () => randomBytes(32).toString('base64url'), log = () => {} }: Dependencies) {
   return async (event: APIGatewayProxyEvent,
     context: Pick<Context, 'awsRequestId' | 'getRemainingTimeInMillis'>): Promise<APIGatewayProxyResult> => {
     const started = performance.now();
@@ -112,8 +117,12 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
         abortSignal.throwIfAborted();
         const saved = await store.session(receipt.sessionId, abortSignal);
         if (!saved || saved.ownerId !== owner || saved.view.id !== receipt.sessionId) throw new RequestError('NOT_FOUND');
+        const provisioned = await provision(saved.view.id, abortSignal);
+        if (provisioned === 'capacity_unavailable') throw new RequestError('CAPACITY_UNAVAILABLE');
+        const current = await store.session(receipt.sessionId, abortSignal);
+        if (!current || current.ownerId !== owner || current.view.id !== receipt.sessionId) throw new RequestError('NOT_FOUND');
         result = 'replayed';
-        return response(200, { session: publicView(saved.view), replayed: true });
+        return response(200, { session: publicView(current.view), replayed: true });
       };
       const rejectNew = async (code: keyof typeof errors, activeSessionId?: string) => {
         // Another invocation may have committed after our receipt miss, even if access changed.
@@ -146,6 +155,8 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
         }
         const createdAt = clock.toISOString();
         const id = newId();
+        const monitorSecret = newSecret();
+        const provisioningDeadline = new Date(clock.getTime() + 180_000);
         const view: SessionView = publicView({
           id, challenge: content.challenge, alert: content.alert, dashboard: content.dashboard,
           attempt: { kind: completed === 0 ? 'first' : 'retry', number: completed + 1 },
@@ -157,20 +168,54 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
         });
         const session: SessionRecord = {
           ownerId: owner, view, accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
-          pins: { ...content.pins }, provisioningDeadline: new Date(clock.getTime() + 180_000).toISOString(),
+          pins: { ...content.pins },
+          launchArguments: {
+            cluster: launchConfiguration.clusterArn,
+            taskDefinition: content.pins.taskDefinitionArn,
+            clientToken: id,
+            startedBy: id,
+            count: 1,
+            enableExecuteCommand: false,
+            launchType: 'FARGATE',
+            platformVersion: launchConfiguration.platformVersion,
+            networkConfiguration: { awsvpcConfiguration: {
+              subnets: [...launchConfiguration.subnetIds],
+              securityGroups: [...launchConfiguration.securityGroupIds],
+              assignPublicIp: 'DISABLED',
+            } },
+            overrides: { containerOverrides: [{
+              name: launchConfiguration.monitorContainerName,
+              environment: [
+                { name: 'OPSREPLAY_SESSION_ID', value: id },
+                { name: 'OPSREPLAY_MONITOR_SECRET', value: monitorSecret },
+              ],
+            }] },
+            tags: [{ key: 'opsreplay:session-id', value: id }],
+          },
+          monitorSecret,
+          provisioningDeadline: provisioningDeadline.toISOString(),
+          launchRecoveryDeadline: new Date(provisioningDeadline.getTime() + 300_000).toISOString(),
           scheduleName: `session-${id}`,
+          taskArn: null,
+          provisioningCleanup: { status: 'pending', completedAt: null },
         };
+        if (!validSession(session) || !validSessionRelations(session)) throw new Error('Invalid session launch configuration');
         try {
           abortSignal.throwIfAborted();
           await store.commit({ request, session, snapshot, receipt: { ownerId: owner, requestId, hash, sessionId: id } }, abortSignal);
-          result = 'created';
-          return response(200, { session: view, replayed: false });
         } catch (error) {
           const committed = await replay();
           if (committed) return committed;
           if (!retryableConflict(error)) throw error;
           if (attempt < 2) await setTimeout(20 * 2 ** attempt, undefined, { signal: abortSignal });
+          continue;
         }
+        const provisioned = await provision(id, abortSignal);
+        if (provisioned === 'capacity_unavailable') throw new RequestError('CAPACITY_UNAVAILABLE');
+        result = 'created';
+        const current = await store.session(id, abortSignal);
+        if (!current) throw new Error('Session disappeared after admission');
+        return response(200, { session: publicView(current.view), replayed: false });
       }
       throw new Error('Admission contention limit reached');
     } catch (error) {
@@ -180,6 +225,7 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
       return response(statusCode, {
         code: failure.code, message, requestId,
         ...(failure.activeSessionId ? { activeSessionId: failure.activeSessionId } : {}),
+        ...(failure.code === 'CAPACITY_UNAVAILABLE' ? { retryAfterSeconds: 30 } : {}),
       });
     } finally {
       // No events, user identifiers, tokens, database errors, or private content in logs.
