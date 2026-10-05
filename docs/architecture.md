@@ -2,7 +2,8 @@
 
 Status: implementation proposal consistent with the preliminary report. The
 [reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
-locally. Platform handlers, the gateway, the monitor, and cloud resources are not implemented.
+locally. Session-start admission has a Lambda handler and disabled CDK definitions.
+The remaining handlers, gateway, monitor, and cloud deployment are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
@@ -43,14 +44,17 @@ flowchart LR
 | Challenge container | Service stack, planted fault, supervisor, terminal server |
 | Monitor container | Traffic, metrics, validators, health probes, captures |
 
-The API handlers are separate Lambda functions that share modules and contracts. LLM
+The API handlers are separate Lambda functions, one per action, that share code modules
+and contracts. Each action has its own bundle, execution role, and limits. Functions do
+not invoke other Lambda functions. Ordinary calls to shared modules are allowed.
+Learner state stays in DynamoDB, not warm process memory. LLM
 turns run in their own function so they have separate concurrency and timeout limits.
 They are not separate microservices. The gateway is the only component that talks to
 environment tasks. Lambda handlers stay outside the VPC.
 
 ## Proposed AWS deployment
 
-The deployment uses one Region. The Region, domain, and IaC tool are open.
+The deployment uses CDK with TypeScript and one Region. The Region and domain remain open.
 
 ```mermaid
 flowchart TB

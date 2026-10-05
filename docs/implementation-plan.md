@@ -6,8 +6,9 @@ first, then a small Learn collection and Code Review set.
 
 The first increment is the [local wrong-upstream-port image](../content/challenges/wrong-upstream-port/README.md),
 tracked in [task 4](https://github.com/ehz0ah/OpsReplay/issues/4). It covers part of I01,
-not the complete work package. Next, connect local session start, status, and end to a
-real launch target. Add monitor and gateway capabilities in later focused PRs. Work
+not the complete work package. The next increment implements session-start admission:
+a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. Then add ECS
+launch and cleanup, followed by monitor and gateway integration in focused PRs. Work
 packages are responsibility groups, not a requirement to complete one subsystem before
 integrating another.
 
@@ -32,7 +33,8 @@ are built. Shared contract changes are coordinated, not redefined in each module
 
 ## First milestone
 
-Prove this loop locally, then on AWS:
+Build toward this loop with local component and integration tests, then run the first
+complete cloud test in a temporary AWS environment:
 
 ```text
 Start -> task ready -> alert -> terminal investigation -> configuration fix
@@ -42,6 +44,12 @@ Start -> task ready -> alert -> terminal investigation -> configuration fix
 For the reference Challenge, demonstrate at least one trap with its real effect, such as
 a restart with a broken configuration taking the proxy down. This matters more than more
 Challenges or a polished assistant.
+
+AWS is the deployment target. Use Lambda handlers and the real DynamoDB adapter from
+the start. Test locally with DynamoDB Local, image tests, and bounded fault injection.
+Do not build a separate local platform runtime. Local tests cannot establish IAM,
+Fargate, or cloud network correctness. Add CDK definitions with each component, then
+deploy, test, and tear down the integrated flow. Do not keep an idle development stack.
 
 ## Planned dates
 
