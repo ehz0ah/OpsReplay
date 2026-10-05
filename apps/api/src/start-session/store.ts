@@ -18,29 +18,32 @@ type Key = { PK: string; SK: string };
 export class StartStore {
   constructor(private readonly client: DynamoDBDocumentClient, private readonly table: string) {}
 
-  private async get<T>(key: Key, validate: ValidateFunction<T>): Promise<T | undefined> {
-    const result = await this.client.send(new GetCommand({
-      TableName: this.table, Key: key, ConsistentRead: true,
-    }));
+  private async get<T>(key: Key, validate: ValidateFunction<T>, abortSignal?: AbortSignal): Promise<T | undefined> {
+    const command = new GetCommand({ TableName: this.table, Key: key, ConsistentRead: true });
+    const result = abortSignal
+      ? await this.client.send(command, { abortSignal })
+      : await this.client.send(command);
     if (!result.Item) return undefined;
     if (!validate(result.Item.data)) throw new Error('Invalid stored admission record');
     return result.Item.data;
   }
 
-  receipt(owner: string, request: string) { return this.get(keys.receipt(owner, request), validReceipt); }
-  session(id: string) { return this.get(keys.session(id), validSession); }
-  active(owner: string) { return this.get(keys.active(owner), validLock); }
+  receipt(owner: string, request: string, abortSignal?: AbortSignal) {
+    return this.get(keys.receipt(owner, request), validReceipt, abortSignal);
+  }
+  session(id: string, abortSignal?: AbortSignal) { return this.get(keys.session(id), validSession, abortSignal); }
+  active(owner: string, abortSignal?: AbortSignal) { return this.get(keys.active(owner), validLock, abortSignal); }
 
-  async snapshot(owner: string, request: StartRequest) {
+  async snapshot(owner: string, request: StartRequest, abortSignal?: AbortSignal) {
     const [content, plan, progress] = await Promise.all([
-      this.get(keys.content(request.challengeId, request.challengeVersion), validContent),
-      this.get(keys.plan(owner), validPlan),
-      this.get(keys.progress(owner, request.challengeId), validProgress),
+      this.get(keys.content(request.challengeId, request.challengeVersion), validContent, abortSignal),
+      this.get(keys.plan(owner), validPlan, abortSignal),
+      this.get(keys.progress(owner, request.challengeId), validProgress, abortSignal),
     ]);
     return { content, plan, progress };
   }
 
-  async commit(admission: Admission): Promise<void> {
+  async commit(admission: Admission, abortSignal?: AbortSignal): Promise<void> {
     const { session, receipt, request, snapshot } = admission;
     const owner = session.ownerId;
     const put = (key: Key, data: object) => ({ Put: {
@@ -65,6 +68,8 @@ export class StartStore {
         unchanged(keys.progress(owner, request.challengeId), snapshot.progress),
       ],
     };
-    await this.client.send(new TransactWriteCommand(input));
+    const command = new TransactWriteCommand(input);
+    if (abortSignal) await this.client.send(command, { abortSignal });
+    else await this.client.send(command);
   }
 }

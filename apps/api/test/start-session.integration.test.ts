@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { CreateTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
@@ -18,7 +19,10 @@ before(async () => { database = await startLocalDatabase(); }, { timeout: 60_000
 after(() => database?.close());
 const current = '2026-10-05T02:00:00.000Z';
 const owner = '11111111-1111-4111-8111-111111111111';
-const context = { awsRequestId: '22222222-2222-4222-8222-222222222222' };
+const context = {
+  awsRequestId: '22222222-2222-4222-8222-222222222222',
+  getRemainingTimeInMillis: () => 10_000,
+};
 const request = (): StartRequest => ({ requestId: randomUUID(), challengeId: 'wrong-upstream-port', challengeVersion: '0.1.0' });
 function event(body: unknown, actor: unknown = owner): APIGatewayProxyEvent {
   // Synthetic API Gateway event. No development identity exists in the deployed handler.
@@ -213,12 +217,84 @@ test('bad stored data fails closed without exposing it', async () => {
   assert.equal(await f.store.active(owner), undefined);
 });
 
-test('Pro limits must be configured rather than invented', async () => {
+test('published content requires a configured Pro extension for every learner', async () => {
+  for (const pro of [null, 1200, 900]) {
+    for (const learnerPlan of ['free', 'pro']) {
+      const f = await fixture();
+      if (learnerPlan === 'pro') await f.put(keys.plan(owner), { plan: 'pro', expiresAt: null });
+      await f.put(keys.content('wrong-upstream-port', '0.1.0'), {
+        ...content(), timeLimits: { free: 1200, pro },
+      });
+      const response = await f.handler(event(request()), context);
+      assert.equal(response.statusCode, 422);
+      assert.equal(bodyOf(response).code, 'VERSION_UNAVAILABLE');
+      assert.equal(await f.store.active(owner), undefined);
+    }
+  }
+});
+
+test('receipt lookup finishes before independent admission reads start', async () => {
   const f = await fixture();
-  await f.put(keys.plan(owner), { plan: 'pro', expiresAt: null });
-  await f.put(keys.content('wrong-upstream-port', '0.1.0'), { ...content(), timeLimits: { free: 1200, pro: null } });
-  assert.equal((await f.handler(event(request()), context)).statusCode, 500);
-  assert.equal(await f.store.active(owner), undefined);
+  let receiptResolved = false;
+  let activeStarted = false;
+  const handler = f.makeHandler({
+    receipt: async (actor, requestId, abortSignal) => {
+      const receipt = await f.store.receipt(actor, requestId, abortSignal);
+      receiptResolved = true;
+      return receipt;
+    },
+    snapshot: async (actor, input, abortSignal) => {
+      assert.equal(receiptResolved, true);
+      await sleep(0);
+      assert.equal(activeStarted, true);
+      return f.store.snapshot(actor, input, abortSignal);
+    },
+    active: async (actor, abortSignal) => {
+      assert.equal(receiptResolved, true);
+      activeStarted = true;
+      return f.store.active(actor, abortSignal);
+    },
+  });
+  assert.equal((await handler(event(request()), context)).statusCode, 200);
+});
+
+test('the handler preserves time to return an error when its work deadline expires', { timeout: 2000 }, async () => {
+  const input = request();
+  const logs: unknown[] = [];
+  let receiptReads = 0;
+  const fail = async (): Promise<never> => { throw new Error('Unexpected storage call'); };
+  const handler = createStartHandler({
+    store: {
+      receipt: async (_actor, _requestId, abortSignal) => {
+        receiptReads++;
+        assert.ok(abortSignal);
+        await sleep(10_000, undefined, { signal: abortSignal });
+        return undefined;
+      },
+      session: fail, active: fail, snapshot: fail, commit: fail,
+    },
+    log: entry => logs.push(entry),
+  });
+  const response = await handler(event(input), {
+    ...context, getRemainingTimeInMillis: () => 1050,
+  });
+  assert.equal(response.statusCode, 500);
+  assert.equal(bodyOf(response).requestId, input.requestId);
+  assert.equal(receiptReads, 1);
+  assert.equal((logs[0] as { result: string }).result, 'INTERNAL_ERROR');
+});
+
+test('the handler starts no storage work when only the response margin remains', async () => {
+  let calls = 0;
+  const fail = async (): Promise<never> => { calls++; throw new Error('Unexpected storage call'); };
+  const handler = createStartHandler({
+    store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
+  });
+  const response = await handler(event(request()), {
+    ...context, getRemainingTimeInMillis: () => 1000,
+  });
+  assert.equal(response.statusCode, 500);
+  assert.equal(calls, 0);
 });
 
 test('attempt labels use finalised non-error progress and enforce the wire limit', async () => {
@@ -423,6 +499,9 @@ test('a stalled database request is aborted by the production transport', { time
   });
   try {
     const store = new StartStore(DynamoDBDocumentClient.from(client), 'unused');
+    const started = Date.now();
+    await assert.rejects(store.receipt(owner, randomUUID(), AbortSignal.timeout(50)), { name: 'AbortError' });
+    assert.ok(Date.now() - started < 1000, 'Abort signal did not preserve the response margin');
     await assert.rejects(store.receipt(owner, randomUUID()), { name: 'TimeoutError' });
   } finally {
     client.destroy();

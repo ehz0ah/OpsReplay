@@ -200,10 +200,12 @@ finalisation changes cannot use stale admission data.
 - Content admission data contains the public Challenge reference, alert, dashboard
   descriptors, hint count, plan, per-plan time limits, and pinned task/image references.
   It does not load the full manifest or unreleased hints. A future publication step
-  writes this snapshot only after content checks pass. Test fixtures are synthetic.
+  writes this snapshot only after content checks pass. A published snapshot requires an
+  explicit Pro time limit greater than its Free limit. Draft content can leave the Pro
+  setting unset. Test fixtures are synthetic.
 - Plan data is `{ plan, expiresAt }`. A missing grant uses Free. Invalid stored data
-  fails closed. A Pro grant must not have expired at admission. Its time limit must be
-  explicitly configured and longer than the Free limit, never invented in code.
+  fails closed. A Pro grant must not have expired at admission. Time limits are never
+  invented in code.
 - Progress admission data is `{ completedAttempts }`, counting finalised non-error
   attempts for that Challenge ID. The later finaliser must update it before releasing
   the active lock. Zero means the next attempt is `first`. At 1000, admission rejects

@@ -18,6 +18,8 @@ The [start handler](src/start-session/index.ts) is one Lambda for `POST /v1/sess
 It validates the API Gateway Cognito identity and request, reads an existing receipt
 first, checks access, and atomically saves the receipt, active-session lock, and session.
 It calls DynamoDB, never another Lambda. Shared code is bundled into the function.
+After a receipt miss, it reads the active lock alongside the content, plan, and progress
+snapshot. Published content must include a Pro limit greater than its Free limit.
 
 The transaction checks that content, plan, and progress have not changed since they were
 read. Concurrent copies of a request return one session. Competing requests cannot create
@@ -62,6 +64,8 @@ CDK output goes to `cdk.out/`. Neither directory belongs in Git.
 - One active session per learner, enforced by a transaction.
 - Three attempts for known transaction contention, with bounded delays.
 - Two SDK attempts, a 500 ms connection timeout, and a 2 second request timeout that aborts.
+- One second of the Lambda duration is reserved for a structured response and final log.
+  The remaining-time signal cancels DynamoDB work and contention delays.
 - Lambda: 10 second timeout and 256 MiB memory, not yet performance-tuned.
 - Reuse only clients and validators, never learner state, across invocations.
 

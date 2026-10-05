@@ -34,6 +34,15 @@ export const validContent = ajv.compile<ContentVersion>(object({
   timeLimits: object({ free: limit, pro: { anyOf: [limit, { type: 'null' }] } }),
   pins,
 }));
+export type StartableContent = ContentVersion & {
+  status: 'published';
+  timeLimits: { free: number; pro: number };
+};
+export function isStartableContent(content: ContentVersion | undefined): content is StartableContent {
+  return content?.status === 'published'
+    && content.timeLimits.pro !== null
+    && content.timeLimits.pro > content.timeLimits.free;
+}
 export const validPlan = ajv.compile<Plan>(object({
   plan: ref('Plan'), expiresAt: { anyOf: [timestamp, { type: 'null' }] },
 }));
