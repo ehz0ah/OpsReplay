@@ -4,7 +4,9 @@ import { setTimeout } from 'node:timers/promises';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import type { StartStore } from './store.js';
 import type { Receipt, SessionRecord, SessionView, StartRequest } from './types.js';
-import { validOwner, validRequest, validUuid, validView } from './validation.js';
+import { isStartableContent, validOwner, validRequest, validUuid, validView } from './validation.js';
+
+const RESPONSE_MARGIN_MS = 1000;
 
 const errors = {
   INVALID_REQUEST: [400, 'Invalid session start request.'],
@@ -83,7 +85,8 @@ function parseBody(event: APIGatewayProxyEvent): StartRequest {
 }
 
 export function createStartHandler({ store, now = () => new Date(), newId = randomUUID, log = () => {} }: Dependencies) {
-  return async (event: APIGatewayProxyEvent, context: Pick<Context, 'awsRequestId'>): Promise<APIGatewayProxyResult> => {
+  return async (event: APIGatewayProxyEvent,
+    context: Pick<Context, 'awsRequestId' | 'getRemainingTimeInMillis'>): Promise<APIGatewayProxyResult> => {
     const started = performance.now();
     let requestId = validUuid(context.awsRequestId) ? context.awsRequestId : randomUUID();
     let result = 'INTERNAL_ERROR';
@@ -97,42 +100,47 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
       const hash = createHash('sha256').update(JSON.stringify({
         challengeId: request.challengeId, challengeVersion: request.challengeVersion,
       })).digest('hex');
+      const workTimeMs = context.getRemainingTimeInMillis() - RESPONSE_MARGIN_MS;
+      const abortSignal = workTimeMs > 0 ? AbortSignal.timeout(workTimeMs) : AbortSignal.abort();
 
-      const replay = async (receipt: Receipt | undefined) => {
+      const replay = async () => {
+        abortSignal.throwIfAborted();
+        const receipt: Receipt | undefined = await store.receipt(owner, requestId, abortSignal);
         if (!receipt) return undefined;
         if (receipt.ownerId !== owner || receipt.requestId !== requestId) throw new RequestError('NOT_FOUND');
         if (receipt.hash !== hash) throw new RequestError('IDEMPOTENCY_CONFLICT');
-        const saved = await store.session(receipt.sessionId);
+        abortSignal.throwIfAborted();
+        const saved = await store.session(receipt.sessionId, abortSignal);
         if (!saved || saved.ownerId !== owner || saved.view.id !== receipt.sessionId) throw new RequestError('NOT_FOUND');
         result = 'replayed';
         return response(200, { session: publicView(saved.view), replayed: true });
       };
       const rejectNew = async (code: keyof typeof errors, activeSessionId?: string) => {
         // Another invocation may have committed after our receipt miss, even if access changed.
-        const raced = await replay(await store.receipt(owner, requestId));
+        const raced = await replay();
         if (raced) return raced;
         throw new RequestError(code, activeSessionId);
       };
 
       // Retry only known transaction contention. Unknown write outcomes return a retryable error.
       for (let attempt = 0; attempt < 3; attempt++) {
-        const existing = await replay(await store.receipt(owner, requestId));
+        const existing = await replay();
         if (existing) return existing;
-        const snapshot = await store.snapshot(owner, request);
+        abortSignal.throwIfAborted();
+        const [snapshot, active] = await Promise.all([
+          store.snapshot(owner, request, abortSignal),
+          store.active(owner, abortSignal),
+        ]);
         const content = snapshot.content;
-        if (!content || content.status !== 'published' || content.challenge.id !== request.challengeId
+        if (!isStartableContent(content) || content.challenge.id !== request.challengeId
           || content.challenge.version !== request.challengeVersion) return await rejectNew('VERSION_UNAVAILABLE');
         const clock = now();
         const plan = snapshot.plan?.plan === 'pro'
           && (snapshot.plan.expiresAt === null || Date.parse(snapshot.plan.expiresAt) > clock.getTime()) ? 'pro' : 'free';
         if (content.plan === 'pro' && plan !== 'pro') return await rejectNew('ACCESS_DENIED');
         const timeLimitSeconds = content.timeLimits[plan];
-        if (timeLimitSeconds === null || (plan === 'pro' && timeLimitSeconds <= content.timeLimits.free)) {
-          throw new Error('Pro time limit has not been configured');
-        }
         const completed = snapshot.progress?.completedAttempts ?? 0;
         if (completed >= 1000) return await rejectNew('LIMIT_EXCEEDED');
-        const active = await store.active(owner);
         if (active) {
           return await rejectNew('ACTIVE_SESSION_EXISTS', active.sessionId);
         }
@@ -153,14 +161,15 @@ export function createStartHandler({ store, now = () => new Date(), newId = rand
           scheduleName: `session-${id}`,
         };
         try {
-          await store.commit({ request, session, snapshot, receipt: { ownerId: owner, requestId, hash, sessionId: id } });
+          abortSignal.throwIfAborted();
+          await store.commit({ request, session, snapshot, receipt: { ownerId: owner, requestId, hash, sessionId: id } }, abortSignal);
           result = 'created';
           return response(200, { session: view, replayed: false });
         } catch (error) {
-          const committed = await replay(await store.receipt(owner, requestId));
+          const committed = await replay();
           if (committed) return committed;
           if (!retryableConflict(error)) throw error;
-          if (attempt < 2) await setTimeout(20 * 2 ** attempt);
+          if (attempt < 2) await setTimeout(20 * 2 ** attempt, undefined, { signal: abortSignal });
         }
       }
       throw new Error('Admission contention limit reached');

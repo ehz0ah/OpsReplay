@@ -115,7 +115,8 @@ not one Lambda invoking another Lambda.
 1. Verifies identity, shape, and ownership, then resolves an existing start receipt.
    Only a new request checks that the version is currently published
    (`422 VERSION_UNAVAILABLE` otherwise), that the plan includes the Challenge, and
-   that new-operation limits permit admission.
+   that new-operation limits permit admission. A published Challenge must have an
+   explicit Pro time limit greater than its Free limit or it is unavailable to both plans.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
    lock, and the session record in `provisioning`, including its access grant and limits.
    The receipt and lock are conditional
@@ -151,7 +152,9 @@ request identity. Bodies larger than 8 KiB decoded are rejected before storage a
 The transaction checks that content, plan, and progress still match the snapshots used
 for admission. Known conditional conflicts are retried at most three times. Other write
 failures recheck the receipt and otherwise return a generic `500`. Clients keep the same
-request ID after an uncertain response.
+request ID after an uncertain response. The handler reserves one second of the Lambda
+duration for its response and final log. A shared deadline signal cancels DynamoDB calls
+and retry delays before that margin.
 
 ### Readiness and status
 
