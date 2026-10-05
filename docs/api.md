@@ -104,11 +104,11 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 
 ### Start
 
-This increment implements only identity, request validation, access, and the admission
-transaction. Local tests receive a `provisioning` response. Task launch, schedules,
-recovery, and cleanup below remain unimplemented. The Lambda is disabled and has no
-public route until these are connected. Shared lifecycle routines are ordinary code,
-not one Lambda invoking another Lambda.
+The current implementation covers admission, expiry scheduling, ECS launch, task-ARN
+persistence, and provisioning-timeout cleanup. It is tested locally through DynamoDB
+Local and fake ECS and Scheduler ports. Both Lambda actions remain disabled, no public
+route exists, and no AWS deployment has run. Shared lifecycle routines are ordinary
+code, not one Lambda invoking another Lambda.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -125,14 +125,15 @@ not one Lambda invoking another Lambda.
    EventBridge Scheduler job exists at the persisted provisioning deadline.
 4. Calls ECS `RunTask` with the persisted launch arguments, then stores the task ARN.
    These arguments pin the task definition, images, monitor secret, and network settings.
-   The request ID is the `clientToken`, and the session ID is `startedBy` and a tag.
+   The server-generated session ID is the `clientToken`, `startedBy`, and a tag.
 5. Returns `200` with the session in `provisioning`.
 
-A repeated request returns the saved session and can invoke the same lifecycle routine.
-Recovery does not require a client retry. The session stream and scheduled reconciliation
-sweep also resume incomplete starts. They repair the schedule even when the ARN is
-already saved. If the ARN is missing, they recover the tagged task or repeat `RunTask`
-with exactly the same arguments and token, only before the provisioning deadline.
+A repeated request returns the saved session and invokes the same provisioning routine.
+It repairs the schedule even when the ARN is already saved. If the ARN is missing, it
+repeats `RunTask` with exactly the same arguments and token, only before the provisioning
+deadline. The expiry action discovers a late active task by its saved `startedBy` value.
+Automatic resume without a client retry still requires the planned session stream or
+reconciliation sweep.
 
 The deadline is persisted in the start transaction, proposed at three minutes after
 creation and within ECS's client-token validity window. After it, no handler launches

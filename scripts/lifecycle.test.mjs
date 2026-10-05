@@ -4,7 +4,7 @@ import { nextStartupAction, nextFinalisationAction, acceptRecordingComplete } fr
 
 const start = () => ({
   status: 'provisioning', provisioningDeadlineAt: 180_000, timeLimitMs: 1_200_000,
-  taskArn: null, launchArguments: { clientToken: 'request-1', taskDefinition: 'pinned:1', secret: 'test-only' },
+  taskArn: null, launchArguments: { clientToken: 'session-1', taskDefinition: 'pinned:1', secret: 'test-only' },
 });
 
 // The fake task service retains client-token identity across handler crashes.

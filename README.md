@@ -9,15 +9,16 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: local Challenge image and session-start admission.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
+**Status: local Challenge image and disabled session provisioning.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
 validation tools, three synthetic draft Challenge manifests, and a
 [runnable local reference image](content/challenges/wrong-upstream-port/README.md).
-The [API](apps/api/README.md) has one admission-only Lambda and a DynamoDB adapter.
-CDK definitions keep it disabled. The monitor, gateway, remaining API, web application,
-and cloud deployment are not implemented. The image is not a published Challenge or a
-complete session. No public route is enabled.
+The [API](apps/api/README.md) has a session-start Lambda, a separate provisioning-expiry
+Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
+functions disabled. The monitor, gateway, remaining API, web application, and cloud
+deployment are not implemented. The image is not a published Challenge or a complete
+session. No public route is enabled.
 
 ## Start here
 
@@ -65,11 +66,12 @@ Regression tests also exercise reference models for interrupted startup, recordi
 drain, evidence matching, and assistant expiry. These models do not call AWS, run
 containers, or use an LLM provider. Additional models check receipt lookup order,
 terminal input generations, uncertain proposal delivery, and checkout responses through
-an injected transport. They do not test a real PTY, TLS, or database. There is no
-platform application start command yet. Use `npm run typecheck`, `npm run api:test`,
-`npm run infra:test`, and `npm run infra:synth` for session admission. API tests require
-Docker and use a temporary DynamoDB Local container with dummy credentials. These checks
-do not deploy or use an AWS account. To build and test the local Challenge image
+an injected transport. They do not test a real PTY or TLS. There is no platform
+application start command yet. Use `npm run typecheck`, `npm run api:test`,
+`npm run infra:test`, and `npm run infra:synth` for session provisioning. API tests
+require Docker and use a temporary DynamoDB Local container with dummy credentials.
+Fake ECS and Scheduler ports inject lost responses, retries, concurrency, and expiry.
+These checks do not deploy or use an AWS account. To build and test the local Challenge image
 with Docker, run `npm run challenge:build` and `npm run challenge:test`. These separate
 integration tests execute the repair and traps against real services through `docker exec`.
 

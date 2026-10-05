@@ -7,41 +7,58 @@ import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
-test('the admission stack has one disabled action with table-only data access', () => {
+test('the session-start stack has separate disabled start and expiry actions', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-cdk-'));
   try {
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.resourceCountIs('AWS::Lambda::Function', 2);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
+    template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x', Handler: 'index.handler', ReservedConcurrentExecutions: 0,
-      Timeout: 10, MemorySize: 256,
+      Timeout: 20, MemorySize: 256,
     });
     template.hasResource('AWS::DynamoDB::Table', {
       DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain',
       Properties: { BillingMode: 'PAY_PER_REQUEST' },
     });
     const resources = Object.values(template.toJSON().Resources) as { Type: string; Properties?: Record<string, unknown> }[];
-    const allowed = new Set(['AWS::Lambda::Function', 'AWS::DynamoDB::Table', 'AWS::IAM::Role', 'AWS::IAM::Policy', 'AWS::Logs::LogGroup']);
+    const allowed = new Set(['AWS::Lambda::Function', 'AWS::DynamoDB::Table', 'AWS::IAM::Role',
+      'AWS::IAM::Policy', 'AWS::Logs::LogGroup', 'AWS::Scheduler::ScheduleGroup']);
     for (const resource of resources) assert.ok(allowed.has(resource.Type), `Unexpected resource: ${resource.Type}`);
     const actions = new Set<string>();
+    const wildcardActions = new Set<string>();
     for (const resource of resources.filter(item => item.Type === 'AWS::IAM::Policy')) {
       const document = resource.Properties?.PolicyDocument as { Statement: { Action: string | string[]; Resource: unknown }[] };
       for (const statement of document.Statement) {
-        assert.notEqual(statement.Resource, '*');
-        for (const action of [statement.Action].flat()) actions.add(action);
+        for (const action of [statement.Action].flat()) {
+          actions.add(action);
+          if (statement.Resource === '*') wildcardActions.add(action);
+        }
       }
     }
     assert.deepEqual([...actions].sort(), [
-      'dynamodb:ConditionCheckItem', 'dynamodb:GetItem', 'dynamodb:PutItem',
-      'logs:CreateLogStream', 'logs:PutLogEvents',
+      'dynamodb:ConditionCheckItem', 'dynamodb:DeleteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem',
+      'ecs:DescribeTasks', 'ecs:ListTasks', 'ecs:RunTask', 'ecs:StopTask', 'ecs:TagResource',
+      'iam:PassRole', 'lambda:InvokeFunction', 'logs:CreateLogStream', 'logs:PutLogEvents',
+      'scheduler:CreateSchedule', 'scheduler:GetSchedule',
     ]);
-    const fn = resources.find(item => item.Type === 'AWS::Lambda::Function')!;
-    assert.equal(fn.Properties?.VpcConfig, undefined);
-    const role = resources.find(item => item.Type === 'AWS::IAM::Role')!;
-    assert.equal(role.Properties?.ManagedPolicyArns, undefined);
+    assert.deepEqual([...wildcardActions], ['ecs:ListTasks']);
+    for (const fn of resources.filter(item => item.Type === 'AWS::Lambda::Function')) {
+      assert.equal(fn.Properties?.VpcConfig, undefined);
+      assert.equal(fn.Properties?.ReservedConcurrentExecutions, 0);
+    }
+    for (const role of resources.filter(item => item.Type === 'AWS::IAM::Role')) {
+      assert.equal(role.Properties?.ManagedPolicyArns, undefined);
+    }
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: {
+        ECS_PLATFORM_VERSION: '1.4.0', MONITOR_CONTAINER_NAME: 'monitor',
+        SESSION_TABLE_NAME: { Ref: 'Sessions8896A56D' },
+      } },
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -1,18 +1,23 @@
 # Infrastructure boundary
 
-Status: CDK TypeScript definitions exist for session admission. Nothing is provisioned.
-The Region, domain, and school-account deployment permissions remain unverified.
+Status: CDK TypeScript definitions exist for session start and provisioning-expiry
+cleanup. Nothing is provisioned. The Region, domain, and school-account deployment
+permissions remain unverified.
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
 ## Current definitions
 
-[SessionStartStack](session-start-stack.ts) defines an on-demand DynamoDB table, one
-Lambda, its execution role, and a one-week log group. The role permits only table reads,
-conditional checks, writes to user/session keys, and writes to this function's logs.
-There is no ECS or Lambda-invoke permission. The function stays outside the VPC.
-No API, function URL, event source, or invoke permission is created. Reserved concurrency
-is zero because admission alone cannot complete or clean up a session.
+[SessionStartStack](session-start-stack.ts) defines an on-demand DynamoDB table, separate
+start and provisioning-expiry Lambdas, an EventBridge Scheduler group, and narrow roles.
+The start action can read and update session records, create its named expiry schedule,
+and run one tagged task from an `opsreplay-*` task definition. The expiry action can find,
+describe, and stop tasks in the configured cluster and release the matching active lock.
+Only Scheduler can invoke the expiry action. Both functions stay outside the VPC.
+
+No API, function URL, event source, ECS cluster, VPC, or task definition is created.
+Reserved concurrency is zero for both functions. Deployment parameters identify the
+existing cluster, private subnets, security groups, and environment execution role.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated
