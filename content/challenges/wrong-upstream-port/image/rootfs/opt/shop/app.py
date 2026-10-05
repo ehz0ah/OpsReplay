@@ -22,7 +22,9 @@ def index():
 
 @app.post("/api/checkout")
 def checkout():
-    payload = request.get_json() if request.content_length else {}
+    if request.content_length and request.content_length > app.config["MAX_CONTENT_LENGTH"]:
+        return jsonify(error="checkout_too_large"), 413
+    payload = request.get_json(silent=True) if request.content_length else {}
     if not isinstance(payload, dict) or set(payload) - {"reference"}:
         return jsonify(error="invalid_checkout"), 400
     reference = payload.get("reference", uuid4().hex)

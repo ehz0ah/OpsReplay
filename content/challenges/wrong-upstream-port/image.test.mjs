@@ -62,10 +62,12 @@ async function fresh(t) {
   return id;
 }
 
-function http(id, path, { port = 80, json, method } = {}) {
+function http(id, path, { port = 80, json, body, contentType, method } = {}) {
   const args = ['curl', '--silent', '--show-error', '--connect-timeout', '1', '--max-time', '4',
     '--write-out', '\n%{http_code}'];
   if (json !== undefined) args.push('--json', JSON.stringify(json));
+  if (body !== undefined) args.push('--data-binary', body);
+  if (contentType !== undefined) args.push('--header', 'Content-Type: ' + contentType);
   if (method) args.push('--request', method);
   args.push(`http://127.0.0.1:${port}${path}`);
   const result = exec(id, ...args);
@@ -169,10 +171,21 @@ test('checkout handles absent references, invalid input, and missing orders with
   assert.notEqual(first.reference, second.reference);
   const emptyRequest = JSON.parse(expectHttp(http(id, '/api/checkout', { method: 'POST' }), 201));
   assert.ok(emptyRequest.reference);
-  for (const json of [[], { reference: '' }, { reference: 12 }, { reference: 'a'.repeat(129) }]) {
+  for (const json of [null, [], { extra: true }, { reference: '' }, { reference: 12 }, { reference: 'a'.repeat(129) }]) {
     expectHttp(http(id, '/api/checkout', { json }), 400);
   }
-  expectHttp(http(id, '/api/checkout', { json: { reference: 'a'.repeat(5000) } }), 413);
+  for (const request of [
+    { body: '{', contentType: 'application/json' },
+    { body: ' ', contentType: 'application/json' },
+    { body: '{"reference":"missing-type"}', contentType: '' },
+    { body: '{"reference":"wrong-type"}', contentType: 'text/plain' },
+  ]) {
+    assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', request), 400)),
+      { error: 'invalid_checkout' });
+  }
+  for (const port of [80, 8080]) {
+    expectHttp(http(id, '/api/checkout', { port, json: { reference: 'a'.repeat(5000) } }), 413);
+  }
   expectHttp(http(id, '/api/orders/missing'), 404);
   assert.equal(sql(id, 'SELECT count(*) FROM orders'), '3');
 });
