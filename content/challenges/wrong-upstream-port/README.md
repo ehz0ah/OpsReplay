@@ -62,6 +62,9 @@ Use the returned ID with `GET /api/orders/<id>`. nginx, shop, and postgres suppo
 not systemd. Stopped services are not automatically restarted. A restart with invalid
 nginx configuration stops the proxy. A failed reload keeps its current workers.
 
+`service shop reload` rereads `gunicorn.conf.py`, but does not reload `shop.env`.
+After changing `shop.env`, use `service shop restart` to apply the new environment.
+
 ## Storage and cleanup
 
 Files and database data stay in this container's writable layer. Restarting a service
@@ -83,8 +86,8 @@ and port 80. This is a local development setup, not proof of Fargate isolation.
 
 The Debian base image is pinned by multi-platform digest. Debian packages are resolved
 at build time, so clean rebuilds can receive security updates. There are no embedded
-platform credentials. The practice database permits only the shop role on loopback
-TCP, and uses peer authentication for local administration.
+platform credentials. Any local process can connect to the `shop` database as `shop`
+over loopback without a password. Local administration uses peer authentication.
 
 ## Automated image checks
 

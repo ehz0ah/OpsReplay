@@ -92,6 +92,13 @@ function nginxWorkers(id) {
   return new Set([...processes.matchAll(/^\s*(\d+)\s+nginx: worker process\b/gm)].map(match => match[1]));
 }
 
+function childPids(id, parentPid) {
+  return success(exec(id, 'ps', '-eo', 'pid=,ppid=')).split('\n')
+    .map(line => line.trim().split(/\s+/))
+    .filter(([, parent]) => parent === parentPid)
+    .map(([pid]) => pid);
+}
+
 async function repair(id) {
   const oldWorkers = nginxWorkers(id);
   assert.ok(oldWorkers.size > 0, 'nginx must have workers before the repair');
@@ -225,6 +232,26 @@ test('checkout handles absent references, invalid input, and missing orders with
   }
   expectHttp(http(id, '/api/orders/missing'), 404);
   assert.equal(sql(id, 'SELECT count(*) FROM orders'), '3');
+});
+
+test('shop reload applies Gunicorn settings but environment changes require restart', async t => {
+  const id = await fresh(t);
+  await repair(id);
+  const master = success(exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'pid', 'shop'));
+  await eventually(() => childPids(id, master).length === 2, 'Initial shop workers did not start');
+  const oldWorkers = childPids(id, master);
+  success(exec(id, 'sed', '-i', 's/workers = 2/workers = 1/', '/etc/shop/gunicorn.conf.py'));
+  success(exec(id, 'sed', '-i', 's/dbname=shop/dbname=missing_shop/', '/etc/shop/shop.env'));
+  success(exec(id, 'service', 'shop', 'reload'));
+  await eventually(() => {
+    const workers = childPids(id, master);
+    return workers.length === 1 && !oldWorkers.includes(workers[0]);
+  }, 'Shop did not reload its worker configuration');
+  const order = JSON.parse(expectHttp(http(id, '/api/checkout', { json: { reference: randomUUID() } }), 201));
+  assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
+  success(exec(id, 'service', 'shop', 'restart'));
+  assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', { json: {} }), 503)),
+    { error: 'database_unavailable' });
 });
 
 test('invalid reload fails but leaves the original nginx workers serving 502', async t => {
