@@ -25,6 +25,6 @@ RUN chmod 755 /usr/local/bin/opsreplay-* /usr/local/sbin/service /usr/sbin/polic
     && install -d /var/log/nginx /var/log/supervisor
 
 WORKDIR /root
-HEALTHCHECK --interval=2s --timeout=4s --start-period=20s --retries=3 \
-    CMD ["/usr/local/bin/opsreplay-health"]
+# Learner actions can stop services or change ports without ending the container.
+HEALTHCHECK NONE
 ENTRYPOINT ["/usr/local/bin/opsreplay-start"]

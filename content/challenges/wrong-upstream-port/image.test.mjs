@@ -53,8 +53,8 @@ async function fresh(t) {
     await eventually(() => {
       const state = JSON.parse(success(docker('inspect', '--format', '{{json .State}}', id)));
       assert.equal(state.Status, 'running', 'Container exited during startup');
-      return state.Health.Status === 'healthy';
-    }, 'Service listeners did not become healthy');
+      return exec(id, 'opsreplay-check-startup').status === 0;
+    }, 'Initial service listeners did not become ready');
   } catch (error) {
     t.diagnostic(docker('logs', '--tail', '40', id).stdout);
     throw error;
@@ -125,6 +125,10 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   const [inspect] = JSON.parse(success(docker('inspect', id)));
   assert.equal(inspect.HostConfig.NetworkMode, 'none');
   assert.equal(inspect.HostConfig.Privileged, false);
+  assert.equal(inspect.HostConfig.NanoCpus, 1_000_000_000);
+  assert.equal(inspect.HostConfig.Memory, manifest.environment.memoryMiB * 1024 * 1024);
+  assert.equal(inspect.HostConfig.MemorySwap, inspect.HostConfig.Memory, 'Swap must be disabled');
+  assert.equal(inspect.HostConfig.PidsLimit, 128);
   assert.deepEqual(inspect.Mounts, []);
   assert.equal(Object.keys(inspect.HostConfig.PortBindings ?? {}).length, 0);
   assert.ok(inspect.HostConfig.CapDrop.some(cap => cap.replace(/^CAP_/, '') === 'NET_RAW'));
@@ -133,6 +137,39 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   assert.equal(BigInt('0x' + capabilities[1]) & (1n << 13n), 0n, 'NET_RAW must actually be absent');
   assert.ok(inspect.HostConfig.SecurityOpt.includes('no-new-privileges=true'));
   success(exec(id, 'test', '!', '-e', '/var/run/docker.sock'));
+});
+
+test('startup checks are explicit and stopping a service does not end the container', async t => {
+  const id = await fresh(t);
+  const [before] = JSON.parse(success(docker('inspect', id)));
+  assert.deepEqual(before.Config.Healthcheck, { Test: ['NONE'] });
+  assert.equal(before.State.Health, undefined);
+  success(exec(id, 'service', 'shop', 'stop'));
+  assert.equal(http(id, '/', { port: 8080 }).code, 7);
+  const startup = exec(id, 'opsreplay-check-startup');
+  assert.equal(startup.status, 1);
+  assert.match(startup.stderr, /8080/);
+  const [stopped] = JSON.parse(success(docker('inspect', id)));
+  assert.equal(stopped.State.Status, 'running');
+  assert.equal(stopped.State.Health, undefined);
+  success(exec(id, 'service', 'shop', 'start'));
+  success(exec(id, 'opsreplay-check-startup'));
+});
+
+test('moving the application to port 8081 is a valid repair', async t => {
+  const id = await fresh(t);
+  success(exec(id, 'sed', '-i', 's/127.0.0.1:8080/127.0.0.1:8081/', '/etc/shop/gunicorn.conf.py'));
+  success(exec(id, 'service', 'shop', 'restart'));
+  const reference = randomUUID();
+  const order = JSON.parse(expectHttp(http(id, '/api/checkout', { json: { reference } }), 201));
+  assert.equal(order.reference, reference);
+  assert.equal(order.status, 'confirmed');
+  assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
+  assert.equal(sql(id, 'SELECT count(*) FROM orders'), '1');
+  assert.equal(http(id, '/', { port: 8080 }).code, 7);
+  const [inspect] = JSON.parse(success(docker('inspect', id)));
+  assert.equal(inspect.State.Status, 'running');
+  assert.equal(inspect.State.Health, undefined);
 });
 
 test('reference fix stores orders, survives service/container restarts, and a fresh attempt resets', async t => {
@@ -197,7 +234,7 @@ test('invalid reload fails but leaves the original nginx workers serving 502', a
   assert.notEqual(exec(id, 'sh', '-ec', commands.at(-1)).status, 0);
   assert.notEqual(exec(id, 'nginx', '-t').status, 0);
   for (let check = 0; check < 5; check++) expectHttp(http(id, '/'), 502);
-  success(exec(id, 'opsreplay-health'));
+  assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
 });
 
 test('invalid restart takes nginx down and a valid configuration can start it again', async t => {
@@ -207,7 +244,7 @@ test('invalid restart takes nginx down and a valid configuration can start it ag
   assert.notEqual(exec(id, 'sh', '-ec', commands.at(-1)).status, 0);
   assert.equal(http(id, '/').code, 7, 'Proxy should refuse connections');
   expectHttp(http(id, '/', { port: 8080 }), 200);
-  assert.notEqual(exec(id, 'opsreplay-health').status, 0);
+  assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
   success(exec(id, 'sed', '-i', 's#proxy_pass http://127.0.0.1:8080$#proxy_pass http://127.0.0.1:8080;#', '/etc/nginx/nginx.conf'));
   success(exec(id, 'nginx', '-t'));
   success(exec(id, 'service', 'nginx', 'restart'));

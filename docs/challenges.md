@@ -33,9 +33,12 @@ container protects the monitor's files and processes only when its storage and P
 namespace are private. Shared networking still needs the controls below. Learners can
 alter the service responses and files being measured, but not the saved recording.
 
-The challenge container is essential. The monitor starts after the challenge container
-reports its services running. Images provide `service <name> start|stop|restart|reload`
-wrappers over the supervisor so familiar commands work.
+The challenge container is essential. The monitor verifies the initial incident state
+before the session becomes ready. Initial listener checks are for startup only. Do not
+use learner-controlled service ports as Docker or ECS liveness checks. After readiness,
+a stopped service is part of the incident, not a reason to end the container. Images
+provide `service <name> start|stop|restart|reload` wrappers over the supervisor so familiar
+commands work.
 
 Task settings:
 

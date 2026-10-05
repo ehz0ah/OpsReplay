@@ -69,6 +69,7 @@ Contributors may refine these with evidence, provided product behaviour is prese
 | T19 | Timestamp capture intervals and qualify causal claims | Later commands and background processes can change files before a capture. Do not pause the shell to imply exact per-command snapshots |
 | T20 | Wrong upstream port is the first local reference image | Small real stack with an observable fault, repair, and restart trap. Other scenario drafts remain unvalidated |
 | T21 | Debian 12, Flask with Gunicorn, PostgreSQL 15, and Supervisor for this image | Distribution packages avoid a second package installer. The manifest already uses Gunicorn. Supervisor supports the required service controls without systemd or privileged mode. This does not choose the monitor language |
+| T22 | Check initial service listeners before learner access, not as ongoing container health | Stops and valid alternative repairs can change the listeners. Local tests use an explicit startup command. Do not turn these checks into Docker or ECS liveness checks |
 
 ## Open choices and decision timing
 
