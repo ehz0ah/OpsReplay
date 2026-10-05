@@ -1,0 +1,14 @@
+#!/usr/bin/python3
+"""Check initial listeners before learner access. This is not a liveness check."""
+
+import socket
+import sys
+
+for port in (80, 8080, 5432):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            pass
+    except OSError:
+        sys.exit(f"Initial listener on port {port} is not ready.")
+
+print("Initial service listeners are ready.")

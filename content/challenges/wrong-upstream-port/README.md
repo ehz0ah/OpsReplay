@@ -11,12 +11,19 @@ From the repository root, with Docker running:
 ```sh
 docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image
 sh content/challenges/wrong-upstream-port/run-local.sh opsreplay-port
-docker inspect --format '{{.State.Health.Status}}' opsreplay-port
+docker exec opsreplay-port opsreplay-check-startup
+```
+
+If the check reports a missing listener, wait briefly and run it again. Once it
+succeeds, enter the container:
+
+```sh
 docker exec -it opsreplay-port bash
 ```
 
-Wait for `healthy` before entering. This checks the three service listeners, not
-successful checkout. The initial 502 is intentional.
+This checks the initial service listeners, not successful checkout. The initial 502
+is intentional. Run it only before learner access. There is no continuous Docker
+health check. Stopping a service or changing its port must not end the container.
 
 The container includes `nano`, `vi` / `vim` (Vim tiny), `curl`, `ss`, `ps`, `less`,
 and `psql`. Inspect the real services and logs:
@@ -47,6 +54,9 @@ curl --json '{"reference":"local-check"}' http://127.0.0.1/api/checkout
 Reload is asynchronous. A request can still receive 502 while the old workers exit.
 If this happens, wait briefly and try the request again.
 
+Changing the application's listening port to 8081 is also a valid repair. Recovery
+depends on working checkout, not on using the reference commands.
+
 Use the returned ID with `GET /api/orders/<id>`. nginx, shop, and postgres support
 `service <name> start|stop|restart|reload|status`. These commands control Supervisor,
 not systemd. Stopped services are not automatically restarted. A restart with invalid
@@ -66,7 +76,7 @@ docker rm -f opsreplay-port
 ```
 
 The run script has no internet route, published ports, host mounts, or Docker socket.
-It uses 1 CPU, 2 GiB memory, 128 PIDs, and no-new-privileges. It drops `NET_RAW`,
+It uses 1 CPU, 2 GiB memory with swap disabled, 128 PIDs, and no-new-privileges. It drops `NET_RAW`,
 `MKNOD`, `AUDIT_WRITE`, `SETFCAP`, `SETPCAP`, `SYS_CHROOT`, and `FSETID` from Docker's
 defaults. Remaining defaults support service user changes, file ownership, signals,
 and port 80. This is a local development setup, not proof of Fargate isolation.
