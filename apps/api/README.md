@@ -20,18 +20,21 @@ It validates the API Gateway Cognito identity and request, reads an existing rec
 first, checks access, and atomically saves the receipt, active-session lock, and session.
 It calls DynamoDB, never another Lambda. Shared code is bundled into the function.
 After a receipt miss, it reads the active lock alongside the content, plan, and progress
-snapshot. Published content must include a Pro limit greater than its Free limit.
+snapshot. Published content needs a Pro limit greater than its Free limit and an
+`opsreplay-` task-definition family.
 
 The transaction checks that content, plan, and progress have not changed since they were
 read. It stores immutable ECS arguments and a random monitor secret before any external
-effect. The handler then creates or verifies the session's expiry schedule, calls ECS
-`RunTask`, and saves the returned task ARN. Repeating the request uses the saved arguments
+effect. The handler creates the recovery callback, then the timeout callback. It writes
+the secret to a private, encrypted S3 environment file and passes only its reference to
+ECS `RunTask`. It then saves the returned task ARN. Repeating the request uses the saved arguments
 and ECS client token. Concurrent copies cannot create two tasks.
 
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
-releases the learner lock only after cleanup is confirmed. It keeps retrying while an
-uncertain launch can still appear. The two Lambda actions share modules and do not invoke
+releases the learner lock only after cleanup is confirmed. Expected waiting returns
+`pending` until the separate recovery callback at eight minutes. After that, Lambda
+retries function failures twice. Alarms cover dropped events and failed delivery. The two Lambda actions share modules and do not invoke
 each other.
 
 The deployed handler has no development identity or local endpoint switch. A future
@@ -72,9 +75,9 @@ belong in Git.
 - One active session per learner, enforced by a transaction.
 - Three attempts for known transaction contention, with bounded delays.
 - Two SDK attempts and a 500 ms connection timeout. DynamoDB requests stop after two
-  seconds. ECS and Scheduler requests stop after three seconds.
+  seconds. ECS, Scheduler, and S3 requests stop after three seconds.
 - One second of the Lambda duration is reserved for a structured response and final log.
-  The remaining-time signal cancels DynamoDB work and contention delays.
+  The remaining-time signal cancels AWS requests and contention delays.
 - Lambdas: 20 second timeout and 256 MiB memory, not yet performance-tuned.
 - Reuse only clients and validators, never learner state, across invocations.
 

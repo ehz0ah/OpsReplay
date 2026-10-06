@@ -1,15 +1,19 @@
-import type { EcsLaunchArguments, SessionRecord } from '../start-session/types.js';
+import type { EcsLaunchArguments, LaunchFailure, SessionRecord } from '../start-session/types.js';
 
 export interface LifecycleStorePort {
   session(id: string, abortSignal?: AbortSignal): Promise<SessionRecord | undefined>;
   saveTask(id: string, taskArn: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
-  failStartWithoutTask(id: string, endedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
+  failStartWithoutTask(id: string, endedAt: string, failure: LaunchFailure, abortSignal?: AbortSignal): Promise<SessionRecord>;
   markStartFailed(id: string, endedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
   completeStartFailure(id: string, completedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
 }
 
 export interface ProvisioningSchedulePort {
   ensure(session: SessionRecord, now: Date, abortSignal?: AbortSignal): Promise<void>;
+}
+
+export interface MonitorSecretPort {
+  ensure(session: SessionRecord, abortSignal?: AbortSignal): Promise<void>;
 }
 
 export interface EnvironmentTask {
@@ -25,7 +29,7 @@ export interface EnvironmentPort {
 }
 
 export class LaunchRejectedError extends Error {
-  constructor() { super('ECS rejected the task launch'); }
+  constructor(readonly failure: LaunchFailure) { super('ECS rejected the task launch'); }
 }
 
 export class CleanupPendingError extends Error {

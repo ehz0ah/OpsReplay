@@ -28,7 +28,8 @@ learner's plan uses `403 ACCESS_DENIED`.
 Mutations that create, end, or release something carry `requestId` as a UUID. A request
 ID identifies one logical request, not a transport attempt. Clients keep it until the
 outcome is known. Repeating it with the same body returns the saved result with
-`replayed: true`. Reusing it with a different body is `409 IDEMPOTENCY_CONFLICT`.
+`replayed: true` on success. Confirmed launch errors keep their saved error response.
+Reusing it with a different body is `409 IDEMPOTENCY_CONFLICT`.
 
 After identity, request-shape, and ownership checks, read the receipt by owner, operation,
 and request ID before checking current publication, plan, or new-operation limits.
@@ -116,20 +117,26 @@ code, not one Lambda invoking another Lambda.
    Only a new request checks that the version is currently published
    (`422 VERSION_UNAVAILABLE` otherwise), that the plan includes the Challenge, and
    that new-operation limits permit admission. A published Challenge must have an
-   explicit Pro time limit greater than its Free limit or it is unavailable to both plans.
+   explicit Pro time limit greater than its Free limit and an `opsreplay-` task-definition
+   family, or it is unavailable to both plans.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
    lock, and the session record in `provisioning`, including its access grant and limits.
    The receipt and lock are conditional
    on absence. An existing lock returns `409 ACTIVE_SESSION_EXISTS` with `activeSessionId`.
-3. Invokes the shared lifecycle routine, which first ensures the session's named
-   EventBridge Scheduler job exists at the persisted provisioning deadline.
-4. Calls ECS `RunTask` with the persisted launch arguments, then stores the task ARN.
-   These arguments pin the task definition, images, monitor secret, and network settings.
+3. Invokes the shared lifecycle routine, which first creates the recovery callback at
+   `launchRecoveryDeadline`, then the timeout callback at `provisioningDeadline`.
+   Both must exist before launch. Recovery is created first so an interrupted setup
+   still has a callback after the task-discovery window.
+4. Writes the saved monitor secret to a private, encrypted S3 environment file, then
+   calls ECS `RunTask` with the persisted arguments and stores the task ARN. The
+   arguments pin the task definition, images, secret-file reference, and network settings.
+   They contain no plaintext secret. The ECS agent reads the file with the task execution
+   role. The environment task has no task IAM role.
    The server-generated session ID is the `clientToken`, `startedBy`, and a tag.
 5. Returns `200` with the session in `provisioning`.
 
 A repeated request returns the saved session and invokes the same provisioning routine.
-It repairs the schedule even when the ARN is already saved. If the ARN is missing, it
+It repairs both callbacks even when the ARN is already saved. If the ARN is missing, it
 repeats `RunTask` with exactly the same arguments and token, only before the provisioning
 deadline. The expiry action discovers a late active task by its saved `startedBy` value.
 Automatic resume without a client retry still requires the planned session stream or
@@ -139,9 +146,21 @@ The deadline is persisted in the start transaction, proposed at three minutes af
 creation and within ECS's client-token validity window. After it, no handler launches
 a task for that receipt. The session becomes `error` with `start_failed`. A late task
 is stopped by the lifecycle routine. An uncertain launch result stays `provisioning`
-until recovered or expired. A confirmed capacity or quota rejection returns
-`503 CAPACITY_UNAVAILABLE` and records the same terminal error. Cleanup releases the
-lock. The start receipt remains, so a later retry cannot launch another task.
+until recovered or expired. A confirmed resource-capacity rejection returns
+`503 CAPACITY_UNAVAILABLE`. Other confirmed rejections return `500 INTERNAL_ERROR`.
+Both atomically save the private failure classification, mark `error/start_failed`, and
+release the lock. Repeating the same request ID replays the same error, without another
+launch. After a capacity rejection, wait `retryAfterSeconds` and use a new request ID.
+A confirmed configuration rejection advises a later new request. Unknown outcomes still
+advise retrying the same ID. These failures do not consume the learner's first attempt.
+
+Scheduler invokes Lambda asynchronously. Its delivery retries do not retry function
+errors. At the three-minute timeout, expected waiting returns `pending`. The separate
+callback at eight minutes repeats discovery and releases the lock when safe. If a task
+is still stopping then, Lambda retries cleanup twice. Both callbacks delete themselves
+after delivery. CDK sets a 15-minute async event age and alarms on Lambda events or
+Scheduler deliveries that are dropped. These are operational alarms, not an automatic
+reconciliation service. Readiness makes both provisioning callbacks harmless.
 
 The attempt label is `first` when the learner has no earlier attempt of that Challenge
 ID with an outcome other than `error`. Otherwise it is `retry` with the next number.

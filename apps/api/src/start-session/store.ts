@@ -1,3 +1,4 @@
+import { sendOptions } from '../shared/aws.js';
 import { randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { DynamoDBDocumentClient, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
@@ -20,9 +21,7 @@ export class StartStore {
 
   private async get<T>(key: Key, validate: ValidateFunction<T>, abortSignal?: AbortSignal): Promise<T | undefined> {
     const command = new GetCommand({ TableName: this.table, Key: key, ConsistentRead: true });
-    const result = abortSignal
-      ? await this.client.send(command, { abortSignal })
-      : await this.client.send(command);
+    const result = await this.client.send(command, sendOptions(abortSignal));
     if (!result.Item) return undefined;
     if (!validate(result.Item.data)) throw new Error('Invalid stored admission record');
     return result.Item.data;
@@ -73,7 +72,6 @@ export class StartStore {
       ],
     };
     const command = new TransactWriteCommand(input);
-    if (abortSignal) await this.client.send(command, { abortSignal });
-    else await this.client.send(command);
+    await this.client.send(command, sendOptions(abortSignal));
   }
 }

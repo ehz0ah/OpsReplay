@@ -190,9 +190,14 @@
     },
     {
       "code": "CAPACITY_UNAVAILABLE",
-      "message": "No environment capacity is available. Try again shortly.",
+      "message": "No environment capacity is available. Wait, then start with a new request ID.",
       "requestId": "99999999-9999-4999-8999-999999999999",
       "retryAfterSeconds": 30
+    },
+    {
+      "code": "INTERNAL_ERROR",
+      "message": "This Challenge could not start. Try again later with a new request ID.",
+      "requestId": "99999999-9999-4999-8999-999999999999"
     }
   ],
   "Debrief": [

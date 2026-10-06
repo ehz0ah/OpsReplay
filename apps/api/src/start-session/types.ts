@@ -69,6 +69,7 @@ export interface LaunchConfiguration {
   securityGroupIds: string[];
   platformVersion: string;
   monitorContainerName: string;
+  secretBucketArn: string;
 }
 
 export interface EcsLaunchArguments {
@@ -92,8 +93,8 @@ export interface EcsLaunchArguments {
       name: string;
       environment: [
         { name: 'OPSREPLAY_SESSION_ID'; value: string },
-        { name: 'OPSREPLAY_MONITOR_SECRET'; value: string },
       ];
+      environmentFiles: [{ type: 's3'; value: string }];
     }];
   };
   tags: [{ key: 'opsreplay:session-id'; value: string }];
@@ -106,11 +107,23 @@ export interface SessionRecord {
   pins: ContentVersion['pins'];
   launchArguments: EcsLaunchArguments;
   monitorSecret: string;
+  launchFailure: LaunchFailure | null;
   provisioningDeadline: string;
   launchRecoveryDeadline: string;
   scheduleName: string;
   taskArn: string | null;
   provisioningCleanup: { status: 'pending' | 'complete'; completedAt: string | null };
+}
+
+// Only these normalized reason codes may enter logs. ECS detail text is untrusted.
+export const launchFailureReasons = [
+  'CAPACITY', 'RESOURCE:CPU', 'RESOURCE:MEMORY', 'RESOURCE:ENI', 'RESOURCE:PORTS',
+  'RESOURCE:GPU', 'RESOURCE:FARGATE', 'MISSING', 'INACTIVE', 'ATTRIBUTE', 'LOCATION',
+  'AGENT', 'UNKNOWN',
+] as const;
+export interface LaunchFailure {
+  kind: 'capacity' | 'configuration';
+  reasons: (typeof launchFailureReasons)[number][];
 }
 export interface Receipt {
   ownerId: string;

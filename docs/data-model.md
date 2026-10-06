@@ -217,8 +217,14 @@ finalisation changes cannot use stale admission data.
   request IDs. Public responses use explicit nested projections, never the whole item.
 
 The current start increment stores the exact ECS arguments, monitor secret, task ARN,
-provisioning and launch-recovery deadlines, schedule name, and cleanup state. It creates
-the expiry schedule before `RunTask`. Provisioning timeout cleanup releases the active
+provisioning and launch-recovery deadlines, schedule name, cleanup state, and a nullable
+`launchFailure` containing the confirmed rejection kind and normalized reason codes.
+These private fields never reach a public session projection. Launch arguments contain
+an S3 environment-file ARN, not the secret value. The key is bound to the session ID.
+The recovery schedule uses the saved schedule name plus `-recovery`. Both callbacks
+exist before `RunTask`. A confirmed launch error is replayed from `launchFailure`.
+These fields revise an undeployed record format. Old local test records must be rebuilt.
+Provisioning timeout cleanup releases the active
 lock only after a saved task is stopped or the bounded launch-recovery period passes with
 no active task. Readiness, lifecycle indexes, and the reconciliation sweep remain to be
 implemented before the API is enabled.

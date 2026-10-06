@@ -12,7 +12,10 @@ import { StartStore, keys } from '../src/start-session/store.js';
 import type { ContentVersion, LaunchConfiguration, SessionRecord, StartRequest } from '../src/start-session/types.js';
 import { validSession, validView } from '../src/start-session/validation.js';
 import { startLocalDatabase } from './local-dynamodb.js';
-import { createDynamoTransport } from '../src/start-session/transport.js';
+import { createAwsTransport } from '../src/shared/aws.js';
+import { LifecycleStore } from '../src/session-lifecycle/store.js';
+import { createProvisionSession } from '../src/session-lifecycle/provision.js';
+import { LaunchRejectedError } from '../src/session-lifecycle/ports.js';
 import type { ProvisionResult } from '../src/session-lifecycle/provision.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
@@ -30,8 +33,8 @@ const launchConfiguration: LaunchConfiguration = {
   securityGroupIds: ['sg-0123456789abcdef0'],
   platformVersion: '1.4.0',
   monitorContainerName: 'monitor',
+  secretBucketArn: 'arn:aws:s3:::test-secrets',
 };
-const noopProvision = async () => 'launched' as const;
 const request = (): StartRequest => ({ requestId: randomUUID(), challengeId: 'wrong-upstream-port', challengeVersion: '0.1.0' });
 function event(body: unknown, actor: unknown = owner): APIGatewayProxyEvent {
   // Synthetic API Gateway event. No development identity exists in the deployed handler.
@@ -50,7 +53,7 @@ function content(): ContentVersion {
     dashboard: [{ id: 'error_rate', label: 'Errors', unit: 'percent' }],
     hintCount: 2, timeLimits: { free: 1200, pro: 1800 },
     // Synthetic publication pins for tests only. The repository Challenge remains a draft.
-    pins: { taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/test:1',
+    pins: { taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
       challengeImageDigest: `sha256:${'a'.repeat(64)}`, monitorImageDigest: `sha256:${'b'.repeat(64)}` },
   };
 }
@@ -70,7 +73,12 @@ async function fixture() {
   const store = new StartStore(database.document, table);
   const logs: unknown[] = [];
   const provisions: string[] = [];
-  const defaultProvision = async (sessionId: string) => { provisions.push(sessionId); return 'launched' as const; };
+  const defaultProvision = async (sessionId: string) => {
+    provisions.push(sessionId);
+    const saved = await store.session(sessionId);
+    assert.ok(saved);
+    return saved;
+  };
   const makeHandler = (overrides: Partial<Store> = {},
     provision: (sessionId: string, abortSignal?: AbortSignal) => Promise<ProvisionResult> = defaultProvision) => createStartHandler({
     store: {
@@ -80,7 +88,7 @@ async function fixture() {
     launchConfiguration, provision,
     now: () => new Date(current), newSecret: () => 's'.repeat(43), log: entry => logs.push(entry),
   });
-  return { table, store, put, remove, get, rows, logs, provisions, makeHandler, handler: makeHandler() };
+  return { table, store, put, remove, get, rows, logs, provisions, defaultProvision, makeHandler, handler: makeHandler() };
 }
 const bodyOf = (response: { body: string }) => JSON.parse(response.body);
 
@@ -105,7 +113,9 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.equal(saved.launchRecoveryDeadline, '2026-10-05T02:08:00.000Z');
   assert.equal(saved.launchArguments.clientToken, session.id);
   assert.equal(saved.launchArguments.startedBy, session.id);
-  assert.equal(saved.launchArguments.overrides.containerOverrides[0].environment[1].value, saved.monitorSecret);
+  assert.equal(JSON.stringify(saved.launchArguments).includes(saved.monitorSecret), false);
+  assert.equal(saved.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value,
+    `arn:aws:s3:::test-secrets/sessions/${session.id}.env`);
   assert.equal(saved.taskArn, null);
   assert.deepEqual(saved.provisioningCleanup, { status: 'pending', completedAt: null });
   assert.deepEqual(saved.pins, content().pins);
@@ -115,15 +125,6 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.equal((await f.rows()).length, 4); // One content fixture plus three admission writes.
   assert.equal(/taskDefinition|sha256|ownerId|accessGrant|pins/.test(response.body), false);
   assert.deepEqual(Object.keys(f.logs[0] as object).sort(), ['durationMs', 'operation', 'requestId', 'result']);
-});
-
-test('a confirmed launch rejection returns capacity unavailable after admission', async () => {
-  const f = await fixture();
-  const response = await f.makeHandler({}, async () => 'capacity_unavailable')(event(request()), context);
-  assert.equal(response.statusCode, 503);
-  assert.equal(bodyOf(response).code, 'CAPACITY_UNAVAILABLE');
-  assert.equal(bodyOf(response).retryAfterSeconds, 30);
-  assert.equal((await f.rows()).length, 4);
 });
 
 test('whitespace, property order, and UUID case do not create a new request', async () => {
@@ -183,7 +184,7 @@ test('identity and request validation reject bad input before any database acces
   const fail = async (): Promise<never> => { throw new Error('Database must not be called'); };
   const handler = createStartHandler({
     store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
-    launchConfiguration, provision: noopProvision,
+    launchConfiguration, provision: fail,
   });
   for (const actor of [null, '', 'a#b', { sub: owner }, 'x'.repeat(129)]) {
     assert.equal((await handler(event(request(), actor), context)).statusCode, 401);
@@ -305,7 +306,7 @@ test('the handler preserves time to return an error when its work deadline expir
       },
       session: fail, active: fail, snapshot: fail, commit: fail,
     },
-    launchConfiguration, provision: noopProvision,
+    launchConfiguration, provision: fail,
     log: entry => logs.push(entry),
   });
   const response = await handler(event(input), {
@@ -322,7 +323,7 @@ test('the handler starts no storage work when only the response margin remains',
   const fail = async (): Promise<never> => { calls++; throw new Error('Unexpected storage call'); };
   const handler = createStartHandler({
     store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
-    launchConfiguration, provision: noopProvision,
+    launchConfiguration, provision: fail,
   });
   const response = await handler(event(request()), {
     ...context, getRemainingTimeInMillis: () => 1000,
@@ -492,7 +493,6 @@ test('replay returns the current saved outcome, not a stale provisioning respons
   saved.view.endedAt = '2026-10-05T02:03:00Z';
   const privateSecret = 'z'.repeat(43);
   saved.monitorSecret = privateSecret;
-  saved.launchArguments.overrides.containerOverrides[0].environment[1].value = privateSecret;
   await f.put(keys.session(initial.session.id), saved);
   await f.remove(keys.active(owner));
   const response = await f.handler(event(input), context);
@@ -505,7 +505,7 @@ test('replay returns the current saved outcome, not a stale provisioning respons
 test('projection drops private nested fields and logging failures do not fail admission', async () => {
   const f = await fixture();
   const handler = createStartHandler({
-    store: f.store, launchConfiguration, provision: noopProvision,
+    store: f.store, launchConfiguration, provision: f.defaultProvision,
     log: () => { throw new Error('logger failed'); },
   });
   const response = await handler(event(request()), context);
@@ -520,7 +520,7 @@ test('projection drops private nested fields and logging failures do not fail ad
 
 test('the bundled Lambda loads on Node 22 and rejects unauthenticated input without AWS calls', async () => {
   const names = ['SESSION_TABLE_NAME', 'ECS_CLUSTER_ARN', 'ECS_SUBNET_IDS', 'ECS_SECURITY_GROUP_IDS',
-    'ECS_PLATFORM_VERSION', 'MONITOR_CONTAINER_NAME', 'SCHEDULER_GROUP_NAME',
+    'ECS_PLATFORM_VERSION', 'MONITOR_CONTAINER_NAME', 'MONITOR_SECRET_BUCKET_ARN', 'SCHEDULER_GROUP_NAME',
     'PROVISIONING_EXPIRY_FUNCTION_ARN', 'SCHEDULER_TARGET_ROLE_ARN'] as const;
   const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
   try {
@@ -530,6 +530,7 @@ test('the bundled Lambda loads on Node 22 and rejects unauthenticated input with
     process.env.ECS_SECURITY_GROUP_IDS = launchConfiguration.securityGroupIds.join(',');
     process.env.ECS_PLATFORM_VERSION = launchConfiguration.platformVersion;
     process.env.MONITOR_CONTAINER_NAME = launchConfiguration.monitorContainerName;
+    process.env.MONITOR_SECRET_BUCKET_ARN = launchConfiguration.secretBucketArn;
     process.env.SCHEDULER_GROUP_NAME = 'test-sessions';
     process.env.PROVISIONING_EXPIRY_FUNCTION_ARN = 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry';
     process.env.SCHEDULER_TARGET_ROLE_ARN = 'arn:aws:iam::123456789012:role/test-scheduler';
@@ -552,7 +553,7 @@ test('a stalled database request is aborted by the production transport', { time
   const client = new DynamoDBClient({
     region: 'us-east-1', endpoint: `http://127.0.0.1:${address.port}`, maxAttempts: 1,
     credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
-    requestHandler: createDynamoTransport(),
+    requestHandler: createAwsTransport(2000),
   });
   try {
     const store = new StartStore(DynamoDBDocumentClient.from(client), 'unused');
@@ -565,4 +566,65 @@ test('a stalled database request is aborted by the production transport', { time
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
+});
+
+for (const kind of ['capacity', 'configuration'] as const) {
+  test(`a confirmed ${kind} rejection replays the same failure and permits a new request`, async () => {
+    const f = await fixture();
+    let reject = true;
+    let launches = 0;
+    const provision = createProvisionSession({
+      store: new LifecycleStore(database.document, f.table),
+      schedule: { ensure: async () => {} }, secret: { ensure: async () => {} },
+      environment: {
+        launch: async () => {
+          launches++;
+          if (reject) throw new LaunchRejectedError({ kind, reasons: [kind === 'capacity' ? 'RESOURCE:CPU' : 'MISSING'] });
+          return 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        },
+        stop: async () => {},
+      },
+      now: () => new Date(current),
+    });
+    const handler = f.makeHandler({}, provision);
+    const input = request();
+    const first = await handler(event(input), context);
+    assert.equal(first.statusCode, kind === 'capacity' ? 503 : 500);
+    assert.match(bodyOf(first).message, /new request ID/);
+    assert.equal(bodyOf(first).retryAfterSeconds, kind === 'capacity' ? 30 : undefined);
+    assert.equal(await f.store.active(owner), undefined);
+    assert.deepEqual(await handler(event(input), context), first);
+    assert.equal(launches, 1);
+    assert.equal((f.logs[0] as { launchFailure: { kind: string } }).launchFailure.kind, kind);
+    reject = false;
+    const next = await handler(event(request()), context);
+    assert.equal(next.statusCode, 200);
+    assert.deepEqual(bodyOf(next).session.attempt, { kind: 'first', number: 1 });
+    assert.equal(launches, 2);
+  });
+}
+
+test('a published task definition outside the allowed family is rejected before admission', async () => {
+  const f = await fixture();
+  const invalid = content();
+  invalid.pins.taskDefinitionArn = invalid.pins.taskDefinitionArn.replace('opsreplay-test', 'wrong-upstream-port');
+  await f.put(keys.content(invalid.challenge.id, invalid.challenge.version), invalid);
+  const response = await f.handler(event(request()), context);
+  assert.equal(response.statusCode, 422);
+  assert.equal(bodyOf(response).code, 'VERSION_UNAVAILABLE');
+  assert.equal((await f.rows()).length, 1);
+  assert.equal(f.provisions.length, 0);
+});
+
+test('start uses the provisioned record without a final read and checks its ownership', async () => {
+  const f = await fixture();
+  let reads = 0;
+  const handler = f.makeHandler({ session: async (...args) => { reads++; return f.store.session(...args); } });
+  const input = request();
+  assert.equal((await handler(event(input), context)).statusCode, 200);
+  assert.equal(reads, 0);
+  assert.equal((await handler(event(input), context)).statusCode, 200);
+  assert.equal(reads, 1); // Replay still verifies ownership before provisioning.
+  const wrongOwner = f.makeHandler({}, async id => ({ ...await f.defaultProvision(id), ownerId: randomUUID() }));
+  assert.equal((await wrongOwner(event(input), context)).statusCode, 404);
 });
