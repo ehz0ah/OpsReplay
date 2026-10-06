@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import manifest from '../../../content/challenges/wrong-upstream-port/challenge.json';
+import publicSchema from '../../../packages/contracts/schemas/public.schema.json';
 import { endpoint, parseConfig } from '../src/config.js';
+import { limits } from '../src/types.js';
 
 test('manifest validation projects only execution configuration', () => {
   const config = parseConfig(JSON.stringify(manifest));
   assert.equal(config.journeys[0]!.ratePerSecond, 2);
-  assert.equal(config.durationMs, 20 * 60_000);
   assert.equal(config.validators[0]!.sustainSeconds, 60);
-  assert.deepEqual(Object.keys(config).sort(), ['durationMs', 'journeys', 'probes', 'validators']);
+  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'validators']);
   assert.ok(!JSON.stringify(config).includes(manifest.plantedFault.summary));
 });
 
@@ -36,12 +37,33 @@ test('duplicates, unknown references, unsupported checks, and overload fail admi
   }
 });
 
-test('maximum session duration and admitted traffic fit the request history bound', () => {
+test('admission covers the public session maximum and recording headroom', () => {
+  assert.equal(limits.maxSessionMs,
+    publicSchema.$defs.SessionView.properties.timeLimitSeconds.maximum * 1000);
   const copy = structuredClone(manifest);
   copy.environment.timeLimitMinutes = 120;
-  copy.traffic.journeys[0]!.ratePerSecond = 10;
+  copy.traffic.journeys[0]!.ratePerSecond = 5;
   for (const step of copy.traffic.journeys[0]!.steps) step.timeoutMs = 100;
-  assert.equal(parseConfig(JSON.stringify(copy)).durationMs, 120 * 60_000);
+  assert.deepEqual(parseConfig(JSON.stringify(copy)), {
+    journeys: copy.traffic.journeys, validators: copy.validators, probes: copy.healthProbes,
+  });
+
+  copy.traffic.journeys[0]!.ratePerSecond = 6;
+  assert.throws(() => parseConfig(JSON.stringify(copy)), /invalid_config/);
+
+  const boundary = structuredClone(manifest);
+  boundary.traffic.journeys[0]!.ratePerSecond = 1.0373;
+  boundary.traffic.journeys[0]!.steps = Array.from({ length: 10 }, () => ({
+    ...structuredClone(manifest.traffic.journeys[0]!.steps[0]!), timeoutMs: 1,
+  }));
+  assert.throws(() => parseConfig(JSON.stringify(boundary)), /invalid_config/);
+
+  const validators = structuredClone(manifest);
+  validators.validators = Array.from({ length: 7 }, (_, index) => ({
+    ...structuredClone(manifest.validators[index % manifest.validators.length]!),
+    id: `validator-${index}`,
+  }));
+  assert.throws(() => parseConfig(JSON.stringify(validators)), /invalid_config/);
 });
 
 test('network targets are canonical authored loopback URLs only', () => {

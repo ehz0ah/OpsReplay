@@ -127,7 +127,6 @@ export class Monitor {
   tick(): void {
     if (!this.measurements || this.stopped) return;
     const at = this.now();
-    if (at - this.measurements.startedAt >= this.config.durationMs) { this.fail('record_limit'); return; }
     try {
       this.config.journeys.forEach((j, i) => {
         if (!this.due(this.traffic[i]!, 1000 / j.ratePerSecond, at).ready || this.stopped) return;

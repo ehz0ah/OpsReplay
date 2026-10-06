@@ -15,7 +15,6 @@ export interface Probe {
   graceSeconds: number;
 }
 export interface MonitorConfig {
-  durationMs: number;
   journeys: Journey[];
   validators: Validator[];
   probes: Probe[];
@@ -60,4 +59,5 @@ export const limits = Object.freeze({
   requestRecords: 150_000, recoveryRecords: 100_000, events: 10_000, inFlight: 32,
   bodyBytes: 65_536, manifestBytes: 262_144,
   sampleMs: 5_000, evaluationMs: 1_000, maxScheduleGapMs: 5_000,
+  maxSessionMs: 14_400_000, recordingHeadroomMs: 60_000,
 });

@@ -75,9 +75,9 @@ stateDiagram-v2
   ready --> error: platform stopped the task
 ```
 
-1. **Provisioning.** The monitor starts traffic and verifies the initial state: aggregate
-   recovery fails (at least one validator fails) and every health probe passes. Only then
-   does its health check pass.
+1. **Provisioning.** The monitor verifies the initial state: aggregate recovery fails
+   (at least one validator fails) and every health probe passes. These checks are not
+   learner measurements. Only then does its health check pass.
    A failed verification is an image defect. The session ends as `error` with
    `start_failed` and is logged for authors. One lifecycle routine owns launch,
    readiness, schedules, and cleanup. API calls, session stream events, ECS events,
@@ -85,8 +85,8 @@ stateDiagram-v2
    browser retry. See the [start contract](api.md#start).
 2. **Ready.** The lifecycle handler saves the healthy task's address. A gateway claims
    recording ownership and acknowledges its initial terminal and monitor cursors before
-   readiness is committed. The time limit starts at `readyAt`, so start-up latency is
-   not charged to the learner. The alert is shown.
+   measurement starts. The measurement origin is committed as `readyAt`, so start-up
+   latency is not charged to the learner. The alert is shown.
 3. **Outcome.** The first outcome wins through a conditional write:
    - `resolved` when every validator has passed continuously for its sustain period;
    - `failed` with `time_limit` when the EventBridge Scheduler job fires;
