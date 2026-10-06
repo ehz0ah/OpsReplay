@@ -220,6 +220,20 @@ test('scheduled samples are appended before sealing with contiguous sequences', 
   assert.deepEqual(frames.map(frame => frame.sequence), frames.map((_, index) => index + 1));
 });
 
+test('the authored Free limit does not stop a Pro-length recording or exact-cutoff seal', async () => {
+  const f = fixture();
+  await f.monitor.verifyInitialState();
+  const start = f.monitor.start();
+  await f.advance(0);
+  for (let i = 0; i < 3600; i++) await f.advance(500);
+  const proCutoff = start + 30 * 60_000;
+  assert.equal(f.monitor.now(), proCutoff);
+  assert.equal(f.monitor.failure, null);
+  const final = await f.monitor.seal(proCutoff);
+  assert.ok(final.counters.totalRequests > 0);
+  assert.equal(f.monitor.failure, null);
+});
+
 test('pending work stays bounded when a transport fails to complete until cancellation', async () => {
   const f = fixture();
   await f.monitor.verifyInitialState();

@@ -22,7 +22,9 @@ load fail admission. It never checks a Challenge ID or requires reference fix co
 
 1. `verifyInitialState()` confirms at least one validator fails while all probes pass.
    These startup checks do not contribute to the learner's counters.
-2. `start()` fixes the measurement origin. Repeating it returns the original time.
+2. `start()` fixes the measurement origin. Repeating it returns the original time. The
+   future lifecycle must call it after recording ownership is acknowledged and use that
+   origin as `readyAt`.
 3. Call `tick()` at least every 25 ms in the local runner. Traffic follows the authored
    rate. Checks run every second without overlap. Samples are emitted every five seconds.
 4. `read(cursor)` returns sequenced records with a stable source ID, recording timestamp,
@@ -75,12 +77,14 @@ probe's completion time. Probe labels describe symptoms, not hidden causes.
   environment proxy use, or unrestricted command execution.
 - Per-request deadline from the manifest, including socket wait and body download.
   Responses are capped at 64 KiB and headers at 8 KiB. Cancellation closes pending I/O.
-- Admission caps ordinary traffic at 20 requests/second at maximum journey length and
-  reserves space for checks, sampling, and worst-case request overlap. At most 32 tasks
-  can be in flight. This is a monitor implementation limit, not a product concurrency claim.
+- Admission rejects more than 20 ordinary requests/second and also rejects any workload
+  whose records cannot fit across the public four-hour session maximum plus one minute
+  of sealing headroom. The record budget is the stricter bound for sustained traffic.
+  At most 32 tasks can be in flight. These are monitor implementation limits, not
+  product concurrency claims.
 - At most 150,000 request records, 100,000 recovery records, and 10,000 output records.
-  The manifest's maximum two-hour duration and admitted request rate fit the request
-  bound. Reaching another limit stops the monitor with a fixed error code.
+  Admission checks request and recovery history against those bounds. Reaching another
+  limit stops the monitor with a fixed error code.
 - A scheduling delay under five seconds skips missed work and resumes at the current
   slot without a catch-up burst. The observed request rate shows the reduced traffic.
   A gap of five seconds or more stops measurement as `schedule_gap`.

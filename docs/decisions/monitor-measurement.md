@@ -22,8 +22,9 @@ Keep timestamped request outcomes. Aggregated counters alone cannot reconstruct 
 earlier session cutoff after delayed outcome delivery. Completion-ordered records use
 cumulative failure prefixes for historical counters, and each snapshot sorts only its
 five-second duration window. The p95 window matches the request/error-rate window. The
-150,000-record bound covers the manifest schema's maximum two-hour session at the
-admitted 20 requests per second, with headroom for in-flight completion.
+150,000-request and 100,000-recovery bounds are checked at admission against the public
+four-hour session maximum plus one minute of sealing headroom. This capacity check is
+independent of the manifest's Free-plan duration. Higher-rate manifests are rejected.
 
 No Prometheus server or Grafana service is needed for this increment. The later gateway
 will relay the existing public metric/event shapes, and the web workspace will render
@@ -38,8 +39,10 @@ authenticated TLS requirement. The driver is not a deployed readiness handler.
 
 Requests complete once, without hidden retries. Warm-up requests and independent
 validator/probe requests do not enter incident counters. The start and end boundaries
-are immutable. Cancellation during sealing does not count the interrupted request as
-a failed customer operation. Already completed requests before the cutoff still count.
+are immutable. The platform lifecycle owns the outcome time; normal session expiry is
+not a monitor failure. The gateway seals at that cutoff. Cancellation during sealing
+does not count the interrupted request as a failed customer operation. Already completed
+requests before the cutoff still count.
 
 Sustain windows advance only through completed passing evaluations. A validator that
 is still running at its next slot is not overlapped or converted into a failure. Its
