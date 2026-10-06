@@ -155,9 +155,11 @@ A confirmed configuration rejection advises a later new request. Unknown outcome
 advise retrying the same ID. These failures do not consume the learner's first attempt.
 
 Scheduler invokes Lambda asynchronously. Its delivery retries do not retry function
-errors. At the three-minute timeout, expected waiting returns `pending`. The separate
-callback at eight minutes repeats discovery and releases the lock when safe. If a task
-is still stopping then, Lambda retries cleanup twice. Both callbacks delete themselves
+errors. At the three-minute timeout, a task that is still stopping triggers Lambda's
+short retries. The first retry is normally about a minute later and releases the lock
+if the task is confirmed `STOPPED`. When a task is not yet discoverable, cleanup returns
+`pending` and waits for the separate callback at eight minutes. That callback also
+backs up the short retries. Both callbacks delete themselves
 after delivery. CDK sets a 15-minute async event age and alarms on Lambda events or
 Scheduler deliveries that are dropped. These are operational alarms, not an automatic
 reconciliation service. Readiness makes both provisioning callbacks harmless.

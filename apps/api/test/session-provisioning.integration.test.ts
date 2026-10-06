@@ -275,11 +275,13 @@ test('expiry discovers an uncertain task, stops it, then releases the lock', asy
   const f = await fixture();
   const environment = new FakeEnvironment();
   await environment.launch(f.record.launchArguments);
-  const expire = createExpireProvisioning({ store: f.store, environment,
-    now: () => new Date('2026-10-06T02:03:01.000Z') });
-  assert.equal(await expire(f.record.view.id), 'pending');
+  let clock = new Date('2026-10-06T02:03:01.000Z');
+  const expire = createExpireProvisioning({ store: f.store, environment, now: () => clock });
+  await assert.rejects(expire(f.record.view.id), CleanupPendingError);
   assert.equal(environment.stopCalls, 1);
   assert.equal((await f.store.session(f.record.view.id))?.taskArn, taskArn);
+  assert.ok(await f.get(keys.active(ownerId)));
+  clock = new Date('2026-10-06T02:04:01.000Z');
   assert.equal(await expire(f.record.view.id), 'cleaned');
   assert.equal((await f.store.session(f.record.view.id))?.provisioningCleanup.status, 'complete');
   assert.equal(await f.get(keys.active(ownerId)), undefined);
@@ -447,5 +449,26 @@ test('a crash between schedule writes still leaves a recovery callback and launc
   const expire = createExpireProvisioning({ store: f.store, environment,
     now: () => new Date(f.record.launchRecoveryDeadline) });
   assert.equal(await expire(f.record.view.id), 'cleaned');
+  assert.equal(await f.get(keys.active(ownerId)), undefined);
+});
+
+test('a known stopping task keeps the fast retry even when discovery omits it', async () => {
+  const record = newSession();
+  record.taskArn = taskArn;
+  const f = await fixture(record);
+  let stopped = false;
+  let stops = 0;
+  let clock = new Date(f.record.provisioningDeadline);
+  const expire = createExpireProvisioning({ store: f.store, now: () => clock, environment: {
+    findActive: async () => [],
+    describe: async () => ({ taskArn, lastStatus: stopped ? 'STOPPED' : 'STOPPING' }),
+    stop: async () => { stops++; },
+  } });
+  await assert.rejects(expire(record.view.id), CleanupPendingError);
+  assert.equal(stops, 1);
+  assert.ok(await f.get(keys.active(ownerId)));
+  stopped = true;
+  clock = new Date(clock.getTime() + 60_000);
+  assert.equal(await expire(record.view.id), 'cleaned');
   assert.equal(await f.get(keys.active(ownerId)), undefined);
 });

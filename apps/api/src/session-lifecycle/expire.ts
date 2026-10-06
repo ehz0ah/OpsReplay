@@ -17,13 +17,6 @@ export function createExpireProvisioning({ store, environment, now = () => new D
       && !(session.view.status === 'error' && session.view.statusReason === 'start_failed')) return 'ignored';
 
     const clock = now();
-    const recoveryDeadline = Date.parse(session.launchRecoveryDeadline);
-    const pending = (): 'pending' => {
-      // The recovery schedule was created before RunTask. Expected waiting must not
-      // consume Lambda retries or emit false dropped-event alarms.
-      if (clock.getTime() < recoveryDeadline) return 'pending';
-      throw new CleanupPendingError();
-    };
     if (clock.getTime() < Date.parse(session.provisioningDeadline)) throw new CleanupPendingError();
     if (session.view.status === 'provisioning') {
       session = await store.markStartFailed(sessionId, clock.toISOString(), abortSignal);
@@ -37,21 +30,23 @@ export function createExpireProvisioning({ store, environment, now = () => new D
     for (const task of active) {
       await environment.stop(cluster, task.taskArn, 'OpsReplay provisioning expired', abortSignal);
     }
-    if (active.length > 0) return pending();
+    // A known task can finish stopping before the recovery deadline. Use Lambda's
+    // short retries to confirm STOPPED and release the lock promptly.
+    if (active.length > 0) throw new CleanupPendingError();
 
     if (session.taskArn) {
       const task = await environment.describe(cluster, session.taskArn, abortSignal);
       if (task && task.lastStatus !== 'STOPPED') {
         await environment.stop(cluster, task.taskArn, 'OpsReplay provisioning expired', abortSignal);
-        return pending();
+        throw new CleanupPendingError();
       }
       if (!task && clock.getTime() < Date.parse(session.launchRecoveryDeadline)) {
-        return pending();
+        return 'pending';
       }
     } else if (clock.getTime() < Date.parse(session.launchRecoveryDeadline)) {
       // A RunTask response can be lost just before the deadline. Keep the lock while
       // ECS reaches a discoverable state. The launcher request itself has a short timeout.
-      return pending();
+      return 'pending';
     }
 
     await store.completeStartFailure(sessionId, clock.toISOString(), abortSignal);

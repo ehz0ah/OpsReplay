@@ -25,6 +25,9 @@ import { LaunchRejectedError } from '../src/session-lifecycle/ports.js';
 import { loadLaunchConfiguration } from '../src/start-session/configuration.js';
 import type { SessionRecord } from '../src/start-session/types.js';
 
+// AWS official RunTask capacity message, not a synthetic failure code.
+const capacityMessage = 'Capacity is unavailable at this time. Please try again later or in a different availability zone';
+
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const cluster = 'arn:aws:ecs:ap-southeast-1:123456789012:cluster/opsreplay-test';
 const taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -167,7 +170,7 @@ test('the Fargate adapter sends the persisted RunTask arguments unchanged', asyn
 
 test('the Fargate adapter distinguishes a confirmed rejection from an uncertain result', async () => {
   const record = session();
-  const rejected = new FargateEnvironment({ send: async () => ({ failures: [{ reason: 'CAPACITY' }] }) } as unknown as ECSClient);
+  const rejected = new FargateEnvironment({ send: async () => ({ failures: [{ reason: capacityMessage }] }) } as unknown as ECSClient);
   await assert.rejects(rejected.launch(record.launchArguments), LaunchRejectedError);
   const uncertain = new FargateEnvironment({ send: async () => ({}) } as unknown as ECSClient);
   await assert.rejects(uncertain.launch(record.launchArguments), /exactly one task/);
@@ -308,4 +311,64 @@ test('monitor secret upload does not hide storage failures', async () => {
     throw new S3ServiceException({ name: 'AccessDenied', $fault: 'client', $metadata: { httpStatusCode: 403 } });
   } } as unknown as S3Client);
   await assert.rejects(secret.ensure(session()), { name: 'AccessDenied' });
+});
+
+test('the documented Fargate capacity message normalizes before classification and logging', async () => {
+  for (const message of [capacityMessage, `${capacityMessage}.`, 'Capacity is unavailable at this time.']) {
+    const environment = new FargateEnvironment({ send: async () => ({ failures: [{ reason: message }] }) } as unknown as ECSClient);
+    await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
+      assert.ok(error instanceof LaunchRejectedError);
+      assert.deepEqual(error.failure, { kind: 'capacity', reasons: ['CAPACITY'] });
+      assert.equal(JSON.stringify(error).includes(message), false);
+      return true;
+    });
+  }
+  const environment = new FargateEnvironment({ send: async () => ({ failures: [
+    { reason: capacityMessage }, { reason: 'MISSING' },
+  ] }) } as unknown as ECSClient);
+  await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
+    assert.ok(error instanceof LaunchRejectedError);
+    assert.deepEqual(error.failure, { kind: 'configuration', reasons: ['CAPACITY', 'MISSING'] });
+    return true;
+  });
+});
+
+for (const outcome of ['uploaded', 'already_exists'] as const) {
+  test(`S3 conditional conflict is retried once and then ${outcome}`, async () => {
+    const inputs: PutObjectCommand['input'][] = [];
+    const signal = AbortSignal.timeout(1000);
+    const secret = new MonitorSecretFile({ send: async (command: unknown, options: unknown) => {
+      assert.ok(command instanceof PutObjectCommand);
+      assert.deepEqual(options, { abortSignal: signal });
+      inputs.push(command.input);
+      if (inputs.length === 1) throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
+      if (outcome === 'already_exists') throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
+      return {};
+    } } as unknown as S3Client);
+    await secret.ensure(session(), signal);
+    assert.equal(inputs.length, 2);
+    assert.deepEqual(inputs[0], inputs[1]);
+  });
+}
+
+test('repeated S3 conditional conflicts fail after one retry', async () => {
+  let calls = 0;
+  const secret = new MonitorSecretFile({ send: async () => {
+    calls++;
+    throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
+  } } as unknown as S3Client);
+  await assert.rejects(secret.ensure(session()), { name: 'ConditionalRequestConflict' });
+  assert.equal(calls, 2);
+});
+
+test('the S3 conflict retry obeys the invocation deadline', async () => {
+  let calls = 0;
+  const controller = new AbortController();
+  const secret = new MonitorSecretFile({ send: async () => {
+    calls++;
+    controller.abort();
+    throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
+  } } as unknown as S3Client);
+  await assert.rejects(secret.ensure(session(), controller.signal), { name: 'AbortError' });
+  assert.equal(calls, 1);
 });
