@@ -2,6 +2,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import publicSchema from '../../../../packages/contracts/schemas/public.schema.json';
 import type { ActiveLock, ContentVersion, Plan, Progress, Receipt, SessionRecord, SessionView, StartRequest } from './types.js';
+import { launchFailureReasons } from './types.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
@@ -46,6 +47,7 @@ export type StartableContent = ContentVersion & {
 };
 export function isStartableContent(content: ContentVersion | undefined): content is StartableContent {
   return content?.status === 'published'
+    && /^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:task-definition\/opsreplay-[A-Za-z0-9_-]+:[1-9][0-9]*$/.test(content.pins.taskDefinitionArn)
     && content.timeLimits.pro !== null
     && content.timeLimits.pro > content.timeLimits.free;
 }
@@ -81,12 +83,17 @@ const launchArguments = object({
       items: object({
         name: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,255}$' },
         environment: {
-          type: 'array', minItems: 2, maxItems: 2,
+          type: 'array', minItems: 1, maxItems: 1,
           prefixItems: [
             object({ name: { const: 'OPSREPLAY_SESSION_ID' }, value: uuid }),
-            object({ name: { const: 'OPSREPLAY_MONITOR_SECRET' }, value: monitorSecret }),
           ],
           items: false,
+        },
+        environmentFiles: {
+          type: 'array', minItems: 1, maxItems: 1,
+          items: object({ type: { const: 's3' }, value: {
+            type: 'string', pattern: '^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9-]{1,61}[a-z0-9]/sessions/[a-f0-9-]{36}\\.env$',
+          } }),
         },
       }),
     },
@@ -101,6 +108,11 @@ export const validSession = ajv.compile<SessionRecord>(object({
   ownerId: owner, view: ref('SessionView'),
   accessGrant: object({ plan: ref('Plan'), admittedAt: timestamp, timeLimitSeconds: limit }),
   pins, launchArguments, monitorSecret, provisioningDeadline: timestamp,
+  launchFailure: { anyOf: [{ type: 'null' }, object({
+    kind: { enum: ['capacity', 'configuration'] },
+    reasons: { type: 'array', minItems: 1, maxItems: launchFailureReasons.length, uniqueItems: true,
+      items: { enum: launchFailureReasons } },
+  })] },
   launchRecoveryDeadline: timestamp,
   scheduleName: { type: 'string', pattern: '^session-[a-f0-9-]{36}$' },
   taskArn: { anyOf: [ecsTaskArn, { type: 'null' }] },
@@ -118,7 +130,8 @@ export function validSessionRelations(session: SessionRecord): boolean {
     && launch.taskDefinition === session.pins.taskDefinitionArn
     && launch.tags[0]?.value === session.view.id
     && environment?.[0]?.value === session.view.id
-    && environment?.[1]?.value === session.monitorSecret
+    && launch.overrides.containerOverrides[0].environmentFiles[0].value.endsWith(`/sessions/${session.view.id}.env`)
+    && (session.launchFailure === null || (session.view.status === 'error' && session.view.statusReason === 'start_failed'))
     && session.scheduleName === `session-${session.view.id}`
     && Date.parse(session.provisioningDeadline) > Date.parse(session.view.createdAt)
     && Date.parse(session.launchRecoveryDeadline) > Date.parse(session.provisioningDeadline);

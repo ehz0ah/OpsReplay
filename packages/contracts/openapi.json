@@ -192,7 +192,7 @@
       "post": {
         "operationId": "startSession",
         "summary": "Start a Challenge attempt in a dedicated environment task",
-        "description": "Idempotent by requestId. A repeated request returns the original session and never launches a second task.",
+        "description": "Idempotent by requestId. A repeated request returns the saved session or confirmed launch failure and never launches a second task. After a confirmed capacity rejection, wait retryAfterSeconds and use a new request ID to start again.",
         "requestBody": {
           "required": true,
           "content": {

@@ -1,11 +1,14 @@
+import { sendOptions } from '../shared/aws.js';
 import { GetCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import type { DynamoDBDocumentClient, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { validSession, validSessionRelations, validTaskArn } from '../start-session/validation.js';
-import type { SessionRecord } from '../start-session/types.js';
+import type { LaunchFailure, SessionRecord } from '../start-session/types.js';
 import type { LifecycleStorePort } from './ports.js';
 
 const sessionKey = (id: string) => ({ PK: `SESSION#${id}`, SK: 'STATE' });
 const activeKey = (ownerId: string) => ({ PK: `USER#${ownerId}`, SK: 'ACTIVE' });
+type ReleaseUpdate = Omit<NonNullable<NonNullable<TransactWriteCommandInput['TransactItems']>[number]['Update']>,
+  'TableName' | 'Key' | 'UpdateExpression'> & { UpdateExpression?: string };
 
 function sessionFrom(item: Record<string, unknown> | undefined): SessionRecord {
   const data = item?.data;
@@ -23,9 +26,7 @@ export class LifecycleStore implements LifecycleStorePort {
 
   async session(id: string, abortSignal?: AbortSignal): Promise<SessionRecord | undefined> {
     const command = new GetCommand({ TableName: this.table, Key: sessionKey(id), ConsistentRead: true });
-    const result = abortSignal
-      ? await this.client.send(command, { abortSignal })
-      : await this.client.send(command);
+    const result = await this.client.send(command, sendOptions(abortSignal));
     if (!result.Item) return undefined;
     return sessionFrom(result.Item);
   }
@@ -41,54 +42,22 @@ export class LifecycleStore implements LifecycleStorePort {
       ExpressionAttributeValues: { ':empty': null, ':taskArn': taskArn },
       ReturnValues: 'ALL_NEW',
     });
-    const result = abortSignal
-      ? await this.client.send(command, { abortSignal })
-      : await this.client.send(command);
+    const result = await this.client.send(command, sendOptions(abortSignal));
     return sessionFrom(result.Attributes);
   }
 
-  async failStartWithoutTask(id: string, endedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord> {
-    const current = await this.session(id, abortSignal);
-    if (!current) throw new Error('Session does not exist');
-    if (current.view.status === 'error' && current.view.statusReason === 'start_failed'
-      && current.provisioningCleanup.status === 'complete') return current;
-    const command = new TransactWriteCommand({ TransactItems: [
-      { Update: {
-        TableName: this.table,
-        Key: sessionKey(id),
-        UpdateExpression: 'SET #data.#view.#status = :error, #data.#view.#reason = :reason, '
-          + '#data.#view.#endedAt = :endedAt, #data.#cleanup.#status = :complete, #data.#cleanup.#completedAt = :endedAt',
-        ConditionExpression: '#data.#taskArn = :empty AND #data.#cleanup.#status = :pending '
-          + 'AND (#data.#view.#status = :provisioning OR (#data.#view.#status = :error AND #data.#view.#reason = :reason))',
-        ExpressionAttributeNames: {
-          '#data': 'data', '#view': 'view', '#status': 'status', '#reason': 'statusReason',
-          '#endedAt': 'endedAt', '#taskArn': 'taskArn', '#cleanup': 'provisioningCleanup', '#completedAt': 'completedAt',
-        },
-        ExpressionAttributeValues: {
-          ':error': 'error', ':reason': 'start_failed', ':endedAt': endedAt,
-          ':empty': null, ':pending': 'pending', ':complete': 'complete', ':provisioning': 'provisioning',
-        },
-      } },
-      { Delete: {
-        TableName: this.table,
-        Key: activeKey(current.ownerId),
-        ConditionExpression: '#data.#sessionId = :sessionId',
-        ExpressionAttributeNames: { '#data': 'data', '#sessionId': 'sessionId' },
-        ExpressionAttributeValues: { ':sessionId': id },
-      } },
-    ] });
-    try {
-      if (abortSignal) await this.client.send(command, { abortSignal });
-      else await this.client.send(command);
-    } catch (error) {
-      const saved = await this.session(id, abortSignal);
-      if (saved?.view.status === 'error' && saved.view.statusReason === 'start_failed'
-        && saved.provisioningCleanup.status === 'complete') return saved;
-      throw error;
-    }
-    const saved = await this.session(id, abortSignal);
-    if (!saved) throw new Error('Session disappeared after failed-start commit');
-    return saved;
+  async failStartWithoutTask(id: string, endedAt: string, failure: LaunchFailure,
+    abortSignal?: AbortSignal): Promise<SessionRecord> {
+    return this.releaseActive(id, endedAt, {
+      UpdateExpression: 'SET #data.#view.#status = :error, #data.#view.#reason = :reason, '
+        + '#data.#view.#endedAt = :completedAt, #data.#launchFailure = :launchFailure',
+      ConditionExpression: '#data.#taskArn = :empty AND '
+        + '(#data.#view.#status = :provisioning OR (#data.#view.#status = :error AND #data.#view.#reason = :reason))',
+      ExpressionAttributeNames: { '#view': 'view', '#reason': 'statusReason', '#endedAt': 'endedAt',
+        '#taskArn': 'taskArn', '#launchFailure': 'launchFailure' },
+      ExpressionAttributeValues: { ':error': 'error', ':reason': 'start_failed', ':empty': null,
+        ':provisioning': 'provisioning', ':launchFailure': failure },
+    }, abortSignal);
   }
 
   async markStartFailed(id: string, endedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord> {
@@ -107,9 +76,7 @@ export class LifecycleStore implements LifecycleStorePort {
       ReturnValues: 'ALL_NEW',
     });
     try {
-      const result = abortSignal
-        ? await this.client.send(command, { abortSignal })
-        : await this.client.send(command);
+      const result = await this.client.send(command, sendOptions(abortSignal));
       return sessionFrom(result.Attributes);
     } catch (error) {
       if (!conditionalFailure(error)) throw error;
@@ -120,24 +87,32 @@ export class LifecycleStore implements LifecycleStorePort {
   }
 
   async completeStartFailure(id: string, completedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord> {
+    return this.releaseActive(id, completedAt, {
+      ConditionExpression: '#data.#view.#status = :error AND #data.#view.#reason = :reason',
+      ExpressionAttributeNames: { '#view': 'view', '#reason': 'statusReason' },
+      ExpressionAttributeValues: { ':error': 'error', ':reason': 'start_failed' },
+    }, abortSignal);
+  }
+
+  private async releaseActive(id: string, completedAt: string,
+    update: ReleaseUpdate,
+    abortSignal?: AbortSignal): Promise<SessionRecord> {
+    const complete = (session: SessionRecord) => session.view.status === 'error'
+      && session.view.statusReason === 'start_failed' && session.provisioningCleanup.status === 'complete';
     const current = await this.session(id, abortSignal);
     if (!current) throw new Error('Session does not exist');
-    if (current.provisioningCleanup.status === 'complete') return current;
+    if (complete(current)) return current;
     const command = new TransactWriteCommand({ TransactItems: [
       { Update: {
         TableName: this.table,
         Key: sessionKey(id),
-        UpdateExpression: 'SET #data.#cleanup.#status = :complete, #data.#cleanup.#completedAt = :completedAt',
-        ConditionExpression: '#data.#view.#status = :error AND #data.#view.#reason = :reason '
-          + 'AND #data.#cleanup.#status = :pending',
-        ExpressionAttributeNames: {
-          '#data': 'data', '#view': 'view', '#status': 'status', '#reason': 'statusReason',
-          '#cleanup': 'provisioningCleanup', '#completedAt': 'completedAt',
-        },
-        ExpressionAttributeValues: {
-          ':error': 'error', ':reason': 'start_failed', ':pending': 'pending',
-          ':complete': 'complete', ':completedAt': completedAt,
-        },
+        UpdateExpression: (update.UpdateExpression ? `${update.UpdateExpression}, ` : 'SET ')
+          + '#data.#cleanup.#status = :complete, #data.#cleanup.#completedAt = :completedAt',
+        ConditionExpression: `(${update.ConditionExpression}) AND #data.#cleanup.#status = :pending`,
+        ExpressionAttributeNames: { ...update.ExpressionAttributeNames,
+          '#data': 'data', '#status': 'status', '#cleanup': 'provisioningCleanup', '#completedAt': 'completedAt' },
+        ExpressionAttributeValues: { ...update.ExpressionAttributeValues,
+          ':pending': 'pending', ':complete': 'complete', ':completedAt': completedAt },
       } },
       { Delete: {
         TableName: this.table,
@@ -148,11 +123,10 @@ export class LifecycleStore implements LifecycleStorePort {
       } },
     ] });
     try {
-      if (abortSignal) await this.client.send(command, { abortSignal });
-      else await this.client.send(command);
+      await this.client.send(command, sendOptions(abortSignal));
     } catch (error) {
       const saved = await this.session(id, abortSignal);
-      if (saved?.provisioningCleanup.status === 'complete') return saved;
+      if (saved && complete(saved)) return saved;
       throw error;
     }
     const saved = await this.session(id, abortSignal);

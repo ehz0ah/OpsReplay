@@ -108,6 +108,13 @@ one-minute precision, which the time limit tolerates. Completed one-time schedul
 count against the Scheduler quota, so the finaliser deletes them. See
 [Challenge environments](challenges.md).
 
+Provisioning creates two self-deleting callbacks before launch: timeout at three
+minutes and recovery at eight minutes. The latter is created first. This covers the
+ECS discovery window independently of Lambda's two asynchronous retries. The monitor
+secret is injected from a private, encrypted S3 environment file through the execution
+role. `RunTask` contains only the file ARN. See the
+[provisioning review decision](decisions/provisioning-review.md).
+
 **Gateway service.** Terminal and dashboard traffic uses WebSockets. The gateway is our
 own small WebSocket proxy, run as an ECS service in the same Fargate cluster as the
 environment tasks. It validates a short-lived ticket, looks up the learner's task

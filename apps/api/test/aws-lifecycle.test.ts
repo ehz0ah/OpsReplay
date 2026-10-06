@@ -16,6 +16,8 @@ import {
   ResourceNotFoundException,
   type SchedulerClient,
 } from '@aws-sdk/client-scheduler';
+import { PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import { MonitorSecretFile } from '../src/session-lifecycle/aws-secret.js';
 import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
 import { ProvisioningSchedule, loadScheduleConfiguration } from '../src/session-lifecycle/aws-schedule.js';
 import { createExpiryHandler } from '../src/expire-provisioning/handler.js';
@@ -57,11 +59,10 @@ function session(): SessionRecord {
       } },
       overrides: { containerOverrides: [{ name: 'monitor', environment: [
         { name: 'OPSREPLAY_SESSION_ID', value: sessionId },
-        { name: 'OPSREPLAY_MONITOR_SECRET', value: monitorSecret },
-      ] }] },
+      ], environmentFiles: [{ type: 's3', value: `arn:aws:s3:::test-secrets/sessions/${sessionId}.env` }] }] },
       tags: [{ key: 'opsreplay:session-id', value: sessionId }],
     },
-    monitorSecret,
+    monitorSecret, launchFailure: null,
     provisioningDeadline: '2026-10-06T02:03:00.000Z',
     launchRecoveryDeadline: '2026-10-06T02:08:00.000Z',
     scheduleName: `session-${sessionId}`, taskArn: null,
@@ -69,15 +70,18 @@ function session(): SessionRecord {
   };
 }
 
-test('the Scheduler adapter creates one bounded self-deleting expiry callback', async () => {
+test('the Scheduler adapter creates distinct timeout and recovery callbacks before launch', async () => {
+  const schedules = new Map<string, CreateScheduleCommand['input']>();
   let created: CreateScheduleCommand['input'] | undefined;
   const client = { send: async (command: unknown) => {
     if (command instanceof GetScheduleCommand) {
-      if (!created) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
-      return { ...created, GroupName: created.GroupName, State: 'ENABLED' };
+      const existing = schedules.get(command.input.Name!);
+      if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
+      return { ...existing, State: 'ENABLED' };
     }
     assert.ok(command instanceof CreateScheduleCommand);
     created = command.input;
+    schedules.set(created.Name!, created);
     return {};
   } } as unknown as SchedulerClient;
   const schedule = new ProvisioningSchedule(client, {
@@ -90,7 +94,10 @@ test('the Scheduler adapter creates one bounded self-deleting expiry callback', 
   record.launchRecoveryDeadline = '2026-10-06T02:08:00.250Z';
   await schedule.ensure(record, new Date('2026-10-06T02:00:10.000Z'));
   await schedule.ensure(record, new Date('2026-10-06T02:00:20.000Z'));
-  assert.equal(created?.ScheduleExpression, 'at(2026-10-06T02:03:01)');
+  assert.equal(schedules.size, 2);
+  assert.equal(schedules.get(record.scheduleName)?.ScheduleExpression, 'at(2026-10-06T02:03:01)');
+  assert.equal(schedules.get(`${record.scheduleName}-recovery`)?.ScheduleExpression, 'at(2026-10-06T02:08:01)');
+  assert.equal(new Set([...schedules.values()].map(item => item.ClientToken)).size, 2);
   assert.equal(created?.ScheduleExpressionTimezone, 'UTC');
   assert.equal(created?.ActionAfterCompletion, 'DELETE');
   assert.equal(created?.FlexibleTimeWindow?.Mode, 'OFF');
@@ -123,14 +130,17 @@ test('the Scheduler adapter rejects an existing schedule with another target', a
 });
 
 test('the Scheduler adapter recovers when another invocation created the same schedule', async () => {
+  const schedules = new Map<string, CreateScheduleCommand['input']>();
   let created: CreateScheduleCommand['input'] | undefined;
   const client = { send: async (command: unknown) => {
     if (command instanceof GetScheduleCommand) {
-      if (!created) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
-      return { ...created, GroupName: created.GroupName, State: 'ENABLED' };
+      const existing = schedules.get(command.input.Name!);
+      if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
+      return { ...existing, State: 'ENABLED' };
     }
     assert.ok(command instanceof CreateScheduleCommand);
     created = command.input;
+    schedules.set(created.Name!, created);
     throw new ConflictException({ $metadata: {}, Message: 'exists', message: 'exists' });
   } } as unknown as SchedulerClient;
   const schedule = new ProvisioningSchedule(client, {
@@ -211,6 +221,7 @@ test('runtime configuration rejects missing or malformed deployment values', () 
     ECS_SECURITY_GROUP_IDS: 'sg-0123456789abcdef0',
     ECS_PLATFORM_VERSION: '1.4.0',
     MONITOR_CONTAINER_NAME: 'monitor',
+    MONITOR_SECRET_BUCKET_ARN: 'arn:aws:s3:::test-secrets',
     SCHEDULER_GROUP_NAME: 'test-sessions',
     PROVISIONING_EXPIRY_FUNCTION_ARN: 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry',
     SCHEDULER_TARGET_ROLE_ARN: 'arn:aws:iam::123456789012:role/test-scheduler',
@@ -219,7 +230,7 @@ test('runtime configuration rejects missing or malformed deployment values', () 
     clusterArn: cluster,
     subnetIds: ['subnet-0123456789abcdef0', 'subnet-11111111111111111'],
     securityGroupIds: ['sg-0123456789abcdef0'],
-    platformVersion: '1.4.0', monitorContainerName: 'monitor',
+    platformVersion: '1.4.0', monitorContainerName: 'monitor', secretBucketArn: 'arn:aws:s3:::test-secrets',
   });
   assert.deepEqual(loadScheduleConfiguration(environment), {
     groupName: 'test-sessions',
@@ -254,4 +265,47 @@ test('the bundled expiry Lambda rejects malformed events before AWS calls', asyn
     if (previous === undefined) delete process.env.SESSION_TABLE_NAME;
     else process.env.SESSION_TABLE_NAME = previous;
   }
+});
+
+for (const reasons of [['RESOURCE:CPU'], ['RESOURCE:MEMORY', 'RESOURCE:ENI'], ['MISSING'], ['INACTIVE'], ['RESOURCE:CPU', 'MISSING'], ['private detail here']]) {
+  test(`RunTask failure classification: ${reasons.join(', ')}`, async () => {
+    const environment = new FargateEnvironment({ send: async () => ({ failures: reasons.map(reason => ({ reason })) }) } as unknown as ECSClient);
+    await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
+      assert.ok(error instanceof LaunchRejectedError);
+      assert.equal(error.failure.kind, reasons.every(reason => reason.startsWith('RESOURCE:')) ? 'capacity' : 'configuration');
+      assert.equal(JSON.stringify(error).includes('private detail here'), false);
+      return true;
+    });
+  });
+}
+
+test('monitor secret upload uses an encrypted immutable object and keeps plaintext out of RunTask', async () => {
+  const record = session();
+  const signal = AbortSignal.timeout(1000);
+  let uploads = 0;
+  const secret = new MonitorSecretFile({ send: async (command: unknown, options: unknown) => {
+    assert.ok(command instanceof PutObjectCommand);
+    assert.deepEqual(options, { abortSignal: signal });
+    assert.deepEqual(command.input, {
+      Bucket: 'test-secrets', Key: `sessions/${sessionId}.env`,
+      Body: `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`,
+      ContentType: 'text/plain; charset=utf-8', ServerSideEncryption: 'AES256', IfNoneMatch: '*',
+    });
+    if (uploads++) throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
+    return {};
+  } } as unknown as S3Client);
+  await secret.ensure(record, signal);
+  await secret.ensure(record, signal);
+  assert.equal(uploads, 2);
+  assert.equal(JSON.stringify(record.launchArguments).includes(record.monitorSecret), false);
+  record.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value = `arn:aws:s3:::test-secrets/sessions/${randomUUID()}.env`;
+  await assert.rejects(secret.ensure(record), /Invalid monitor secret file/);
+  assert.equal(uploads, 2);
+});
+
+test('monitor secret upload does not hide storage failures', async () => {
+  const secret = new MonitorSecretFile({ send: async () => {
+    throw new S3ServiceException({ name: 'AccessDenied', $fault: 'client', $metadata: { httpStatusCode: 403 } });
+  } } as unknown as S3Client);
+  await assert.rejects(secret.ensure(session()), { name: 'AccessDenied' });
 });

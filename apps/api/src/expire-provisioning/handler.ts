@@ -16,7 +16,7 @@ export interface ExpiryLog {
 }
 
 interface Dependencies {
-  expire: (sessionId: string, abortSignal?: AbortSignal) => Promise<'cleaned' | 'ignored'>;
+  expire: (sessionId: string, abortSignal?: AbortSignal) => Promise<'cleaned' | 'ignored' | 'pending'>;
   log?: (entry: ExpiryLog) => void;
 }
 

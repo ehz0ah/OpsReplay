@@ -8,7 +8,7 @@ import {
 import type { GetScheduleCommandOutput, Target } from '@aws-sdk/client-scheduler';
 import type { SessionRecord } from '../start-session/types.js';
 import type { ProvisioningSchedulePort } from './ports.js';
-import { createAwsTransport } from './transport.js';
+import { createAwsTransport, sendOptions } from '../shared/aws.js';
 
 interface ScheduleConfiguration {
   groupName: string;
@@ -36,10 +36,10 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
     };
   }
 
-  private validExisting(existing: GetScheduleCommandOutput, session: SessionRecord, now: Date): boolean {
+  private validExisting(existing: GetScheduleCommandOutput, session: SessionRecord, deadline: string, now: Date): boolean {
     const scheduledAt = parseAt(existing.ScheduleExpression);
     const latestSafeWakeup = Math.max(
-      Date.parse(session.launchRecoveryDeadline),
+      ceilToSecond(Date.parse(deadline)),
       ceilToSecond(now.getTime() + 60_000),
     );
     return existing.GroupName === this.configuration.groupName
@@ -48,7 +48,7 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
       && existing.ActionAfterCompletion === 'DELETE'
       && existing.ScheduleExpressionTimezone === 'UTC'
       && scheduledAt !== undefined
-      && scheduledAt >= Date.parse(session.provisioningDeadline)
+      && scheduledAt >= Date.parse(deadline)
       && scheduledAt <= latestSafeWakeup
       && existing.Target?.Arn === this.configuration.expiryFunctionArn
       && existing.Target?.RoleArn === this.configuration.targetRoleArn
@@ -61,7 +61,7 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
     try {
       return await this.client.send(new GetScheduleCommand({
         GroupName: this.configuration.groupName, Name: name,
-      }), abortSignal ? { abortSignal } : undefined);
+      }), sendOptions(abortSignal));
     } catch (error) {
       if (error instanceof ResourceNotFoundException) return undefined;
       throw error;
@@ -69,17 +69,26 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
   }
 
   async ensure(session: SessionRecord, now: Date, abortSignal?: AbortSignal): Promise<void> {
-    const existing = await this.get(session.scheduleName, abortSignal);
+    // Scheduler retries event delivery, not Lambda function failures. A separate
+    // recovery callback survives the timeout callback's async retry window.
+    // Create recovery first: a crash between the two writes must still leave a
+    // callback that can release the lock after the discovery window.
+    await this.ensureAt(session, `${session.scheduleName}-recovery`, session.launchRecoveryDeadline, now, abortSignal);
+    await this.ensureAt(session, session.scheduleName, session.provisioningDeadline, now, abortSignal);
+  }
+
+  private async ensureAt(session: SessionRecord, name: string, deadline: string, now: Date,
+    abortSignal?: AbortSignal): Promise<void> {
+    const existing = await this.get(name, abortSignal);
     if (existing) {
-      if (!this.validExisting(existing, session, now)) throw new Error('Existing provisioning schedule does not match the session');
+      if (!this.validExisting(existing, session, deadline, now)) throw new Error('Existing provisioning schedule does not match the session');
       return;
     }
-    const deadline = new Date(session.provisioningDeadline);
-    const scheduleAt = deadline.getTime() > now.getTime() ? deadline : new Date(now.getTime() + 60_000);
+    const scheduleAt = new Date(Math.max(Date.parse(deadline), now.getTime() + 60_000));
     const command = new CreateScheduleCommand({
-      Name: session.scheduleName,
+      Name: name,
       GroupName: this.configuration.groupName,
-      ClientToken: session.view.id,
+      ClientToken: name,
       Description: 'Expire an OpsReplay session that did not become ready',
       ScheduleExpression: at(scheduleAt),
       ScheduleExpressionTimezone: 'UTC',
@@ -89,11 +98,11 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
       Target: this.target(session.view.id),
     });
     try {
-      await this.client.send(command, abortSignal ? { abortSignal } : undefined);
+      await this.client.send(command, sendOptions(abortSignal));
     } catch (error) {
       if (!(error instanceof ConflictException)) throw error;
-      const raced = await this.get(session.scheduleName, abortSignal);
-      if (!raced || !this.validExisting(raced, session, now)) throw error;
+      const raced = await this.get(name, abortSignal);
+      if (!raced || !this.validExisting(raced, session, deadline, now)) throw error;
     }
   }
 }
