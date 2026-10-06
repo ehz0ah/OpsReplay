@@ -107,7 +107,12 @@ async function repaired(t, monitor, repair) {
   await eventually(() => monitor.events('recovery_sustaining').length > previousSustaining,
     'Checkout did not start passing after repair');
   assert.equal(monitor.events('recovered').length, 0, 'One passing check is not sustained recovery');
-  await eventually(() => monitor.events('recovered').length === 1, 'Checkout did not remain healthy for 60 seconds', 90_000);
+  try {
+    await eventually(() => monitor.events('recovered').length === 1, 'Checkout did not remain healthy for 60 seconds', 90_000);
+  } catch (error) {
+    t.diagnostic(JSON.stringify(monitor.all().slice(-24)));
+    throw error;
+  }
   const sustained = monitor.events('recovery_sustaining').at(-1);
   const recovered = monitor.events('recovered')[0];
   const elapsed = Date.parse(recovered.at) - Date.parse(sustained.at);
