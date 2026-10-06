@@ -1,15 +1,16 @@
 # Challenge monitor
 
 Status: traffic, HTTP measurements, recovery validation, and TCP outage detection are
-implemented for the reference Challenge and exercised locally. The authenticated
-control endpoint, CPU/memory adapter, file captures, gateway, and AWS integration remain
-unimplemented. This increment does not publish a Challenge or mark a session ready.
+implemented for the reference Challenge and exercised locally. A bounded authenticated
+HTTPS endpoint now controls the local monitor and serves sequenced public frames. The
+CPU/memory adapter, file captures, gateway, and AWS integration remain unimplemented.
+This increment does not publish a Challenge or mark a session ready.
 
 The TypeScript core uses Node 22 and measures real HTTP results independently of the
 learner's services. It aggregates its bounded request records directly because this
 increment has no Prometheus exporter or scraper. No Prometheus server, Grafana service,
-AWS credentials, or listening monitor port is required here. ECharts will render the
-public samples in the later web application.
+or AWS credentials are required. ECharts will render the public samples in the later
+web application.
 
 ## Core interface
 
@@ -23,8 +24,8 @@ load fail admission. It never checks a Challenge ID or requires reference fix co
 1. `verifyInitialState()` confirms at least one validator fails while all probes pass.
    These startup checks do not contribute to the learner's counters.
 2. `start()` fixes the measurement origin. Repeating it returns the original time. The
-   future lifecycle must call it after recording ownership is acknowledged and use that
-   origin as `readyAt`.
+   lifecycle must call it after recording ownership is acknowledged and use that origin
+   as `readyAt`.
 3. Call `tick()` at least every 25 ms in the local runner. Traffic follows the authored
    rate. Checks run every second without overlap. Samples are emitted every five seconds.
 4. `read(cursor)` returns sequenced records with a stable source ID, recording timestamp,
@@ -34,14 +35,34 @@ load fail admission. It never checks a Challenge ID or requires reference fix co
    Repeating it returns the same result. A different cutoff is rejected. Reads after
    sealing exclude records learned after the cutoff, including backdated outage events.
 
-The cutoff must be between start and the current monitor time. Durations and timestamps
-use a monotonic clock anchored to the initial wall clock. Future gateway integration must
-establish how the platform's outcome timestamp maps to this clock. A monitor restart or
-loss of its buffer is an incomplete recording, not a new zero-valued measurement stream.
+The core cutoff must be between start and the current monitor time. Durations and
+timestamps use a monotonic clock anchored to the initial wall clock. The control layer
+accepts a lifecycle cutoff at most five seconds ahead, waits until the monitor clock
+reaches it, and seals at the exact supplied time. A monitor restart or loss of its
+buffer is an incomplete recording, not a new zero-valued measurement stream.
 
 The core does not write DynamoDB, decide session outcomes, or upload recordings.
-The future gateway will authenticate to the monitor, save its records, and relay only
-public payloads. Do not expose this in-process interface as an unauthenticated server.
+The future gateway will save the records and relay only public payloads.
+
+## HTTPS control
+
+The runtime listens on port 9443 with TLS 1.3. The gateway must verify the per-task
+certificate before it sends the 32-byte base64url session secret. The monitor reads its
+certificate, private key, and secret from its own environment. The Challenge container
+does not receive them. Certificate issuance and production delivery are not implemented.
+
+| Operation | Result |
+| --- | --- |
+| `GET /healthz` | Unauthenticated `starting`, `ready`, or `failed` status with no private detail |
+| `POST /v1/start` | Idempotently starts measurement and returns `startedAt` |
+| `GET /v1/frames?after=<sequence>` | Returns up to 100 public frames, the next sequence, and seal state |
+| `POST /v1/seal` | Idempotently seals the immutable `cutoffAt` and returns final metrics |
+
+All `/v1` operations require the bearer session secret. Plain HTTP fails. Requests have
+fixed JSON errors and never return manifests, validator definitions, probe definitions,
+credentials, or internal errors. The server caps request bodies at 1 KiB, headers at
+2 KiB, active connections at 16, authenticated requests at 32 per second, and
+unauthenticated requests at 8 per second. Requests time out after six seconds.
 
 ## Measurements
 
@@ -106,25 +127,29 @@ npm run monitor:image:build
 npm run monitor:image:test
 ```
 
-The image suite starts the existing shop and a separate monitor container sharing only
-its network namespace. The monitor uses a read-only root, no capabilities, non-root user,
-0.5 CPU, 128 MiB memory with swap disabled, 64 PIDs, and a bounded private temporary
-filesystem. Neither container exposes a port, Docker socket, or internet route.
-Both are removed after testing, including failures. The existing standalone Challenge
+The image suite starts the existing shop, a separate monitor container, and a bounded
+gateway-like client. They share only the shop's network namespace. The monitor uses a
+read-only root, no capabilities, a non-root user, 0.5 CPU, 128 MiB memory with swap
+disabled, 64 PIDs, and a bounded private temporary filesystem. No host port, Docker
+socket, or internet route is available.
+All are removed after testing, including failures. The existing standalone Challenge
 runner and service image are unchanged.
 
 Tests verify the real fault, failed reload, unsafe restart, reference repair, and an
 alternative repair that moves the application listener. Both repairs wait the actual
-60-second sustain period. Unit tests use real loopback HTTP servers for malformed and
-slow responses, and controlled clocks for scheduler and cutoff races.
+60-second sustain period. They also verify TLS identity, bearer authentication, plaintext
+rejection, cursor reads, immutable sealing, and access from the learner network without
+credentials. Unit tests use real loopback HTTP servers for malformed and slow responses,
+and controlled clocks for scheduler and cutoff races.
 
-The Dockerfile builds a **test image** with the private reference manifest and bounded
-driver. `dist/monitor/core.cjs` is the reusable core bundle. The driver accepts a private
-manifest path and a duration from 1 to 1200 seconds. It verifies startup, starts locally,
-and writes JSON records to stdout. SIGTERM seals the run. It is not the cloud lifecycle,
-an authenticated gateway adapter, or a general local SaaS runtime.
+The Dockerfile builds a **test image** with the private reference manifest. Its default
+runtime serves the HTTPS control API. `dist/monitor/core.cjs` remains the reusable core
+bundle. A local gateway substitute starts measurement, polls and resumes by sequence,
+and seals on SIGTERM. It exists only for integration tests and is not the real gateway
+or cloud lifecycle.
 
 Local Docker checks do not prove Fargate isolation, cloud timing, or complete recording.
 The complete monitor publication harness, including repeated scenario runs, remains a
 later gate. See [the contract](../../docs/challenges.md#monitor) and
-[the implementation decision](../../docs/decisions/monitor-measurement.md).
+[the measurement](../../docs/decisions/monitor-measurement.md) and
+[control](../../docs/decisions/monitor-control.md) decisions.

@@ -187,9 +187,11 @@ export class Monitor {
     } catch (error) { this.fail(error instanceof MonitorError ? error.code : 'monitor_failed'); }
   }
 
-  read(after = 0): Frame[] {
-    if (!Number.isInteger(after) || after < 0 || after > this.frames.length) throw new MonitorError('invalid_boundary');
-    return structuredClone(this.frames.slice(after).filter(f => this.cutoff === undefined || f.recordedAt <= this.cutoff));
+  read(after = 0, limit = this.frames.length - after): Frame[] {
+    if (!Number.isInteger(after) || after < 0 || after > this.frames.length
+      || !Number.isInteger(limit) || limit < 0) throw new MonitorError('invalid_boundary');
+    return structuredClone(this.frames.slice(after, after + limit)
+      .filter(f => this.cutoff === undefined || f.recordedAt <= this.cutoff));
   }
 
   async drain(): Promise<void> { await Promise.all([...this.pending]); }

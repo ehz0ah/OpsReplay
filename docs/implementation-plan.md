@@ -10,8 +10,8 @@ not the complete work package. The next increment implements session-start admis
 a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. The following
 increment adds ECS launch and provisioning-timeout cleanup. The first monitor increment
 adds real traffic, measurements, checkout validation, and outage probes beside the
-reference image. Monitor network control, captures, and gateway integration follow in
-focused PRs. Work
+reference image. A focused increment then adds authenticated monitor network control.
+Captures and gateway integration follow separately. Work
 packages are responsibility groups, not a requirement to complete one subsystem before
 integrating another.
 
