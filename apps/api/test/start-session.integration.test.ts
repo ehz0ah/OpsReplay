@@ -15,7 +15,10 @@ import { startLocalDatabase } from './local-dynamodb.js';
 import { createAwsTransport } from '../src/shared/aws.js';
 import { LifecycleStore } from '../src/session-lifecycle/store.js';
 import { createProvisionSession } from '../src/session-lifecycle/provision.js';
-import { LaunchRejectedError } from '../src/session-lifecycle/ports.js';
+import { RunTaskCommand, type ECSClient } from '@aws-sdk/client-ecs';
+import { PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
+import { MonitorSecretFile } from '../src/session-lifecycle/aws-secret.js';
 import type { ProvisionResult } from '../src/session-lifecycle/provision.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
@@ -576,14 +579,13 @@ for (const kind of ['capacity', 'configuration'] as const) {
     const provision = createProvisionSession({
       store: new LifecycleStore(database.document, f.table),
       schedule: { ensure: async () => {} }, secret: { ensure: async () => {} },
-      environment: {
-        launch: async () => {
-          launches++;
-          if (reject) throw new LaunchRejectedError({ kind, reasons: [kind === 'capacity' ? 'RESOURCE:CPU' : 'MISSING'] });
-          return 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-        },
-        stop: async () => {},
-      },
+      environment: new FargateEnvironment({ send: async (command: unknown) => {
+        assert.ok(command instanceof RunTaskCommand);
+        launches++;
+        if (reject) return { failures: [{ reason: kind === 'capacity'
+          ? 'Capacity is unavailable at this time. Please try again later or in a different availability zone' : 'MISSING' }] };
+        return { tasks: [{ taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }] };
+      } } as unknown as ECSClient),
       now: () => new Date(current),
     });
     const handler = f.makeHandler({}, provision);
@@ -596,6 +598,8 @@ for (const kind of ['capacity', 'configuration'] as const) {
     assert.deepEqual(await handler(event(input), context), first);
     assert.equal(launches, 1);
     assert.equal((f.logs[0] as { launchFailure: { kind: string } }).launchFailure.kind, kind);
+    assert.equal(first.body.includes('Capacity is unavailable at this time'), false);
+    assert.equal(JSON.stringify(f.logs).includes('Capacity is unavailable at this time'), false);
     reject = false;
     const next = await handler(event(request()), context);
     assert.equal(next.statusCode, 200);
@@ -627,4 +631,39 @@ test('start uses the provisioned record without a final read and checks its owne
   assert.equal(reads, 1); // Replay still verifies ownership before provisioning.
   const wrongOwner = f.makeHandler({}, async id => ({ ...await f.defaultProvision(id), ownerId: randomUUID() }));
   assert.equal((await wrongOwner(event(input), context)).statusCode, 404);
+});
+
+test('concurrent starts recover an S3 conditional conflict and still return one session', async () => {
+  const f = await fixture();
+  const files = new Map<string, unknown>();
+  const tasks = new Map<string, unknown>();
+  let uploads = 0;
+  const secret = new MonitorSecretFile({ send: async (command: unknown) => {
+    assert.ok(command instanceof PutObjectCommand);
+    uploads++;
+    if (uploads === 1) throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
+    if (files.has(command.input.Key!)) {
+      assert.deepEqual(files.get(command.input.Key!), command.input.Body);
+      throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
+    }
+    files.set(command.input.Key!, command.input.Body);
+    return {};
+  } } as unknown as S3Client);
+  const provision = createProvisionSession({
+    store: new LifecycleStore(database.document, f.table), secret,
+    schedule: { ensure: async () => {} }, now: () => new Date(current),
+    environment: new FargateEnvironment({ send: async (command: unknown) => {
+      assert.ok(command instanceof RunTaskCommand);
+      if (tasks.has(command.input.clientToken!)) assert.deepEqual(tasks.get(command.input.clientToken!), command.input);
+      tasks.set(command.input.clientToken!, command.input);
+      return { tasks: [{ taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }] };
+    } } as unknown as ECSClient),
+  });
+  const handler = f.makeHandler({}, provision);
+  const input = request();
+  const responses = await Promise.all([handler(event(input), context), handler(event(input), context)]);
+  assert.deepEqual(responses.map(result => result.statusCode), [200, 200]);
+  assert.equal(bodyOf(responses[0]!).session.id, bodyOf(responses[1]!).session.id);
+  assert.equal(files.size, 1);
+  assert.equal(tasks.size, 1);
 });

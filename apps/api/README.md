@@ -32,10 +32,11 @@ and ECS client token. Concurrent copies cannot create two tasks.
 
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
-releases the learner lock only after cleanup is confirmed. Expected waiting returns
-`pending` until the separate recovery callback at eight minutes. After that, Lambda
-retries function failures twice. Alarms cover dropped events and failed delivery. The two Lambda actions share modules and do not invoke
-each other.
+releases the learner lock only after cleanup is confirmed. Known tasks that are stopping
+use Lambda's short retries, normally starting about a minute later. Undiscovered tasks
+return `pending` until the separate recovery callback at eight minutes. The recovery
+callback also backs up the short retries. Alarms cover dropped events and failed delivery.
+The two Lambda actions share modules and do not invoke each other.
 
 The deployed handler has no development identity or local endpoint switch. A future
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to

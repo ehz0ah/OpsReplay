@@ -20,7 +20,9 @@ export class FargateEnvironment implements EnvironmentPort {
     const output = await this.client.send(new RunTaskCommand(arguments_), sendOptions(abortSignal));
     if (output.failures?.length && (output.tasks?.length ?? 0) === 0) {
       const reasons = [...new Set(output.failures.map(({ reason }) =>
-        launchFailureReasons.find(known => known === reason) ?? 'UNKNOWN'))];
+        // Fargate returns this documented sentence instead of a resource code.
+        reason?.startsWith('Capacity is unavailable at this time.') ? 'CAPACITY'
+          : launchFailureReasons.find(known => known === reason) ?? 'UNKNOWN'))];
       const capacity = reasons.every(reason => reason === 'CAPACITY' || reason.startsWith('RESOURCE:'));
       throw new LaunchRejectedError({ kind: capacity ? 'capacity' : 'configuration', reasons });
     }

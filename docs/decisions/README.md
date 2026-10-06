@@ -28,6 +28,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 5 October 2026 | Implement cloud-targeted session admission with local DynamoDB checks. Use one Lambda per action with no direct Lambda-to-Lambda calls. Add disabled CDK definitions. First cloud use will be a temporary integrated test in the NUS account, not an idle development stack |
 | 6 October 2026 | Extend session start with saved ECS arguments and idempotent launch. Use the server-generated session ID as the cluster-scoped ECS idempotency token. Create the expiry schedule before `RunTask`. Use a separate expiry Lambda that keeps the active lock until task cleanup is confirmed. Keep both actions disabled until readiness and access are integrated |
 | 6 October 2026 | [Provisioning review fixes](provisioning-review.md): create recovery and timeout callbacks before launch, keep monitor secrets out of ECS arguments, persist launch rejections for replay, and align content admission with IAM task families |
+| 6 October 2026 | Correct the review-fix regressions: normalize Fargate's capacity message, retry S3 conditional-write conflicts once, and restore short cleanup retries for known tasks while retaining the recovery callback |
 
 ## Product decisions
 
