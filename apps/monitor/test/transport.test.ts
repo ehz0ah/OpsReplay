@@ -35,6 +35,8 @@ test('checkout verifies creation and matching read with a fresh reference', asyn
   t.after(async () => { transport.close(); server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); });
   const check = { kind: 'checkout' as const, baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, timeoutMs: 200 };
   assert.equal(await validateCheck(check, [], transport, new AbortController().signal), true);
+  assert.equal(await validateCheck({ ...check, baseUrl: check.baseUrl + '/' }, [], transport,
+    new AbortController().signal), true);
   assert.equal(await validateCheck(check, [], transport, new AbortController().signal), true);
   for (mode of ['status-only', 'invalid-json', 'old-reference', 'bad-id', 'unconfirmed', 'wrong-read', 'read-fails']) {
     assert.equal(await validateCheck(check, [], transport, new AbortController().signal), false, mode);

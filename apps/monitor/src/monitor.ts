@@ -12,8 +12,9 @@ import type { Clock, FailureCode, MetricFrame, MonitorConfig, MonitorEvent, Publ
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
 const validFrame = ajv.addSchema(publicSchema).getSchema(publicSchema.$id + '#/$defs/GatewayServerMessage')!;
-interface Schedule { lastSlot: number; busy: boolean; revision: number }
-const schedule = (): Schedule => ({ lastSlot: -1, busy: false, revision: 0 });
+interface Schedule { lastSlot: number; busy: boolean }
+interface Due { ready: boolean; missed: boolean }
+const schedule = (): Schedule => ({ lastSlot: -1, busy: false });
 export interface Frame { source: string; sequence: number; recordedAt: number; payload: PublicFrame }
 
 export class Monitor {
@@ -87,12 +88,16 @@ export class Monitor {
     this.pending.add(work);
   }
 
-  private due(state: Schedule, period: number, at: number): boolean {
+  private due(state: Schedule, period: number, at: number): Due {
     const slot = Math.floor((at - this.measurements!.startedAt) / period);
-    if (slot <= state.lastSlot) return false;
-    if (slot > state.lastSlot + 1) { this.fail('schedule_gap'); return false; }
+    if (slot <= state.lastSlot) return { ready: false, missed: false };
+    const missedSlots = slot - state.lastSlot - 1;
     state.lastSlot = slot;
-    return true;
+    if (missedSlots * period >= limits.maxScheduleGapMs) {
+      this.fail('schedule_gap');
+      return { ready: false, missed: true };
+    }
+    return { ready: true, missed: missedSlots > 0 };
   }
 
   private append(payload: PublicFrame): void {
@@ -109,7 +114,7 @@ export class Monitor {
   private checkResult(index: number, ok: boolean, at: number): void {
     this.recovery.result(index, ok, at);
     const view = this.recovery.view();
-    if (this.history.length >= limits.records) throw new MonitorError('record_limit');
+    if (this.history.length >= limits.recoveryRecords) throw new MonitorError('record_limit');
     this.history.push({ at, view });
     if (view.state !== this.previousRecovery) {
       const signals = { failing: 'recovery_lost', sustaining: 'recovery_sustaining', met: 'recovered' } as const;
@@ -122,10 +127,10 @@ export class Monitor {
   tick(): void {
     if (!this.measurements || this.stopped) return;
     const at = this.now();
-    if (at - this.measurements.startedAt > limits.maxDurationMs) { this.fail('record_limit'); return; }
+    if (at - this.measurements.startedAt >= this.config.durationMs) { this.fail('record_limit'); return; }
     try {
       this.config.journeys.forEach((j, i) => {
-        if (!this.due(this.traffic[i]!, 1000 / j.ratePerSecond, at) || this.stopped) return;
+        if (!this.due(this.traffic[i]!, 1000 / j.ratePerSecond, at).ready || this.stopped) return;
         this.launch(async () => {
           await journey(j, this.transport, this.controller.signal, async (_step, run) => {
             const startedAt = this.now();
@@ -140,24 +145,22 @@ export class Monitor {
       });
       this.config.validators.forEach((v, i) => {
         const state = this.checks[i]!;
-        if (!this.due(state, limits.evaluationMs, at) || this.stopped) return;
-        if (state.busy) {
-          state.revision++;
-          this.checkResult(i, false, at);
-          return;
-        }
-        const revision = state.revision;
+        const due = this.due(state, limits.evaluationMs, at);
+        if (!due.ready || this.stopped || state.busy) return;
+        if (due.missed) this.checkResult(i, false, at);
         state.busy = true;
         this.launch(async () => {
           try {
             const ok = await validateCheck(v.check, this.config.journeys, this.transport, this.controller.signal);
-            if (!this.stopped) this.checkResult(i, ok && state.revision === revision, this.now());
+            if (!this.stopped) this.checkResult(i, ok, this.now());
           } finally { state.busy = false; }
         });
       });
       this.config.probes.forEach((probe, i) => {
         const state = this.probes[i]!;
-        if (!this.due(state, limits.evaluationMs, at) || this.stopped || state.busy) return;
+        const due = this.due(state, limits.evaluationMs, at);
+        if (!due.ready || this.stopped || state.busy) return;
+        if (due.missed && !state.outage) state.failedSince = null;
         state.busy = true;
         this.launch(async () => {
           try {
@@ -178,11 +181,9 @@ export class Monitor {
           } finally { state.busy = false; }
         });
       });
-      if (this.due(this.samples, limits.sampleMs, at) && !this.stopped) {
-        this.launch(async () => {
-          const frame = await this.snapshot(at);
-          if (!this.failure && (this.cutoff === undefined || at <= this.cutoff)) this.append(frame);
-        });
+      if (this.due(this.samples, limits.sampleMs, at).ready && !this.stopped) {
+        const frame = this.snapshot(at);
+        if (!this.failure && (this.cutoff === undefined || at <= this.cutoff)) this.append(frame);
       }
     } catch (error) { this.fail(error instanceof MonitorError ? error.code : 'monitor_failed'); }
   }
@@ -194,13 +195,14 @@ export class Monitor {
 
   async drain(): Promise<void> { await Promise.all([...this.pending]); }
 
-  async snapshot(at = this.now()): Promise<MetricFrame> {
+  snapshot(at = this.now()): MetricFrame {
     if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt || at > this.now()
       || (this.cutoff !== undefined && at > this.cutoff)) throw new MonitorError('invalid_boundary');
     if (this.failure) throw new MonitorError(this.failure);
-    // Copy the state before yielding, so later completions cannot change this read.
-    const recovery = [...this.history].reverse().find(h => h.at <= at)!.view;
-    return { type: 'metrics', ...await this.measurements.snapshot(at), recovery: { ...recovery } };
+    let index = this.history.length - 1;
+    while (index > 0 && this.history[index]!.at > at) index--;
+    const recovery = this.history[index]!.view;
+    return { type: 'metrics', ...this.measurements.snapshot(at), recovery: { ...recovery } };
   }
 
   seal(at = this.cutoff ?? this.now()): Promise<MetricFrame> {

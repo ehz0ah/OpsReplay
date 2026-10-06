@@ -102,7 +102,7 @@ test('healthy checkout needs the complete sustain window and emits recovery once
   await f.monitor.seal();
 });
 
-test('a missed evaluation discards an outstanding passing result', async () => {
+test('a slow passing validator is not invalidated while it is still running', async () => {
   const f = fixture();
   await f.monitor.verifyInitialState();
   f.monitor.start();
@@ -116,22 +116,39 @@ test('a missed evaluation discards an outstanding passing result', async () => {
   f.monitor.tick();
   f.release();
   await f.monitor.drain();
-  assert.equal((await f.monitor.snapshot()).recovery.state, 'failing');
-  for (let i = 0; i < 10; i++) await f.advance(500);
   assert.equal((await f.monitor.snapshot()).recovery.state, 'sustaining');
-  assert.ok((await f.monitor.snapshot()).recovery.sustainedSeconds < 5);
+  assert.equal(f.monitor.read().filter(frame => frame.payload.type === 'timeline'
+    && frame.payload.event.signal === 'recovery_lost').length, 0);
   await f.monitor.seal();
 });
 
-test('a scheduler gap stops measurement instead of backfilling missing requests', async () => {
+test('a missed validator slot resets recovery when no check was running', async () => {
+  const f = fixture();
+  await f.monitor.verifyInitialState();
+  f.monitor.start();
+  f.state.healthy = true;
+  await f.advance(0);
+  assert.equal(f.monitor.snapshot().recovery.state, 'sustaining');
+  await f.advance(2500);
+  assert.equal(f.monitor.snapshot().recovery.state, 'sustaining');
+  assert.equal(f.monitor.snapshot().recovery.sustainedSeconds, 0);
+  assert.equal(f.monitor.read().filter(frame => frame.payload.type === 'timeline'
+    && frame.payload.event.signal === 'recovery_lost').length, 1);
+  await f.monitor.seal();
+});
+
+test('a short scheduler gap resumes without a burst, but a five-second gap fails', async () => {
   const f = fixture();
   await f.monitor.verifyInitialState();
   f.monitor.start();
   await f.advance(0);
   await f.advance(1501);
+  assert.equal(f.monitor.failure, null);
+  assert.equal(f.monitor.snapshot().counters.totalRequests, 2);
+  await f.advance(6000);
   assert.equal(f.monitor.failure, 'schedule_gap');
   assert.equal(f.monitor.stopped, true);
-  await assert.rejects(f.monitor.snapshot(), /schedule_gap/);
+  assert.throws(() => f.monitor.snapshot(), /schedule_gap/);
 });
 
 test('outages use the first failed probe time, honor grace, and end once', async () => {
@@ -188,6 +205,19 @@ test('sealing excludes an outage learned only after the cutoff', async () => {
   assert.ok(f.monitor.read().some(frame => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'));
   await f.monitor.seal(start + 3000);
   assert.ok(!f.monitor.read().some(frame => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'));
+});
+
+test('scheduled samples are appended before sealing with contiguous sequences', async () => {
+  const f = fixture();
+  await f.monitor.verifyInitialState();
+  f.monitor.start();
+  await f.advance(0);
+  f.jump(5000);
+  f.monitor.tick();
+  await f.monitor.seal(f.monitor.now());
+  const frames = f.monitor.read();
+  assert.ok(frames.filter(frame => frame.payload.type === 'metrics').length >= 2);
+  assert.deepEqual(frames.map(frame => frame.sequence), frames.map((_, index) => index + 1));
 });
 
 test('pending work stays bounded when a transport fails to complete until cancellation', async () => {

@@ -5,10 +5,11 @@ implemented for the reference Challenge and exercised locally. The authenticated
 control endpoint, CPU/memory adapter, file captures, gateway, and AWS integration remain
 unimplemented. This increment does not publish a Challenge or mark a session ready.
 
-The TypeScript core uses Node 22 and `@prometheus-io/client` (formerly `prom-client`).
-It measures real HTTP results independently of the learner's services. No Prometheus
-server, Grafana service, AWS credentials, or listening monitor port is required here.
-ECharts will render the public samples in the later web application.
+The TypeScript core uses Node 22 and measures real HTTP results independently of the
+learner's services. It aggregates its bounded request records directly because this
+increment has no Prometheus exporter or scraper. No Prometheus server, Grafana service,
+AWS credentials, or listening monitor port is required here. ECharts will render the
+public samples in the later web application.
 
 ## Core interface
 
@@ -46,14 +47,14 @@ public payloads. Do not expose this in-process interface as an unauthenticated s
 | --- | --- |
 | `request_rate` | Ordinary journey requests completed in the last five seconds divided by that interval. Use the elapsed interval for the first partial sample |
 | `error_rate` | Failed ordinary requests divided by completed ordinary requests in that same window, in percent |
-| `latency_p95` | Prometheus Summary's interpolated p95 of those request durations, in milliseconds. Includes failed attempts and timeouts |
+| `latency_p95` | Exact nearest-rank p95 of those request durations, in milliseconds. Includes failed attempts and timeouts |
 | `totalRequests`, `failedRequests` | Cumulative ordinary request completions from measurement start through the requested cutoff |
 
 A journey stops at its first failed step. Each attempted step counts once. Validator
 and probe traffic is excluded. A request started before measurement or completed after
-the cutoff is excluded. Snapshot registries are private to each read, allowing live and
-historical cutoff reads without changing counters. Bounded timestamped records supply
-the window and cutoff selection before the metrics library aggregates them.
+the cutoff is excluded. Completion-ordered records and cumulative failure prefixes allow
+live and historical cutoff reads without changing counters. Only the five-second window
+is sorted for the exact percentile.
 
 No completed requests means zero observed request rate, with error rate and latency
 absent. CPU and memory are absent until the Challenge runtime-statistics adapter exists.
@@ -62,7 +63,9 @@ have low latency, so latency is not a recovery test.
 
 Checkout validation creates a fresh reference, requires a confirmed order, and reads
 that same order back. All validators must sustain success for their authored periods.
-A failed or missed evaluation resets its window and invalidates any outstanding result.
+A failed check resets its window. If the scheduler misses a validator slot while no
+check is running, the window resets. A check still running at the next slot remains
+authoritative and is not overlapped or changed into a failure.
 TCP probes emit an outage only after the authored grace period, using the first failed
 probe's completion time. Probe labels describe symptoms, not hidden causes.
 
@@ -75,10 +78,12 @@ probe's completion time. Probe labels describe symptoms, not hidden causes.
 - Admission caps ordinary traffic at 20 requests/second at maximum journey length and
   reserves space for checks, sampling, and worst-case request overlap. At most 32 tasks
   can be in flight. This is a monitor implementation limit, not a product concurrency claim.
-- At most 100,000 request records, 100,000 recovery records, 10,000 output records, and
-  four hours of measurement. Reaching a limit stops the monitor with a fixed error code.
-- Missing an entire traffic/check scheduling slot stops measurement as `schedule_gap`.
-  Busy validators fail that evaluation instead of overlapping. No catch-up request burst.
+- At most 150,000 request records, 100,000 recovery records, and 10,000 output records.
+  The manifest's maximum two-hour duration and admitted request rate fit the request
+  bound. Reaching another limit stops the monitor with a fixed error code.
+- A scheduling delay under five seconds skips missed work and resumes at the current
+  slot without a catch-up burst. The observed request rate shows the reduced traffic.
+  A gap of five seconds or more stops measurement as `schedule_gap`.
 - The local output driver waits for writes and fails after one second of blocked output.
   It logs fixed error codes and never dumps manifests, response bodies, or stack traces.
 
