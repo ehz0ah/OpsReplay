@@ -34,8 +34,8 @@ export async function validateCheck(check: ValidatorCheck, journeys: Journey[], 
   const reference = randomUUID();
   const options = { timeoutMs: check.timeoutMs, expectStatus: [201] };
   const id = order(await transport.http({ ...options, method: 'POST',
-    url: check.baseUrl + '/api/checkout' }, signal, { reference }), 201, reference);
+    url: new URL('/api/checkout', check.baseUrl).toString() }, signal, { reference }), 201, reference);
   if (!id || signal.aborted) return false;
   return order(await transport.http({ ...options, method: 'GET',
-    url: check.baseUrl + '/api/orders/' + id }, signal), 200, reference) === id;
+    url: new URL('/api/orders/' + id, check.baseUrl).toString() }, signal), 200, reference) === id;
 }

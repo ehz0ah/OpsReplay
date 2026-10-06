@@ -6,8 +6,9 @@ import { endpoint, parseConfig } from '../src/config.js';
 test('manifest validation projects only execution configuration', () => {
   const config = parseConfig(JSON.stringify(manifest));
   assert.equal(config.journeys[0]!.ratePerSecond, 2);
+  assert.equal(config.durationMs, 20 * 60_000);
   assert.equal(config.validators[0]!.sustainSeconds, 60);
-  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'validators']);
+  assert.deepEqual(Object.keys(config).sort(), ['durationMs', 'journeys', 'probes', 'validators']);
   assert.ok(!JSON.stringify(config).includes(manifest.plantedFault.summary));
 });
 
@@ -33,6 +34,14 @@ test('duplicates, unknown references, unsupported checks, and overload fail admi
     change(copy);
     assert.throws(() => parseConfig(JSON.stringify(copy)), /invalid_config/);
   }
+});
+
+test('maximum session duration and admitted traffic fit the request history bound', () => {
+  const copy = structuredClone(manifest);
+  copy.environment.timeLimitMinutes = 120;
+  copy.traffic.journeys[0]!.ratePerSecond = 10;
+  for (const step of copy.traffic.journeys[0]!.steps) step.timeoutMs = 100;
+  assert.equal(parseConfig(JSON.stringify(copy)).durationMs, 120 * 60_000);
 });
 
 test('network targets are canonical authored loopback URLs only', () => {

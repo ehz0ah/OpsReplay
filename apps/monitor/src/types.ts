@@ -14,7 +14,12 @@ export interface Probe {
   check: { kind: 'tcp'; host: string; port: number; timeoutMs: number };
   graceSeconds: number;
 }
-export interface MonitorConfig { journeys: Journey[]; validators: Validator[]; probes: Probe[] }
+export interface MonitorConfig {
+  durationMs: number;
+  journeys: Journey[];
+  validators: Validator[];
+  probes: Probe[];
+}
 export interface HttpResponse { status: number; body: string }
 export interface Transport {
   http(check: HttpCheck, signal: AbortSignal, json?: object): Promise<HttpResponse | null>;
@@ -52,7 +57,7 @@ export function monotonicClock(): Clock {
   return { now: () => Math.floor(epoch + performance.now() - origin) };
 }
 export const limits = Object.freeze({
-  records: 100_000, events: 10_000, inFlight: 32,
+  requestRecords: 150_000, recoveryRecords: 100_000, events: 10_000, inFlight: 32,
   bodyBytes: 65_536, manifestBytes: 262_144,
-  sampleMs: 5_000, evaluationMs: 1_000, maxDurationMs: 14_400_000,
+  sampleMs: 5_000, evaluationMs: 1_000, maxScheduleGapMs: 5_000,
 });

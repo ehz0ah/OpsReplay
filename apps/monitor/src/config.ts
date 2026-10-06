@@ -7,6 +7,7 @@ import type { Journey, MonitorConfig, Probe, Validator } from './types.js';
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
 interface Manifest {
+  environment: { timeLimitMinutes: number };
   traffic: { journeys: Journey[] };
   validators: Validator[];
   healthProbes: Probe[];
@@ -52,7 +53,10 @@ export function parseConfig(text: string): MonitorConfig {
   const concurrency = journeys.reduce((n, j) => n + 1 + Math.ceil(j.ratePerSecond
     * j.steps.reduce((ms, s) => ms + s.timeoutMs, 0) / 1000), 0);
   const requestRate = journeys.reduce((n, j) => n + j.ratePerSecond * j.steps.length, 0);
-  if (requestRate > 20 || concurrency + raw.validators.length + raw.healthProbes.length + 1 > limits.inFlight) invalid();
+  const durationMs = raw.environment.timeLimitMinutes * 60_000;
+  const maximumRecords = Math.ceil(requestRate * durationMs / 1000) + concurrency;
+  if (requestRate > 20 || maximumRecords > limits.requestRecords
+    || concurrency + raw.validators.length + raw.healthProbes.length + 1 > limits.inFlight) invalid();
   // Project only execution configuration. The monitor retains no root cause or hints.
-  return structuredClone({ journeys, validators: raw.validators, probes: raw.healthProbes });
+  return structuredClone({ durationMs, journeys, validators: raw.validators, probes: raw.healthProbes });
 }

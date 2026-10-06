@@ -139,7 +139,7 @@ own traffic. CPU and memory for the challenge container come from the task metad
 endpoint's `/task/stats` path on Fargate, or from container statistics locally. Samples
 are taken every five seconds (proposed).
 
-The first monitor increment uses five-second samples. Rate, errors, and interpolated
+The first monitor increment uses five-second samples. Rate, errors, and exact nearest-rank
 p95 use ordinary requests completed in the preceding five seconds. Empty windows omit
 error rate and latency. CPU and memory are omitted until the runtime adapter exists.
 See the [measurement definitions](../apps/monitor/README.md#measurements). These partial
@@ -163,8 +163,10 @@ service. Image tests must verify the stored order and bound the test data volume
 Ordinary traffic may omit `reference`, in which case the image generates one. Validator
 requests supply their own fresh reference so an old response cannot satisfy a new run.
 
-Run each validator without overlap. A failed or missing scheduled evaluation resets its
-passing window. Validator and probe requests are separate from the journey counters.
+Run each validator without overlap. A failed evaluation resets its passing window. A
+missed scheduler slot resets the window only when no evaluation is already running. A
+slow in-flight evaluation remains authoritative, then its completed result advances or
+resets the window. Validator and probe requests are separate from the journey counters.
 The three draft Challenges require both their journey and the checkout check, so the
 slow order-history path is still tested where applicable.
 

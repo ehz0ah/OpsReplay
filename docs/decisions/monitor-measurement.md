@@ -7,10 +7,11 @@ separate work. The Challenge stays draft.
 ## Choices
 
 Use TypeScript on Node 22 to share the API/gateway language and public data contracts.
-Use the established Prometheus Node client for metric instruments and interpolated
-latency quantiles. The current package is `@prometheus-io/client`, formerly
-`prom-client`. Version 0.16.1 is pinned and supports Node 22. The dependency is bundled
-only where imported by the monitor. The Lambda entry points do not import it.
+Aggregate the bounded request outcomes directly. An earlier version rebuilt a
+Prometheus client registry for every snapshot, but this increment exposes no scrape
+endpoint and runs no collector. Direct aggregation avoids an asynchronous seal race,
+uses an exact nearest-rank p95, and removes an unused production dependency. Reconsider
+a Prometheus client only when the monitor has a real exporter requirement.
 
 Use a separate sidecar for measurements. It generates real customer requests and runs
 private checkout validators independently of the learner-controlled services. HTTP
@@ -18,10 +19,11 @@ status alone does not establish recovery. No particular command or configuration
 is required, so an alternative repair remains valid.
 
 Keep timestamped request outcomes. Aggregated counters alone cannot reconstruct an
-earlier session cutoff after delayed outcome delivery. Each snapshot selects its
-records before feeding a separate library registry. The p95 window is five seconds,
-matching the request/error-rate window. This bounded approach is sufficient for the
-first Challenge, but its CPU and memory cost must be measured before raising limits.
+earlier session cutoff after delayed outcome delivery. Completion-ordered records use
+cumulative failure prefixes for historical counters, and each snapshot sorts only its
+five-second duration window. The p95 window matches the request/error-rate window. The
+150,000-record bound covers the manifest schema's maximum two-hour session at the
+admitted 20 requests per second, with headroom for in-flight completion.
 
 No Prometheus server or Grafana service is needed for this increment. The later gateway
 will relay the existing public metric/event shapes, and the web workspace will render
@@ -39,10 +41,11 @@ validator/probe requests do not enter incident counters. The start and end bound
 are immutable. Cancellation during sealing does not count the interrupted request as
 a failed customer operation. Already completed requests before the cutoff still count.
 
-Sustain windows advance only through completed passing evaluations. A busy check at
-the next slot resets its window and invalidates its outstanding result. A skipped
-scheduler slot or exhausted buffer fails measurement explicitly. This may reject a run
-under excessive monitor load, but it cannot award recovery using missing evidence.
+Sustain windows advance only through completed passing evaluations. A validator that
+is still running at its next slot is not overlapped or converted into a failure. Its
+completed result remains authoritative. A missed slot while no check is running resets
+the window. A scheduling delay under five seconds skips missed work and resumes without
+a burst. A delay of five seconds or more, or an exhausted buffer, fails measurement.
 
 The monitor uses monotonic elapsed time anchored to wall time. Distributed clock
 alignment, durable recording, and monitor restart recovery remain integration concerns.
@@ -57,6 +60,5 @@ and PostgreSQL behavior, including a full 60-second recovery period and an alter
 repair. They do not establish Fargate isolation or complete Challenge publication.
 
 Sources: [monitor contract](../challenges.md#monitor),
-[implementation and checks](../../apps/monitor/README.md),
-[Prometheus Node client](https://github.com/prometheus/client_js), and
+[implementation and checks](../../apps/monitor/README.md), and
 [Apache ECharts](https://echarts.apache.org/).
