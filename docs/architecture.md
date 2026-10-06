@@ -3,9 +3,9 @@
 Status: implementation proposal consistent with the preliminary report. The
 [reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
 locally. Session admission, ECS launch orchestration, and provisioning-expiry cleanup
-have separate disabled Lambda definitions. Monitor traffic, recovery, and outage checks
-run locally. Its network control, the remaining handlers, gateway, and cloud deployment
-are not implemented.
+have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
+authenticated HTTPS control run locally. Captures, the remaining handlers, gateway, and
+cloud deployment are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these

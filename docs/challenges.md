@@ -4,10 +4,10 @@ Status: proposed v0.2 runtime contract, following the preliminary report. It rep
 earlier simulated engine. The three [Challenge manifests](../content/challenges/README.md)
 are drafts. A [local reference image](../content/challenges/wrong-upstream-port/README.md)
 implements the wrong-upstream-port service stack and image tests. The
-[monitor core](../apps/monitor/README.md) implements local traffic, recovery, and outage
-checks. Monitor network control/captures, the terminal server, and gateway do not exist
-yet. Numbers marked proposed are starting values to
-measure, not results. The full task and publication requirements below remain unproven.
+[monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
+and authenticated HTTPS control. Monitor captures, the terminal server, and gateway do
+not exist yet. Numbers marked proposed are starting values to measure, not results. The
+full task and publication requirements below remain unproven.
 
 ## Principle
 
@@ -202,6 +202,14 @@ checks local and free of secrets. The control port never returns validator or pr
 definitions. The monitor keeps the session's samples, signals, and captures locally,
 bounded, and serves them from a sequence number, so a reconnecting gateway can fetch
 anything it missed.
+
+The current local runtime listens on port 9443 with TLS 1.3. `GET /healthz` returns only
+`starting`, `ready`, or `failed` and needs no secret. Authenticated operations start
+measurement, read at most 100 public frames after a sequence cursor, and seal at the
+immutable lifecycle cutoff. A retry with the same start or cutoff is safe. A different
+cutoff is rejected. The monitor can wait briefly for its monotonic clock to reach the
+supplied cutoff, but it does not alter that timestamp. The gateway and production
+certificate delivery are not implemented.
 
 **Untrusted files.** Watched files are written by a root learner. The monitor reads only
 regular files, never follows symbolic links, and caps the bytes it reads. Otherwise a
