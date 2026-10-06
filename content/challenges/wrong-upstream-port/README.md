@@ -1,8 +1,9 @@
 # Wrong upstream port: local image
 
 This implements the service stack in [the draft manifest](challenge.json), not a
-complete Challenge session. There is no monitor, terminal server, gateway, or AWS
-deployment. The manifest remains unpublished.
+complete Challenge session. A [separate monitor test](../../../apps/monitor/README.md)
+now runs traffic and recovery checks beside this image. There is no terminal server,
+gateway, or AWS deployment. The manifest remains unpublished.
 
 ## Build and enter
 
@@ -35,7 +36,7 @@ ss -ltnp
 service nginx status
 ```
 
-There is no background traffic yet. Requests made with `curl` generate real logs.
+The standalone run above has no background traffic. Requests made with `curl` generate real logs.
 nginx listens on port 80, the shop on loopback port 8080, and PostgreSQL on loopback
 port 5432. The shop provides `GET /`, `POST /api/checkout`, and `GET /api/orders/<id>`.
 Checkout accepts an optional JSON `reference` and returns a stored, confirmed order.
@@ -105,5 +106,6 @@ runtime restrictions. Each test removes its containers and data, including on fa
 The suite makes a bounded number of requests and keeps no database volumes. Set
 `OPSREPLAY_CHALLENGE_IMAGE` to test a different already-built image reference.
 
-These are image integration checks, not the full publication harness. They do not prove
-60-second sustained recovery, monitor isolation, recording, playback, or Fargate behaviour.
+These are image integration checks, not the full publication harness. The separate
+monitor image tests check sustained recovery. Neither suite proves full monitor
+isolation, recording, playback, or Fargate behaviour.

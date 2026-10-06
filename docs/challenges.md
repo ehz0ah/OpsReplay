@@ -3,8 +3,10 @@
 Status: proposed v0.2 runtime contract, following the preliminary report. It replaces the
 earlier simulated engine. The three [Challenge manifests](../content/challenges/README.md)
 are drafts. A [local reference image](../content/challenges/wrong-upstream-port/README.md)
-implements the wrong-upstream-port service stack and image tests. The monitor, terminal
-server, and gateway do not exist yet. Numbers marked proposed are starting values to
+implements the wrong-upstream-port service stack and image tests. The
+[monitor core](../apps/monitor/README.md) implements local traffic, recovery, and outage
+checks. Monitor network control/captures, the terminal server, and gateway do not exist
+yet. Numbers marked proposed are starting values to
 measure, not results. The full task and publication requirements below remain unproven.
 
 ## Principle
@@ -136,6 +138,12 @@ even when the gateway learns of the outcome later.
 own traffic. CPU and memory for the challenge container come from the task metadata
 endpoint's `/task/stats` path on Fargate, or from container statistics locally. Samples
 are taken every five seconds (proposed).
+
+The first monitor increment uses five-second samples. Rate, errors, and interpolated
+p95 use ordinary requests completed in the preceding five seconds. Empty windows omit
+error rate and latency. CPU and memory are omitted until the runtime adapter exists.
+See the [measurement definitions](../apps/monitor/README.md#measurements). These partial
+samples do not claim complete dashboard or recording support.
 
 **Validators.** Each validator is evaluated every second (proposed). The aggregate
 recovery state is `sustaining` while all pass, and `met` when each has passed

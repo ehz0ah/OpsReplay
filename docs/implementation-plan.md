@@ -8,8 +8,10 @@ The first increment is the [local wrong-upstream-port image](../content/challeng
 tracked in [task 4](https://github.com/ehz0ah/OpsReplay/issues/4). It covers part of I01,
 not the complete work package. The next increment implements session-start admission:
 a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. The following
-increment adds ECS launch and provisioning-timeout cleanup. Monitor and gateway
-integration follow in focused PRs. Work
+increment adds ECS launch and provisioning-timeout cleanup. The first monitor increment
+adds real traffic, measurements, checkout validation, and outage probes beside the
+reference image. Monitor network control, captures, and gateway integration follow in
+focused PRs. Work
 packages are responsibility groups, not a requirement to complete one subsystem before
 integrating another.
 
