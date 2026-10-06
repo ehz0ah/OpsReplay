@@ -9,15 +9,16 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: local Challenge image and disabled session provisioning.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
+**Status: local Challenge image, monitor measurements, and disabled session provisioning.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
 validation tools, three synthetic draft Challenge manifests, and a
 [runnable local reference image](content/challenges/wrong-upstream-port/README.md).
 The [API](apps/api/README.md) has a session-start Lambda, a separate provisioning-expiry
 Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
-functions disabled. The monitor, gateway, remaining API, web application, and cloud
-deployment are not implemented. The image is not a published Challenge or a complete
+functions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
+recovery, and outages locally. Its network control and captures, the gateway, remaining
+API, web application, and cloud deployment are not implemented. The image is not a published Challenge or a complete
 session. No public route is enabled.
 
 ## Start here
@@ -74,6 +75,10 @@ Fake ECS and Scheduler ports inject lost responses, retries, concurrency, and ex
 These checks do not deploy or use an AWS account. To build and test the local Challenge image
 with Docker, run `npm run challenge:build` and `npm run challenge:test`. These separate
 integration tests execute the repair and traps against real services through `docker exec`.
+Run `npm run monitor:test`, `npm run monitor:image:build`, and
+`npm run monitor:image:test` for the monitor core and the two-container measurement
+tests. The image tests require the built Challenge image and wait the full 60-second
+recovery window.
 
 ## Repository map
 

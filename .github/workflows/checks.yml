@@ -56,3 +56,23 @@ jobs:
           node-version-file: .nvmrc
       - run: npm run challenge:build
       - run: npm run challenge:test
+
+  challenge-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run monitor:test
+      - run: npm run challenge:build
+      - run: npm run monitor:image:build
+      - run: npm run monitor:image:test
+      - name: Remove monitor test containers after failure or cancellation
+        if: always()
+        run: |
+          docker ps -aq --filter label=opsreplay.test=monitor | xargs -r docker rm -f
+          docker ps -aq --filter name=opsreplay-monitor-shop- | xargs -r docker rm -f
