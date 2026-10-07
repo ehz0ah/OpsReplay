@@ -7,7 +7,7 @@ import {
   loadScheduleConfiguration,
 } from '../session-lifecycle/aws-schedule.js';
 import { createProvisionSession } from '../session-lifecycle/provision.js';
-import { MonitorSecretFile, createS3Client } from '../session-lifecycle/aws-secret.js';
+import { MonitorBootstrapFile, createS3Client } from '../session-lifecycle/aws-bootstrap.js';
 import { LifecycleStore } from '../session-lifecycle/store.js';
 import { loadLaunchConfiguration } from './configuration.js';
 import { createStartHandler } from './handler.js';
@@ -28,7 +28,7 @@ const client = DynamoDBDocumentClient.from(
 const lifecycleStore = new LifecycleStore(client, table);
 const provision = createProvisionSession({
   store: lifecycleStore,
-  secret: new MonitorSecretFile(createS3Client()),
+  bootstrap: new MonitorBootstrapFile(createS3Client()),
   schedule: new ProvisioningSchedule(createSchedulerClient(), loadScheduleConfiguration(process.env)),
   environment: new FargateEnvironment(createEcsClient()),
 });

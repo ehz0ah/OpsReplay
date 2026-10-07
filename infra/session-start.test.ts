@@ -118,6 +118,7 @@ test('the session-start stack has separate disabled start and expiry actions', (
       'lambda:InvokeFunction',
       'logs:CreateLogStream',
       'logs:PutLogEvents',
+      's3:GetObject',
       's3:PutObject',
       'scheduler:CreateSchedule',
       'scheduler:GetSchedule',

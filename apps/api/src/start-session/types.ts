@@ -118,11 +118,13 @@ export interface SessionRecord {
   pins: ContentVersion['pins'];
   launchArguments: EcsLaunchArguments;
   monitorSecret: string;
+  monitorCertificate: string | null;
   launchFailure: LaunchFailure | null;
   provisioningDeadline: string;
   launchRecoveryDeadline: string;
   scheduleName: string;
   taskArn: string | null;
+  taskAddress: string | null;
   provisioningCleanup: { status: 'pending' | 'complete'; completedAt: string | null };
 }
 

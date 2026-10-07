@@ -221,7 +221,8 @@ The root learner can still disrupt its own task network and prevent a later gate
 reconnection. Connection limits are resource bounds, not an availability boundary. A lost
 monitor makes the recording incomplete and the attempt a platform error with no score.
 Stronger denial-of-service isolation requires a separate network trust boundary. The
-gateway process and production certificate delivery are not implemented.
+certificate delivery and task-address publication path is implemented locally but is
+not deployed. The gateway supervisor is not implemented.
 
 **Untrusted files.** Watched files are written by a root learner. The monitor reads only
 regular files, never follows symbolic links, and caps the bytes it reads. Otherwise a

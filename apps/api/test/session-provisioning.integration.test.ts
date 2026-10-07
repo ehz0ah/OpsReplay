@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+  type DynamoDBDocumentClient,
+} from '@aws-sdk/lib-dynamodb';
 import {
   CreateScheduleCommand,
   GetScheduleCommand,
@@ -10,15 +16,18 @@ import {
   type SchedulerClient,
 } from '@aws-sdk/client-scheduler';
 import { ProvisioningSchedule } from '../src/session-lifecycle/aws-schedule.js';
+import { createMonitorCertificate } from '../src/session-lifecycle/monitor-certificate.js';
 import { createExpireProvisioning } from '../src/session-lifecycle/expire.js';
 import type { EnvironmentPort, EnvironmentTask, ProvisioningSchedulePort } from '../src/session-lifecycle/ports.js';
 import { CleanupPendingError, LaunchRejectedError } from '../src/session-lifecycle/ports.js';
 import { createProvisionSession } from '../src/session-lifecycle/provision.js';
+import { createPublishRecordingWork } from '../src/session-lifecycle/publish-recording-work.js';
 import { LifecycleStore } from '../src/session-lifecycle/store.js';
 import { keys } from '../src/start-session/store.js';
 import type { EcsLaunchArguments, SessionRecord } from '../src/start-session/types.js';
 import { validSession } from '../src/start-session/validation.js';
 import { startLocalDatabase } from './local-dynamodb.js';
+import { recordingWorkOrder, unfinishedWorkIndex } from '../../../packages/contracts/private/recording-work.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -29,7 +38,6 @@ before(
 );
 after(() => database?.close());
 
-const secret = { ensure: async () => {} };
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
@@ -97,14 +105,19 @@ function newSession(): SessionRecord {
       tags: [{ key: 'opsreplay:session-id', value: id }],
     },
     monitorSecret,
+    monitorCertificate: null,
     launchFailure: null,
     provisioningDeadline: '2026-10-06T02:03:00.000Z',
     launchRecoveryDeadline: '2026-10-06T02:08:00.000Z',
     scheduleName: `session-${id}`,
     taskArn: null,
+    taskAddress: null,
     provisioningCleanup: { status: 'pending', completedAt: null },
   };
 }
+
+const testCertificate = (await createMonitorCertificate(newSession())).certificate;
+const bootstrap = { ensure: async () => testCertificate };
 
 class FakeSchedule implements ProvisioningSchedulePort {
   readonly schedules = new Map<string, string>();
@@ -171,6 +184,15 @@ class FakeEnvironment implements EnvironmentPort {
   }
 }
 
+function taskObservation(record: SessionRecord, taskAddress = '10.0.1.42') {
+  return {
+    sessionId: record.view.id,
+    clusterArn: record.launchArguments.cluster,
+    taskArn,
+    taskAddress,
+  };
+}
+
 async function fixture(record = newSession()) {
   assert.ok(validSession(record), JSON.stringify(validSession.errors));
   const table = `test-${randomUUID()}`;
@@ -219,15 +241,17 @@ test('provisioning creates the expiry schedule before one ECS task and saves its
     store: {
       ...f.store,
       session: f.store.session.bind(f.store),
+      saveMonitorCertificate: f.store.saveMonitorCertificate.bind(f.store),
       saveTask: async (...arguments_) => {
         order.push('save');
         return f.store.saveTask(...arguments_);
       },
       failStartWithoutTask: f.store.failStartWithoutTask.bind(f.store),
     },
-    secret: {
+    bootstrap: {
       ensure: async () => {
-        order.push('secret');
+        order.push('bootstrap');
+        return testCertificate;
       },
     },
     schedule: {
@@ -246,7 +270,7 @@ test('provisioning creates the expiry schedule before one ECS task and saves its
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
   assert.equal((await provision(f.record.view.id)).taskArn, taskArn);
-  assert.deepEqual(order, ['schedule', 'secret', 'launch', 'save']);
+  assert.deepEqual(order, ['schedule', 'bootstrap', 'launch', 'save']);
   assert.equal((await f.store.session(f.record.view.id))?.taskArn, taskArn);
   assert.equal(environment.tasks.size, 1);
 });
@@ -260,7 +284,7 @@ test('provisioning rejects inconsistent stored launch identity before external e
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -277,7 +301,7 @@ test('a lost schedule response is repaired before launch', async () => {
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -296,7 +320,7 @@ test('a lost RunTask response reuses the client token and creates one task', asy
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -314,6 +338,7 @@ test('a lost task-ARN write response does not launch again', async () => {
   const store = {
     session: f.store.session.bind(f.store),
     failStartWithoutTask: f.store.failStartWithoutTask.bind(f.store),
+    saveMonitorCertificate: f.store.saveMonitorCertificate.bind(f.store),
     saveTask: async (...arguments_: Parameters<LifecycleStore['saveTask']>) => {
       const saved = await f.store.saveTask(...arguments_);
       if (loseResponse) {
@@ -326,7 +351,7 @@ test('a lost task-ARN write response does not launch again', async () => {
   const provision = createProvisionSession({
     store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -342,7 +367,7 @@ test('concurrent provisioning calls still create one task', async () => {
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -359,7 +384,7 @@ test('a confirmed capacity rejection fails the session and releases its lock', a
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:00:10.000Z'),
   });
@@ -380,7 +405,7 @@ test('expired provisioning never calls RunTask', async () => {
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date('2026-10-06T02:03:00.000Z'),
   });
@@ -390,7 +415,9 @@ test('expired provisioning never calls RunTask', async () => {
 });
 
 test('expiry discovers an uncertain task, stops it, then releases the lock', async () => {
-  const f = await fixture();
+  const record = newSession();
+  record.monitorCertificate = testCertificate;
+  const f = await fixture(record);
   const environment = new FakeEnvironment();
   await environment.launch(f.record.launchArguments);
   let clock = new Date('2026-10-06T02:03:01.000Z');
@@ -469,7 +496,7 @@ test('the separate recovery callback releases a lock after the timeout retry win
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret: {
+    bootstrap: {
       ensure: async () => {
         throw new Error('Interrupted before RunTask');
       },
@@ -497,7 +524,9 @@ test('the separate recovery callback releases a lock after the timeout retry win
 });
 
 test('a late task is stopped at recovery and the lock is released only after STOPPED', async () => {
-  const f = await fixture();
+  const record = newSession();
+  record.monitorCertificate = testCertificate;
+  const f = await fixture(record);
   const environment = new FakeEnvironment();
   let clock = new Date(f.record.provisioningDeadline);
   const expire = createExpireProvisioning({ store: f.store, environment, now: () => clock });
@@ -512,7 +541,7 @@ test('a late task is stopped at recovery and the lock is released only after STO
   assert.equal(await f.get(keys.active(ownerId)), undefined);
 });
 
-test('secret upload failure prevents launch and a retry uses the same secret file', async () => {
+test('bootstrap upload failure prevents launch and a retry uses the same session input', async () => {
   const f = await fixture();
   const environment = new FakeEnvironment();
   const files: string[] = [];
@@ -520,7 +549,7 @@ test('secret upload failure prevents launch and a retry uses the same secret fil
     store: f.store,
     schedule: new FakeSchedule(),
     environment,
-    secret: {
+    bootstrap: {
       ensure: async (record) => {
         files.push(
           JSON.stringify({
@@ -529,6 +558,7 @@ test('secret upload failure prevents launch and a retry uses the same secret fil
           }),
         );
         if (files.length === 1) throw new Error('Upload response lost');
+        return testCertificate;
       },
     },
     now: () => new Date(f.record.view.createdAt),
@@ -547,9 +577,10 @@ test('setup that crosses the provisioning deadline cannot launch a task', async 
     store: f.store,
     schedule: new FakeSchedule(),
     environment,
-    secret: {
+    bootstrap: {
       ensure: async () => {
         clock = new Date(f.record.provisioningDeadline);
+        return testCertificate;
       },
     },
     now: () => clock,
@@ -616,7 +647,7 @@ test('a crash between schedule writes still leaves a recovery callback and launc
   const provision = createProvisionSession({
     store: f.store,
     schedule,
-    secret,
+    bootstrap,
     environment,
     now: () => new Date(f.record.view.createdAt),
   });
@@ -634,6 +665,7 @@ test('a crash between schedule writes still leaves a recovery callback and launc
 
 test('a known stopping task keeps the fast retry even when discovery omits it', async () => {
   const record = newSession();
+  record.monitorCertificate = testCertificate;
   record.taskArn = taskArn;
   const f = await fixture(record);
   let stopped = false;
@@ -657,4 +689,92 @@ test('a known stopping task keeps the fast retry even when discovery omits it', 
   clock = new Date(clock.getTime() + 60_000);
   assert.equal(await expire(record.view.id), 'cleaned');
   assert.equal(await f.get(keys.active(ownerId)), undefined);
+});
+
+test('a running task publishes one idempotent recordable-work entry', async () => {
+  const record = newSession();
+  record.monitorCertificate = testCertificate;
+  const f = await fixture(record);
+  const publish = createPublishRecordingWork({
+    store: f.store,
+    now: () => new Date('2026-10-06T02:00:10.000Z'),
+  });
+  const results = await Promise.all(Array.from({ length: 8 }, () => publish(taskObservation(record))));
+  assert.deepEqual(
+    results,
+    Array.from({ length: 8 }, () => 'published'),
+  );
+  const saved = await f.store.session(record.view.id);
+  assert.equal(saved?.taskArn, taskArn);
+  assert.equal(saved?.taskAddress, '10.0.1.42');
+  const item = await database.document.send(
+    new GetCommand({ TableName: f.table, Key: keys.session(record.view.id), ConsistentRead: true }),
+  );
+  assert.equal(item.Item?.[unfinishedWorkIndex.partitionKey], unfinishedWorkIndex.recordingPartition);
+  assert.equal(item.Item?.[unfinishedWorkIndex.sortKey], recordingWorkOrder(record.view.createdAt, record.view.id));
+});
+
+test('recordable-work publication rejects changed task identity and ignores expired or terminal sessions', async () => {
+  const record = newSession();
+  record.monitorCertificate = testCertificate;
+  record.taskArn = taskArn;
+  const f = await fixture(record);
+  const publish = createPublishRecordingWork({
+    store: f.store,
+    now: () => new Date('2026-10-06T02:00:10.000Z'),
+  });
+  await assert.rejects(
+    publish({
+      ...taskObservation(record),
+      taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    }),
+    /does not match/,
+  );
+  await publish(taskObservation(record));
+  await assert.rejects(publish(taskObservation(record, '10.0.1.43')), /address changed/);
+
+  const expired = newSession();
+  expired.monitorCertificate = testCertificate;
+  const expiredFixture = await fixture(expired);
+  const publishExpired = createPublishRecordingWork({
+    store: expiredFixture.store,
+    now: () => new Date(expired.provisioningDeadline),
+  });
+  assert.equal(await publishExpired(taskObservation(expired)), 'ignored');
+
+  const terminal = newSession();
+  terminal.view.status = 'error';
+  terminal.view.statusReason = 'start_failed';
+  terminal.view.endedAt = terminal.provisioningDeadline;
+  terminal.monitorCertificate = testCertificate;
+  const terminalFixture = await fixture(terminal);
+  const publishTerminal = createPublishRecordingWork({ store: terminalFixture.store });
+  assert.equal(await publishTerminal(taskObservation(terminal)), 'ignored');
+});
+
+test('recordable-work publication recovers after an uncertain DynamoDB response', async () => {
+  const record = newSession();
+  record.monitorCertificate = testCertificate;
+  const f = await fixture(record);
+  let lost = false;
+  const store = new LifecycleStore(
+    {
+      send: async (command: unknown) => {
+        const output = await database.document.send(command as UpdateCommand);
+        if (command instanceof UpdateCommand && command.input.UpdateExpression?.includes('#workPartition') && !lost) {
+          lost = true;
+          throw new Error('DynamoDB response lost');
+        }
+        return output;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  const publish = createPublishRecordingWork({
+    store,
+    now: () => new Date('2026-10-06T02:00:10.000Z'),
+  });
+  assert.equal(await publish(taskObservation(record)), 'published');
+  assert.equal(lost, true);
+  assert.equal((await f.store.session(record.view.id))?.taskAddress, '10.0.1.42');
 });

@@ -64,8 +64,10 @@ Event sort keys use the event time, a stable source stream ID, and its sequence 
 Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
 sequence numbers inside the task.
 
-An owner index keyed by user and creation time lists sessions and submissions. A sparse
-index holds unfinished lifecycle work, including provisioning and terminal sessions
+An owner index keyed by user and creation time lists sessions and submissions. The
+`unfinished-work` sparse index uses top-level `WorkPK` and `WorkSK` attributes. Recording
+work uses `WorkPK = RECORDING` and
+`WorkSK = <session-created-at>#SESSION#<session-id>`. The index holds unfinished lifecycle work, including provisioning and terminal sessions
 awaiting cleanup, keyed by the next check time. The sweep handles startup deadlines,
 missing schedules, heartbeats, and cleanup, even if the client never retries.
 Indexes are eventually consistent. Coordinating writes use strongly consistent point
@@ -220,8 +222,9 @@ finalisation changes cannot use stale admission data.
   provisioning deadline, and schedule name. The active lock contains its session and
   request IDs. Public responses use explicit nested projections, never the whole item.
 
-The current start increment stores the exact ECS arguments, monitor secret, task ARN,
-provisioning and launch-recovery deadlines, schedule name, cleanup state, and a nullable
+The current start increment stores the exact ECS arguments, monitor secret, public
+monitor certificate, task ARN, private task address, provisioning and launch-recovery
+deadlines, schedule name, cleanup state, and a nullable
 `launchFailure` containing the confirmed rejection kind and normalized reason codes.
 These private fields never reach a public session projection. Launch arguments contain
 an S3 environment-file ARN, not the secret value. The key is bound to the session ID.
@@ -230,5 +233,6 @@ exist before `RunTask`. A confirmed launch error is replayed from `launchFailure
 These fields revise an undeployed record format. Old local test records must be rebuilt.
 Provisioning timeout cleanup releases the active
 lock only after a saved task is stopped or the bounded launch-recovery period passes with
-no active task. Readiness, lifecycle indexes, and the reconciliation sweep remain to be
-implemented before the API is enabled.
+no active task. The recording-work attributes are written locally, but their global
+secondary index is not deployed yet. Readiness and the reconciliation sweep remain to
+be implemented before the API is enabled.
