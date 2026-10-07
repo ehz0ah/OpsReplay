@@ -42,9 +42,19 @@ export interface MonitorSealResult {
   final: MonitorMetricFrame;
 }
 
-export type MonitorClientErrorCode = 'invalid_config' | 'closed' | 'cancelled'
-  | 'request_timeout' | 'tls_failed' | 'transport_failed' | 'invalid_request' | 'invalid_response'
-  | 'auth_failed' | 'invalid_state' | 'rate_limited' | 'unavailable';
+export type MonitorClientErrorCode =
+  | 'invalid_config'
+  | 'closed'
+  | 'cancelled'
+  | 'request_timeout'
+  | 'tls_failed'
+  | 'transport_failed'
+  | 'invalid_request'
+  | 'invalid_response'
+  | 'auth_failed'
+  | 'invalid_state'
+  | 'rate_limited'
+  | 'unavailable';
 
 const errorMessages: Record<MonitorClientErrorCode, string> = {
   invalid_config: 'Monitor client configuration is invalid.',
@@ -76,7 +86,10 @@ export interface MonitorClientOptions {
   requestTimeoutMs?: number;
 }
 
-interface ResponseValue { status: number; value: unknown }
+interface ResponseValue {
+  status: number;
+  value: unknown;
+}
 
 const responseBytes = 65_536;
 const maximumCursor = 999_999;
@@ -108,8 +121,7 @@ const remoteErrors = {
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
-const validGatewayMessage = ajv.addSchema(publicSchema)
-  .getSchema(`${publicSchema.$id}#/$defs/GatewayServerMessage`)!;
+const validGatewayMessage = ajv.addSchema(publicSchema).getSchema(`${publicSchema.$id}#/$defs/GatewayServerMessage`)!;
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -138,8 +150,11 @@ function metric(value: unknown): value is MonitorMetricFrame {
 }
 
 function health(value: unknown): value is { status: MonitorHealth } {
-  return record(value) && exact(value, ['status'])
-    && (value.status === 'starting' || value.status === 'ready' || value.status === 'failed');
+  return (
+    record(value) &&
+    exact(value, ['status']) &&
+    (value.status === 'starting' || value.status === 'ready' || value.status === 'failed')
+  );
 }
 
 function started(value: unknown): value is { startedAt: string } {
@@ -147,23 +162,40 @@ function started(value: unknown): value is { startedAt: string } {
 }
 
 function frame(value: unknown): value is MonitorFrame {
-  return record(value) && exact(value, ['source', 'sequence', 'recordedAt', 'payload'])
-    && typeof value.source === 'string' && sourcePattern.test(value.source)
-    && Number.isInteger(value.sequence) && (value.sequence as number) >= 1
-    && (value.sequence as number) <= maximumCursor && timestamp(value.recordedAt)
-    && publicPayload(value.payload);
+  return (
+    record(value) &&
+    exact(value, ['source', 'sequence', 'recordedAt', 'payload']) &&
+    typeof value.source === 'string' &&
+    sourcePattern.test(value.source) &&
+    Number.isInteger(value.sequence) &&
+    (value.sequence as number) >= 1 &&
+    (value.sequence as number) <= maximumCursor &&
+    timestamp(value.recordedAt) &&
+    publicPayload(value.payload)
+  );
 }
 
 function page(value: unknown, after: number, expectedSource?: string): value is MonitorFramePage {
-  if (!record(value) || !exact(value, ['frames', 'nextSequence', 'sealed'])
-    || !Array.isArray(value.frames) || value.frames.length > 100
-    || !Number.isInteger(value.nextSequence) || (value.nextSequence as number) < after
-    || (value.nextSequence as number) > maximumCursor || typeof value.sealed !== 'boolean') return false;
+  if (
+    !record(value) ||
+    !exact(value, ['frames', 'nextSequence', 'sealed']) ||
+    !Array.isArray(value.frames) ||
+    value.frames.length > 100 ||
+    !Number.isInteger(value.nextSequence) ||
+    (value.nextSequence as number) < after ||
+    (value.nextSequence as number) > maximumCursor ||
+    typeof value.sealed !== 'boolean'
+  )
+    return false;
   let sequence = after;
   let source = expectedSource;
   for (const valueFrame of value.frames) {
-    if (!frame(valueFrame) || valueFrame.sequence !== sequence + 1
-      || (source !== undefined && valueFrame.source !== source)) return false;
+    if (
+      !frame(valueFrame) ||
+      valueFrame.sequence !== sequence + 1 ||
+      (source !== undefined && valueFrame.source !== source)
+    )
+      return false;
     source ??= valueFrame.source;
     sequence = valueFrame.sequence;
   }
@@ -171,14 +203,19 @@ function page(value: unknown, after: number, expectedSource?: string): value is 
 }
 
 function sealed(value: unknown, cutoffAt: string): value is MonitorSealResult {
-  return record(value) && exact(value, ['cutoffAt', 'final'])
-    && value.cutoffAt === cutoffAt && metric(value.final);
+  return record(value) && exact(value, ['cutoffAt', 'final']) && value.cutoffAt === cutoffAt && metric(value.final);
 }
 
 function remoteError(status: number, value: unknown): MonitorClientError {
-  if (!record(value) || !exact(value, ['code', 'message'])
-    || typeof value.code !== 'string' || typeof value.message !== 'string'
-    || value.message.length === 0 || value.message.length > 1_000) return new MonitorClientError('invalid_response');
+  if (
+    !record(value) ||
+    !exact(value, ['code', 'message']) ||
+    typeof value.code !== 'string' ||
+    typeof value.message !== 'string' ||
+    value.message.length === 0 ||
+    value.message.length > 1_000
+  )
+    return new MonitorClientError('invalid_response');
   const detail = remoteErrors[value.code as keyof typeof remoteErrors];
   if (!detail || detail.status !== status) return new MonitorClientError('invalid_response');
   return new MonitorClientError(detail.code);
@@ -206,11 +243,14 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
     const contentType = response.headers['content-type'];
     if (typeof contentType !== 'string') throw new MonitorClientError('invalid_response');
     let mediaType: MIMEType;
-    try { mediaType = new MIMEType(contentType); }
-    catch { throw new MonitorClientError('invalid_response'); }
+    try {
+      mediaType = new MIMEType(contentType);
+    } catch {
+      throw new MonitorClientError('invalid_response');
+    }
     const charset = mediaType.params.get('charset');
-    if (mediaType.essence !== 'application/json'
-      || (charset !== null && charset.toLowerCase() !== 'utf-8')) throw new MonitorClientError('invalid_response');
+    if (mediaType.essence !== 'application/json' || (charset !== null && charset.toLowerCase() !== 'utf-8'))
+      throw new MonitorClientError('invalid_response');
     const length = response.headers['content-length'];
     if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > responseBytes)) {
       throw new MonitorClientError('invalid_response');
@@ -224,8 +264,11 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
       chunks.push(chunk);
     }
     if (bytes === 0) throw new MonitorClientError('invalid_response');
-    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown; }
-    catch { throw new MonitorClientError('invalid_response'); }
+    try {
+      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    } catch {
+      throw new MonitorClientError('invalid_response');
+    }
   } catch (error) {
     response.destroy();
     throw error;
@@ -245,15 +288,26 @@ export class MonitorClient {
     const port = options.port ?? 9443;
     const requestTimeoutMs = options.requestTimeoutMs ?? defaultRequestTimeoutMs;
     const certificate = Buffer.from(options.certificate);
-    if (isIP(options.host) === 0 || !Number.isInteger(port) || port < 1 || port > 65_535
-      || !secretPattern.test(options.secret) || !Number.isInteger(requestTimeoutMs)
-      || requestTimeoutMs < 100 || requestTimeoutMs > maximumRequestTimeoutMs
-      || certificate.byteLength === 0 || certificate.byteLength > 32_768) {
+    if (
+      isIP(options.host) === 0 ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65_535 ||
+      !secretPattern.test(options.secret) ||
+      !Number.isInteger(requestTimeoutMs) ||
+      requestTimeoutMs < 100 ||
+      requestTimeoutMs > maximumRequestTimeoutMs ||
+      certificate.byteLength === 0 ||
+      certificate.byteLength > 32_768
+    ) {
       throw new MonitorClientError('invalid_config');
     }
     let expected: Buffer;
-    try { expected = new X509Certificate(certificate).raw; }
-    catch { throw new MonitorClientError('invalid_config'); }
+    try {
+      expected = new X509Certificate(certificate).raw;
+    } catch {
+      throw new MonitorClientError('invalid_config');
+    }
     this.host = options.host;
     this.port = port;
     this.secret = options.secret;
@@ -266,8 +320,8 @@ export class MonitorClient {
       minVersion: 'TLSv1.3',
       rejectUnauthorized: true,
       checkServerIdentity: (_hostname: string, peer: PeerCertificate) => {
-        if (!peer.raw || peer.raw.byteLength !== expected.byteLength
-          || !timingSafeEqual(peer.raw, expected)) return pinError();
+        if (!peer.raw || peer.raw.byteLength !== expected.byteLength || !timingSafeEqual(peer.raw, expected))
+          return pinError();
         return undefined;
       },
     });
@@ -275,8 +329,11 @@ export class MonitorClient {
 
   async health(signal?: AbortSignal): Promise<MonitorHealth> {
     const response = await this.call('/healthz', 'GET', undefined, signal);
-    if ((response.status !== 200 && response.status !== 503) || !health(response.value)
-      || (response.status === 200) !== (response.value.status === 'ready')) {
+    if (
+      (response.status !== 200 && response.status !== 503) ||
+      !health(response.value) ||
+      (response.status === 200) !== (response.value.status === 'ready')
+    ) {
       if (response.status !== 200 && response.status !== 503) throw remoteError(response.status, response.value);
       throw new MonitorClientError('invalid_response');
     }
@@ -291,8 +348,12 @@ export class MonitorClient {
   }
 
   async read(after: number, expectedSource?: string, signal?: AbortSignal): Promise<MonitorFramePage> {
-    if (!Number.isInteger(after) || after < 0 || after > maximumCursor
-      || (expectedSource !== undefined && !sourcePattern.test(expectedSource))) {
+    if (
+      !Number.isInteger(after) ||
+      after < 0 ||
+      after > maximumCursor ||
+      (expectedSource !== undefined && !sourcePattern.test(expectedSource))
+    ) {
       throw new MonitorClientError('invalid_config');
     }
     const response = await this.call(`/v1/frames?after=${after}`, 'GET', undefined, signal);
@@ -317,14 +378,19 @@ export class MonitorClient {
     this.agent.destroy();
   }
 
-  private async call(path: string, method: 'GET' | 'POST', body: Buffer | undefined,
-    signal?: AbortSignal): Promise<ResponseValue> {
+  private async call(
+    path: string,
+    method: 'GET' | 'POST',
+    body: Buffer | undefined,
+    signal?: AbortSignal,
+  ): Promise<ResponseValue> {
     if (this.closed) throw new MonitorClientError('closed');
     if (signal?.aborted) throw new MonitorClientError('cancelled');
     let failure: MonitorClientError | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
-      try { return await this.attempt(path, method, body, signal); }
-      catch (error) {
+      try {
+        return await this.attempt(path, method, body, signal);
+      } catch (error) {
         failure = mapError(error, signal);
         if (this.closed) throw new MonitorClientError('closed');
         if (attempt === 1 || !retryable.has(failure.code) || signal?.aborted) throw failure;
@@ -333,8 +399,12 @@ export class MonitorClient {
     throw failure ?? new MonitorClientError('transport_failed');
   }
 
-  private attempt(path: string, method: 'GET' | 'POST', body: Buffer | undefined,
-    signal?: AbortSignal): Promise<ResponseValue> {
+  private attempt(
+    path: string,
+    method: 'GET' | 'POST',
+    body: Buffer | undefined,
+    signal?: AbortSignal,
+  ): Promise<ResponseValue> {
     return new Promise((resolve, reject) => {
       let finished = false;
       const controller = new AbortController();
@@ -370,19 +440,25 @@ export class MonitorClient {
         signal: controller.signal,
         headers: {
           Authorization: `Bearer ${this.secret}`,
-          ...(body === undefined ? {} : {
-            'Content-Type': 'application/json',
-            'Content-Length': String(body.byteLength),
-          }),
+          ...(body === undefined
+            ? {}
+            : {
+                'Content-Type': 'application/json',
+                'Content-Length': String(body.byteLength),
+              }),
         },
       };
       let outgoing;
       try {
-        outgoing = request(options, response => {
-          void readResponse(response).then(value => finish(undefined, {
-            status: response.statusCode ?? 0,
-            value,
-          }), finish);
+        outgoing = request(options, (response) => {
+          void readResponse(response).then(
+            (value) =>
+              finish(undefined, {
+                status: response.statusCode ?? 0,
+                value,
+              }),
+            finish,
+          );
         });
       } catch (error) {
         finish(error);

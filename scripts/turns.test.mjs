@@ -62,7 +62,10 @@ test('successful completion is immutable and request hashing survives interrupti
 });
 
 test('failed turns and sessions that ended cannot leave runnable proposals', () => {
-  for (const [result, allowed] of [[{ ...completed, status: 'failed' }, true], [completed, false]]) {
+  for (const [result, allowed] of [
+    [{ ...completed, status: 'failed' }, true],
+    [completed, false],
+  ]) {
     const state = conversation();
     admitTurn(state, first, 0);
     assert.equal(finishTurn(state, 'one', 'worker-one', result, 1000, allowed), true);

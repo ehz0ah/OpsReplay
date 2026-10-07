@@ -46,11 +46,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "learn",
-                "challenge",
-                "code_review"
-              ]
+              "enum": ["learn", "challenge", "code_review"]
             }
           },
           {
@@ -58,11 +54,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "easy",
-                "medium",
-                "hard"
-              ]
+              "enum": ["easy", "medium", "hard"]
             }
           },
           {
@@ -88,10 +80,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "free",
-                "pro"
-              ]
+              "enum": ["free", "pro"]
             }
           }
         ],
@@ -1126,34 +1115,19 @@
             "maximum": 3600
           }
         },
-        "required": [
-          "code",
-          "message",
-          "requestId"
-        ]
+        "required": ["code", "message", "requestId"]
       },
       "Plan": {
         "type": "string",
-        "enum": [
-          "free",
-          "pro"
-        ]
+        "enum": ["free", "pro"]
       },
       "Tier": {
         "type": "string",
-        "enum": [
-          "easy",
-          "medium",
-          "hard"
-        ]
+        "enum": ["easy", "medium", "hard"]
       },
       "Mode": {
         "type": "string",
-        "enum": [
-          "learn",
-          "challenge",
-          "code_review"
-        ]
+        "enum": ["learn", "challenge", "code_review"]
       },
       "Source": {
         "type": "object",
@@ -1170,10 +1144,7 @@
             "maxLength": 2000
           }
         },
-        "required": [
-          "title",
-          "url"
-        ]
+        "required": ["title", "url"]
       },
       "CatalogEntry": {
         "type": "object",
@@ -1221,31 +1192,18 @@
             "maxLength": 80
           }
         },
-        "required": [
-          "id",
-          "version",
-          "mode",
-          "title",
-          "summary",
-          "category",
-          "plan"
-        ],
+        "required": ["id", "version", "mode", "title", "summary", "category", "plan"],
         "allOf": [
           {
             "if": {
               "properties": {
                 "mode": {
-                  "enum": [
-                    "challenge",
-                    "code_review"
-                  ]
+                  "enum": ["challenge", "code_review"]
                 }
               }
             },
             "then": {
-              "required": [
-                "tier"
-              ],
+              "required": ["tier"],
               "properties": {
                 "tier": {
                   "$ref": "#/components/schemas/Tier"
@@ -1262,9 +1220,7 @@
               }
             },
             "then": {
-              "required": [
-                "language"
-              ],
+              "required": ["language"],
               "properties": {
                 "language": {
                   "type": "string",
@@ -1278,18 +1234,13 @@
             "if": {
               "properties": {
                 "mode": {
-                  "enum": [
-                    "learn",
-                    "challenge"
-                  ]
+                  "enum": ["learn", "challenge"]
                 }
               }
             },
             "then": {
               "not": {
-                "required": [
-                  "language"
-                ]
+                "required": ["language"]
               }
             }
           }
@@ -1339,13 +1290,7 @@
             "maxItems": 2
           }
         },
-        "required": [
-          "modes",
-          "tiers",
-          "categories",
-          "languages",
-          "plans"
-        ]
+        "required": ["modes", "tiers", "categories", "languages", "plans"]
       },
       "Catalog": {
         "type": "object",
@@ -1359,10 +1304,7 @@
             "maxItems": 100
           },
           "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "minLength": 1,
             "maxLength": 1000
           },
@@ -1370,11 +1312,7 @@
             "$ref": "#/components/schemas/CatalogFilters"
           }
         },
-        "required": [
-          "items",
-          "nextCursor",
-          "availableFilters"
-        ]
+        "required": ["items", "nextCursor", "availableFilters"]
       },
       "RelatedExercise": {
         "type": "object",
@@ -1382,10 +1320,7 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "challenge",
-              "code_review"
-            ]
+            "enum": ["challenge", "code_review"]
           },
           "id": {
             "type": "string",
@@ -1399,11 +1334,7 @@
             "maxLength": 200
           }
         },
-        "required": [
-          "mode",
-          "id",
-          "title"
-        ]
+        "required": ["mode", "id", "title"]
       },
       "LearnEntry": {
         "type": "object",
@@ -1492,33 +1423,18 @@
           },
           "planSource": {
             "type": "string",
-            "enum": [
-              "default",
-              "grant",
-              "institution"
-            ]
+            "enum": ["default", "grant", "institution"]
           },
           "planExpiresAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "activeSessionId": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "uuid"
           }
         },
-        "required": [
-          "plan",
-          "planSource",
-          "planExpiresAt",
-          "activeSessionId"
-        ]
+        "required": ["plan", "planSource", "planExpiresAt", "activeSessionId"]
       },
       "StartSessionRequest": {
         "type": "object",
@@ -1541,11 +1457,7 @@
             "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
           }
         },
-        "required": [
-          "requestId",
-          "challengeId",
-          "challengeVersion"
-        ]
+        "required": ["requestId", "challengeId", "challengeVersion"]
       },
       "MutationRequest": {
         "type": "object",
@@ -1556,9 +1468,7 @@
             "format": "uuid"
           }
         },
-        "required": [
-          "requestId"
-        ]
+        "required": ["requestId"]
       },
       "ChallengeRef": {
         "type": "object",
@@ -1590,13 +1500,7 @@
             "maxLength": 80
           }
         },
-        "required": [
-          "id",
-          "version",
-          "title",
-          "tier",
-          "category"
-        ]
+        "required": ["id", "version", "title", "tier", "category"]
       },
       "Attempt": {
         "type": "object",
@@ -1604,10 +1508,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "first",
-              "retry"
-            ]
+            "enum": ["first", "retry"]
           },
           "number": {
             "type": "integer",
@@ -1615,22 +1516,11 @@
             "maximum": 1000
           }
         },
-        "required": [
-          "kind",
-          "number"
-        ]
+        "required": ["kind", "number"]
       },
       "SessionStatus": {
         "type": "string",
-        "enum": [
-          "provisioning",
-          "ready",
-          "resolved",
-          "failed",
-          "ended",
-          "abandoned",
-          "error"
-        ]
+        "enum": ["provisioning", "ready", "resolved", "failed", "ended", "abandoned", "error"]
       },
       "StatusReason": {
         "enum": [
@@ -1659,17 +1549,10 @@
           },
           "severity": {
             "type": "string",
-            "enum": [
-              "warning",
-              "critical"
-            ]
+            "enum": ["warning", "critical"]
           }
         },
-        "required": [
-          "title",
-          "summary",
-          "severity"
-        ]
+        "required": ["title", "summary", "severity"]
       },
       "MetricDescriptor": {
         "type": "object",
@@ -1688,19 +1571,10 @@
           },
           "unit": {
             "type": "string",
-            "enum": [
-              "requests_per_second",
-              "percent",
-              "milliseconds",
-              "mebibytes"
-            ]
+            "enum": ["requests_per_second", "percent", "milliseconds", "mebibytes"]
           }
         },
-        "required": [
-          "id",
-          "label",
-          "unit"
-        ]
+        "required": ["id", "label", "unit"]
       },
       "RecoveryState": {
         "type": "object",
@@ -1708,11 +1582,7 @@
         "properties": {
           "state": {
             "type": "string",
-            "enum": [
-              "failing",
-              "sustaining",
-              "met"
-            ]
+            "enum": ["failing", "sustaining", "met"]
           },
           "sustainedSeconds": {
             "type": "integer",
@@ -1725,11 +1595,7 @@
             "maximum": 600
           }
         },
-        "required": [
-          "state",
-          "sustainedSeconds",
-          "requiredSeconds"
-        ]
+        "required": ["state", "sustainedSeconds", "requiredSeconds"]
       },
       "Hint": {
         "type": "object",
@@ -1750,11 +1616,7 @@
             "format": "date-time"
           }
         },
-        "required": [
-          "id",
-          "text",
-          "releasedAt"
-        ]
+        "required": ["id", "text", "releasedAt"]
       },
       "Assistance": {
         "type": "object",
@@ -1776,11 +1638,7 @@
             "maximum": 500
           }
         },
-        "required": [
-          "hintsReleased",
-          "assistantTurns",
-          "proposalsRun"
-        ]
+        "required": ["hintsReleased", "assistantTurns", "proposalsRun"]
       },
       "SessionView": {
         "type": "object",
@@ -1833,24 +1691,15 @@
             "format": "date-time"
           },
           "readyAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "endsAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "endedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "hints": {
@@ -1870,18 +1719,11 @@
                 "maximum": 20
               },
               "nextAvailableAt": {
-                "type": [
-                  "string",
-                  "null"
-                ],
+                "type": ["string", "null"],
                 "format": "date-time"
               }
             },
-            "required": [
-              "released",
-              "remaining",
-              "nextAvailableAt"
-            ]
+            "required": ["released", "remaining", "nextAvailableAt"]
           },
           "assistance": {
             "$ref": "#/components/schemas/Assistance"
@@ -1924,10 +1766,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "session",
-          "replayed"
-        ]
+        "required": ["session", "replayed"]
       },
       "SessionSummary": {
         "type": "object",
@@ -1951,21 +1790,11 @@
             "format": "date-time"
           },
           "endedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           }
         },
-        "required": [
-          "id",
-          "challenge",
-          "attempt",
-          "status",
-          "createdAt",
-          "endedAt"
-        ]
+        "required": ["id", "challenge", "attempt", "status", "createdAt", "endedAt"]
       },
       "SessionPage": {
         "type": "object",
@@ -1979,18 +1808,12 @@
             "maxItems": 100
           },
           "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "minLength": 1,
             "maxLength": 1000
           }
         },
-        "required": [
-          "items",
-          "nextCursor"
-        ]
+        "required": ["items", "nextCursor"]
       },
       "TerminalTicket": {
         "type": "object",
@@ -2017,12 +1840,7 @@
             "format": "date-time"
           }
         },
-        "required": [
-          "sessionId",
-          "ticket",
-          "url",
-          "expiresAt"
-        ]
+        "required": ["sessionId", "ticket", "url", "expiresAt"]
       },
       "MetricSample": {
         "type": "object",
@@ -2046,10 +1864,7 @@
             "maxProperties": 12
           }
         },
-        "required": [
-          "at",
-          "values"
-        ]
+        "required": ["at", "values"]
       },
       "Counters": {
         "type": "object",
@@ -2066,10 +1881,7 @@
             "maximum": 100000000
           }
         },
-        "required": [
-          "totalRequests",
-          "failedRequests"
-        ]
+        "required": ["totalRequests", "failedRequests"]
       },
       "TimelineEvent": {
         "oneOf": [
@@ -2095,10 +1907,7 @@
                 "maximum": 5000
               },
               "endedAt": {
-                "type": [
-                  "string",
-                  "null"
-                ],
+                "type": ["string", "null"],
                 "format": "date-time"
               },
               "command": {
@@ -2107,19 +1916,13 @@
                 "maxLength": 4000
               },
               "exitStatus": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "minimum": 0,
                 "maximum": 255
               },
               "source": {
                 "type": "string",
-                "enum": [
-                  "learner",
-                  "assistant"
-                ]
+                "enum": ["learner", "assistant"]
               },
               "proposalId": {
                 "type": "string",
@@ -2187,13 +1990,7 @@
               },
               "signal": {
                 "type": "string",
-                "enum": [
-                  "recovery_sustaining",
-                  "recovery_lost",
-                  "recovered",
-                  "outage_started",
-                  "outage_ended"
-                ]
+                "enum": ["recovery_sustaining", "recovery_lost", "recovered", "outage_started", "outage_ended"]
               },
               "label": {
                 "type": "string",
@@ -2201,13 +1998,7 @@
                 "maxLength": 200
               }
             },
-            "required": [
-              "id",
-              "at",
-              "kind",
-              "signal",
-              "label"
-            ]
+            "required": ["id", "at", "kind", "signal", "label"]
           },
           {
             "type": "object",
@@ -2227,12 +2018,7 @@
               },
               "action": {
                 "type": "string",
-                "enum": [
-                  "hint_released",
-                  "assistant_turn",
-                  "proposal_created",
-                  "proposal_run"
-                ]
+                "enum": ["hint_released", "assistant_turn", "proposal_created", "proposal_run"]
               },
               "refId": {
                 "type": "string",
@@ -2240,13 +2026,7 @@
                 "maxLength": 100
               }
             },
-            "required": [
-              "id",
-              "at",
-              "kind",
-              "action",
-              "refId"
-            ]
+            "required": ["id", "at", "kind", "action", "refId"]
           },
           {
             "type": "object",
@@ -2271,13 +2051,7 @@
                 "$ref": "#/components/schemas/StatusReason"
               }
             },
-            "required": [
-              "id",
-              "at",
-              "kind",
-              "status",
-              "reason"
-            ]
+            "required": ["id", "at", "kind", "status", "reason"]
           }
         ]
       },
@@ -2293,28 +2067,19 @@
             "maxItems": 100
           },
           "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "minLength": 1,
             "maxLength": 1000
           }
         },
-        "required": [
-          "items",
-          "nextCursor"
-        ]
+        "required": ["items", "nextCursor"]
       },
       "ScoreComponents": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "timeToRecoverySeconds": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "minimum": 0,
             "maximum": 14400
           },
@@ -2369,13 +2134,7 @@
           },
           "outcome": {
             "type": "string",
-            "enum": [
-              "resolved",
-              "failed",
-              "ended",
-              "abandoned",
-              "error"
-            ]
+            "enum": ["resolved", "failed", "ended", "abandoned", "error"]
           },
           "rootCause": {
             "type": "string",
@@ -2410,28 +2169,16 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "observed",
-                    "attempted",
-                    "not_observed"
-                  ],
+                  "enum": ["observed", "attempted", "not_observed"],
                   "description": "Observed means matching saved output, not proof of understanding. Not observed means no matching record, not proof the learner missed it."
                 },
                 "commandSeq": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
+                  "type": ["integer", "null"],
                   "minimum": 1,
                   "maximum": 5000
                 }
               },
-              "required": [
-                "id",
-                "description",
-                "status",
-                "commandSeq"
-              ],
+              "required": ["id", "description", "status", "commandSeq"],
               "allOf": [
                 {
                   "if": {
@@ -2486,12 +2233,7 @@
                   "format": "date-time"
                 }
               },
-              "required": [
-                "id",
-                "description",
-                "commandSeq",
-                "outageStartedAt"
-              ]
+              "required": ["id", "description", "commandSeq", "outageStartedAt"]
             },
             "maxItems": 50,
             "description": "Command-pattern and timing associations. These do not establish the cause of an outage."
@@ -2512,18 +2254,11 @@
                   "format": "date-time"
                 },
                 "endedAt": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
+                  "type": ["string", "null"],
                   "format": "date-time"
                 }
               },
-              "required": [
-                "label",
-                "startedAt",
-                "endedAt"
-              ]
+              "required": ["label", "startedAt", "endedAt"]
             },
             "maxItems": 50
           },
@@ -2588,10 +2323,7 @@
                 "type": "object",
                 "properties": {
                   "status": {
-                    "enum": [
-                      "complete",
-                      "incomplete"
-                    ]
+                    "enum": ["complete", "incomplete"]
                   }
                 }
               }
@@ -2645,11 +2377,7 @@
             "format": "date-time"
           }
         },
-        "required": [
-          "url",
-          "startedAt",
-          "endedAt"
-        ]
+        "required": ["url", "startedAt", "endedAt"]
       },
       "Playback": {
         "type": "object",
@@ -2707,13 +2435,7 @@
                   "format": "date-time"
                 }
               },
-              "required": [
-                "commandSeq",
-                "url",
-                "baselineAt",
-                "startedAt",
-                "completedAt"
-              ]
+              "required": ["commandSeq", "url", "baselineAt", "startedAt", "completedAt"]
             },
             "maxItems": 5000
           },
@@ -2725,22 +2447,14 @@
               "properties": {
                 "kind": {
                   "type": "string",
-                  "enum": [
-                    "key_evidence",
-                    "possible_harmful_action",
-                    "outage",
-                    "recovery"
-                  ]
+                  "enum": ["key_evidence", "possible_harmful_action", "outage", "recovery"]
                 },
                 "at": {
                   "type": "string",
                   "format": "date-time"
                 },
                 "commandSeq": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
+                  "type": ["integer", "null"],
                   "minimum": 1,
                   "maximum": 5000
                 },
@@ -2750,12 +2464,7 @@
                   "maxLength": 200
                 }
               },
-              "required": [
-                "kind",
-                "at",
-                "commandSeq",
-                "label"
-              ]
+              "required": ["kind", "at", "commandSeq", "label"]
             },
             "maxItems": 200
           },
@@ -2763,15 +2472,7 @@
             "$ref": "#/components/schemas/RecordingState"
           }
         },
-        "required": [
-          "sessionId",
-          "expiresAt",
-          "terminal",
-          "metrics",
-          "captures",
-          "highlights",
-          "recording"
-        ],
+        "required": ["sessionId", "expiresAt", "terminal", "metrics", "captures", "highlights", "recording"],
         "allOf": [
           {
             "properties": {
@@ -2779,10 +2480,7 @@
                 "type": "object",
                 "properties": {
                   "status": {
-                    "enum": [
-                      "complete",
-                      "incomplete"
-                    ]
+                    "enum": ["complete", "incomplete"]
                   }
                 }
               }
@@ -2806,11 +2504,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "hint",
-          "remaining",
-          "replayed"
-        ]
+        "required": ["hint", "remaining", "replayed"]
       },
       "MessageRequest": {
         "type": "object",
@@ -2826,21 +2520,12 @@
             "maxLength": 4000
           }
         },
-        "required": [
-          "requestId",
-          "text"
-        ]
+        "required": ["requestId", "text"]
       },
       "ProposalStatus": {
         "type": "string",
         "description": "Accepted means terminal input acceptance, not successful command execution. Unknown delivery must not be resent automatically.",
-        "enum": [
-          "pending",
-          "dispatching",
-          "accepted",
-          "unknown",
-          "expired"
-        ]
+        "enum": ["pending", "dispatching", "accepted", "unknown", "expired"]
       },
       "Proposal": {
         "type": "object",
@@ -2871,14 +2556,7 @@
             "format": "date-time"
           }
         },
-        "required": [
-          "id",
-          "command",
-          "rationale",
-          "caution",
-          "status",
-          "expiresAt"
-        ]
+        "required": ["id", "command", "rationale", "caution", "status", "expiresAt"]
       },
       "Turn": {
         "type": "object",
@@ -2890,12 +2568,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "running",
-              "completed",
-              "failed",
-              "interrupted"
-            ]
+            "enum": ["running", "completed", "failed", "interrupted"]
           },
           "text": {
             "type": "string",
@@ -2915,23 +2588,13 @@
             "description": "Fixed worker deadline. Retries never extend it."
           }
         },
-        "required": [
-          "id",
-          "status",
-          "text",
-          "proposals",
-          "expiresAt"
-        ],
+        "required": ["id", "status", "text", "proposals", "expiresAt"],
         "allOf": [
           {
             "if": {
               "properties": {
                 "status": {
-                  "enum": [
-                    "running",
-                    "failed",
-                    "interrupted"
-                  ]
+                  "enum": ["running", "failed", "interrupted"]
                 }
               }
             },
@@ -2973,17 +2636,10 @@
                     "format": "uuid"
                   }
                 },
-                "required": [
-                  "requestId"
-                ]
+                "required": ["requestId"]
               }
             },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "data"
-            ]
+            "required": ["type", "turnId", "sequence", "data"]
           },
           {
             "type": "object",
@@ -3011,17 +2667,10 @@
                     "maxLength": 4000
                   }
                 },
-                "required": [
-                  "text"
-                ]
+                "required": ["text"]
               }
             },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "data"
-            ]
+            "required": ["type", "turnId", "sequence", "data"]
           },
           {
             "type": "object",
@@ -3043,12 +2692,7 @@
                 "$ref": "#/components/schemas/Proposal"
               }
             },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "data"
-            ]
+            "required": ["type", "turnId", "sequence", "data"]
           },
           {
             "type": "object",
@@ -3070,12 +2714,7 @@
                 "$ref": "#/components/schemas/Turn"
               }
             },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "data"
-            ]
+            "required": ["type", "turnId", "sequence", "data"]
           },
           {
             "type": "object",
@@ -3097,12 +2736,7 @@
                 "$ref": "#/components/schemas/Error"
               }
             },
-            "required": [
-              "type",
-              "turnId",
-              "sequence",
-              "data"
-            ]
+            "required": ["type", "turnId", "sequence", "data"]
           }
         ]
       },
@@ -3112,25 +2746,15 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "context",
-              "added",
-              "removed"
-            ]
+            "enum": ["context", "added", "removed"]
           },
           "oldLine": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "minimum": 1,
             "maximum": 100000
           },
           "newLine": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "minimum": 1,
             "maximum": 100000
           },
@@ -3140,12 +2764,7 @@
             "maxLength": 2000
           }
         },
-        "required": [
-          "kind",
-          "oldLine",
-          "newLine",
-          "text"
-        ]
+        "required": ["kind", "oldLine", "newLine", "text"]
       },
       "DiffFile": {
         "type": "object",
@@ -3165,10 +2784,7 @@
             "minItems": 1
           }
         },
-        "required": [
-          "path",
-          "lines"
-        ]
+        "required": ["path", "lines"]
       },
       "ReviewExercise": {
         "type": "object",
@@ -3221,17 +2837,7 @@
             "minItems": 1
           }
         },
-        "required": [
-          "id",
-          "version",
-          "title",
-          "tier",
-          "category",
-          "plan",
-          "language",
-          "context",
-          "files"
-        ]
+        "required": ["id", "version", "title", "tier", "category", "plan", "language", "context", "files"]
       },
       "Flag": {
         "type": "object",
@@ -3244,10 +2850,7 @@
           },
           "side": {
             "type": "string",
-            "enum": [
-              "old",
-              "new"
-            ]
+            "enum": ["old", "new"]
           },
           "line": {
             "type": "integer",
@@ -3260,12 +2863,7 @@
             "maxLength": 2000
           }
         },
-        "required": [
-          "file",
-          "side",
-          "line",
-          "concern"
-        ]
+        "required": ["file", "side", "line", "concern"]
       },
       "ReviewSubmitRequest": {
         "type": "object",
@@ -3289,11 +2887,7 @@
             "maxItems": 50
           }
         },
-        "required": [
-          "requestId",
-          "exerciseVersion",
-          "flags"
-        ]
+        "required": ["requestId", "exerciseVersion", "flags"]
       },
       "ReviewFinding": {
         "type": "object",
@@ -3321,10 +2915,7 @@
           },
           "side": {
             "type": "string",
-            "enum": [
-              "old",
-              "new"
-            ]
+            "enum": ["old", "new"]
           },
           "startLine": {
             "type": "integer",
@@ -3349,17 +2940,7 @@
             "maxItems": 50
           }
         },
-        "required": [
-          "id",
-          "title",
-          "explanation",
-          "file",
-          "side",
-          "startLine",
-          "endLine",
-          "found",
-          "matchedFlags"
-        ]
+        "required": ["id", "title", "explanation", "file", "side", "startLine", "endLine", "found", "matchedFlags"]
       },
       "ReviewSubmission": {
         "type": "object",
@@ -3430,10 +3011,7 @@
                 "maximum": 50
               }
             },
-            "required": [
-              "found",
-              "missed"
-            ]
+            "required": ["found", "missed"]
           }
         },
         "required": [
@@ -3487,15 +3065,7 @@
             "maximum": 50
           }
         },
-        "required": [
-          "id",
-          "exerciseId",
-          "exerciseVersion",
-          "submittedAt",
-          "answerInformed",
-          "found",
-          "missed"
-        ]
+        "required": ["id", "exerciseId", "exerciseVersion", "submittedAt", "answerInformed", "found", "missed"]
       },
       "ReviewSubmissionPage": {
         "type": "object",
@@ -3509,18 +3079,12 @@
             "maxItems": 100
           },
           "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "minLength": 1,
             "maxLength": 1000
           }
         },
-        "required": [
-          "items",
-          "nextCursor"
-        ]
+        "required": ["items", "nextCursor"]
       },
       "GatewayClientMessage": {
         "oneOf": [
@@ -3542,11 +3106,7 @@
                 "pattern": "^[A-Za-z0-9_-]+$"
               }
             },
-            "required": [
-              "type",
-              "sessionId",
-              "ticket"
-            ]
+            "required": ["type", "sessionId", "ticket"]
           },
           {
             "type": "object",
@@ -3556,9 +3116,7 @@
                 "const": "heartbeat"
               }
             },
-            "required": [
-              "type"
-            ]
+            "required": ["type"]
           },
           {
             "type": "object",
@@ -3578,11 +3136,7 @@
                 "maximum": 200
               }
             },
-            "required": [
-              "type",
-              "cols",
-              "rows"
-            ]
+            "required": ["type", "cols", "rows"]
           },
           {
             "type": "object",
@@ -3596,10 +3150,7 @@
                 "format": "uuid"
               }
             },
-            "required": [
-              "type",
-              "proposalId"
-            ]
+            "required": ["type", "proposalId"]
           }
         ]
       },
@@ -3620,11 +3171,7 @@
                 "$ref": "#/components/schemas/ProposalStatus"
               }
             },
-            "required": [
-              "type",
-              "proposalId",
-              "status"
-            ]
+            "required": ["type", "proposalId", "status"]
           },
           {
             "type": "object",
@@ -3644,12 +3191,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "type",
-              "sessionId",
-              "status",
-              "resumed"
-            ]
+            "required": ["type", "sessionId", "status", "resumed"]
           },
           {
             "type": "object",
@@ -3668,12 +3210,7 @@
                 "$ref": "#/components/schemas/RecoveryState"
               }
             },
-            "required": [
-              "type",
-              "sample",
-              "counters",
-              "recovery"
-            ]
+            "required": ["type", "sample", "counters", "recovery"]
           },
           {
             "type": "object",
@@ -3686,10 +3223,7 @@
                 "$ref": "#/components/schemas/TimelineEvent"
               }
             },
-            "required": [
-              "type",
-              "event"
-            ]
+            "required": ["type", "event"]
           },
           {
             "type": "object",
@@ -3705,11 +3239,7 @@
                 "$ref": "#/components/schemas/StatusReason"
               }
             },
-            "required": [
-              "type",
-              "status",
-              "reason"
-            ]
+            "required": ["type", "status", "reason"]
           },
           {
             "type": "object",
@@ -3738,11 +3268,7 @@
                 "maxLength": 1000
               }
             },
-            "required": [
-              "type",
-              "code",
-              "message"
-            ]
+            "required": ["type", "code", "message"]
           }
         ]
       },
@@ -3754,21 +3280,13 @@
             "additionalProperties": false,
             "properties": {
               "status": {
-                "enum": [
-                  "pending",
-                  "recording",
-                  "draining",
-                  "complete"
-                ]
+                "enum": ["pending", "recording", "draining", "complete"]
               },
               "reason": {
                 "type": "null"
               }
             },
-            "required": [
-              "status",
-              "reason"
-            ]
+            "required": ["status", "reason"]
           },
           {
             "type": "object",
@@ -3779,19 +3297,10 @@
               },
               "reason": {
                 "type": "string",
-                "enum": [
-                  "task_lost",
-                  "recorder_lost",
-                  "drain_timeout",
-                  "limit_exceeded",
-                  "data_gap"
-                ]
+                "enum": ["task_lost", "recorder_lost", "drain_timeout", "limit_exceeded", "data_gap"]
               }
             },
-            "required": [
-              "status",
-              "reason"
-            ]
+            "required": ["status", "reason"]
           }
         ]
       }

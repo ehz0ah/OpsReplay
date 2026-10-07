@@ -33,18 +33,11 @@
     },
     "status": {
       "type": "string",
-      "enum": [
-        "draft",
-        "published"
-      ]
+      "enum": ["draft", "published"]
     },
     "tier": {
       "type": "string",
-      "enum": [
-        "easy",
-        "medium",
-        "hard"
-      ]
+      "enum": ["easy", "medium", "hard"]
     },
     "category": {
       "type": "string",
@@ -53,10 +46,7 @@
     },
     "plan": {
       "type": "string",
-      "enum": [
-        "free",
-        "pro"
-      ]
+      "enum": ["free", "pro"]
     },
     "language": {
       "type": "string",
@@ -74,10 +64,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": [
-            "synthetic",
-            "adapted"
-          ]
+          "enum": ["synthetic", "adapted"]
         },
         "notes": {
           "type": "string",
@@ -105,20 +92,12 @@
                 "maxLength": 500
               }
             },
-            "required": [
-              "title",
-              "url",
-              "mechanism"
-            ]
+            "required": ["title", "url", "mechanism"]
           },
           "maxItems": 20
         }
       },
-      "required": [
-        "kind",
-        "notes",
-        "sources"
-      ]
+      "required": ["kind", "notes", "sources"]
     },
     "relatedChallenges": {
       "type": "array",
@@ -149,25 +128,15 @@
               "properties": {
                 "kind": {
                   "type": "string",
-                  "enum": [
-                    "context",
-                    "added",
-                    "removed"
-                  ]
+                  "enum": ["context", "added", "removed"]
                 },
                 "oldLine": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
+                  "type": ["integer", "null"],
                   "minimum": 1,
                   "maximum": 100000
                 },
                 "newLine": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
+                  "type": ["integer", "null"],
                   "minimum": 1,
                   "maximum": 100000
                 },
@@ -177,21 +146,13 @@
                   "maxLength": 2000
                 }
               },
-              "required": [
-                "kind",
-                "oldLine",
-                "newLine",
-                "text"
-              ]
+              "required": ["kind", "oldLine", "newLine", "text"]
             },
             "maxItems": 2000,
             "minItems": 1
           }
         },
-        "required": [
-          "path",
-          "lines"
-        ]
+        "required": ["path", "lines"]
       },
       "maxItems": 20,
       "minItems": 1
@@ -225,10 +186,7 @@
           },
           "side": {
             "type": "string",
-            "enum": [
-              "old",
-              "new"
-            ]
+            "enum": ["old", "new"]
           },
           "startLine": {
             "type": "integer",
@@ -241,15 +199,7 @@
             "maximum": 100000
           }
         },
-        "required": [
-          "id",
-          "title",
-          "explanation",
-          "file",
-          "side",
-          "startLine",
-          "endLine"
-        ]
+        "required": ["id", "title", "explanation", "file", "side", "startLine", "endLine"]
       },
       "maxItems": 50,
       "minItems": 1

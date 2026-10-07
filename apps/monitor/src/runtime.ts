@@ -21,12 +21,18 @@ async function readManifest(path: string): Promise<string> {
     const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
     if (bytesRead > limits.manifestBytes) throw new MonitorError('invalid_config');
     return bytes.subarray(0, bytesRead).toString('utf8');
-  } finally { await file.close(); }
+  } finally {
+    await file.close();
+  }
 }
 
 function credential(name: string, maximumBytes: number): Buffer {
   const value = process.env[name];
-  if (!value || value.length > maximumBytes * 2 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  if (
+    !value ||
+    value.length > maximumBytes * 2 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
     throw new MonitorError('invalid_config');
   }
   const result = Buffer.from(value, 'base64');
@@ -75,7 +81,11 @@ async function main(): Promise<number> {
     closeServer(server);
     await control?.close();
     return 1;
-  } finally { transport.close(); }
+  } finally {
+    transport.close();
+  }
 }
 
-void main().then(code => { if (code !== 0) process.exit(code); });
+void main().then((code) => {
+  if (code !== 0) process.exit(code);
+});

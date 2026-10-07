@@ -37,15 +37,15 @@ flowchart LR
   FIN --> ECS
 ```
 
-| Component | Responsibility |
-| --- | --- |
-| Web app | Static pages, catalogue, Learn, Code Review, Challenge workspace, debrief, playback |
-| API handlers | Identity, plans, catalogue, sessions, tickets, hints, timeline, debrief, playback, reviews, LLM turns |
-| Lifecycle handlers | Readiness from ECS task events, time limits from Scheduler, heartbeat sweep, reconciliation |
-| Finaliser | Waits for a bounded recording drain, stops the task, releases the lock, derives the debrief and score from sealed data, updates progress |
-| Gateway service | Ticket checks, terminal proxy, dashboard stream, session recording across browser disconnects, final drain, command events, proposal runs, heartbeats |
-| Challenge container | Service stack, planted fault, supervisor, terminal server |
-| Monitor container | Traffic, metrics, validators, health probes, captures |
+| Component           | Responsibility                                                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web app             | Static pages, catalogue, Learn, Code Review, Challenge workspace, debrief, playback                                                                   |
+| API handlers        | Identity, plans, catalogue, sessions, tickets, hints, timeline, debrief, playback, reviews, LLM turns                                                 |
+| Lifecycle handlers  | Readiness from ECS task events, time limits from Scheduler, heartbeat sweep, reconciliation                                                           |
+| Finaliser           | Waits for a bounded recording drain, stops the task, releases the lock, derives the debrief and score from sealed data, updates progress              |
+| Gateway service     | Ticket checks, terminal proxy, dashboard stream, session recording across browser disconnects, final drain, command events, proposal runs, heartbeats |
+| Challenge container | Service stack, planted fault, supervisor, terminal server                                                                                             |
+| Monitor container   | Traffic, metrics, validators, health probes, captures                                                                                                 |
 
 The API handlers are separate Lambda functions, one per action, that share code modules
 and contracts. Each action has its own bundle, execution role, and limits. Functions do
@@ -133,10 +133,10 @@ and follows the first milestone.
 
 ## Network and isolation
 
-| Placement | Resources | Inbound | Outbound |
-| --- | --- | --- | --- |
-| Public subnets | ALB | HTTPS from the internet | Gateway service |
-| Private subnets | Gateway service | ALB only | Environment tasks, VPC endpoints |
+| Placement       | Resources         | Inbound                                             | Outbound                                       |
+| --------------- | ----------------- | --------------------------------------------------- | ---------------------------------------------- |
+| Public subnets  | ALB               | HTTPS from the internet                             | Gateway service                                |
+| Private subnets | Gateway service   | ALB only                                            | Environment tasks, VPC endpoints               |
 | Private subnets | Environment tasks | Gateway service only, on terminal and monitor ports | VPC endpoints for image pulls and monitor logs |
 
 Each Fargate task has its own isolation boundary and shares no kernel, CPU, memory, or
@@ -158,13 +158,13 @@ tests must check DNS egress, and a Route 53 Resolver DNS Firewall allow list is 
 proposed control if names outside the endpoint set resolve. Challenge CoreDNS
 configurations never forward to an upstream resolver.
 
-| Principal | Allowed |
-| --- | --- |
-| Session handlers | `ecs:RunTask` on Challenge task definition families, `iam:PassRole` for the environment execution role only, `ecs:StopTask`, `DescribeTasks`, and `ListTasks` on the cluster, Scheduler operations on session schedules, table access, content reads, pre-signed reads of session objects |
-| LLM handler | Table access for turns and proposals, the provider credential |
-| Gateway task role | Session items and tickets in the table, `PutObject` under `sessions/` |
-| Environment execution role | Image pulls and monitor log delivery |
-| Environment task role | None |
+| Principal                  | Allowed                                                                                                                                                                                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session handlers           | `ecs:RunTask` on Challenge task definition families, `iam:PassRole` for the environment execution role only, `ecs:StopTask`, `DescribeTasks`, and `ListTasks` on the cluster, Scheduler operations on session schedules, table access, content reads, pre-signed reads of session objects |
+| LLM handler                | Table access for turns and proposals, the provider credential                                                                                                                                                                                                                             |
+| Gateway task role          | Session items and tickets in the table, `PutObject` under `sessions/`                                                                                                                                                                                                                     |
+| Environment execution role | Image pulls and monitor log delivery                                                                                                                                                                                                                                                      |
+| Environment task role      | None                                                                                                                                                                                                                                                                                      |
 
 The challenge container's output is not shipped to CloudWatch by default, because the
 learner controls it. Enable it only in development environments.

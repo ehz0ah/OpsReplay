@@ -13,8 +13,11 @@ export function createExpireProvisioning({ store, environment, now = () => new D
     let session = await store.session(sessionId, abortSignal);
     if (!session) return 'ignored';
     if (session.provisioningCleanup.status === 'complete') return 'ignored';
-    if (session.view.status !== 'provisioning'
-      && !(session.view.status === 'error' && session.view.statusReason === 'start_failed')) return 'ignored';
+    if (
+      session.view.status !== 'provisioning' &&
+      !(session.view.status === 'error' && session.view.statusReason === 'start_failed')
+    )
+      return 'ignored';
 
     const clock = now();
     if (clock.getTime() < Date.parse(session.provisioningDeadline)) throw new CleanupPendingError();

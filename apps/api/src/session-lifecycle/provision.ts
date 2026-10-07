@@ -29,8 +29,12 @@ export function createProvisionSession({ store, schedule, secret, environment, n
     // before RunTask so a terminal session never starts a new task.
     session = await store.session(sessionId, abortSignal);
     if (!session) throw new Error('Session does not exist');
-    if (session.view.status !== 'provisioning' || session.taskArn
-      || now().getTime() >= Date.parse(session.provisioningDeadline)) return session;
+    if (
+      session.view.status !== 'provisioning' ||
+      session.taskArn ||
+      now().getTime() >= Date.parse(session.provisioningDeadline)
+    )
+      return session;
 
     let taskArn: string;
     try {
@@ -41,8 +45,7 @@ export function createProvisionSession({ store, schedule, secret, environment, n
     }
 
     const saved = await store.saveTask(sessionId, taskArn, abortSignal);
-    if (saved.view.status !== 'provisioning'
-      || now().getTime() >= Date.parse(saved.provisioningDeadline)) {
+    if (saved.view.status !== 'provisioning' || now().getTime() >= Date.parse(saved.provisioningDeadline)) {
       await environment.stop(saved.launchArguments.cluster, taskArn, 'OpsReplay provisioning expired', abortSignal);
     }
     return saved;

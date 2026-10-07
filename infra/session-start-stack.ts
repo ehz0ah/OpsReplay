@@ -43,14 +43,20 @@ export class SessionStartStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
     // The ECS agent uses the execution role. Neither container receives AWS credentials.
-    secretFiles.addToResourcePolicy(new PolicyStatement({
-      principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
-      actions: ['s3:GetObject'], resources: [secretFiles.arnForObjects('sessions/*')],
-    }));
-    secretFiles.addToResourcePolicy(new PolicyStatement({
-      principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
-      actions: ['s3:GetBucketLocation'], resources: [secretFiles.bucketArn],
-    }));
+    secretFiles.addToResourcePolicy(
+      new PolicyStatement({
+        principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
+        actions: ['s3:GetObject'],
+        resources: [secretFiles.arnForObjects('sessions/*')],
+      }),
+    );
+    secretFiles.addToResourcePolicy(
+      new PolicyStatement({
+        principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
+        actions: ['s3:GetBucketLocation'],
+        resources: [secretFiles.bucketArn],
+      }),
+    );
     const logs = new LogGroup(this, 'StartLogs', {
       retention: RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -61,25 +67,34 @@ export class SessionStartStack extends Stack {
     });
     const expiryRole = new Role(this, 'ExpiryRole', { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
     expiryLogs.grantWrite(expiryRole);
-    expiryRole.addToPolicy(new PolicyStatement({
-      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
-      resources: [table.tableArn],
-      conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*', 'USER#*'] } },
-    }));
+    expiryRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*', 'USER#*'] } },
+      }),
+    );
     const taskArn = Stack.of(this).formatArn({
-      service: 'ecs', resource: 'task', resourceName: '*', arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+      service: 'ecs',
+      resource: 'task',
+      resourceName: '*',
+      arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
     });
-    expiryRole.addToPolicy(new PolicyStatement({
-      actions: ['ecs:DescribeTasks', 'ecs:StopTask'],
-      resources: [taskArn],
-      conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
-    }));
+    expiryRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecs:DescribeTasks', 'ecs:StopTask'],
+        resources: [taskArn],
+        conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+      }),
+    );
     // ECS ListTasks has no resource-level ARN. The cluster condition keeps the scan bounded.
-    expiryRole.addToPolicy(new PolicyStatement({
-      actions: ['ecs:ListTasks'],
-      resources: ['*'],
-      conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
-    }));
+    expiryRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecs:ListTasks'],
+        resources: ['*'],
+        conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+      }),
+    );
     const expiry = new Function(this, 'ExpireProvisioning', {
       runtime: Runtime.NODEJS_22_X,
       handler: 'index.handler',
@@ -96,13 +111,23 @@ export class SessionStartStack extends Stack {
     expiry.configureAsyncInvoke({ retryAttempts: 2, maxEventAge: Duration.minutes(15) });
     new Alarm(this, 'ExpiryEventDropped', {
       metric: expiry.metric('AsyncEventsDropped', { statistic: 'Sum', period: Duration.minutes(1) }),
-      threshold: 1, evaluationPeriods: 1, treatMissingData: TreatMissingData.NOT_BREACHING,
-      alarmDescription: 'Provisioning cleanup was dropped. Inspect expiry logs and retry cleanup for the affected session.',
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+      alarmDescription:
+        'Provisioning cleanup was dropped. Inspect expiry logs and retry cleanup for the affected session.',
     });
     new Alarm(this, 'ScheduleDeliveryDropped', {
-      metric: new Metric({ namespace: 'AWS/Scheduler', metricName: 'InvocationDroppedCount',
-        dimensionsMap: { ScheduleGroup: scheduleGroup.ref }, statistic: 'Sum', period: Duration.minutes(1) }),
-      threshold: 1, evaluationPeriods: 1, treatMissingData: TreatMissingData.NOT_BREACHING,
+      metric: new Metric({
+        namespace: 'AWS/Scheduler',
+        metricName: 'InvocationDroppedCount',
+        dimensionsMap: { ScheduleGroup: scheduleGroup.ref },
+        statistic: 'Sum',
+        period: Duration.minutes(1),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
       alarmDescription: 'A session cleanup callback could not be delivered. Inspect the session schedule group.',
     });
     const schedulerRole = new Role(this, 'SchedulerTargetRole', {
@@ -112,61 +137,85 @@ export class SessionStartStack extends Stack {
 
     const role = new Role(this, 'StartRole', { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
     logs.grantWrite(role);
-    role.addToPolicy(new PolicyStatement({
-      actions: ['s3:PutObject'], resources: [secretFiles.arnForObjects('sessions/*')],
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem'],
-      resources: [table.tableArn],
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['dynamodb:PutItem'],
-      resources: [table.tableArn],
-      conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['USER#*', 'SESSION#*'] } },
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
-      resources: [table.tableArn],
-      conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*', 'USER#*'] } },
-    }));
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [secretFiles.arnForObjects('sessions/*')],
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem'],
+        resources: [table.tableArn],
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['USER#*', 'SESSION#*'] } },
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*', 'USER#*'] } },
+      }),
+    );
     const scheduleArn = Stack.of(this).formatArn({
-      service: 'scheduler', resource: 'schedule',
+      service: 'scheduler',
+      resource: 'schedule',
       resourceName: Fn.join('/', [scheduleGroup.ref, 'session-*']),
       arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
     });
-    role.addToPolicy(new PolicyStatement({
-      actions: ['scheduler:CreateSchedule', 'scheduler:GetSchedule'],
-      resources: [scheduleArn],
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['iam:PassRole'],
-      resources: [schedulerRole.roleArn],
-      conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
-    }));
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['scheduler:CreateSchedule', 'scheduler:GetSchedule'],
+        resources: [scheduleArn],
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['iam:PassRole'],
+        resources: [schedulerRole.roleArn],
+        conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
+      }),
+    );
     const taskDefinitionArn = Stack.of(this).formatArn({
-      service: 'ecs', resource: 'task-definition', resourceName: 'opsreplay-*',
+      service: 'ecs',
+      resource: 'task-definition',
+      resourceName: 'opsreplay-*',
       arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
     });
-    role.addToPolicy(new PolicyStatement({
-      actions: ['ecs:RunTask'],
-      resources: [taskDefinitionArn],
-      conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['ecs:TagResource'],
-      resources: [taskArn],
-      conditions: { StringEquals: { 'ecs:CreateAction': 'RunTask' } },
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['ecs:StopTask'],
-      resources: [taskArn],
-      conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
-    }));
-    role.addToPolicy(new PolicyStatement({
-      actions: ['iam:PassRole'],
-      resources: [executionRoleArn.valueAsString],
-      conditions: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } },
-    }));
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecs:RunTask'],
+        resources: [taskDefinitionArn],
+        conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecs:TagResource'],
+        resources: [taskArn],
+        conditions: { StringEquals: { 'ecs:CreateAction': 'RunTask' } },
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecs:StopTask'],
+        resources: [taskArn],
+        conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+      }),
+    );
+    role.addToPolicy(
+      new PolicyStatement({
+        actions: ['iam:PassRole'],
+        resources: [executionRoleArn.valueAsString],
+        conditions: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } },
+      }),
+    );
     new Function(this, 'StartSession', {
       runtime: Runtime.NODEJS_22_X,
       handler: 'index.handler',

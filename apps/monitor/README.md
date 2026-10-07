@@ -54,12 +54,12 @@ does not receive them. Production must deliver all three values through the encr
 per-session S3 environment file, never through a plaintext `RunTask` override. Certificate
 issuance and production delivery are not implemented.
 
-| Operation | Result |
-| --- | --- |
-| `GET /healthz` | Authenticated `starting`, `ready`, or `failed` status with no private detail |
-| `POST /v1/start` | Idempotently starts measurement and returns `startedAt` |
-| `GET /v1/frames?after=<sequence>` | Returns up to 100 public frames, the next sequence, and seal state |
-| `POST /v1/seal` | Idempotently seals the immutable `cutoffAt` and returns final metrics |
+| Operation                         | Result                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /healthz`                    | Authenticated `starting`, `ready`, or `failed` status with no private detail |
+| `POST /v1/start`                  | Idempotently starts measurement and returns `startedAt`                      |
+| `GET /v1/frames?after=<sequence>` | Returns up to 100 public frames, the next sequence, and seal state           |
+| `POST /v1/seal`                   | Idempotently seals the immutable `cutoffAt` and returns final metrics        |
 
 All operations require the bearer session secret. Plain HTTP fails. Requests have
 fixed JSON errors and never return manifests, validator definitions, probe definitions,
@@ -69,12 +69,12 @@ unauthenticated requests at 8 per second. Requests time out after six seconds.
 
 ## Measurements
 
-| Value | Definition |
-| --- | --- |
-| `request_rate` | Ordinary journey requests completed in the last five seconds divided by that interval. Use the elapsed interval for the first partial sample |
-| `error_rate` | Failed ordinary requests divided by completed ordinary requests in that same window, in percent |
-| `latency_p95` | Exact nearest-rank p95 of those request durations, in milliseconds. Includes failed attempts and timeouts |
-| `totalRequests`, `failedRequests` | Cumulative ordinary request completions from measurement start through the requested cutoff |
+| Value                             | Definition                                                                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request_rate`                    | Ordinary journey requests completed in the last five seconds divided by that interval. Use the elapsed interval for the first partial sample |
+| `error_rate`                      | Failed ordinary requests divided by completed ordinary requests in that same window, in percent                                              |
+| `latency_p95`                     | Exact nearest-rank p95 of those request durations, in milliseconds. Includes failed attempts and timeouts                                    |
+| `totalRequests`, `failedRequests` | Cumulative ordinary request completions from measurement start through the requested cutoff                                                  |
 
 A journey stops at its first failed step. Each attempted step counts once. Validator
 and probe traffic is excluded. A request started before measurement or completed after

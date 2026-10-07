@@ -48,44 +48,44 @@ Errors contain `code`, `message`, and `requestId`, which is the client request I
 mutations and a server correlation ID otherwise. Errors never contain the planted fault,
 validator or probe definitions, unreleased hints, or review findings.
 
-| Status | Codes |
-| --- | --- |
-| 400 | `INVALID_REQUEST` |
-| 401 | `UNAUTHENTICATED` |
-| 403 | `ACCESS_DENIED` |
-| 404 | `NOT_FOUND` |
-| 409 | `IDEMPOTENCY_CONFLICT`, `ACTIVE_SESSION_EXISTS`, `SESSION_NOT_READY`, `SESSION_ACTIVE`, `SESSION_TERMINAL`, `DEBRIEF_PENDING`, `HINT_NOT_AVAILABLE`, `TURN_IN_PROGRESS` |
-| 422 | `VERSION_UNAVAILABLE`, `NO_HINTS_REMAINING` |
-| 429 | `LIMIT_EXCEEDED` |
-| 503 | `CAPACITY_UNAVAILABLE`, with `retryAfterSeconds` |
-| 500 | `INTERNAL_ERROR` |
+| Status | Codes                                                                                                                                                                   |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `INVALID_REQUEST`                                                                                                                                                       |
+| 401    | `UNAUTHENTICATED`                                                                                                                                                       |
+| 403    | `ACCESS_DENIED`                                                                                                                                                         |
+| 404    | `NOT_FOUND`                                                                                                                                                             |
+| 409    | `IDEMPOTENCY_CONFLICT`, `ACTIVE_SESSION_EXISTS`, `SESSION_NOT_READY`, `SESSION_ACTIVE`, `SESSION_TERMINAL`, `DEBRIEF_PENDING`, `HINT_NOT_AVAILABLE`, `TURN_IN_PROGRESS` |
+| 422    | `VERSION_UNAVAILABLE`, `NO_HINTS_REMAINING`                                                                                                                             |
+| 429    | `LIMIT_EXCEEDED`                                                                                                                                                        |
+| 503    | `CAPACITY_UNAVAILABLE`, with `retryAfterSeconds`                                                                                                                        |
+| 500    | `INTERNAL_ERROR`                                                                                                                                                        |
 
 `PROVIDER_FAILED` and `TURN_INTERRUPTED` appear only inside a `turn_failed` stream event.
 
 ## Routes
 
-| Route | Purpose |
-| --- | --- |
-| `GET /v1/catalog` | Public metadata for published Free and Pro content, with filters |
-| `GET /v1/me` | Current plan and active session |
-| `GET /v1/learn/{id}` | A published Learn entry after an entitlement check |
-| `POST /v1/sessions` | Start a Challenge attempt in a dedicated environment task |
-| `GET /v1/sessions` | List owned first attempts and retries |
-| `GET /v1/sessions/{id}` | Status, alert, recovery state, time limit, and hints |
-| `POST /v1/sessions/{id}/terminal-tickets` | Issue a short-lived ticket for the terminal gateway |
-| `POST /v1/sessions/{id}/end` | End an active attempt and stop its environment |
-| `POST /v1/sessions/{id}/hints` | Release the next authored hint |
-| `GET /v1/sessions/{id}/timeline` | Per-command, monitor, assistance, and lifecycle events |
-| `GET /v1/sessions/{id}/debrief` | Debrief and raw score components |
-| `GET /v1/sessions/{id}/playback` | Playback manifest with short-lived recording links |
-| `POST /v1/sessions/{id}/messages` | Start or reattach to a Challenge assistant turn through SSE |
-| `GET /v1/sessions/{id}/messages/{turnId}` | Saved Challenge assistant turn |
-| `GET /v1/reviews/{id}` | Review diff and context, without findings |
-| `POST /v1/reviews/{id}/submissions` | Submit flagged lines and release findings |
-| `GET /v1/review-submissions` | List owned review submissions |
-| `GET /v1/review-submissions/{id}` | Owned submission and released findings |
-| `POST /v1/review-submissions/{id}/messages` | Start or reattach to a Code Review debrief assistant turn |
-| `GET /v1/review-submissions/{id}/messages/{turnId}` | Saved Code Review assistant turn |
+| Route                                               | Purpose                                                          |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| `GET /v1/catalog`                                   | Public metadata for published Free and Pro content, with filters |
+| `GET /v1/me`                                        | Current plan and active session                                  |
+| `GET /v1/learn/{id}`                                | A published Learn entry after an entitlement check               |
+| `POST /v1/sessions`                                 | Start a Challenge attempt in a dedicated environment task        |
+| `GET /v1/sessions`                                  | List owned first attempts and retries                            |
+| `GET /v1/sessions/{id}`                             | Status, alert, recovery state, time limit, and hints             |
+| `POST /v1/sessions/{id}/terminal-tickets`           | Issue a short-lived ticket for the terminal gateway              |
+| `POST /v1/sessions/{id}/end`                        | End an active attempt and stop its environment                   |
+| `POST /v1/sessions/{id}/hints`                      | Release the next authored hint                                   |
+| `GET /v1/sessions/{id}/timeline`                    | Per-command, monitor, assistance, and lifecycle events           |
+| `GET /v1/sessions/{id}/debrief`                     | Debrief and raw score components                                 |
+| `GET /v1/sessions/{id}/playback`                    | Playback manifest with short-lived recording links               |
+| `POST /v1/sessions/{id}/messages`                   | Start or reattach to a Challenge assistant turn through SSE      |
+| `GET /v1/sessions/{id}/messages/{turnId}`           | Saved Challenge assistant turn                                   |
+| `GET /v1/reviews/{id}`                              | Review diff and context, without findings                        |
+| `POST /v1/reviews/{id}/submissions`                 | Submit flagged lines and release findings                        |
+| `GET /v1/review-submissions`                        | List owned review submissions                                    |
+| `GET /v1/review-submissions/{id}`                   | Owned submission and released findings                           |
+| `POST /v1/review-submissions/{id}/messages`         | Start or reattach to a Code Review debrief assistant turn        |
+| `GET /v1/review-submissions/{id}/messages/{turnId}` | Saved Code Review assistant turn                                 |
 
 Terminal and dashboard traffic does not use these routes. It uses the gateway protocol
 below.
@@ -197,15 +197,15 @@ The extension is a platform setting, not yet chosen. `recovery` is an aggregate 
 validators and is null until the session is ready. It never names individual
 validators. `hints.nextAvailableAt` is `readyAt` plus the next hint's authored delay.
 
-| Status | Meaning | Terminal |
-| --- | --- | --- |
-| `provisioning` | Task requested, not yet verified | No |
-| `ready` | Terminal and dashboard available, clock running | No |
-| `resolved` | Every validator passed for its sustain period | Yes |
-| `failed` | Time limit reached, or the challenge container exited | Yes |
-| `ended` | Learner ended the attempt | Yes |
-| `abandoned` | Heartbeat missed while no learner was connected | Yes |
-| `error` | Startup failed or the platform stopped the environment | Yes |
+| Status         | Meaning                                                | Terminal |
+| -------------- | ------------------------------------------------------ | -------- |
+| `provisioning` | Task requested, not yet verified                       | No       |
+| `ready`        | Terminal and dashboard available, clock running        | No       |
+| `resolved`     | Every validator passed for its sustain period          | Yes      |
+| `failed`       | Time limit reached, or the challenge container exited  | Yes      |
+| `ended`        | Learner ended the attempt                              | Yes      |
+| `abandoned`    | Heartbeat missed while no learner was connected        | Yes      |
+| `error`        | Startup failed or the platform stopped the environment | Yes      |
 
 The first terminal outcome wins through a conditional write. A later outcome, such as
 the time limit firing just after resolution, has no effect.

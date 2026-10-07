@@ -24,8 +24,8 @@ export function admitTurn(conversation, { id, hash, workerToken }, now) {
 export function finishTurn(conversation, id, workerToken, result, now, proposalsAllowed) {
   expireTurn(conversation, now);
   const turn = conversation.turns[id];
-  if (!turn || turn.status !== 'running' || turn.workerToken !== workerToken
-    || conversation.activeTurnId !== id) return false;
+  if (!turn || turn.status !== 'running' || turn.workerToken !== workerToken || conversation.activeTurnId !== id)
+    return false;
   if (!['completed', 'failed'].includes(result.status)) throw new Error('Invalid terminal result');
   Object.assign(turn, {
     status: result.status,

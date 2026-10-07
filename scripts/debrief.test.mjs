@@ -3,16 +3,20 @@ import test from 'node:test';
 import fs from 'node:fs';
 import { deriveDebrief as derive, matchEvidence } from './reference/debrief.mjs';
 
-const read = file => JSON.parse(fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8'));
+const read = (file) => JSON.parse(fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8'));
 const challenge = read('content/challenges/wrong-upstream-port/challenge.json');
 const timeline = read('packages/contracts/examples/timeline.json').items;
-const commands = timeline.filter(item => item.kind === 'command');
+const commands = timeline.filter((item) => item.kind === 'command');
 const log = challenge.debrief.keyEvidence[0];
 const completedSession = { readyAt: '2026-10-05T02:00:42Z', endedAt: '2026-10-05T02:07:03Z', status: 'resolved' };
 const deriveDebrief = (manifest, events) => derive(manifest, events, completedSession);
 
 test('mentioning a log path does not prove its evidence was observed', () => {
-  const echoed = { ...commands[1], command: 'echo /var/log/nginx/error.log', outputExcerpt: '/var/log/nginx/error.log' };
+  const echoed = {
+    ...commands[1],
+    command: 'echo /var/log/nginx/error.log',
+    outputExcerpt: '/var/log/nginx/error.log',
+  };
   assert.equal(matchEvidence(log, [echoed]).status, 'not_observed');
   // Even copied log text does not make echo a supported inspection command.
   assert.equal(matchEvidence(log, [{ ...echoed, outputExcerpt: commands[1].outputExcerpt }]).status, 'not_observed');
@@ -35,7 +39,15 @@ test('an actual saved output wins over an earlier failed attempt', () => {
 });
 
 test('an intervening pwd does not become an outage cause', () => {
-  const pwd = { ...commands[0], id: 'intervening', seq: 10, at: '2026-10-05T02:04:21Z', endedAt: '2026-10-05T02:04:21Z', command: 'pwd', outputExcerpt: '/root' };
+  const pwd = {
+    ...commands[0],
+    id: 'intervening',
+    seq: 10,
+    at: '2026-10-05T02:04:21Z',
+    endedAt: '2026-10-05T02:04:21Z',
+    command: 'pwd',
+    outputExcerpt: '/root',
+  };
   const result = deriveDebrief(challenge, [...timeline, pwd]);
   assert.equal(result.possibleHarmfulActions.length, 1);
   assert.equal(result.possibleHarmfulActions[0].commandSeq, 5);
@@ -44,7 +56,7 @@ test('an intervening pwd does not become an outage cause', () => {
 });
 
 test('outages remain measured when there is no matching harmful command', () => {
-  const events = timeline.filter(item => item.kind !== 'command' || item.seq !== 5);
+  const events = timeline.filter((item) => item.kind !== 'command' || item.seq !== 5);
   const result = deriveDebrief(challenge, events);
   assert.equal(result.possibleHarmfulActions.length, 0);
   assert.equal(result.observedOutages, 1);
@@ -53,8 +65,8 @@ test('outages remain measured when there is no matching harmful command', () => 
 
 test('equivalent time zones and fractional seconds preserve associations and durations', () => {
   const events = structuredClone(timeline);
-  events.find(item => item.kind === 'command' && item.seq === 5).at = '2026-10-05T10:04:20+08:00';
-  events.find(item => item.signal === 'outage_started').at = '2026-10-05T02:04:22.250Z';
+  events.find((item) => item.kind === 'command' && item.seq === 5).at = '2026-10-05T10:04:20+08:00';
+  events.find((item) => item.signal === 'outage_started').at = '2026-10-05T02:04:22.250Z';
   const result = deriveDebrief(challenge, events);
   assert.equal(result.possibleHarmfulActions.length, 1);
   assert.equal(result.outageSeconds, 99.75);
@@ -65,15 +77,15 @@ test('commands and observations after the first outcome are excluded', () => {
   const result = deriveDebrief(challenge, [...timeline, after]);
   assert.equal(result.commandCount, commands.length);
   const straddling = structuredClone(timeline);
-  straddling.find(item => item.kind === 'command' && item.seq === 2).endedAt = '2026-10-05T02:08:01Z';
+  straddling.find((item) => item.kind === 'command' && item.seq === 2).endedAt = '2026-10-05T02:08:01Z';
   assert.equal(deriveDebrief(challenge, straddling).keyEvidence[0].status, 'attempted');
 });
 
 test('partial or empty recordings use the committed session boundaries', () => {
-  const partial = timeline.filter(item => item.kind !== 'lifecycle');
+  const partial = timeline.filter((item) => item.kind !== 'lifecycle');
   assert.deepEqual(deriveDebrief(challenge, partial), deriveDebrief(challenge, timeline));
   const empty = deriveDebrief(challenge, []);
-  assert.ok(empty.keyEvidence.every(item => item.status === 'not_observed'));
+  assert.ok(empty.keyEvidence.every((item) => item.status === 'not_observed'));
   assert.equal(empty.timeToRecoverySeconds, null);
   assert.throws(() => derive(challenge, [], { ...completedSession, readyAt: null }), /became ready/);
 });

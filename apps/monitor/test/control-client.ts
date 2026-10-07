@@ -6,36 +6,51 @@ import { limits, MonitorError } from '../src/types.js';
 
 const endpoint = 'https://127.0.0.1:9443';
 
-interface Response<T> { status: number; value: T }
+interface Response<T> {
+  status: number;
+  value: T;
+}
 async function call<T>(path: string, method = 'GET', value?: object): Promise<Response<T>> {
   const body = value === undefined ? undefined : Buffer.from(JSON.stringify(value));
   const secret = process.env.OPSREPLAY_MONITOR_SECRET;
   const ca = process.env.OPSREPLAY_MONITOR_CA_B64;
   if (!secret || !ca) throw new MonitorError('invalid_config');
   return new Promise((resolve, reject) => {
-    const req = request(endpoint + path, {
-      method,
-      ca: Buffer.from(ca, 'base64'),
-      rejectUnauthorized: true,
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': String(body.byteLength) }),
+    const req = request(
+      endpoint + path,
+      {
+        method,
+        ca: Buffer.from(ca, 'base64'),
+        rejectUnauthorized: true,
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          ...(body === undefined
+            ? {}
+            : { 'Content-Type': 'application/json', 'Content-Length': String(body.byteLength) }),
+        },
+        timeout: limits.controlRequestMs + 1000,
       },
-      timeout: limits.controlRequestMs + 1000,
-    }, response => {
-      const chunks: Buffer[] = [];
-      let bytes = 0;
-      response.on('data', chunk => {
-        bytes += chunk.length;
-        if (bytes > 1024 * 1024) response.destroy(new MonitorError('output_failed'));
-        else chunks.push(Buffer.from(chunk));
-      });
-      response.on('error', reject);
-      response.on('end', () => {
-        try { resolve({ status: response.statusCode ?? 0, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) as T }); }
-        catch { reject(new MonitorError('output_failed')); }
-      });
-    });
+      (response) => {
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        response.on('data', (chunk) => {
+          bytes += chunk.length;
+          if (bytes > 1024 * 1024) response.destroy(new MonitorError('output_failed'));
+          else chunks.push(Buffer.from(chunk));
+        });
+        response.on('error', reject);
+        response.on('end', () => {
+          try {
+            resolve({
+              status: response.statusCode ?? 0,
+              value: JSON.parse(Buffer.concat(chunks).toString('utf8')) as T,
+            });
+          } catch {
+            reject(new MonitorError('output_failed'));
+          }
+        });
+      },
+    );
     req.on('timeout', () => req.destroy(new MonitorError('output_failed')));
     req.on('error', reject);
     req.end(body);
@@ -59,7 +74,9 @@ async function waitUntilReady(timeoutMs: number): Promise<void> {
 
 async function main(): Promise<number> {
   let stop = false;
-  const stopped = () => { stop = true; };
+  const stopped = () => {
+    stop = true;
+  };
   process.on('SIGINT', stopped);
   process.on('SIGTERM', stopped);
   try {
@@ -72,8 +89,8 @@ async function main(): Promise<number> {
     let cursor = 0;
     while (!stop) {
       const page = await call<{ frames: { sequence: number }[]; nextSequence: number }>('/v1/frames?after=' + cursor);
-      if (page.status !== 200 || !Array.isArray(page.value.frames)
-        || !Number.isInteger(page.value.nextSequence)) throw new MonitorError('output_failed');
+      if (page.status !== 200 || !Array.isArray(page.value.frames) || !Number.isInteger(page.value.nextSequence))
+        throw new MonitorError('output_failed');
       for (const frame of page.value.frames) await writeJson(process.stdout, frame);
       cursor = page.value.nextSequence;
       await delay(100);
@@ -100,4 +117,6 @@ async function main(): Promise<number> {
   }
 }
 
-void main().then(code => { if (code !== 0) process.exit(code); });
+void main().then((code) => {
+  if (code !== 0) process.exit(code);
+});

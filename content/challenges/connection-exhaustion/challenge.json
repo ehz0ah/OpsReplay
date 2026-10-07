@@ -67,7 +67,12 @@
         "ratePerSecond": 4,
         "steps": [
           { "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
-          { "method": "GET", "url": "http://127.0.0.1:80/api/orders?customer=synthetic", "expectStatus": [200], "timeoutMs": 2000 },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:80/api/orders?customer=synthetic",
+            "expectStatus": [200],
+            "timeoutMs": 2000
+          },
           { "method": "POST", "url": "http://127.0.0.1:80/api/checkout", "expectStatus": [201], "timeoutMs": 3000 }
         ]
       }
@@ -88,13 +93,23 @@
   },
   "validators": [
     { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
-    { "id": "checkout-persisted", "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 }, "sustainSeconds": 60 }
+    {
+      "id": "checkout-persisted",
+      "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 },
+      "sustainSeconds": 60
+    }
   ],
   "healthProbes": [
     {
       "id": "job-worker",
       "publicLabel": "Background job worker lost its database connection",
-      "check": { "kind": "http", "method": "GET", "url": "http://127.0.0.1:9090/healthz", "expectStatus": [200], "timeoutMs": 2000 },
+      "check": {
+        "kind": "http",
+        "method": "GET",
+        "url": "http://127.0.0.1:9090/healthz",
+        "expectStatus": [200],
+        "timeoutMs": 2000
+      },
       "graceSeconds": 10
     }
   ],
@@ -112,10 +127,7 @@
     {
       "id": "add-workers",
       "description": "Proposed trap to validate: more workers increase actual concurrent database demand until the job worker cannot acquire a connection. Larger configured pool capacity alone is not sufficient to cause this failure.",
-      "commands": [
-        "sed -i 's/^workers = 4$/workers = 8/' /etc/shop/gunicorn.conf.py",
-        "service shop restart"
-      ],
+      "commands": ["sed -i 's/^workers = 4$/workers = 8/' /etc/shop/gunicorn.conf.py", "service shop restart"],
       "probe": "job-worker",
       "commandPatterns": [
         "^\\s*(sudo\\s+)?(service\\s+shop\\s+(restart|reload)|systemctl\\s+(restart|reload)\\s+shop)\\b",
@@ -161,7 +173,9 @@
       {
         "id": "pool-timeouts",
         "description": "The application log shows SQLAlchemy QueuePool timeouts.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/shop/app\\.log"],
+        "commandPatterns": [
+          "^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/shop/app\\.log"
+        ],
         "outputPatterns": ["QueuePool limit", "connection timed out"]
       },
       {

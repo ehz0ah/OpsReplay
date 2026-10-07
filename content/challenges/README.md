@@ -5,11 +5,11 @@ Each directory holds one Challenge manifest. Wrong upstream port also has a
 are not implemented. All three manifests remain synthetic drafts with no published image digests, taken from the
 preliminary report's initial Challenges:
 
-| Challenge | Tier | Plan |
-| --- | --- | --- |
-| [Wrong upstream port](wrong-upstream-port/challenge.json) | Easy | Free |
-| [Stale DNS record](stale-dns-record/challenge.json) | Medium | Pro |
-| [Connection exhaustion](connection-exhaustion/challenge.json) | Hard | Pro |
+| Challenge                                                     | Tier   | Plan |
+| ------------------------------------------------------------- | ------ | ---- |
+| [Wrong upstream port](wrong-upstream-port/challenge.json)     | Easy   | Free |
+| [Stale DNS record](stale-dns-record/challenge.json)           | Medium | Pro  |
+| [Connection exhaustion](connection-exhaustion/challenge.json) | Hard   | Pro  |
 
 The database draft has explicit `publicationBlockers`. Its connection-pressure workload
 and worker-scaling trap are hypotheses, not proven behaviour. Published manifests cannot

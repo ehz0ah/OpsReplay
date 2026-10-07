@@ -15,19 +15,13 @@
           "pattern": "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
         },
         "digest": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "minLength": 71,
           "maxLength": 71,
           "pattern": "^sha256:[a-f0-9]{64}$"
         }
       },
-      "required": [
-        "repository",
-        "digest"
-      ]
+      "required": ["repository", "digest"]
     },
     "Check": {
       "oneOf": [
@@ -60,10 +54,7 @@
               "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
             }
           },
-          "required": [
-            "kind",
-            "journey"
-          ]
+          "required": ["kind", "journey"]
         },
         {
           "type": "object",
@@ -74,11 +65,7 @@
             },
             "method": {
               "type": "string",
-              "enum": [
-                "GET",
-                "HEAD",
-                "POST"
-              ]
+              "enum": ["GET", "HEAD", "POST"]
             },
             "url": {
               "type": "string",
@@ -102,13 +89,7 @@
               "maximum": 30000
             }
           },
-          "required": [
-            "kind",
-            "method",
-            "url",
-            "expectStatus",
-            "timeoutMs"
-          ]
+          "required": ["kind", "method", "url", "expectStatus", "timeoutMs"]
         },
         {
           "type": "object",
@@ -134,12 +115,7 @@
               "maximum": 30000
             }
           },
-          "required": [
-            "kind",
-            "host",
-            "port",
-            "timeoutMs"
-          ]
+          "required": ["kind", "host", "port", "timeoutMs"]
         }
       ]
     },
@@ -179,10 +155,7 @@
     },
     "status": {
       "type": "string",
-      "enum": [
-        "draft",
-        "published"
-      ]
+      "enum": ["draft", "published"]
     },
     "publicationBlockers": {
       "description": "Unresolved content assumptions. Must be empty or absent before publication, backed by scenario-harness evidence.",
@@ -192,11 +165,7 @@
     },
     "tier": {
       "type": "string",
-      "enum": [
-        "easy",
-        "medium",
-        "hard"
-      ]
+      "enum": ["easy", "medium", "hard"]
     },
     "category": {
       "type": "string",
@@ -205,10 +174,7 @@
     },
     "plan": {
       "type": "string",
-      "enum": [
-        "free",
-        "pro"
-      ]
+      "enum": ["free", "pro"]
     },
     "learningObjectives": {
       "type": "array",
@@ -226,10 +192,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": [
-            "synthetic",
-            "adapted"
-          ]
+          "enum": ["synthetic", "adapted"]
         },
         "notes": {
           "type": "string",
@@ -257,20 +220,12 @@
                 "maxLength": 500
               }
             },
-            "required": [
-              "title",
-              "url",
-              "mechanism"
-            ]
+            "required": ["title", "url", "mechanism"]
           },
           "maxItems": 20
         }
       },
-      "required": [
-        "kind",
-        "notes",
-        "sources"
-      ]
+      "required": ["kind", "notes", "sources"]
     },
     "environment": {
       "type": "object",
@@ -284,13 +239,7 @@
         },
         "cpu": {
           "type": "integer",
-          "enum": [
-            256,
-            512,
-            1024,
-            2048,
-            4096
-          ]
+          "enum": [256, 512, 1024, 2048, 4096]
         },
         "memoryMiB": {
           "type": "integer",
@@ -316,14 +265,7 @@
               },
               "kind": {
                 "type": "string",
-                "enum": [
-                  "proxy",
-                  "web",
-                  "api",
-                  "database",
-                  "dns",
-                  "worker"
-                ]
+                "enum": ["proxy", "web", "api", "database", "dns", "worker"]
               },
               "listens": {
                 "type": "array",
@@ -357,26 +299,13 @@
                 "maxItems": 10
               }
             },
-            "required": [
-              "name",
-              "kind",
-              "listens",
-              "configFiles",
-              "logFiles"
-            ]
+            "required": ["name", "kind", "listens", "configFiles", "logFiles"]
           },
           "maxItems": 10,
           "minItems": 1
         }
       },
-      "required": [
-        "image",
-        "monitorImage",
-        "cpu",
-        "memoryMiB",
-        "timeLimitMinutes",
-        "services"
-      ]
+      "required": ["image", "monitorImage", "cpu", "memoryMiB", "timeLimitMinutes", "services"]
     },
     "traffic": {
       "type": "object",
@@ -412,10 +341,7 @@
                   "properties": {
                     "method": {
                       "type": "string",
-                      "enum": [
-                        "GET",
-                        "POST"
-                      ]
+                      "enum": ["GET", "POST"]
                     },
                     "url": {
                       "type": "string",
@@ -439,31 +365,19 @@
                       "maximum": 30000
                     }
                   },
-                  "required": [
-                    "method",
-                    "url",
-                    "expectStatus",
-                    "timeoutMs"
-                  ]
+                  "required": ["method", "url", "expectStatus", "timeoutMs"]
                 },
                 "maxItems": 10,
                 "minItems": 1
               }
             },
-            "required": [
-              "id",
-              "label",
-              "ratePerSecond",
-              "steps"
-            ]
+            "required": ["id", "label", "ratePerSecond", "steps"]
           },
           "maxItems": 10,
           "minItems": 1
         }
       },
-      "required": [
-        "journeys"
-      ]
+      "required": ["journeys"]
     },
     "dashboard": {
       "type": "array",
@@ -484,31 +398,14 @@
           },
           "unit": {
             "type": "string",
-            "enum": [
-              "requests_per_second",
-              "percent",
-              "milliseconds",
-              "mebibytes"
-            ]
+            "enum": ["requests_per_second", "percent", "milliseconds", "mebibytes"]
           },
           "source": {
             "type": "string",
-            "enum": [
-              "request_rate",
-              "error_rate",
-              "latency_p50",
-              "latency_p95",
-              "cpu",
-              "memory"
-            ]
+            "enum": ["request_rate", "error_rate", "latency_p50", "latency_p95", "cpu", "memory"]
           }
         },
-        "required": [
-          "id",
-          "label",
-          "unit",
-          "source"
-        ]
+        "required": ["id", "label", "unit", "source"]
       },
       "maxItems": 12,
       "minItems": 1
@@ -529,17 +426,10 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "warning",
-            "critical"
-          ]
+          "enum": ["warning", "critical"]
         }
       },
-      "required": [
-        "title",
-        "summary",
-        "severity"
-      ]
+      "required": ["title", "summary", "severity"]
     },
     "validators": {
       "type": "array",
@@ -562,11 +452,7 @@
             "maximum": 600
           }
         },
-        "required": [
-          "id",
-          "check",
-          "sustainSeconds"
-        ]
+        "required": ["id", "check", "sustainSeconds"]
       },
       "maxItems": 10,
       "minItems": 1
@@ -597,12 +483,7 @@
             "maximum": 120
           }
         },
-        "required": [
-          "id",
-          "publicLabel",
-          "check",
-          "graceSeconds"
-        ]
+        "required": ["id", "publicLabel", "check", "graceSeconds"]
       },
       "maxItems": 10,
       "minItems": 1
@@ -628,10 +509,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "summary",
-        "files"
-      ]
+      "required": ["summary", "files"]
     },
     "referenceFix": {
       "type": "object",
@@ -653,10 +531,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "description",
-        "commands"
-      ]
+      "required": ["description", "commands"]
     },
     "traps": {
       "type": "array",
@@ -724,20 +599,10 @@
                 "minItems": 1
               }
             },
-            "required": [
-              "description",
-              "commands"
-            ]
+            "required": ["description", "commands"]
           }
         },
-        "required": [
-          "id",
-          "description",
-          "commands",
-          "probe",
-          "commandPatterns",
-          "withinSeconds"
-        ]
+        "required": ["id", "description", "commands", "probe", "commandPatterns", "withinSeconds"]
       },
       "maxItems": 10,
       "minItems": 1
@@ -765,11 +630,7 @@
             "maximum": 120
           }
         },
-        "required": [
-          "id",
-          "text",
-          "minElapsedMinutes"
-        ]
+        "required": ["id", "text", "minElapsedMinutes"]
       },
       "maxItems": 10
     },
@@ -827,12 +688,7 @@
                 "maxItems": 10
               }
             },
-            "required": [
-              "id",
-              "description",
-              "commandPatterns",
-              "outputPatterns"
-            ]
+            "required": ["id", "description", "commandPatterns", "outputPatterns"]
           },
           "maxItems": 20,
           "minItems": 1
@@ -848,12 +704,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "rootCause",
-        "causalChain",
-        "keyEvidence",
-        "recommendedRecovery"
-      ]
+      "required": ["rootCause", "causalChain", "keyEvidence", "recommendedRecovery"]
     }
   },
   "allOf": [

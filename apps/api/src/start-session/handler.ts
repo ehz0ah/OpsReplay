@@ -4,7 +4,15 @@ import { setTimeout } from 'node:timers/promises';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import type { StartStore } from './store.js';
 import type { LaunchConfiguration, LaunchFailure, Receipt, SessionRecord, SessionView, StartRequest } from './types.js';
-import { isStartableContent, validOwner, validRequest, validSession, validSessionRelations, validUuid, validView } from './validation.js';
+import {
+  isStartableContent,
+  validOwner,
+  validRequest,
+  validSession,
+  validSessionRelations,
+  validUuid,
+  validView,
+} from './validation.js';
 
 const RESPONSE_MARGIN_MS = 1000;
 
@@ -21,17 +29,24 @@ const errors = {
   INTERNAL_ERROR: [500, 'The request could not be completed. Retry with the same request ID.'],
 } as const;
 class RequestError extends Error {
-  constructor(readonly code: keyof typeof errors, readonly activeSessionId?: string,
-    readonly launchFailure?: LaunchFailure) { super(code); }
+  constructor(
+    readonly code: keyof typeof errors,
+    readonly activeSessionId?: string,
+    readonly launchFailure?: LaunchFailure,
+  ) {
+    super(code);
+  }
 }
 function retryableConflict(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === 'TransactionConflictException') return true;
   if (error.name !== 'TransactionCanceledException' || !('CancellationReasons' in error)) return false;
   const reasons = error.CancellationReasons;
-  return Array.isArray(reasons)
-    && reasons.some(reason => ['ConditionalCheckFailed', 'TransactionConflict'].includes(reason?.Code))
-    && reasons.every(reason => ['None', 'ConditionalCheckFailed', 'TransactionConflict'].includes(reason?.Code));
+  return (
+    Array.isArray(reasons) &&
+    reasons.some((reason) => ['ConditionalCheckFailed', 'TransactionConflict'].includes(reason?.Code)) &&
+    reasons.every((reason) => ['None', 'ConditionalCheckFailed', 'TransactionConflict'].includes(reason?.Code))
+  );
 }
 export interface StartLog {
   operation: 'start_session';
@@ -57,19 +72,64 @@ const response = (statusCode: number, body: object): APIGatewayProxyResult => ({
 
 // Every nested object is projected explicitly. Never spread a private record into a response.
 export function publicView(view: SessionView): SessionView {
-  const { id, challenge, attempt, status, statusReason, alert, dashboard, recovery,
-    timeLimitSeconds, createdAt, readyAt, endsAt, endedAt, hints, assistance,
-    debriefAvailable, recording } = view;
+  const {
+    id,
+    challenge,
+    attempt,
+    status,
+    statusReason,
+    alert,
+    dashboard,
+    recovery,
+    timeLimitSeconds,
+    createdAt,
+    readyAt,
+    endsAt,
+    endedAt,
+    hints,
+    assistance,
+    debriefAvailable,
+    recording,
+  } = view;
   const result = {
-    id, challenge: { id: challenge.id, version: challenge.version, title: challenge.title, tier: challenge.tier, category: challenge.category },
-    attempt: { kind: attempt.kind, number: attempt.number }, status, statusReason,
+    id,
+    challenge: {
+      id: challenge.id,
+      version: challenge.version,
+      title: challenge.title,
+      tier: challenge.tier,
+      category: challenge.category,
+    },
+    attempt: { kind: attempt.kind, number: attempt.number },
+    status,
+    statusReason,
     alert: { title: alert.title, summary: alert.summary, severity: alert.severity },
     dashboard: dashboard.map(({ id, label, unit }) => ({ id, label, unit })),
-    recovery: recovery === null ? null : { state: recovery.state, sustainedSeconds: recovery.sustainedSeconds, requiredSeconds: recovery.requiredSeconds },
-    timeLimitSeconds, createdAt, readyAt, endsAt, endedAt,
-    hints: { released: hints.released.map(({ id, text, releasedAt }) => ({ id, text, releasedAt })), remaining: hints.remaining, nextAvailableAt: hints.nextAvailableAt },
-    assistance: { hintsReleased: assistance.hintsReleased, assistantTurns: assistance.assistantTurns, proposalsRun: assistance.proposalsRun },
-    debriefAvailable, recording: { status: recording.status, reason: recording.reason },
+    recovery:
+      recovery === null
+        ? null
+        : {
+            state: recovery.state,
+            sustainedSeconds: recovery.sustainedSeconds,
+            requiredSeconds: recovery.requiredSeconds,
+          },
+    timeLimitSeconds,
+    createdAt,
+    readyAt,
+    endsAt,
+    endedAt,
+    hints: {
+      released: hints.released.map(({ id, text, releasedAt }) => ({ id, text, releasedAt })),
+      remaining: hints.remaining,
+      nextAvailableAt: hints.nextAvailableAt,
+    },
+    assistance: {
+      hintsReleased: assistance.hintsReleased,
+      assistantTurns: assistance.assistantTurns,
+      proposalsRun: assistance.proposalsRun,
+    },
+    debriefAvailable,
+    recording: { status: recording.status, reason: recording.reason },
   };
   if (!validView(result)) throw new Error('Invalid session projection');
   return result;
@@ -85,15 +145,26 @@ function parseBody(event: APIGatewayProxyEvent): StartRequest {
     const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body;
     if (Buffer.byteLength(body) > 8192) throw new Error('Request too large');
     value = JSON.parse(body);
-  } catch { throw new RequestError('INVALID_REQUEST'); }
+  } catch {
+    throw new RequestError('INVALID_REQUEST');
+  }
   if (!validRequest(value)) throw new RequestError('INVALID_REQUEST');
   return { ...value, requestId: value.requestId.toLowerCase() };
 }
 
-export function createStartHandler({ store, launchConfiguration, provision, now = () => new Date(), newId = randomUUID,
-  newSecret = () => randomBytes(32).toString('base64url'), log = () => {} }: Dependencies) {
-  return async (event: APIGatewayProxyEvent,
-    context: Pick<Context, 'awsRequestId' | 'getRemainingTimeInMillis'>): Promise<APIGatewayProxyResult> => {
+export function createStartHandler({
+  store,
+  launchConfiguration,
+  provision,
+  now = () => new Date(),
+  newId = randomUUID,
+  newSecret = () => randomBytes(32).toString('base64url'),
+  log = () => {},
+}: Dependencies) {
+  return async (
+    event: APIGatewayProxyEvent,
+    context: Pick<Context, 'awsRequestId' | 'getRemainingTimeInMillis'>,
+  ): Promise<APIGatewayProxyResult> => {
     const started = performance.now();
     let requestId = validUuid(context.awsRequestId) ? context.awsRequestId : randomUUID();
     let result = 'INTERNAL_ERROR';
@@ -105,17 +176,24 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
       if (event.httpMethod !== 'POST' || event.resource !== '/v1/sessions') throw new RequestError('INVALID_REQUEST');
       const request = parseBody(event);
       requestId = request.requestId;
-      const hash = createHash('sha256').update(JSON.stringify({
-        challengeId: request.challengeId, challengeVersion: request.challengeVersion,
-      })).digest('hex');
+      const hash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            challengeId: request.challengeId,
+            challengeVersion: request.challengeVersion,
+          }),
+        )
+        .digest('hex');
       const workTimeMs = context.getRemainingTimeInMillis() - RESPONSE_MARGIN_MS;
       const abortSignal = workTimeMs > 0 ? AbortSignal.timeout(workTimeMs) : AbortSignal.abort();
       const startResponse = (session: SessionRecord, id: string, replayed: boolean) => {
         if (session.ownerId !== owner || session.view.id !== id) throw new RequestError('NOT_FOUND');
-        if (session.launchFailure) throw new RequestError(
-          session.launchFailure.kind === 'capacity' ? 'CAPACITY_UNAVAILABLE' : 'INTERNAL_ERROR',
-          undefined, session.launchFailure,
-        );
+        if (session.launchFailure)
+          throw new RequestError(
+            session.launchFailure.kind === 'capacity' ? 'CAPACITY_UNAVAILABLE' : 'INTERNAL_ERROR',
+            undefined,
+            session.launchFailure,
+          );
         result = replayed ? 'replayed' : 'created';
         return response(200, { session: publicView(session.view), replayed });
       };
@@ -128,7 +206,8 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
         if (receipt.hash !== hash) throw new RequestError('IDEMPOTENCY_CONFLICT');
         abortSignal.throwIfAborted();
         const saved = await store.session(receipt.sessionId, abortSignal);
-        if (!saved || saved.ownerId !== owner || saved.view.id !== receipt.sessionId) throw new RequestError('NOT_FOUND');
+        if (!saved || saved.ownerId !== owner || saved.view.id !== receipt.sessionId)
+          throw new RequestError('NOT_FOUND');
         return startResponse(await provision(saved.view.id, abortSignal), receipt.sessionId, true);
       };
       const rejectNew = async (code: keyof typeof errors, activeSessionId?: string) => {
@@ -148,11 +227,18 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
           store.active(owner, abortSignal),
         ]);
         const content = snapshot.content;
-        if (!isStartableContent(content) || content.challenge.id !== request.challengeId
-          || content.challenge.version !== request.challengeVersion) return await rejectNew('VERSION_UNAVAILABLE');
+        if (
+          !isStartableContent(content) ||
+          content.challenge.id !== request.challengeId ||
+          content.challenge.version !== request.challengeVersion
+        )
+          return await rejectNew('VERSION_UNAVAILABLE');
         const clock = now();
-        const plan = snapshot.plan?.plan === 'pro'
-          && (snapshot.plan.expiresAt === null || Date.parse(snapshot.plan.expiresAt) > clock.getTime()) ? 'pro' : 'free';
+        const plan =
+          snapshot.plan?.plan === 'pro' &&
+          (snapshot.plan.expiresAt === null || Date.parse(snapshot.plan.expiresAt) > clock.getTime())
+            ? 'pro'
+            : 'free';
         if (content.plan === 'pro' && plan !== 'pro') return await rejectNew('ACCESS_DENIED');
         const timeLimitSeconds = content.timeLimits[plan];
         const completed = snapshot.progress?.completedAttempts ?? 0;
@@ -165,16 +251,28 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
         const monitorSecret = newSecret();
         const provisioningDeadline = new Date(clock.getTime() + 180_000);
         const view: SessionView = publicView({
-          id, challenge: content.challenge, alert: content.alert, dashboard: content.dashboard,
+          id,
+          challenge: content.challenge,
+          alert: content.alert,
+          dashboard: content.dashboard,
           attempt: { kind: completed === 0 ? 'first' : 'retry', number: completed + 1 },
-          status: 'provisioning', statusReason: null, recovery: null, timeLimitSeconds, createdAt,
-          readyAt: null, endsAt: null, endedAt: null,
+          status: 'provisioning',
+          statusReason: null,
+          recovery: null,
+          timeLimitSeconds,
+          createdAt,
+          readyAt: null,
+          endsAt: null,
+          endedAt: null,
           hints: { released: [], remaining: content.hintCount, nextAvailableAt: null },
           assistance: { hintsReleased: 0, assistantTurns: 0, proposalsRun: 0 },
-          debriefAvailable: false, recording: { status: 'pending', reason: null },
+          debriefAvailable: false,
+          recording: { status: 'pending', reason: null },
         });
         const session: SessionRecord = {
-          ownerId: owner, view, accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
+          ownerId: owner,
+          view,
+          accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
           pins: { ...content.pins },
           launchArguments: {
             cluster: launchConfiguration.clusterArn,
@@ -185,18 +283,24 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
             enableExecuteCommand: false,
             launchType: 'FARGATE',
             platformVersion: launchConfiguration.platformVersion,
-            networkConfiguration: { awsvpcConfiguration: {
-              subnets: [...launchConfiguration.subnetIds],
-              securityGroups: [...launchConfiguration.securityGroupIds],
-              assignPublicIp: 'DISABLED',
-            } },
-            overrides: { containerOverrides: [{
-              name: launchConfiguration.monitorContainerName,
-              environment: [
-                { name: 'OPSREPLAY_SESSION_ID', value: id },
+            networkConfiguration: {
+              awsvpcConfiguration: {
+                subnets: [...launchConfiguration.subnetIds],
+                securityGroups: [...launchConfiguration.securityGroupIds],
+                assignPublicIp: 'DISABLED',
+              },
+            },
+            overrides: {
+              containerOverrides: [
+                {
+                  name: launchConfiguration.monitorContainerName,
+                  environment: [{ name: 'OPSREPLAY_SESSION_ID', value: id }],
+                  environmentFiles: [
+                    { type: 's3', value: `${launchConfiguration.secretBucketArn}/sessions/${id}.env` },
+                  ],
+                },
               ],
-              environmentFiles: [{ type: 's3', value: `${launchConfiguration.secretBucketArn}/sessions/${id}.env` }],
-            }] },
+            },
             tags: [{ key: 'opsreplay:session-id', value: id }],
           },
           monitorSecret,
@@ -207,10 +311,14 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
           taskArn: null,
           provisioningCleanup: { status: 'pending', completedAt: null },
         };
-        if (!validSession(session) || !validSessionRelations(session)) throw new Error('Invalid session launch configuration');
+        if (!validSession(session) || !validSessionRelations(session))
+          throw new Error('Invalid session launch configuration');
         try {
           abortSignal.throwIfAborted();
-          await store.commit({ request, session, snapshot, receipt: { ownerId: owner, requestId, hash, sessionId: id } }, abortSignal);
+          await store.commit(
+            { request, session, snapshot, receipt: { ownerId: owner, requestId, hash, sessionId: id } },
+            abortSignal,
+          );
         } catch (error) {
           const committed = await replay();
           if (committed) return committed;
@@ -226,17 +334,30 @@ export function createStartHandler({ store, launchConfiguration, provision, now 
       result = failure.code;
       launchFailure = failure.launchFailure;
       const [statusCode, defaultMessage] = errors[failure.code];
-      const message = launchFailure?.kind === 'configuration'
-        ? 'This Challenge could not start. Try again later with a new request ID.' : defaultMessage;
+      const message =
+        launchFailure?.kind === 'configuration'
+          ? 'This Challenge could not start. Try again later with a new request ID.'
+          : defaultMessage;
       return response(statusCode, {
-        code: failure.code, message, requestId,
+        code: failure.code,
+        message,
+        requestId,
         ...(failure.activeSessionId ? { activeSessionId: failure.activeSessionId } : {}),
         ...(failure.code === 'CAPACITY_UNAVAILABLE' ? { retryAfterSeconds: 30 } : {}),
       });
     } finally {
       // No events, user identifiers, tokens, database errors, or private content in logs.
-      try { log({ operation: 'start_session', requestId, result, durationMs: Math.round(performance.now() - started),
-        ...(launchFailure ? { launchFailure } : {}) }); } catch { /* Logging must not change a committed result. */ }
+      try {
+        log({
+          operation: 'start_session',
+          requestId,
+          result,
+          durationMs: Math.round(performance.now() - started),
+          ...(launchFailure ? { launchFailure } : {}),
+        });
+      } catch {
+        /* Logging must not change a committed result. */
+      }
     }
   };
 }

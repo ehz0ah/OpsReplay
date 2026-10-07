@@ -27,7 +27,14 @@ export interface SessionView {
   challenge: ChallengeRef;
   attempt: { kind: 'first' | 'retry'; number: number };
   status: 'provisioning' | 'ready' | 'resolved' | 'failed' | 'ended' | 'abandoned' | 'error';
-  statusReason: 'validators_passed' | 'time_limit' | 'learner_ended' | 'heartbeat_missed' | 'environment_exited' | 'start_failed' | null;
+  statusReason:
+    | 'validators_passed'
+    | 'time_limit'
+    | 'learner_ended'
+    | 'heartbeat_missed'
+    | 'environment_exited'
+    | 'start_failed'
+    | null;
   alert: Alert;
   dashboard: Metric[];
   recovery: { state: 'failing' | 'sustaining' | 'met'; sustainedSeconds: number; requiredSeconds: number } | null;
@@ -36,7 +43,11 @@ export interface SessionView {
   readyAt: string | null;
   endsAt: string | null;
   endedAt: string | null;
-  hints: { released: { id: string; text: string; releasedAt: string }[]; remaining: number; nextAvailableAt: string | null };
+  hints: {
+    released: { id: string; text: string; releasedAt: string }[];
+    remaining: number;
+    nextAvailableAt: string | null;
+  };
   assistance: { hintsReleased: number; assistantTurns: number; proposalsRun: number };
   debriefAvailable: boolean;
   recording: { status: 'pending' | 'recording' | 'draining' | 'complete' | 'incomplete'; reason: string | null };
@@ -89,13 +100,13 @@ export interface EcsLaunchArguments {
     };
   };
   overrides: {
-    containerOverrides: [{
-      name: string;
-      environment: [
-        { name: 'OPSREPLAY_SESSION_ID'; value: string },
-      ];
-      environmentFiles: [{ type: 's3'; value: string }];
-    }];
+    containerOverrides: [
+      {
+        name: string;
+        environment: [{ name: 'OPSREPLAY_SESSION_ID'; value: string }];
+        environmentFiles: [{ type: 's3'; value: string }];
+      },
+    ];
   };
   tags: [{ key: 'opsreplay:session-id'; value: string }];
 }
@@ -117,9 +128,19 @@ export interface SessionRecord {
 
 // Only these normalized reason codes may enter logs. ECS detail text is untrusted.
 export const launchFailureReasons = [
-  'CAPACITY', 'RESOURCE:CPU', 'RESOURCE:MEMORY', 'RESOURCE:ENI', 'RESOURCE:PORTS',
-  'RESOURCE:GPU', 'RESOURCE:FARGATE', 'MISSING', 'INACTIVE', 'ATTRIBUTE', 'LOCATION',
-  'AGENT', 'UNKNOWN',
+  'CAPACITY',
+  'RESOURCE:CPU',
+  'RESOURCE:MEMORY',
+  'RESOURCE:ENI',
+  'RESOURCE:PORTS',
+  'RESOURCE:GPU',
+  'RESOURCE:FARGATE',
+  'MISSING',
+  'INACTIVE',
+  'ATTRIBUTE',
+  'LOCATION',
+  'AGENT',
+  'UNKNOWN',
 ] as const;
 export interface LaunchFailure {
   kind: 'capacity' | 'configuration';

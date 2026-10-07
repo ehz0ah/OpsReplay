@@ -75,7 +75,11 @@
   },
   "validators": [
     { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
-    { "id": "checkout-persisted", "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 }, "sustainSeconds": 60 }
+    {
+      "id": "checkout-persisted",
+      "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 },
+      "sustainSeconds": 60
+    }
   ],
   "healthProbes": [
     {
@@ -143,7 +147,9 @@
       {
         "id": "proxy-error-log",
         "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"],
+        "commandPatterns": [
+          "^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"
+        ],
         "outputPatterns": ["Connection refused", "upstream: \"http://127\\.0\\.0\\.1:8081/"]
       },
       {
@@ -155,7 +161,10 @@
       {
         "id": "proxy-config",
         "description": "The nginx configuration sets proxy_pass to port 8081.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/nginx/nginx\\.conf", "^\\s*(sudo\\s+)?nginx\\s+-T\\b"],
+        "commandPatterns": [
+          "^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/nginx/nginx\\.conf",
+          "^\\s*(sudo\\s+)?nginx\\s+-T\\b"
+        ],
         "outputPatterns": ["proxy_pass\\s+http://127\\.0\\.0\\.1:8081;"]
       }
     ],

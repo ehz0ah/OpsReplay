@@ -4,10 +4,18 @@ export interface HttpCheck {
   expectStatus: number[];
   timeoutMs: number;
 }
-export interface Journey { id: string; ratePerSecond: number; steps: HttpCheck[] }
-export type ValidatorCheck = { kind: 'journey'; journey: string }
-  | { kind: 'checkout'; baseUrl: string; timeoutMs: number };
-export interface Validator { id: string; check: ValidatorCheck; sustainSeconds: number }
+export interface Journey {
+  id: string;
+  ratePerSecond: number;
+  steps: HttpCheck[];
+}
+export type ValidatorCheck =
+  { kind: 'journey'; journey: string } | { kind: 'checkout'; baseUrl: string; timeoutMs: number };
+export interface Validator {
+  id: string;
+  check: ValidatorCheck;
+  sustainSeconds: number;
+}
 export interface Probe {
   id: string;
   publicLabel: string;
@@ -19,7 +27,10 @@ export interface MonitorConfig {
   validators: Validator[];
   probes: Probe[];
 }
-export interface HttpResponse { status: number; body: string }
+export interface HttpResponse {
+  status: number;
+  body: string;
+}
 export interface Transport {
   http(check: HttpCheck, signal: AbortSignal, json?: object): Promise<HttpResponse | null>;
   tcp(host: string, port: number, timeoutMs: number, signal: AbortSignal): Promise<boolean>;
@@ -43,12 +54,24 @@ export interface MonitorEvent {
   label: string;
 }
 export type PublicFrame = MetricFrame | { type: 'timeline'; event: MonitorEvent };
-export type FailureCode = 'invalid_config' | 'invalid_boundary' | 'initial_state_failed'
-  | 'record_limit' | 'schedule_gap' | 'traffic_capacity' | 'monitor_failed' | 'output_failed';
+export type FailureCode =
+  | 'invalid_config'
+  | 'invalid_boundary'
+  | 'initial_state_failed'
+  | 'record_limit'
+  | 'schedule_gap'
+  | 'traffic_capacity'
+  | 'monitor_failed'
+  | 'output_failed';
 export class MonitorError extends Error {
-  constructor(readonly code: FailureCode) { super(code); this.name = 'MonitorError'; }
+  constructor(readonly code: FailureCode) {
+    super(code);
+    this.name = 'MonitorError';
+  }
 }
-export interface Clock { now(): number }
+export interface Clock {
+  now(): number;
+}
 // Wall-clock adjustments must not change sustain windows or request durations.
 export function monotonicClock(): Clock {
   const epoch = Date.now();
@@ -56,12 +79,23 @@ export function monotonicClock(): Clock {
   return { now: () => Math.floor(epoch + performance.now() - origin) };
 }
 export const limits = Object.freeze({
-  requestRecords: 150_000, recoveryRecords: 100_000, events: 10_000, inFlight: 32,
-  bodyBytes: 65_536, manifestBytes: 262_144,
-  sampleMs: 5_000, evaluationMs: 1_000, maxScheduleGapMs: 5_000,
-  maxSessionMs: 14_400_000, recordingHeadroomMs: 60_000,
-  controlBodyBytes: 1024, controlFramesPerRead: 100, controlConnections: 16,
+  requestRecords: 150_000,
+  recoveryRecords: 100_000,
+  events: 10_000,
+  inFlight: 32,
+  bodyBytes: 65_536,
+  manifestBytes: 262_144,
+  sampleMs: 5_000,
+  evaluationMs: 1_000,
+  maxScheduleGapMs: 5_000,
+  maxSessionMs: 14_400_000,
+  recordingHeadroomMs: 60_000,
+  controlBodyBytes: 1024,
+  controlFramesPerRead: 100,
+  controlConnections: 16,
   controlConcurrentRequests: 16,
-  controlAuthenticatedRps: 32, controlUnauthenticatedRps: 8, controlRequestMs: 6_000,
+  controlAuthenticatedRps: 32,
+  controlUnauthenticatedRps: 8,
+  controlRequestMs: 6_000,
   controlCutoffLeadMs: 5_000,
 });

@@ -82,13 +82,23 @@
   },
   "validators": [
     { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
-    { "id": "checkout-persisted", "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 }, "sustainSeconds": 60 }
+    {
+      "id": "checkout-persisted",
+      "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 },
+      "sustainSeconds": 60
+    }
   ],
   "healthProbes": [
     {
       "id": "storefront-home",
       "publicLabel": "Storefront home page stopped responding",
-      "check": { "kind": "http", "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
+      "check": {
+        "kind": "http",
+        "method": "GET",
+        "url": "http://127.0.0.1:80/",
+        "expectStatus": [200],
+        "timeoutMs": 2000
+      },
       "graceSeconds": 5
     }
   ],
@@ -154,7 +164,9 @@
       {
         "id": "proxy-upstream-address",
         "description": "The nginx error log shows refused connections to 127.0.0.3:8080.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"],
+        "commandPatterns": [
+          "^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/var/log/nginx/error\\.log"
+        ],
         "outputPatterns": ["Connection refused", "127\\.0\\.0\\.3:8080"]
       },
       {
@@ -172,7 +184,9 @@
       {
         "id": "zone-file",
         "description": "The zone file still contains the retired A record for api.internal.",
-        "commandPatterns": ["^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/coredns/internal\\.db"],
+        "commandPatterns": [
+          "^\\s*(sudo\\s+)?(cat|head|tail|grep|sed|less|vi|vim|nano)\\b[^\\n]*/etc/coredns/internal\\.db"
+        ],
         "outputPatterns": ["api(?:\\.internal\\.?)?\\s+(?:\\d+\\s+)?IN\\s+A\\s+127\\.0\\.0\\.3"]
       }
     ],

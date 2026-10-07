@@ -1,11 +1,11 @@
 // Serialized transition model, not a WebSocket gateway, shell adapter, or durable ledger.
 // Identity, ownership, grants, and session checks are required before these operations.
-const ownsInput = (state, generation, connectionId) => state.active
-  && state.generation === generation && state.connectionId === connectionId;
+const ownsInput = (state, generation, connectionId) =>
+  state.active && state.generation === generation && state.connectionId === connectionId;
 
 export function installInput(state, generation, connectionId) {
-  if (!state.active || !Number.isSafeInteger(generation) || generation < 1
-    || generation < state.generation) return false;
+  if (!state.active || !Number.isSafeInteger(generation) || generation < 1 || generation < state.generation)
+    return false;
   if (generation === state.generation) return connectionId === state.connectionId;
   state.generation = generation;
   state.connectionId = connectionId;
@@ -47,8 +47,8 @@ export function deliverProposal(state, generation, connectionId, proposal, now, 
   if (proposal.status !== 'dispatching') return { token, status: proposal.status };
   const receipt = { proposalId: proposal.id, command: proposal.command, status: 'not_sent' };
   state.deliveries.set(token, receipt);
-  if (!ownsInput(state, generation, connectionId) || now >= proposal.expiresAt
-    || state.prompt !== 'empty') return { token, status: receipt.status };
+  if (!ownsInput(state, generation, connectionId) || now >= proposal.expiresAt || state.prompt !== 'empty')
+    return { token, status: receipt.status };
   // A persisted no-resend marker must precede the real PTY write. A crash here is unknown.
   receipt.status = 'unknown';
   state.prompt = 'unknown';
@@ -61,8 +61,7 @@ export function deliverProposal(state, generation, connectionId, proposal, now, 
 }
 
 export function recordDelivery(proposal, receipt) {
-  if (proposal.deliveryToken !== receipt.token
-    || !['dispatching', 'unknown'].includes(proposal.status)) return false;
+  if (proposal.deliveryToken !== receipt.token || !['dispatching', 'unknown'].includes(proposal.status)) return false;
   if (!['accepted', 'not_sent', 'unknown'].includes(receipt.status)) return false;
   proposal.status = receipt.status === 'not_sent' ? 'pending' : receipt.status;
   return true;

@@ -14,30 +14,48 @@ function fixture() {
     async http(check, signal, json) {
       state.requests++;
       if (state.crash) throw new Error('private-platform-error');
-      if (state.hang) return new Promise(resolve => {
-        if (signal.aborted) resolve(null);
-        else signal.addEventListener('abort', () => resolve(null), { once: true });
-      });
+      if (state.hang)
+        return new Promise((resolve) => {
+          if (signal.aborted) resolve(null);
+          else signal.addEventListener('abort', () => resolve(null), { once: true });
+        });
       if (!state.healthy) return { status: 502, body: 'private-untrusted-body' };
       const result: HttpResponse = { status: 200, body: '{}' };
       if (check.method === 'POST') {
-        const order = { id: 'order-1', reference: (json as { reference?: string } | undefined)?.reference ?? 'traffic', status: 'confirmed' };
+        const order = {
+          id: 'order-1',
+          reference: (json as { reference?: string } | undefined)?.reference ?? 'traffic',
+          status: 'confirmed',
+        };
         if (json) orders.set('order-1', order);
         result.status = 201;
         result.body = JSON.stringify(order);
       } else if (check.url.includes('/api/orders/')) result.body = JSON.stringify(orders.get('order-1'));
       if (state.holdCheckout && json) {
         state.holdCheckout = false;
-        return new Promise(resolve => { release = () => resolve(result); });
+        return new Promise((resolve) => {
+          release = () => resolve(result);
+        });
       }
       return result;
     },
-    async tcp() { return state.probeUp; },
+    async tcp() {
+      return state.probeUp;
+    },
   };
   const monitor = new Monitor(parseConfig(JSON.stringify(manifest)), transport, { now: () => at });
-  return { monitor, state, release: () => release?.(),
-    advance: async (ms: number) => { at += ms; monitor.tick(); await monitor.drain(); },
-    jump: (ms: number) => { at += ms; },
+  return {
+    monitor,
+    state,
+    release: () => release?.(),
+    advance: async (ms: number) => {
+      at += ms;
+      monitor.tick();
+      await monitor.drain();
+    },
+    jump: (ms: number) => {
+      at += ms;
+    },
   };
 }
 
@@ -78,7 +96,7 @@ test('sealing cancels unfinished transport work and does not count cancelled att
   f.monitor.start();
   f.state.hang = true;
   f.monitor.tick();
-  await new Promise(resolve => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
   const result = await f.monitor.seal();
   assert.deepEqual(result.counters, { totalRequests: 0, failedRequests: 0 });
   assert.equal(result.recovery.state, 'failing');
@@ -96,7 +114,9 @@ test('healthy checkout needs the complete sustain window and emits recovery once
   await f.advance(500);
   assert.equal((await f.monitor.snapshot()).recovery.state, 'met');
   await f.advance(500);
-  const events = f.monitor.read().filter(f => f.payload.type === 'timeline' && f.payload.event.signal === 'recovered');
+  const events = f.monitor
+    .read()
+    .filter((f) => f.payload.type === 'timeline' && f.payload.event.signal === 'recovered');
   assert.equal(events.length, 1);
   assert.equal((await f.monitor.snapshot()).counters.failedRequests, 0);
   await f.monitor.seal();
@@ -109,7 +129,7 @@ test('a slow passing validator is not invalidated while it is still running', as
   f.state.healthy = true;
   f.state.holdCheckout = true;
   f.monitor.tick();
-  await new Promise(resolve => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
   f.jump(500);
   f.monitor.tick();
   f.jump(500);
@@ -117,8 +137,12 @@ test('a slow passing validator is not invalidated while it is still running', as
   f.release();
   await f.monitor.drain();
   assert.equal((await f.monitor.snapshot()).recovery.state, 'sustaining');
-  assert.equal(f.monitor.read().filter(frame => frame.payload.type === 'timeline'
-    && frame.payload.event.signal === 'recovery_lost').length, 0);
+  assert.equal(
+    f.monitor
+      .read()
+      .filter((frame) => frame.payload.type === 'timeline' && frame.payload.event.signal === 'recovery_lost').length,
+    0,
+  );
   await f.monitor.seal();
 });
 
@@ -132,8 +156,12 @@ test('a missed validator slot resets recovery when no check was running', async 
   await f.advance(2500);
   assert.equal(f.monitor.snapshot().recovery.state, 'sustaining');
   assert.equal(f.monitor.snapshot().recovery.sustainedSeconds, 0);
-  assert.equal(f.monitor.read().filter(frame => frame.payload.type === 'timeline'
-    && frame.payload.event.signal === 'recovery_lost').length, 1);
+  assert.equal(
+    f.monitor
+      .read()
+      .filter((frame) => frame.payload.type === 'timeline' && frame.payload.event.signal === 'recovery_lost').length,
+    1,
+  );
   await f.monitor.seal();
 });
 
@@ -159,13 +187,18 @@ test('outages use the first failed probe time, honor grace, and end once', async
   await f.advance(0);
   for (let i = 0; i < 10; i++) await f.advance(500);
   for (let i = 0; i < 4; i++) await f.advance(500);
-  const started = f.monitor.read().filter(f => f.payload.type === 'timeline' && f.payload.event.signal === 'outage_started');
+  const started = f.monitor
+    .read()
+    .filter((f) => f.payload.type === 'timeline' && f.payload.event.signal === 'outage_started');
   assert.equal(started.length, 1);
   assert.equal(started[0]!.payload.type === 'timeline' && started[0]!.payload.event.at, new Date(start).toISOString());
   f.state.probeUp = true;
   await f.advance(500);
   await f.advance(500);
-  assert.equal(f.monitor.read().filter(f => f.payload.type === 'timeline' && f.payload.event.signal === 'outage_ended').length, 1);
+  assert.equal(
+    f.monitor.read().filter((f) => f.payload.type === 'timeline' && f.payload.event.signal === 'outage_ended').length,
+    1,
+  );
   await f.monitor.seal();
 });
 
@@ -188,7 +221,7 @@ test('sealing replays the fixed cutoff and excludes later counters and recovery'
   f.monitor.tick();
   assert.deepEqual(await f.monitor.seal(), first);
   assert.deepEqual(await f.monitor.snapshot(start), first);
-  assert.ok(f.monitor.read().every(frame => frame.recordedAt <= start));
+  assert.ok(f.monitor.read().every((frame) => frame.recordedAt <= start));
   assert.throws(() => f.monitor.read(-1), /invalid_boundary/);
   const frames = f.monitor.read();
   frames.splice(0);
@@ -204,7 +237,7 @@ test('a reserved cutoff hides later frames before sealing completes', async () =
   f.jump(5000);
   f.monitor.tick();
   await f.monitor.drain();
-  assert.ok(f.monitor.read().every(frame => frame.recordedAt <= start));
+  assert.ok(f.monitor.read().every((frame) => frame.recordedAt <= start));
   assert.deepEqual(await f.monitor.seal(start), await f.monitor.snapshot(start));
   assert.throws(() => f.monitor.reserveCutoff(start + 1), /invalid_boundary/);
 });
@@ -216,9 +249,17 @@ test('sealing excludes an outage learned only after the cutoff', async () => {
   f.state.probeUp = false;
   await f.advance(0);
   for (let i = 0; i < 10; i++) await f.advance(500);
-  assert.ok(f.monitor.read().some(frame => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'));
+  assert.ok(
+    f.monitor
+      .read()
+      .some((frame) => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'),
+  );
   await f.monitor.seal(start + 3000);
-  assert.ok(!f.monitor.read().some(frame => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'));
+  assert.ok(
+    !f.monitor
+      .read()
+      .some((frame) => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started'),
+  );
 });
 
 test('scheduled samples are appended before sealing with contiguous sequences', async () => {
@@ -230,8 +271,11 @@ test('scheduled samples are appended before sealing with contiguous sequences', 
   f.monitor.tick();
   await f.monitor.seal(f.monitor.now());
   const frames = f.monitor.read();
-  assert.ok(frames.filter(frame => frame.payload.type === 'metrics').length >= 2);
-  assert.deepEqual(frames.map(frame => frame.sequence), frames.map((_, index) => index + 1));
+  assert.ok(frames.filter((frame) => frame.payload.type === 'metrics').length >= 2);
+  assert.deepEqual(
+    frames.map((frame) => frame.sequence),
+    frames.map((_, index) => index + 1),
+  );
 });
 
 test('the authored Free limit does not stop a Pro-length recording or exact-cutoff seal', async () => {
@@ -256,7 +300,7 @@ test('pending work stays bounded when a transport fails to complete until cancel
   // The fake transport ignores deadlines to exercise the core's independent limit.
   for (let i = 0; i < 40 && !f.monitor.stopped; i++) {
     f.monitor.tick();
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
     f.jump(500);
   }
   await f.monitor.drain();

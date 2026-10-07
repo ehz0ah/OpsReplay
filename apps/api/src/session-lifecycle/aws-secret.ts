@@ -8,11 +8,14 @@ export class MonitorSecretFile implements MonitorSecretPort {
 
   async ensure(session: SessionRecord, abortSignal?: AbortSignal): Promise<void> {
     const reference = session.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value;
-    const match = /^arn:aws[a-z-]*:s3:::([a-z0-9][a-z0-9-]{1,61}[a-z0-9])\/(sessions\/[a-f0-9-]{36}\.env)$/.exec(reference);
-    if (!match || match[2] !== `sessions/${session.view.id}.env`
-      || !/^[A-Za-z0-9_-]{43}$/.test(session.monitorSecret)) throw new Error('Invalid monitor secret file');
+    const match = /^arn:aws[a-z-]*:s3:::([a-z0-9][a-z0-9-]{1,61}[a-z0-9])\/(sessions\/[a-f0-9-]{36}\.env)$/.exec(
+      reference,
+    );
+    if (!match || match[2] !== `sessions/${session.view.id}.env` || !/^[A-Za-z0-9_-]{43}$/.test(session.monitorSecret))
+      throw new Error('Invalid monitor secret file');
     const command = new PutObjectCommand({
-      Bucket: match[1]!, Key: match[2]!,
+      Bucket: match[1]!,
+      Key: match[2]!,
       Body: `OPSREPLAY_MONITOR_SECRET=${session.monitorSecret}\n`,
       ContentType: 'text/plain; charset=utf-8',
       ServerSideEncryption: 'AES256',
@@ -28,8 +31,8 @@ export class MonitorSecretFile implements MonitorSecretPort {
         if (error instanceof S3ServiceException) {
           if (error.$metadata.httpStatusCode === 412) return;
           // A 409 does not prove the object exists. Retry the same conditional write.
-          if (attempt === 0 && error.$metadata.httpStatusCode === 409
-            && error.name === 'ConditionalRequestConflict') continue;
+          if (attempt === 0 && error.$metadata.httpStatusCode === 409 && error.name === 'ConditionalRequestConflict')
+            continue;
         }
         throw error;
       }

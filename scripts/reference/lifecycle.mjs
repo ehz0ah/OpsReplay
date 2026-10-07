@@ -11,7 +11,8 @@ export function nextStartupAction(session, observed, now) {
         ? { type: 'save_task', arn: observed.taskArn }
         : { type: 'launch', arguments: session.launchArguments };
     }
-    if (observed.healthy && observed.recorderAttached) return { type: 'mark_ready', readyAt: now, endsAt: now + session.timeLimitMs };
+    if (observed.healthy && observed.recorderAttached)
+      return { type: 'mark_ready', readyAt: now, endsAt: now + session.timeLimitMs };
   } else if (session.status === 'ready') {
     // A timer is only a wake-up signal. The saved deadline is authoritative.
     if (now >= session.endsAt) return { type: 'time_limit' };
@@ -23,8 +24,7 @@ export function nextStartupAction(session, observed, now) {
 export function nextFinalisationAction(session, recording, observed, now) {
   if (['provisioning', 'ready'].includes(session.status)) return { type: 'wait' };
   if (recording.status === 'draining') {
-    const reason = observed.taskStopped ? 'task_lost'
-      : now >= recording.drainDeadlineAt ? 'drain_timeout' : null;
+    const reason = observed.taskStopped ? 'task_lost' : now >= recording.drainDeadlineAt ? 'drain_timeout' : null;
     return reason ? { type: 'seal_incomplete', reason } : { type: 'wait' };
   }
   if (!['complete', 'incomplete'].includes(recording.status)) throw new Error('Outcome must start a drain');
@@ -34,8 +34,14 @@ export function nextFinalisationAction(session, recording, observed, now) {
 }
 
 export function acceptRecordingComplete(recording, receipt, now) {
-  if (recording.status !== 'draining' || now >= recording.drainDeadlineAt
-    || now >= recording.leaseExpiresAt || receipt.generation !== recording.generation
-    || !receipt.allDataSaved || receipt.hasGaps) return recording;
+  if (
+    recording.status !== 'draining' ||
+    now >= recording.drainDeadlineAt ||
+    now >= recording.leaseExpiresAt ||
+    receipt.generation !== recording.generation ||
+    !receipt.allDataSaved ||
+    receipt.hasGaps
+  )
+    return recording;
   return { ...recording, status: 'complete', reason: null };
 }
