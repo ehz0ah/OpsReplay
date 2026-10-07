@@ -1,18 +1,24 @@
 import type { SessionRecord } from '../start-session/types.js';
-import type { EnvironmentPort, LifecycleStorePort, MonitorSecretPort, ProvisioningSchedulePort } from './ports.js';
+import type { EnvironmentPort, LifecycleStorePort, MonitorBootstrapPort, ProvisioningSchedulePort } from './ports.js';
 import { LaunchRejectedError } from './ports.js';
 
 export type ProvisionResult = SessionRecord;
 
 interface Dependencies {
-  store: Pick<LifecycleStorePort, 'session' | 'saveTask' | 'failStartWithoutTask'>;
+  store: Pick<LifecycleStorePort, 'session' | 'saveMonitorCertificate' | 'saveTask' | 'failStartWithoutTask'>;
   schedule: ProvisioningSchedulePort;
-  secret: MonitorSecretPort;
+  bootstrap: MonitorBootstrapPort;
   environment: Pick<EnvironmentPort, 'launch' | 'stop'>;
   now?: () => Date;
 }
 
-export function createProvisionSession({ store, schedule, secret, environment, now = () => new Date() }: Dependencies) {
+export function createProvisionSession({
+  store,
+  schedule,
+  bootstrap,
+  environment,
+  now = () => new Date(),
+}: Dependencies) {
   return async (sessionId: string, abortSignal?: AbortSignal): Promise<ProvisionResult> => {
     abortSignal?.throwIfAborted();
     let session = await store.session(sessionId, abortSignal);
@@ -22,7 +28,8 @@ export function createProvisionSession({ store, schedule, secret, environment, n
     await schedule.ensure(session, now(), abortSignal);
     abortSignal?.throwIfAborted();
     if (!session.taskArn && now().getTime() < Date.parse(session.provisioningDeadline)) {
-      await secret.ensure(session, abortSignal);
+      const certificate = await bootstrap.ensure(session, abortSignal);
+      session = await store.saveMonitorCertificate(sessionId, certificate, abortSignal);
     }
 
     // External setup can cross the deadline or race with expiry. Read state again

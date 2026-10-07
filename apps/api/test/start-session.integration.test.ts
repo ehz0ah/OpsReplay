@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
+import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { CreateTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -16,9 +17,10 @@ import { createAwsTransport } from '../src/shared/aws.js';
 import { LifecycleStore } from '../src/session-lifecycle/store.js';
 import { createProvisionSession } from '../src/session-lifecycle/provision.js';
 import { RunTaskCommand, type ECSClient } from '@aws-sdk/client-ecs';
-import { PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
 import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
-import { MonitorSecretFile } from '../src/session-lifecycle/aws-secret.js';
+import { MonitorBootstrapFile } from '../src/session-lifecycle/aws-bootstrap.js';
+import { createMonitorCertificate } from '../src/session-lifecycle/monitor-certificate.js';
 import type { ProvisionResult } from '../src/session-lifecycle/provision.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
@@ -43,6 +45,7 @@ const launchConfiguration: LaunchConfiguration = {
   monitorContainerName: 'monitor',
   secretBucketArn: 'arn:aws:s3:::test-secrets',
 };
+const bootstrap = { ensure: async (record: SessionRecord) => (await createMonitorCertificate(record)).certificate };
 const request = (): StartRequest => ({
   requestId: randomUUID(),
   challengeId: 'wrong-upstream-port',
@@ -718,7 +721,7 @@ for (const kind of ['capacity', 'configuration'] as const) {
     const provision = createProvisionSession({
       store: new LifecycleStore(database.document, f.table),
       schedule: { ensure: async () => {} },
-      secret: { ensure: async () => {} },
+      bootstrap,
       environment: new FargateEnvironment({
         send: async (command: unknown) => {
           assert.ok(command instanceof RunTaskCommand);
@@ -797,11 +800,22 @@ test('start uses the provisioned record without a final read and checks its owne
 
 test('concurrent starts recover an S3 conditional conflict and still return one session', async () => {
   const f = await fixture();
-  const files = new Map<string, unknown>();
+  const files = new Map<string, string>();
   const tasks = new Map<string, unknown>();
   let uploads = 0;
-  const secret = new MonitorSecretFile({
+  const bootstrapFile = new MonitorBootstrapFile({
     send: async (command: unknown) => {
+      if (command instanceof GetObjectCommand) {
+        const body = files.get(command.input.Key!);
+        if (typeof body !== 'string') {
+          throw new S3ServiceException({
+            name: 'NoSuchKey',
+            $fault: 'client',
+            $metadata: { httpStatusCode: 404 },
+          });
+        }
+        return { Body: Readable.from(body), ContentLength: Buffer.byteLength(body) };
+      }
       assert.ok(command instanceof PutObjectCommand);
       uploads++;
       if (uploads === 1)
@@ -818,13 +832,14 @@ test('concurrent starts recover an S3 conditional conflict and still return one 
           $metadata: { httpStatusCode: 412 },
         });
       }
+      if (typeof command.input.Body !== 'string') throw new Error('Expected a text bootstrap file');
       files.set(command.input.Key!, command.input.Body);
       return {};
     },
   } as unknown as S3Client);
   const provision = createProvisionSession({
     store: new LifecycleStore(database.document, f.table),
-    secret,
+    bootstrap: bootstrapFile,
     schedule: { ensure: async () => {} },
     now: () => new Date(current),
     environment: new FargateEnvironment({

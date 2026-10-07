@@ -2,7 +2,15 @@ import type { EcsLaunchArguments, LaunchFailure, SessionRecord } from '../start-
 
 export interface LifecycleStorePort {
   session(id: string, abortSignal?: AbortSignal): Promise<SessionRecord | undefined>;
+  saveMonitorCertificate(id: string, certificate: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
   saveTask(id: string, taskArn: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
+  publishRecordingWork(
+    id: string,
+    taskArn: string,
+    taskAddress: string,
+    observedAt: string,
+    abortSignal?: AbortSignal,
+  ): Promise<SessionRecord>;
   failStartWithoutTask(
     id: string,
     endedAt: string,
@@ -17,8 +25,8 @@ export interface ProvisioningSchedulePort {
   ensure(session: SessionRecord, now: Date, abortSignal?: AbortSignal): Promise<void>;
 }
 
-export interface MonitorSecretPort {
-  ensure(session: SessionRecord, abortSignal?: AbortSignal): Promise<void>;
+export interface MonitorBootstrapPort {
+  ensure(session: SessionRecord, abortSignal?: AbortSignal): Promise<string>;
 }
 
 export interface EnvironmentTask {

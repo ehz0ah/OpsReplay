@@ -139,7 +139,7 @@ export class SessionStartStack extends Stack {
     logs.grantWrite(role);
     role.addToPolicy(
       new PolicyStatement({
-        actions: ['s3:PutObject'],
+        actions: ['s3:GetObject', 's3:PutObject'],
         resources: [secretFiles.arnForObjects('sessions/*')],
       }),
     );

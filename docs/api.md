@@ -127,13 +127,20 @@ code, not one Lambda invoking another Lambda.
    `launchRecoveryDeadline`, then the timeout callback at `provisioningDeadline`.
    Both must exist before launch. Recovery is created first so an interrupted setup
    still has a callback after the task-discovery window.
-4. Writes the saved monitor secret to a private, encrypted S3 environment file, then
-   calls ECS `RunTask` with the persisted arguments and stores the task ARN. The
-   arguments pin the task definition, images, secret-file reference, and network settings.
-   They contain no plaintext secret. The ECS agent reads the file with the task execution
-   role. The environment task has no task IAM role.
+4. Creates a per-session TLS key pair. It writes the saved monitor secret and base64
+   certificate and key to a private, encrypted S3 environment file, then stores only the
+   public certificate in the private session record. It calls ECS `RunTask` with the
+   persisted arguments and stores the task ARN. The arguments pin the task definition,
+   images, bootstrap-file reference, and network settings. They contain no secret or
+   private key. The ECS agent reads the file with the task execution role. The
+   environment task has no task IAM role.
    The server-generated session ID is the `clientToken`, `startedBy`, and a tag.
 5. Returns `200` with the session in `provisioning`.
+
+An ECS `RUNNING` task-state action reads the ENI private IPv4 address. After it verifies
+the saved cluster, task ARN, certificate, status, and provisioning deadline, it stores
+the address and adds the session to the sparse recording-work index. This action is
+bundled and locally tested. Its EventBridge rule is not deployed yet.
 
 A repeated request returns the saved session and invokes the same provisioning routine.
 It repairs both callbacks even when the ARN is already saved. If the ARN is missing, it

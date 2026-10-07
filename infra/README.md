@@ -29,7 +29,8 @@ The table and secret-file bucket use `Retain` by default. Stack deletion would k
 their data and storage charges. Secret files use S3-managed encryption, HTTPS, public-access blocking, and
 one-day lifecycle expiration. Expiration is asynchronous. This is a bootstrap-file
 retention rule, not a session deadline. The bucket policy grants reads only to the
-configured task execution role. Start has `PutObject` only, and expiry has no S3 access.
+configured task execution role. Start has `PutObject` and a bounded `GetObject` recovery
+read, and expiry has no S3 access.
 The task execution role must be in the deployment account. Private tasks need the S3
 endpoint route and an endpoint policy permitting this bucket, alongside their image
 pull dependencies. The monitor must not print its environment or share it with the

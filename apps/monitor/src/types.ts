@@ -1,3 +1,5 @@
+import { recordingWorkTiming } from '../../../packages/contracts/private/recording-work.js';
+
 export interface HttpCheck {
   method: 'GET' | 'POST';
   url: string;
@@ -89,7 +91,7 @@ export const limits = Object.freeze({
   evaluationMs: 1_000,
   maxScheduleGapMs: 5_000,
   maxSessionMs: 14_400_000,
-  recordingHeadroomMs: 60_000,
+  recordingHeadroomMs: recordingWorkTiming.certificateHeadroomMs,
   controlConnections: 16,
   controlConcurrentRequests: 16,
   controlAuthenticatedRps: 32,

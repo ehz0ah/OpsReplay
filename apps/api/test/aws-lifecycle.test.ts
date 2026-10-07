@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createPrivateKey, randomUUID, X509Certificate } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { Readable } from 'node:stream';
 import { test } from 'node:test';
 import {
   DescribeTasksCommand,
@@ -16,8 +17,9 @@ import {
   ResourceNotFoundException,
   type SchedulerClient,
 } from '@aws-sdk/client-scheduler';
-import { PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
-import { MonitorSecretFile } from '../src/session-lifecycle/aws-secret.js';
+import { GetObjectCommand, PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import { MonitorBootstrapFile } from '../src/session-lifecycle/aws-bootstrap.js';
+import { createMonitorCertificate } from '../src/session-lifecycle/monitor-certificate.js';
 import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
 import { ProvisioningSchedule, loadScheduleConfiguration } from '../src/session-lifecycle/aws-schedule.js';
 import { createExpiryHandler } from '../src/expire-provisioning/handler.js';
@@ -96,11 +98,13 @@ function session(): SessionRecord {
       tags: [{ key: 'opsreplay:session-id', value: sessionId }],
     },
     monitorSecret,
+    monitorCertificate: null,
     launchFailure: null,
     provisioningDeadline: '2026-10-06T02:03:00.000Z',
     launchRecoveryDeadline: '2026-10-06T02:08:00.000Z',
     scheduleName: `session-${sessionId}`,
     taskArn: null,
+    taskAddress: null,
     provisioningCleanup: { status: 'pending', completedAt: null },
   };
 }
@@ -355,47 +359,87 @@ for (const reasons of [
   });
 }
 
-test('monitor secret upload uses an encrypted immutable object and keeps plaintext out of RunTask', async () => {
+test('monitor certificate is bounded, self-signed, valid for the session, and matches its private key', async () => {
+  const record = session();
+  record.view.createdAt = '2026-10-06T02:00:00.250Z';
+  record.launchRecoveryDeadline = '2026-10-06T02:08:00.250Z';
+  const pair = await createMonitorCertificate(record);
+  const certificate = new X509Certificate(pair.certificate);
+  assert.equal(certificate.ca, false);
+  assert.equal(certificate.subject, certificate.issuer);
+  assert.equal(certificate.verify(certificate.publicKey), true);
+  assert.equal(certificate.checkPrivateKey(createPrivateKey(pair.privateKey)), true);
+  assert.equal(certificate.publicKey.asymmetricKeyType, 'ec');
+  assert.equal(certificate.publicKey.asymmetricKeyDetails?.namedCurve, 'prime256v1');
+  assert.ok(certificate.keyUsage.includes('1.3.6.1.5.5.7.3.1'));
+  assert.ok(Date.parse(certificate.validFrom) <= Date.parse(record.view.createdAt));
+  assert.ok(
+    Date.parse(certificate.validTo) >=
+      Date.parse(record.launchRecoveryDeadline) + record.accessGrant.timeLimitSeconds * 1000 + 60_000,
+  );
+  assert.ok(Buffer.byteLength(pair.certificate) <= 16_384);
+  assert.ok(Buffer.byteLength(pair.privateKey) <= 16_384);
+});
+
+test('monitor bootstrap upload is encrypted, immutable, validated, and reusable', async () => {
   const record = session();
   const signal = AbortSignal.timeout(1000);
   let uploads = 0;
-  const secret = new MonitorSecretFile({
+  let reads = 0;
+  let stored: string | undefined;
+  const bootstrap = new MonitorBootstrapFile({
     send: async (command: unknown, options: unknown) => {
-      assert.ok(command instanceof PutObjectCommand);
       assert.deepEqual(options, { abortSignal: signal });
-      assert.deepEqual(command.input, {
-        Bucket: 'test-secrets',
-        Key: `sessions/${sessionId}.env`,
-        Body: `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`,
-        ContentType: 'text/plain; charset=utf-8',
-        ServerSideEncryption: 'AES256',
-        IfNoneMatch: '*',
-      });
-      if (uploads++)
+      if (command instanceof GetObjectCommand) {
+        reads++;
+        assert.deepEqual(command.input, {
+          Bucket: 'test-secrets',
+          Key: `sessions/${sessionId}.env`,
+          Range: 'bytes=0-65536',
+        });
+        assert.ok(stored);
+        return { Body: Readable.from(stored), ContentLength: Buffer.byteLength(stored) };
+      }
+      assert.ok(command instanceof PutObjectCommand);
+      uploads++;
+      assert.equal(command.input.Bucket, 'test-secrets');
+      assert.equal(command.input.Key, `sessions/${sessionId}.env`);
+      assert.equal(command.input.ContentType, 'text/plain; charset=utf-8');
+      assert.equal(command.input.ServerSideEncryption, 'AES256');
+      assert.equal(command.input.IfNoneMatch, '*');
+      if (typeof command.input.Body !== 'string') throw new Error('Expected a text bootstrap file');
+      if (stored)
         throw new S3ServiceException({
           name: 'PreconditionFailed',
           $fault: 'client',
           $metadata: { httpStatusCode: 412 },
         });
+      stored = command.input.Body;
       return {};
     },
   } as unknown as S3Client);
-  await secret.ensure(record, signal);
-  await secret.ensure(record, signal);
+  const certificate = await bootstrap.ensure(record, signal);
+  assert.ok(stored?.startsWith(`OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`));
+  assert.ok(stored?.includes('OPSREPLAY_MONITOR_TLS_CERT_B64='));
+  assert.ok(stored?.includes('OPSREPLAY_MONITOR_TLS_KEY_B64='));
+  assert.equal(await bootstrap.ensure(record, signal), certificate);
+  record.monitorCertificate = certificate;
+  assert.equal(await bootstrap.ensure(record, signal), certificate);
   assert.equal(uploads, 2);
+  assert.equal(reads, 2);
   assert.equal(JSON.stringify(record.launchArguments).includes(record.monitorSecret), false);
   record.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value = `arn:aws:s3:::test-secrets/sessions/${randomUUID()}.env`;
-  await assert.rejects(secret.ensure(record), /Invalid monitor secret file/);
+  await assert.rejects(bootstrap.ensure(record), /Invalid monitor bootstrap file/);
   assert.equal(uploads, 2);
 });
 
-test('monitor secret upload does not hide storage failures', async () => {
-  const secret = new MonitorSecretFile({
+test('monitor bootstrap upload does not hide definitive storage failures', async () => {
+  const bootstrap = new MonitorBootstrapFile({
     send: async () => {
       throw new S3ServiceException({ name: 'AccessDenied', $fault: 'client', $metadata: { httpStatusCode: 403 } });
     },
   } as unknown as S3Client);
-  await assert.rejects(secret.ensure(session()), { name: 'AccessDenied' });
+  await assert.rejects(bootstrap.ensure(session()), { name: 'AccessDenied' });
 });
 
 test('the documented Fargate capacity message normalizes before classification and logging', async () => {
@@ -420,14 +464,52 @@ test('the documented Fargate capacity message normalizes before classification a
   });
 });
 
+test('an uncertain bootstrap upload reads and validates the object that actually won', async () => {
+  const record = session();
+  const winner = await createMonitorCertificate(record);
+  const winnerBody = [
+    `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}`,
+    `OPSREPLAY_MONITOR_TLS_CERT_B64=${Buffer.from(winner.certificate).toString('base64')}`,
+    `OPSREPLAY_MONITOR_TLS_KEY_B64=${Buffer.from(winner.privateKey).toString('base64')}`,
+    '',
+  ].join('\n');
+  let writes = 0;
+  let reads = 0;
+  const bootstrap = new MonitorBootstrapFile({
+    send: async (command: unknown) => {
+      if (command instanceof PutObjectCommand) {
+        writes++;
+        throw new Error('Upload response lost');
+      }
+      assert.ok(command instanceof GetObjectCommand);
+      reads++;
+      return { Body: Readable.from(winnerBody), ContentLength: Buffer.byteLength(winnerBody) };
+    },
+  } as unknown as S3Client);
+  assert.equal(await bootstrap.ensure(record), winner.certificate);
+  assert.equal(writes, 1);
+  assert.equal(reads, 1);
+});
+
 for (const outcome of ['uploaded', 'already_exists'] as const) {
   test(`S3 conditional conflict is retried once and then ${outcome}`, async () => {
+    const record = session();
+    const winner = await createMonitorCertificate(record);
+    const winnerBody = [
+      `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}`,
+      `OPSREPLAY_MONITOR_TLS_CERT_B64=${Buffer.from(winner.certificate).toString('base64')}`,
+      `OPSREPLAY_MONITOR_TLS_KEY_B64=${Buffer.from(winner.privateKey).toString('base64')}`,
+      '',
+    ].join('\n');
     const inputs: PutObjectCommand['input'][] = [];
     const signal = AbortSignal.timeout(1000);
-    const secret = new MonitorSecretFile({
+    const bootstrap = new MonitorBootstrapFile({
       send: async (command: unknown, options: unknown) => {
-        assert.ok(command instanceof PutObjectCommand);
         assert.deepEqual(options, { abortSignal: signal });
+        if (command instanceof GetObjectCommand) {
+          return { Body: Readable.from(winnerBody), ContentLength: Buffer.byteLength(winnerBody) };
+        }
+        assert.ok(command instanceof PutObjectCommand);
         inputs.push(command.input);
         if (inputs.length === 1)
           throw new S3ServiceException({
@@ -444,16 +526,20 @@ for (const outcome of ['uploaded', 'already_exists'] as const) {
         return {};
       },
     } as unknown as S3Client);
-    await secret.ensure(session(), signal);
+    const certificate = await bootstrap.ensure(record, signal);
+    if (outcome === 'already_exists') assert.equal(certificate, winner.certificate);
     assert.equal(inputs.length, 2);
     assert.deepEqual(inputs[0], inputs[1]);
   });
 }
 
-test('repeated S3 conditional conflicts fail after one retry', async () => {
+test('repeated S3 conflicts fail when no bootstrap object exists', async () => {
   let calls = 0;
-  const secret = new MonitorSecretFile({
-    send: async () => {
+  const bootstrap = new MonitorBootstrapFile({
+    send: async (command: unknown) => {
+      if (command instanceof GetObjectCommand) {
+        throw new S3ServiceException({ name: 'NoSuchKey', $fault: 'client', $metadata: { httpStatusCode: 404 } });
+      }
       calls++;
       throw new S3ServiceException({
         name: 'ConditionalRequestConflict',
@@ -462,14 +548,14 @@ test('repeated S3 conditional conflicts fail after one retry', async () => {
       });
     },
   } as unknown as S3Client);
-  await assert.rejects(secret.ensure(session()), { name: 'ConditionalRequestConflict' });
+  await assert.rejects(bootstrap.ensure(session()), { name: 'ConditionalRequestConflict' });
   assert.equal(calls, 2);
 });
 
 test('the S3 conflict retry obeys the invocation deadline', async () => {
   let calls = 0;
   const controller = new AbortController();
-  const secret = new MonitorSecretFile({
+  const bootstrap = new MonitorBootstrapFile({
     send: async () => {
       calls++;
       controller.abort();
@@ -480,6 +566,6 @@ test('the S3 conflict retry obeys the invocation deadline', async () => {
       });
     },
   } as unknown as S3Client);
-  await assert.rejects(secret.ensure(session(), controller.signal), { name: 'AbortError' });
+  await assert.rejects(bootstrap.ensure(session(), controller.signal), { name: 'AbortError' });
   assert.equal(calls, 1);
 });

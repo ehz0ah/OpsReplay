@@ -12,6 +12,7 @@ import type {
   StartRequest,
 } from './types.js';
 import { launchFailureReasons } from './types.js';
+import { validMonitorCertificate } from '../session-lifecycle/monitor-certificate-validation.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
@@ -36,6 +37,10 @@ const ecsTaskArn = {
 const subnetId = { type: 'string', pattern: '^subnet-[a-f0-9]{8,17}$' };
 const securityGroupId = { type: 'string', pattern: '^sg-[a-f0-9]{8,17}$' };
 const monitorSecret = { type: 'string', pattern: '^[A-Za-z0-9_-]{43}$' };
+const monitorCertificate = {
+  anyOf: [{ type: 'string', minLength: 1, maxLength: 16_384 }, { type: 'null' }],
+};
+const taskAddress = { anyOf: [{ type: 'string', format: 'ipv4' }, { type: 'null' }] };
 const pins = object({
   taskDefinitionArn: {
     type: 'string',
@@ -159,6 +164,7 @@ export const validSession = ajv.compile<SessionRecord>(
       pins,
       launchArguments,
       monitorSecret,
+      monitorCertificate,
       provisioningDeadline: timestamp,
       launchFailure: {
         anyOf: [
@@ -178,6 +184,7 @@ export const validSession = ajv.compile<SessionRecord>(
       launchRecoveryDeadline: timestamp,
       scheduleName: { type: 'string', pattern: '^session-[a-f0-9-]{36}$' },
       taskArn: { anyOf: [ecsTaskArn, { type: 'null' }] },
+      taskAddress,
       provisioningCleanup: object({
         status: { enum: ['pending', 'complete'] },
         completedAt: { anyOf: [timestamp, { type: 'null' }] },
@@ -197,6 +204,9 @@ export function validSessionRelations(session: SessionRecord): boolean {
     launch.tags[0]?.value === session.view.id &&
     environment?.[0]?.value === session.view.id &&
     launch.overrides.containerOverrides[0].environmentFiles[0].value.endsWith(`/sessions/${session.view.id}.env`) &&
+    (session.monitorCertificate === null || validMonitorCertificate(session, session.monitorCertificate)) &&
+    (session.taskArn === null || session.monitorCertificate !== null) &&
+    (session.taskAddress === null || session.taskArn !== null) &&
     (session.launchFailure === null ||
       (session.view.status === 'error' && session.view.statusReason === 'start_failed')) &&
     session.scheduleName === `session-${session.view.id}` &&

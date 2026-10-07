@@ -304,11 +304,13 @@ export function createStartHandler({
             tags: [{ key: 'opsreplay:session-id', value: id }],
           },
           monitorSecret,
+          monitorCertificate: null,
           launchFailure: null,
           provisioningDeadline: provisioningDeadline.toISOString(),
           launchRecoveryDeadline: new Date(provisioningDeadline.getTime() + 300_000).toISOString(),
           scheduleName: `session-${id}`,
           taskArn: null,
+          taskAddress: null,
           provisioningCleanup: { status: 'pending', completedAt: null },
         };
         if (!validSession(session) || !validSessionRelations(session))

@@ -4,6 +4,9 @@ import type { DynamoDBDocumentClient, TransactWriteCommandInput } from '@aws-sdk
 import { validSession, validSessionRelations, validTaskArn } from '../start-session/validation.js';
 import type { LaunchFailure, SessionRecord } from '../start-session/types.js';
 import type { LifecycleStorePort } from './ports.js';
+import { validMonitorCertificate } from './monitor-certificate-validation.js';
+import { isIP } from 'node:net';
+import { recordingWorkOrder, unfinishedWorkIndex } from '../../../../packages/contracts/private/recording-work.js';
 
 const sessionKey = (id: string) => ({ PK: `SESSION#${id}`, SK: 'STATE' });
 const activeKey = (ownerId: string) => ({ PK: `USER#${ownerId}`, SK: 'ACTIVE' });
@@ -37,6 +40,34 @@ export class LifecycleStore implements LifecycleStorePort {
     return sessionFrom(result.Item);
   }
 
+  async saveMonitorCertificate(id: string, certificate: string, abortSignal?: AbortSignal): Promise<SessionRecord> {
+    const current = await this.session(id, abortSignal);
+    if (!current) throw new Error('Session does not exist');
+    if (!validMonitorCertificate(current, certificate)) throw new Error('Invalid monitor certificate');
+    if (current.monitorCertificate === certificate) return current;
+    if (current.monitorCertificate !== null)
+      throw new Error('Monitor certificate does not match the saved certificate');
+    const command = new UpdateCommand({
+      TableName: this.table,
+      Key: sessionKey(id),
+      UpdateExpression: 'SET #data.#monitorCertificate = :certificate',
+      ConditionExpression:
+        'attribute_exists(PK) AND (#data.#monitorCertificate = :empty OR #data.#monitorCertificate = :certificate)',
+      ExpressionAttributeNames: { '#data': 'data', '#monitorCertificate': 'monitorCertificate' },
+      ExpressionAttributeValues: { ':empty': null, ':certificate': certificate },
+      ReturnValues: 'ALL_NEW',
+    });
+    try {
+      const result = await this.client.send(command, sendOptions(abortSignal));
+      return sessionFrom(result.Attributes);
+    } catch (error) {
+      if (abortSignal?.aborted) throw error;
+      const saved = await this.session(id, abortSignal);
+      if (saved?.monitorCertificate === certificate) return saved;
+      throw error;
+    }
+  }
+
   async saveTask(id: string, taskArn: string, abortSignal?: AbortSignal): Promise<SessionRecord> {
     if (!validTaskArn(taskArn)) throw new Error('Invalid ECS task ARN');
     const command = new UpdateCommand({
@@ -50,6 +81,72 @@ export class LifecycleStore implements LifecycleStorePort {
     });
     const result = await this.client.send(command, sendOptions(abortSignal));
     return sessionFrom(result.Attributes);
+  }
+
+  async publishRecordingWork(
+    id: string,
+    taskArn: string,
+    taskAddress: string,
+    observedAt: string,
+    abortSignal?: AbortSignal,
+  ): Promise<SessionRecord> {
+    if (!validTaskArn(taskArn) || isIP(taskAddress) !== 4 || !Number.isFinite(Date.parse(observedAt))) {
+      throw new Error('Invalid recordable task observation');
+    }
+    const current = await this.session(id, abortSignal);
+    if (!current) throw new Error('Session does not exist');
+    const workOrder = recordingWorkOrder(current.view.createdAt, id);
+    const command = new UpdateCommand({
+      TableName: this.table,
+      Key: sessionKey(id),
+      UpdateExpression:
+        'SET #data.#taskArn = :taskArn, #data.#taskAddress = :taskAddress, #workPartition = :workPartition, #workOrder = :workOrder',
+      ConditionExpression:
+        'attribute_exists(PK) AND #data.#view.#status = :provisioning AND #data.#deadline > :observedAt AND ' +
+        '#data.#monitorCertificate <> :empty AND (#data.#taskArn = :empty OR #data.#taskArn = :taskArn) AND ' +
+        '(#data.#taskAddress = :empty OR #data.#taskAddress = :taskAddress)',
+      ExpressionAttributeNames: {
+        '#data': 'data',
+        '#view': 'view',
+        '#status': 'status',
+        '#deadline': 'provisioningDeadline',
+        '#monitorCertificate': 'monitorCertificate',
+        '#taskArn': 'taskArn',
+        '#taskAddress': 'taskAddress',
+        '#workPartition': unfinishedWorkIndex.partitionKey,
+        '#workOrder': unfinishedWorkIndex.sortKey,
+      },
+      ExpressionAttributeValues: {
+        ':provisioning': 'provisioning',
+        ':observedAt': observedAt,
+        ':empty': null,
+        ':taskArn': taskArn,
+        ':taskAddress': taskAddress,
+        ':workPartition': unfinishedWorkIndex.recordingPartition,
+        ':workOrder': workOrder,
+      },
+      ReturnValues: 'ALL_NEW',
+    });
+    try {
+      const result = await this.client.send(command, sendOptions(abortSignal));
+      return sessionFrom(result.Attributes);
+    } catch (error) {
+      if (abortSignal?.aborted) throw error;
+      const result = await this.client.send(
+        new GetCommand({ TableName: this.table, Key: sessionKey(id), ConsistentRead: true }),
+        sendOptions(abortSignal),
+      );
+      const saved = result.Item ? sessionFrom(result.Item) : undefined;
+      if (
+        saved?.taskArn === taskArn &&
+        saved.taskAddress === taskAddress &&
+        result.Item?.[unfinishedWorkIndex.partitionKey] === unfinishedWorkIndex.recordingPartition &&
+        result.Item?.[unfinishedWorkIndex.sortKey] === workOrder
+      ) {
+        return saved;
+      }
+      throw error;
+    }
   }
 
   async failStartWithoutTask(
