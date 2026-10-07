@@ -3,7 +3,48 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const require = createRequire(import.meta.url);
-const { MonitorClient, MonitorClientError } = require('/test/client.cjs');
+const { MonitorClient, MonitorClientError, MonitorRecorder } = require('/test/client.cjs');
+
+class MemoryRecordingSink {
+  startedAt = null;
+  source = null;
+  cursor = 0;
+  frames = [];
+  beginCount = 0;
+  sealed = null;
+  waiters = [];
+
+  async begin(value) {
+    if (this.startedAt === null) this.startedAt = value.startedAt;
+    else assert.equal(value.startedAt, this.startedAt);
+    this.beginCount++;
+  }
+
+  async append(value) {
+    assert.equal(value.startedAt, this.startedAt);
+    assert.equal(value.after, this.cursor);
+    assert.ok(value.frames.length > 0);
+    assert.equal(value.frames[0].sequence, this.cursor + 1);
+    assert.equal(value.frames.at(-1).sequence, value.nextSequence);
+    if (this.source !== null) assert.equal(value.source, this.source);
+    this.source = value.source;
+    this.cursor = value.nextSequence;
+    this.frames.push(...structuredClone(value.frames));
+    this.waiters.shift()?.();
+  }
+
+  async seal(value) {
+    assert.equal(value.startedAt, this.startedAt);
+    this.source = value.source;
+    this.cursor = value.cursor;
+    this.frames = structuredClone(value.frames);
+    this.sealed = structuredClone(value);
+  }
+
+  nextAppend() {
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+}
 
 function environment(name) {
   const value = process.env[name];
@@ -20,16 +61,6 @@ async function waitUntilReady(client) {
     await delay(100);
   }
   assert.fail('Monitor did not become ready');
-}
-
-async function waitForFrames(client) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const page = await client.read(0);
-    if (page.frames.length > 0) return page;
-    await delay(100);
-  }
-  assert.fail('Monitor did not produce a frame');
 }
 
 async function main() {
@@ -50,24 +81,48 @@ async function main() {
     }
 
     const health = await waitUntilReady(client);
-    const started = await client.start();
-    const firstPage = await waitForFrames(client);
-    const source = firstPage.frames[0].source;
+    const sink = new MemoryRecordingSink();
+    const firstRecorder = new MonitorRecorder({ client, sink, pollIntervalMs: 100 });
+    const started = await firstRecorder.begin();
+    const firstAppend = sink.nextAppend();
+    const firstController = new AbortController();
+    const firstRun = firstRecorder.record(firstController.signal);
+    await firstAppend;
+    firstController.abort();
+    await firstRun;
+    const firstCheckpoint = firstRecorder.checkpoint;
+
+    const resumedRecorder = new MonitorRecorder({
+      client,
+      sink,
+      checkpoint: firstCheckpoint,
+      pollIntervalMs: 100,
+    });
+    assert.deepEqual(await resumedRecorder.begin(), started);
+    const resumedAppend = sink.nextAppend();
+    const resumedController = new AbortController();
+    const resumedRun = resumedRecorder.record(resumedController.signal);
+    await resumedAppend;
+    resumedController.abort();
+    await resumedRun;
+
     const cutoffAt = new Date().toISOString();
-    const sealed = await client.seal(cutoffAt);
-    const finalPage = await client.read(0, source);
+    const sealed = await resumedRecorder.seal(cutoffAt);
 
     assert.equal(sealed.cutoffAt, cutoffAt);
-    assert.equal(finalPage.sealed, true);
-    assert.ok(finalPage.frames.length > 0);
-    assert.equal(finalPage.nextSequence, finalPage.frames.at(-1).sequence);
+    assert.equal(sealed.final.sample.at, cutoffAt);
+    assert.ok(sealed.frames.length >= 2);
+    assert.equal(sealed.cursor, sealed.frames.at(-1).sequence);
+    assert.deepEqual(sink.sealed, sealed);
     process.stdout.write(
       JSON.stringify({
         health,
         startedAt: started.startedAt,
-        frameCount: finalPage.frames.length,
-        nextSequence: finalPage.nextSequence,
-        sealed: finalPage.sealed,
+        beginCount: sink.beginCount,
+        resumedFrom: firstCheckpoint.cursor,
+        frameCount: sealed.frames.length,
+        nextSequence: sealed.cursor,
+        sealed: sink.sealed !== null,
       }) + '\n',
     );
   } finally {

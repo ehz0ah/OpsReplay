@@ -11,7 +11,8 @@ a Lambda handler, a DynamoDB transaction, and disabled CDK definitions. The foll
 increment adds ECS launch and provisioning-timeout cleanup. The first monitor increment
 adds real traffic, measurements, checkout validation, and outage probes beside the
 reference image. A focused increment then adds authenticated monitor network control.
-Captures and gateway integration follow separately. Work
+The gateway monitor client and bounded recording controller consume that control API
+locally. Durable recording, captures, and the running gateway service follow separately. Work
 packages are responsibility groups, not a requirement to complete one subsystem before
 integrating another.
 

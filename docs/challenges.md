@@ -5,9 +5,11 @@ earlier simulated engine. The three [Challenge manifests](../content/challenges/
 are drafts. A [local reference image](../content/challenges/wrong-upstream-port/README.md)
 implements the wrong-upstream-port service stack and image tests. The
 [monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
-and authenticated HTTPS control. Monitor captures, the terminal server, and gateway do
-not exist yet. Numbers marked proposed are starting values to measure, not results. The
-full task and publication requirements below remain unproven.
+and authenticated HTTPS control. A gateway controller can record, resume, and seal this
+monitor stream through an injected sink. Monitor captures, the terminal server, the
+durable recording store, and the running gateway service do not exist yet. Numbers marked
+proposed are starting values to measure, not results. The full task and publication
+requirements below remain unproven.
 
 ## Principle
 
