@@ -4,4 +4,3 @@ export * from './monitor-recorder.js';
 export * from './monitor-recording-runner.js';
 export * from './monitor-recording-sink.js';
 export * from './monitor-recording-store.js';
-export * from './monitor-recording-worker.js';
