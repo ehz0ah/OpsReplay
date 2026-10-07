@@ -14,11 +14,12 @@ private IP, so identity comes from the exact certificate instead of public DNS. 
 validates the certificate chain and validity before the custom pin check succeeds. The
 bearer secret is sent only after that handshake. Verification is never disabled.
 
-Use one keep-alive agent with one socket per monitor. The gateway attaches before learner
-access and avoids repeated handshakes. Calls have bounded bodies and responses, a
-seven-second deadline per attempt, caller cancellation, and at most one retry after an
-ambiguous transport failure. Retrying is safe because health and reads do not mutate,
-while start and seal are idempotent for the same session boundary.
+Use one keep-alive agent with at most two active sockets per monitor and one retained idle
+socket. A waiting seal therefore does not block health checks or frame reads. The gateway
+attaches before learner access and avoids repeated handshakes. Calls have bounded bodies
+and responses, a seven-second deadline per attempt, caller cancellation, and at most one
+retry after an ambiguous transport failure. Retrying is safe because health and reads do
+not mutate, while start and seal are idempotent for the same session boundary.
 
 Validate all monitor responses at runtime. Public payloads must match the existing
 browser schema, timeline frames must be monitor events, and page sequences must be

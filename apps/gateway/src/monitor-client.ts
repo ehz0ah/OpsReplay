@@ -43,7 +43,7 @@ export interface MonitorSealResult {
 }
 
 export type MonitorClientErrorCode = 'invalid_config' | 'closed' | 'cancelled'
-  | 'request_timeout' | 'tls_failed' | 'transport_failed' | 'invalid_response'
+  | 'request_timeout' | 'tls_failed' | 'transport_failed' | 'invalid_request' | 'invalid_response'
   | 'auth_failed' | 'invalid_state' | 'rate_limited' | 'unavailable';
 
 const errorMessages: Record<MonitorClientErrorCode, string> = {
@@ -53,6 +53,7 @@ const errorMessages: Record<MonitorClientErrorCode, string> = {
   request_timeout: 'Monitor request timed out.',
   tls_failed: 'Monitor identity verification failed.',
   transport_failed: 'Monitor connection failed.',
+  invalid_request: 'Monitor rejected the gateway request.',
   invalid_response: 'Monitor returned an invalid response.',
   auth_failed: 'Monitor authentication failed.',
   invalid_state: 'Monitor state does not permit this operation.',
@@ -98,7 +99,7 @@ const tlsErrorCodes = new Set([
 ]);
 const remoteErrors = {
   AUTH_FAILED: { status: 401, code: 'auth_failed' },
-  INVALID_REQUEST: { status: 400, code: 'invalid_response' },
+  INVALID_REQUEST: { status: 400, code: 'invalid_request' },
   INVALID_STATE: { status: 409, code: 'invalid_state' },
   RATE_LIMITED: { status: 429, code: 'rate_limited' },
   UNAVAILABLE: { status: 503, code: 'unavailable' },
@@ -243,8 +244,7 @@ export class MonitorClient {
   constructor(options: MonitorClientOptions) {
     const port = options.port ?? 9443;
     const requestTimeoutMs = options.requestTimeoutMs ?? defaultRequestTimeoutMs;
-    const certificate = Buffer.isBuffer(options.certificate)
-      ? Buffer.from(options.certificate) : Buffer.from(options.certificate);
+    const certificate = Buffer.from(options.certificate);
     if (isIP(options.host) === 0 || !Number.isInteger(port) || port < 1 || port > 65_535
       || !secretPattern.test(options.secret) || !Number.isInteger(requestTimeoutMs)
       || requestTimeoutMs < 100 || requestTimeoutMs > maximumRequestTimeoutMs
@@ -260,7 +260,7 @@ export class MonitorClient {
     this.requestTimeoutMs = requestTimeoutMs;
     this.agent = new Agent({
       keepAlive: true,
-      maxSockets: 1,
+      maxSockets: 2,
       maxFreeSockets: 1,
       ca: certificate,
       minVersion: 'TLSv1.3',

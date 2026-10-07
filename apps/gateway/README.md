@@ -30,9 +30,11 @@ reading. It retries one ambiguous transport failure because all four monitor ope
 are read-only or idempotent. Each attempt has a seven-second deadline and caller
 cancellation stops retries.
 
-The client uses one keep-alive socket per monitor. It does not poll in the background,
-persist a cursor, claim recording ownership, decide readiness, relay browser messages, or
-reconcile a final recording. Those belong to the later gateway recording controller.
+The client uses at most two active sockets per monitor and retains one idle keep-alive
+socket. This lets health checks and frame reads continue while a seal waits for its exact
+cutoff. The client does not poll in the background, persist a cursor, claim recording
+ownership, decide readiness, relay browser messages, or reconcile a final recording.
+Those belong to the later gateway recording controller.
 
 Run its local checks with:
 
