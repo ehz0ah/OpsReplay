@@ -5,7 +5,11 @@ import {
   isMonitorControlTimestamp,
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
-import type { MonitorRecordingCheckpoint, SealedMonitorRecording } from './monitor-recorder.js';
+import {
+  monitorRecordingLimits,
+  type MonitorRecordingCheckpoint,
+  type SealedMonitorRecording,
+} from './monitor-recorder.js';
 import type { StoredMonitorChunk } from './monitor-chunk-store.js';
 
 export const monitorRecorderLease = Object.freeze({
@@ -67,7 +71,13 @@ export interface MonitorRecordingStateStore {
 }
 
 export type MonitorRecordingStoreErrorCode =
-  'invalid_config' | 'invalid_input' | 'invalid_store' | 'invalid_state' | 'lease_unavailable' | 'stale_lease';
+  | 'invalid_config'
+  | 'invalid_input'
+  | 'invalid_store'
+  | 'invalid_state'
+  | 'lease_unavailable'
+  | 'recording_draining'
+  | 'stale_lease';
 
 const messages: Record<MonitorRecordingStoreErrorCode, string> = {
   invalid_config: 'Monitor recording store configuration is invalid.',
@@ -75,6 +85,7 @@ const messages: Record<MonitorRecordingStoreErrorCode, string> = {
   invalid_store: 'Stored monitor recording data is invalid.',
   invalid_state: 'Monitor recording state does not permit this operation.',
   lease_unavailable: 'Monitor recording lease is not available.',
+  recording_draining: 'Monitor recording has entered the drain phase.',
   stale_lease: 'Monitor recording lease is no longer valid.',
 };
 
@@ -90,7 +101,6 @@ const recorderIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const tableNamePattern = /^[A-Za-z0-9_.-]{3,255}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maximumGeneration = 999_999_999;
-const maximumFrames = 10_000;
 
 const recordingKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'RECORDING' });
 const sessionKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'STATE' });
@@ -124,7 +134,12 @@ function validGeneration(value: number): boolean {
 }
 
 function validCursor(value: number): boolean {
-  return Number.isInteger(value) && value >= 0 && value <= maximumFrames && value <= monitorControlSchema.maximumCursor;
+  return (
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= monitorRecordingLimits.maximumFrames &&
+    value <= monitorControlSchema.maximumCursor
+  );
 }
 
 function validLeaseDuration(value: number): boolean {
@@ -165,7 +180,7 @@ function validReference(
     !validCursor(value.nextSequence as number) ||
     !Number.isInteger(value.frameCount) ||
     (value.frameCount as number) < 0 ||
-    (value.frameCount as number) > maximumFrames
+    (value.frameCount as number) > monitorRecordingLimits.maximumFrames
   ) {
     return false;
   }
@@ -696,6 +711,14 @@ export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore {
       if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal)) return;
       if (conditionalFailure(error)) {
         const saved = await this.get(lease.sessionId, signal);
+        if (
+          saved?.status === 'draining' &&
+          saved.recorderId === lease.recorderId &&
+          saved.generation === lease.generation &&
+          Date.parse(saved.leaseExpiresAt!) > Date.parse(now)
+        ) {
+          throw new MonitorRecordingStoreError('recording_draining');
+        }
         throw this.leaseOrStateError(saved, lease, now);
       }
       throw error;

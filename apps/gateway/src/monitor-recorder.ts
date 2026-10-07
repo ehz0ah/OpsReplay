@@ -59,6 +59,8 @@ export interface MonitorRecorderOptions {
   maximumFrames?: number;
 }
 
+export const monitorRecordingLimits = Object.freeze({ maximumFrames: 10_000 });
+
 export type MonitorRecorderErrorCode = 'invalid_config' | 'invalid_state' | 'invalid_stream' | 'recording_limit';
 
 const messages: Record<MonitorRecorderErrorCode, string> = {
@@ -78,7 +80,6 @@ export class MonitorRecorderError extends Error {
 const defaultPollIntervalMs = 500;
 const maximumPollIntervalMs = 5_000;
 const minimumPollIntervalMs = 50;
-const defaultMaximumFrames = 10_000;
 
 function validCheckpoint(value: MonitorRecordingCheckpoint, maximumFrames: number): boolean {
   if (
@@ -120,7 +121,7 @@ export class MonitorRecorder {
 
   constructor(options: MonitorRecorderOptions) {
     const pollIntervalMs = options.pollIntervalMs ?? defaultPollIntervalMs;
-    const maximumFrames = options.maximumFrames ?? defaultMaximumFrames;
+    const maximumFrames = options.maximumFrames ?? monitorRecordingLimits.maximumFrames;
     const checkpoint = options.checkpoint ?? { startedAt: null, source: null, cursor: 0 };
     if (
       !Number.isInteger(pollIntervalMs) ||
@@ -128,7 +129,7 @@ export class MonitorRecorder {
       pollIntervalMs > maximumPollIntervalMs ||
       !Number.isInteger(maximumFrames) ||
       maximumFrames < 1 ||
-      maximumFrames > defaultMaximumFrames ||
+      maximumFrames > monitorRecordingLimits.maximumFrames ||
       !validCheckpoint(checkpoint, maximumFrames)
     ) {
       throw new MonitorRecorderError('invalid_config');

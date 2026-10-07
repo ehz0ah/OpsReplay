@@ -7,7 +7,7 @@ import {
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
 import { isMonitorMetricFrame, isMonitorPayload } from './monitor-client.js';
-import type { MonitorRecordingBatch, SealedMonitorRecording } from './monitor-recorder.js';
+import { monitorRecordingLimits, type MonitorRecordingBatch, type SealedMonitorRecording } from './monitor-recorder.js';
 
 export interface StoredMonitorChunk {
   phase: 'live' | 'sealed';
@@ -116,14 +116,14 @@ function validSealed(value: SealedMonitorRecording): boolean {
     value.final.sample.at !== value.cutoffAt ||
     !Number.isInteger(value.cursor) ||
     value.cursor < 0 ||
-    value.cursor > 10_000
+    value.cursor > monitorRecordingLimits.maximumFrames
   ) {
     return false;
   }
   if (value.cursor === 0) return value.source === null && value.frames.length === 0;
   if (value.source === null || value.frames.length !== value.cursor) return false;
   return (
-    validFrames(value.frames, value.source, 0, value.cursor, 10_000) &&
+    validFrames(value.frames, value.source, 0, value.cursor, monitorRecordingLimits.maximumFrames) &&
     value.frames.every((frame) => {
       const recordedAt = Date.parse(frame.recordedAt);
       return recordedAt >= Date.parse(value.startedAt) && recordedAt <= Date.parse(value.cutoffAt);
@@ -141,13 +141,10 @@ interface EncodedChunk {
   checksum: string;
 }
 
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (value !== null && typeof value === 'object') {
+function sortObjectKeys(_key: string, value: unknown): unknown {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-        .map(([key, child]) => [key, canonicalValue(child)]),
+      Object.entries(value).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
     );
   }
   return value;
@@ -164,7 +161,7 @@ function encode(
   frameCount: number,
   value: object,
 ): EncodedChunk {
-  const body = Buffer.from(JSON.stringify(canonicalValue(value)));
+  const body = Buffer.from(JSON.stringify(value, sortObjectKeys));
   const digest = createHash('sha256').update(body).digest();
   const sha256 = digest.toString('hex');
   const sourceSegment = source ?? 'empty';
