@@ -195,6 +195,20 @@ test('sealing replays the fixed cutoff and excludes later counters and recovery'
   assert.ok(f.monitor.read().length > 0);
 });
 
+test('a reserved cutoff hides later frames before sealing completes', async () => {
+  const f = fixture();
+  await f.monitor.verifyInitialState();
+  const start = f.monitor.start();
+  await f.advance(0);
+  f.monitor.reserveCutoff(start);
+  f.jump(5000);
+  f.monitor.tick();
+  await f.monitor.drain();
+  assert.ok(f.monitor.read().every(frame => frame.recordedAt <= start));
+  assert.deepEqual(await f.monitor.seal(start), await f.monitor.snapshot(start));
+  assert.throws(() => f.monitor.reserveCutoff(start + 1), /invalid_boundary/);
+});
+
 test('sealing excludes an outage learned only after the cutoff', async () => {
   const f = fixture();
   await f.monitor.verifyInitialState();

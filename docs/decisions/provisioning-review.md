@@ -27,6 +27,9 @@ content admission accepted task families that IAM would reject.
   conflict retries the same upload once, within the invocation deadline. A 409 alone
   is not proof that a file exists. S3 lifecycle expiration
   removes bootstrap objects after one day, asynchronously.
+- When monitor TLS delivery is implemented, put its certificate and private key in this
+  same encrypted per-session file. Store the public certificate in the private session
+  record for gateway verification. Never put the private key in a `RunTask` override.
 - Save confirmed launch failure kind and normalized reason codes in the same
   transaction that ends the session and releases its lock. Capacity errors replay
   as 503. Other confirmed rejections replay as 500. A new launch needs a new request

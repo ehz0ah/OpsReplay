@@ -61,6 +61,7 @@ export const limits = Object.freeze({
   sampleMs: 5_000, evaluationMs: 1_000, maxScheduleGapMs: 5_000,
   maxSessionMs: 14_400_000, recordingHeadroomMs: 60_000,
   controlBodyBytes: 1024, controlFramesPerRead: 100, controlConnections: 16,
+  controlConcurrentRequests: 16,
   controlAuthenticatedRps: 32, controlUnauthenticatedRps: 8, controlRequestMs: 6_000,
   controlCutoffLeadMs: 5_000,
 });

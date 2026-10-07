@@ -197,19 +197,28 @@ a per-session secret for gateway authentication. The working default is a per-ta
 certificate pinned in the private session record. Its key and the secret go only to the
 monitor, never to the challenge container, a shared volume, or logs. The gateway must
 verify the certificate before sending the secret. Plaintext control connections fail
-closed. Bound request sizes and rates, including unauthenticated requests. Keep health
-checks local and free of secrets. The control port never returns validator or probe
+closed. Bound request sizes and rates, including unauthenticated requests. Authenticate
+gateway readiness checks so invalid traffic cannot consume their rate allowance. The
+control port never returns validator or probe
 definitions. The monitor keeps the session's samples, signals, and captures locally,
 bounded, and serves them from a sequence number, so a reconnecting gateway can fetch
 anything it missed.
 
 The current local runtime listens on port 9443 with TLS 1.3. `GET /healthz` returns only
-`starting`, `ready`, or `failed` and needs no secret. Authenticated operations start
-measurement, read at most 100 public frames after a sequence cursor, and seal at the
-immutable lifecycle cutoff. A retry with the same start or cutoff is safe. A different
-cutoff is rejected. The monitor can wait briefly for its monotonic clock to reach the
-supplied cutoff, but it does not alter that timestamp. The gateway and production
-certificate delivery are not implemented.
+`starting`, `ready`, or `failed`. It and all control operations require the session secret.
+The operations start measurement, read at most 100 public frames after a sequence cursor,
+and seal at the immutable lifecycle cutoff. A retry with the same start or cutoff is safe.
+A different cutoff is rejected. The monitor reserves an accepted cutoff before any wait,
+so later reads cannot return records beyond it. Frames already relayed before the gateway
+learns the outcome remain provisional. The gateway must discard records after `endedAt`
+and replace the live view with sealed data. The monitor can wait briefly for its monotonic
+clock to reach the supplied cutoff, but it does not alter that timestamp.
+
+The root learner can still disrupt its own task network and prevent a later gateway
+reconnection. Connection limits are resource bounds, not an availability boundary. A lost
+monitor makes the recording incomplete and the attempt a platform error with no score.
+Stronger denial-of-service isolation requires a separate network trust boundary. The
+gateway and production certificate delivery are not implemented.
 
 **Untrusted files.** Watched files are written by a root learner. The monitor reads only
 regular files, never follows symbolic links, and caps the bytes it reads. Otherwise a

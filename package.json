@@ -11,7 +11,7 @@
   "scripts": {
     "monitor:test": "node --import tsx --test apps/monitor/test/*.test.ts",
     "monitor:build": "node scripts/build-monitor.mjs",
-    "monitor:image:build": "docker build -t opsreplay/monitor-test:dev -f apps/monitor/Dockerfile .",
+    "monitor:image:build": "docker build --target test -t opsreplay/monitor-test:dev -f apps/monitor/Dockerfile .",
     "monitor:image:test": "node --test apps/monitor/test/image.test.mjs",
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
