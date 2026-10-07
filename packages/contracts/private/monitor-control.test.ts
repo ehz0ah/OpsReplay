@@ -74,8 +74,27 @@ test('keeps remote codes, statuses, messages, and client codes aligned', () => {
     const body = monitorControlErrorBody(code as keyof typeof monitorControlSchema.errors);
     assert.deepEqual(body, { code, message: definition.message });
     assert.equal(monitorControlClientError(definition.status, body), definition.clientCode);
+    assert.equal(
+      monitorControlClientError(definition.status, { ...body, message: 'Compatible older wording.' }),
+      definition.clientCode,
+    );
     assert.equal(monitorControlClientError(definition.status + 1, body), undefined);
-    assert.equal(monitorControlClientError(definition.status, { ...body, message: 'changed' }), undefined);
+    assert.equal(monitorControlClientError(definition.status, { ...body, message: '' }), undefined);
+    assert.equal(
+      monitorControlClientError(definition.status, {
+        ...body,
+        message: 'x'.repeat(monitorControlSchema.maximumErrorMessageCharacters),
+      }),
+      definition.clientCode,
+    );
+    assert.equal(
+      monitorControlClientError(definition.status, {
+        ...body,
+        message: 'x'.repeat(monitorControlSchema.maximumErrorMessageCharacters + 1),
+      }),
+      undefined,
+    );
+    assert.equal(monitorControlClientError(definition.status, { ...body, message: 1 }), undefined);
     assert.equal(monitorControlClientError(definition.status, { ...body, extra: true }), undefined);
   }
 });

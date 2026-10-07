@@ -167,7 +167,7 @@ test('authentication failure is stable and does not disclose the supplied secret
   });
 });
 
-test('a rejected gateway request follows the shared remote error contract', async (t) => {
+test('a rejected gateway request accepts compatible message wording but rejects malformed errors', async (t) => {
   const tls = testTls();
   let message = 'Invalid monitor request.';
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (_request, response) => {
@@ -183,6 +183,8 @@ test('a rejected gateway request follows the shared remote error contract', asyn
 
   await assert.rejects(client.health(), errorCode('invalid_request'));
   message = 'Drifted monitor message.';
+  await assert.rejects(client.health(), errorCode('invalid_request'));
+  message = '';
   await assert.rejects(client.health(), errorCode('invalid_response'));
 });
 
