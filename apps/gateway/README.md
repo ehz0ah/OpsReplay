@@ -1,8 +1,9 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client and bounded recording controller are
-implemented and tested locally. The gateway process, WebSocket route, durable recording
-store, terminal proxy, and browser relay are not implemented. Follow the
+Status: the production monitor HTTPS client, bounded recording controller, and durable
+recording adapters are implemented and tested locally. The gateway process, WebSocket
+route, provisioned recording bucket and gateway role, terminal proxy, and browser relay
+are not implemented. Follow the
 [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -52,9 +53,24 @@ and asks the sink to replace provisional data. This removes frames collected aft
 gateway's delayed observation of the outcome. The final sample must use the same cutoff.
 The recorder caps a stream at 10,000 frames.
 
-The controller does not claim or renew the recorder lease. It also does not implement
-the DynamoDB checkpoint or S3 chunk adapters. A later gateway service supplies the
-current checkpoint and a sink scoped to its valid lease.
+The controller does not claim or renew the recorder lease. A later gateway service
+supplies the current checkpoint and a sink scoped to its valid lease.
+
+## Monitor recording persistence
+
+`DynamoMonitorRecordingStore` claims and renews a 15-second recorder lease, fences stale
+gateway generations, and commits monitor cursors with immutable chunk references.
+`S3MonitorChunkStore` writes versioned JSON objects with content-addressed keys,
+conditional puts, S3-managed encryption, and SHA-256 checksums.
+
+`DurableMonitorRecordingSink` connects these adapters to `MonitorRecorder`. It uploads an
+object before it advances DynamoDB state. Final sealing requires the lifecycle state to
+already be `draining`, the exact saved cutoff, a current lease, and time remaining before
+the drain deadline. It then atomically publishes the canonical S3 reference and changes
+both recording records to `complete`.
+
+These are library modules. No gateway process or AWS recording bucket uses them yet.
+The existing one-day monitor-secret bucket is intentionally not used for recordings.
 
 Run its local checks with:
 
@@ -72,5 +88,7 @@ start/read/seal lifecycle. The image test also runs the production gateway bundl
 separate container against the monitor and Challenge containers in one task-like network
 namespace. These checks do not prove Fargate networking or production certificate delivery.
 
-Next task: connect the controller to lease-checked DynamoDB checkpoints and immutable S3
-metric chunks. Terminal proxying and browser relay remain separate increments.
+Next task: run the monitor client, recorder, lease renewal, and persistence sink inside a
+bounded gateway service process. Provision the private recording bucket and gateway IAM
+only when that service has a deployment path. Terminal proxying and browser relay remain
+separate increments.

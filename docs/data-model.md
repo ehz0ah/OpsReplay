@@ -45,7 +45,7 @@ names are a storage convention, not part of the HTTP contract.
 | `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                    |
 | `SESSION#<id>` | `STATE`                                  | Private session record                                                |
 | `SESSION#<id>` | `RECORDING`                              | Recorder lease, saved cursors, and final recording state              |
-| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range                 |
+| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional object reference and its sequence range     |
 | `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                          |
 | `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket with a TTL                                            |
 | `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease |
@@ -140,7 +140,11 @@ timed-out drain as incomplete and resumes cleanup. Late recorder completions can
 overwrite a sealed recording or its debrief. Terminal sessions remain in the work index
 until all cleanup finishes, including sessions that never became ready.
 
-Recording chunks use the recorder generation and source sequence in their keys. Event
+Provisional recording chunks use the recorder generation and source sequence in their
+keys. The canonical sealed monitor object is referenced directly by `RECORDING`, so a
+final sequence that matches the last provisional page cannot collide with that page.
+Recording JSON carries an application `schemaVersion`; this does not require S3 bucket
+versioning. Event
 IDs preserve the original source and sequence across reconnects, so replaying a buffered
 event does not append it twice. The final debrief uses the sealed set of references,
 not a fresh scan of the S3 prefix. Terminal outcomes with incomplete recording store a
