@@ -19,9 +19,11 @@ The [API](apps/api/README.md) has a session-start Lambda, a separate provisionin
 Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
 functions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
 recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
-a production monitor client but no running service. Captures, the gateway recorder and
-relay, remaining API, web application, and cloud deployment are not implemented. The
-image is not a published Challenge or a complete session. No public route is enabled.
+a production monitor client and a bounded recording controller, both tested against the
+real local containers, but no running service or durable recording store. Captures, the
+terminal proxy, browser relay, remaining API, web application, and cloud deployment are
+not implemented. The image is not a published Challenge or a complete session. No public
+route is enabled.
 
 ## Start here
 

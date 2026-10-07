@@ -169,7 +169,7 @@ function runGateway(challenge, secret, certificate, expectTlsFailure = false) {
   }
 }
 
-test('bundled gateway client completes the real container sidecar lifecycle', { timeout: 150_000 }, async () => {
+test('bundled gateway recorder resumes and seals the real monitor stream', { timeout: 150_000 }, async () => {
   const tls = temporaryTls('opsreplay-gateway-monitor-tls-');
   let wrongTls;
   const secret = randomBytes(32).toString('base64url');
@@ -232,7 +232,9 @@ test('bundled gateway client completes the real container sidecar lifecycle', { 
     const result = runGateway(challenge, secret, tls.cert);
     assert.equal(result.health, 'ready');
     assert.match(result.startedAt, /^\d{4}-\d{2}-\d{2}T/);
-    assert.ok(result.frameCount > 0);
+    assert.equal(result.beginCount, 1);
+    assert.ok(result.resumedFrom > 0);
+    assert.ok(result.frameCount >= 2);
     assert.equal(result.nextSequence, result.frameCount);
     assert.equal(result.sealed, true);
   } finally {
