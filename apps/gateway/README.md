@@ -79,12 +79,12 @@ an append observes `draining`, and keeps renewing while the monitor seals at the
 cutoff. Shutdown and lease loss cancel pending monitor work and close the client. The
 runner does not choose an outcome, cutoff, incomplete reason, or score.
 
-`MonitorRecordingWorker` consumes validated private session work through an injected
-source and runs one session at a time. Claim conflicts and lease loss use bounded
-backoff. The source must honor cancellation and supply the task address, public monitor
-certificate, and secret from the private session record. The production source is not
-implemented because the current lifecycle does not yet save the task address or
-certificate and the documented session work index has no implemented writer.
+The service-level recording supervisor is not implemented because the current lifecycle
+does not yet save the task address or certificate and the documented session work index
+has no implemented writer. That supervisor must run a bounded number of independently
+isolated runners. Its capacity must support recorder attachment within the provisioning
+deadline. Its work source must honor cancellation and supply the task address, public
+monitor certificate, and secret from the private session record.
 
 Run its local checks with:
 
@@ -103,7 +103,9 @@ test also runs the bundled runner against the monitor and Challenge containers i
 task-like network namespace. These checks do not prove Fargate networking, production
 certificate delivery, IAM, or deployed DynamoDB and S3 behaviour.
 
-Next task: implement the lifecycle-owned monitor attachment fields and the gateway's
-session-work source, then compose this worker into the service process. Provision the
+Next task: implement the lifecycle-owned monitor attachment fields, gateway session-work
+source, and bounded recording supervisor together in
+[issue #18](https://github.com/ehz0ah/OpsReplay/issues/18). The supervisor must isolate
+runner failures so one session cannot stop other active recordings. Provision the
 private recording bucket and gateway IAM only with that deployment path. Terminal
 proxying and browser relay remain separate increments.

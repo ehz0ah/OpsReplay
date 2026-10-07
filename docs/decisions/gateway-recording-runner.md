@@ -34,15 +34,15 @@ The monitor's idempotent start operation continues to return its original start 
 after sealing. This lets a replacement runner verify the saved stream identity and retry
 a seal whose monitor response or durable commit was lost.
 
-Add a sequential `MonitorRecordingWorker` around the runner. It receives validated
-private work from an injected `MonitorRecordingWorkSource`, constructs the production
-TLS client, and applies bounded backoff after claim conflicts or lease loss. Processing
-one session at a time is the first bounded runtime. Increase local concurrency only after
-measurement.
+Do not add a service-level worker, DynamoDB work-source adapter, or executable process
+until lifecycle code owns the required task address, certificate, and work-index writes.
+The production supervisor must combine that real work source with a bounded number of
+independently supervised runners. Capacity must permit recorder attachment within the
+provisioning deadline. One runner failure must not stop unrelated active recordings.
+Defining these policies with the work source preserves one session schema and avoids a
+temporary discovery and scheduling mechanism.
 
-Do not implement a DynamoDB work-source adapter or executable process until lifecycle
-code owns the required task address, certificate, and work-index writes. This preserves
-one session schema and avoids a temporary discovery mechanism.
+Track that integration in [issue #18](https://github.com/ehz0ah/OpsReplay/issues/18).
 
 ## Failure and recovery
 
@@ -51,9 +51,11 @@ lease loss. A replacement runner receives the saved checkpoint from its new clai
 continues from that cursor. The runner does not mark a recording incomplete because that
 decision depends on the lifecycle outcome and drain deadline.
 
-Unexpected dependency failures remain visible to the worker host. They are not converted
-to successful completion. A stopped worker leaves no in-memory state that another copy
-needs. Its lease expires and permits takeover.
+Unexpected dependency failures remain visible to the future supervisor. They are not
+converted to successful completion. Storage transports own bounded low-level retries and
+uncertain-write checks. If renewal still fails, the runner stops instead of continuing
+without confirmed ownership. It leaves no in-memory state that a replacement needs. Its
+lease expires and permits takeover from the durable checkpoint.
 
 ## Validation
 

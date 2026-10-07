@@ -15,7 +15,7 @@ export interface ClosableMonitorRecordingClient extends MonitorRecordingClient {
   close(): void;
 }
 
-export type MonitorRecordingRunStatus = 'complete' | 'not_acquired' | 'ownership_lost' | 'cancelled';
+export type MonitorRecordingRunStatus = 'complete' | 'not_acquired' | 'not_recordable' | 'ownership_lost' | 'cancelled';
 
 export interface MonitorRecordingRunResult {
   status: MonitorRecordingRunStatus;
@@ -148,9 +148,10 @@ export class MonitorRecordingRunner {
         if (signal.aborted || expectedCancellation(error, lifetime.signal)) {
           return { status: 'cancelled', generation };
         }
-        if (isStoreError(error, 'lease_unavailable', 'invalid_state')) {
+        if (isStoreError(error, 'lease_unavailable')) {
           return { status: 'not_acquired', generation };
         }
+        if (isStoreError(error, 'invalid_state')) return { status: 'not_recordable', generation };
         throw error;
       }
 

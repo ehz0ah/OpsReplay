@@ -227,7 +227,7 @@ class MemoryRecordingStore implements MonitorRecordingLeaseStore, MonitorRecordi
   seals = 0;
   renews = 0;
   claimError: MonitorRecordingStoreError | null = null;
-  renewError: MonitorRecordingStoreError | null = null;
+  renewError: Error | null = null;
   drainOnAppend = false;
 
   constructor(initial?: MonitorRecordingState) {
@@ -427,6 +427,17 @@ test('returns without recording when another gateway owns the lease', async () =
   assert.equal(client.closed, true);
 });
 
+test('reports a recording that cannot be claimed as not recordable', async () => {
+  const client = new FakeMonitorClient();
+  const store = new MemoryRecordingStore();
+  store.claimError = new MonitorRecordingStoreError('invalid_state');
+  const result = await runner(client, store, new MemoryChunkStore(), new GateWait()).run(new AbortController().signal);
+
+  assert.deepEqual(result, { status: 'not_recordable', generation: null });
+  assert.equal(client.reads.length, 0);
+  assert.equal(client.closed, true);
+});
+
 test('stops the recorder when lease renewal loses ownership', async () => {
   const client = new FakeMonitorClient({ liveFrames: [] });
   const store = new MemoryRecordingStore();
@@ -455,6 +466,21 @@ test('does not hide a conflicting durable state as ordinary lease loss', async (
   await assert.rejects(running, (error: unknown) => {
     return error instanceof MonitorRecordingStoreError && error.code === 'invalid_state';
   });
+  assert.equal(client.closed, true);
+});
+
+test('fails closed when lease renewal cannot be confirmed', async () => {
+  const client = new FakeMonitorClient({ liveFrames: [] });
+  const store = new MemoryRecordingStore();
+  const gate = new GateWait();
+  const running = runner(client, store, new MemoryChunkStore(), gate).run(new AbortController().signal);
+
+  await until(() => client.reads.length === 1 && gate.count === 1, 'Recording did not reach its read loop');
+  store.renewError = new Error('DynamoDB unavailable');
+  gate.release();
+
+  await assert.rejects(running, /DynamoDB unavailable/);
+  assert.equal(store.seals, 0);
   assert.equal(client.closed, true);
 });
 
