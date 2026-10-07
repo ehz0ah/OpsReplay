@@ -7,7 +7,8 @@ implements the wrong-upstream-port service stack and image tests. The
 [monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
 and authenticated HTTPS control. A gateway controller can record, resume, and seal this
 monitor stream through an injected sink. Monitor captures, the terminal server, the
-durable recording store, and the running gateway service do not exist yet. Numbers marked
+deployed durable recording store, and the running gateway service do not exist yet. Storage
+adapters for monitor recordings are implemented and tested locally. Numbers marked
 proposed are starting values to measure, not results. The full task and publication
 requirements below remain unproven.
 

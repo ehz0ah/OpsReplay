@@ -116,14 +116,14 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function publicPayload(value: unknown): value is MonitorPayload {
+export function isMonitorPayload(value: unknown): value is MonitorPayload {
   if (!validGatewayMessage(value) || !record(value)) return false;
   if (value.type === 'metrics') return true;
   return value.type === 'timeline' && record(value.event) && value.event.kind === 'monitor';
 }
 
-function metric(value: unknown): value is MonitorMetricFrame {
-  return publicPayload(value) && value.type === 'metrics';
+export function isMonitorMetricFrame(value: unknown): value is MonitorMetricFrame {
+  return isMonitorPayload(value) && value.type === 'metrics';
 }
 
 function remoteError(status: number, value: unknown): MonitorClientError {
@@ -281,7 +281,7 @@ export class MonitorClient {
       signal,
     );
     if (response.status !== route.successStatus) throw remoteError(response.status, response.value);
-    if (!isMonitorControlFramePage(response.value, after, publicPayload, expectedSource)) {
+    if (!isMonitorControlFramePage(response.value, after, isMonitorPayload, expectedSource)) {
       throw new MonitorClientError('invalid_response');
     }
     return response.value;
@@ -294,7 +294,7 @@ export class MonitorClient {
     const route = monitorControlSchema.routes.seal;
     const response = await this.call(route.path, route.method, body, signal);
     if (response.status !== route.successStatus) throw remoteError(response.status, response.value);
-    if (!isMonitorControlSealResponse(response.value, cutoffAt, metric)) {
+    if (!isMonitorControlSealResponse(response.value, cutoffAt, isMonitorMetricFrame)) {
       throw new MonitorClientError('invalid_response');
     }
     return response.value;

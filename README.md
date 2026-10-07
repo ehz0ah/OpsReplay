@@ -20,7 +20,8 @@ Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions ke
 functions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
 recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
 a production monitor client and a bounded recording controller, both tested against the
-real local containers, but no running service or durable recording store. Captures, the
+real local containers. Durable recording adapters are tested locally, but no running
+gateway service or recording bucket exists. Captures, the
 terminal proxy, browser relay, remaining API, web application, and cloud deployment are
 not implemented. The image is not a published Challenge or a complete session. No public
 route is enabled.
