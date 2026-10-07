@@ -144,6 +144,20 @@ async function setDraining(
   return draining;
 }
 
+async function publicRecording(f: Fixture): Promise<{ status: string; reason: string | null }> {
+  const session = await f.get({ PK: `SESSION#${f.sessionId}`, SK: 'STATE' });
+  assert.ok(session);
+  const view = session.view as { recording: { status: string; reason: string | null } };
+  return view.recording;
+}
+
+async function setTerminalSession(f: Fixture, recordingStatus: 'recording' | 'draining'): Promise<void> {
+  await f.put(
+    { PK: `SESSION#${f.sessionId}`, SK: 'STATE' },
+    { view: { status: 'error', statusReason: 'start_failed', recording: { status: recordingStatus, reason: null } } },
+  );
+}
+
 test('claims a session, saves a start, and atomically advances a chunk cursor', async () => {
   const f = await fixture();
   const claimed = await claim(f);
@@ -406,6 +420,144 @@ test('publishes one canonical sealed reference and makes retries idempotent', as
     ).recording.status,
     'complete',
   );
+  await assert.rejects(
+    f.store.markIncomplete(f.sessionId, 'task_lost', '2026-10-07T00:00:05.000Z'),
+    storeError('invalid_state'),
+  );
+});
+
+test('marks a claimed recording incomplete after session start fails', async () => {
+  const f = await fixture();
+  await claim(f);
+  await setTerminalSession(f, 'recording');
+  const completedAt = '2026-10-07T00:00:02.000Z';
+
+  await f.store.markIncomplete(f.sessionId, 'task_lost', completedAt);
+
+  assert.deepEqual(await publicRecording(f), { status: 'incomplete', reason: 'task_lost' });
+  assert.deepEqual(await f.store.get(f.sessionId), {
+    schemaVersion: 1,
+    status: 'incomplete',
+    recorderId: null,
+    generation: 1,
+    leaseExpiresAt: null,
+    startedAt: null,
+    source: null,
+    cursor: 0,
+    cutoffAt: completedAt,
+    drainDeadlineAt: completedAt,
+    sealed: null,
+    reason: 'task_lost',
+    updatedAt: completedAt,
+    completedAt,
+  });
+});
+
+test('marks an expired drain incomplete and preserves its fixed bounds', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  const drainDeadlineAt = '2026-10-07T00:00:20.000Z';
+  await setDraining(f, claimed.lease, cutoffAt, drainDeadlineAt);
+
+  await assert.rejects(
+    f.store.markIncomplete(f.sessionId, 'drain_timeout', '2026-10-07T00:00:19.999Z'),
+    storeError('invalid_state'),
+  );
+  await f.store.markIncomplete(f.sessionId, 'drain_timeout', drainDeadlineAt);
+
+  const saved = await f.store.get(f.sessionId);
+  assert.equal(saved?.status, 'incomplete');
+  assert.equal(saved?.cutoffAt, cutoffAt);
+  assert.equal(saved?.drainDeadlineAt, drainDeadlineAt);
+  assert.equal(saved?.completedAt, drainDeadlineAt);
+  assert.equal(saved?.reason, 'drain_timeout');
+  assert.deepEqual(await publicRecording(f), { status: 'incomplete', reason: 'drain_timeout' });
+});
+
+test('recovers an incomplete transition whose transaction response was lost and accepts an exact retry', async () => {
+  const f = await fixture();
+  await claim(f);
+  await setTerminalSession(f, 'recording');
+  let lost = false;
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand && !lost) {
+          lost = true;
+          throw new Error('Incomplete response lost');
+        }
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+
+  await uncertain.markIncomplete(f.sessionId, 'task_lost', '2026-10-07T00:00:02.000Z');
+  await f.store.markIncomplete(f.sessionId, 'task_lost', '2026-10-07T00:00:03.000Z');
+
+  assert.equal(lost, true);
+  assert.equal((await f.store.get(f.sessionId))?.completedAt, '2026-10-07T00:00:02.000Z');
+  await assert.rejects(
+    f.store.markIncomplete(f.sessionId, 'recorder_lost', '2026-10-07T00:00:03.000Z'),
+    storeError('invalid_state'),
+  );
+});
+
+test('allows only one terminal recording result when seal and incomplete race', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  await setDraining(f, claimed.lease, cutoffAt);
+  const sealed = {
+    startedAt,
+    cutoffAt,
+    source: null,
+    cursor: 0,
+    frames: [],
+    final: metric(cutoffAt),
+  };
+
+  const attempts = await Promise.allSettled([
+    f.store.seal(claimed.lease, sealed, reference(f.sessionId, 1, 'sealed', 0, 0), '2026-10-07T00:00:04.000Z'),
+    f.store.markIncomplete(f.sessionId, 'task_lost', '2026-10-07T00:00:04.000Z'),
+  ]);
+
+  assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
+  const saved = await f.store.get(f.sessionId);
+  const published = await publicRecording(f);
+  assert.ok(saved?.status === 'complete' || saved?.status === 'incomplete');
+  assert.equal(published.status, saved.status);
+  assert.equal(published.reason, saved.reason);
+});
+
+test('does not mark active or publicly inconsistent sessions incomplete', async () => {
+  const active = await fixture();
+  await claim(active);
+
+  await assert.rejects(
+    active.store.markIncomplete(active.sessionId, 'task_lost', '2026-10-07T00:00:02.000Z'),
+    storeError('invalid_state'),
+  );
+  assert.equal((await active.store.get(active.sessionId))?.status, 'recording');
+  assert.deepEqual(await publicRecording(active), { status: 'recording', reason: null });
+
+  const inconsistent = await fixture();
+  await claim(inconsistent);
+  await inconsistent.put(
+    { PK: `SESSION#${inconsistent.sessionId}`, SK: 'STATE' },
+    { view: { status: 'error', recording: { status: 'pending', reason: null } } },
+  );
+  await assert.rejects(
+    inconsistent.store.markIncomplete(inconsistent.sessionId, 'task_lost', '2026-10-07T00:00:02.000Z'),
+    storeError('invalid_state'),
+  );
+  assert.equal((await inconsistent.store.get(inconsistent.sessionId))?.status, 'recording');
+  assert.deepEqual(await publicRecording(inconsistent), { status: 'pending', reason: null });
 });
 
 test('rejects early, expired, and stale sealing attempts', async () => {

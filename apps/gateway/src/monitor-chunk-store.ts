@@ -7,6 +7,7 @@ import {
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
 import { isMonitorMetricFrame, isMonitorPayload } from './monitor-client.js';
+import { isMonitorRecordingIdentity } from './monitor-recording-identity.js';
 import { monitorRecordingLimits, type MonitorRecordingBatch, type SealedMonitorRecording } from './monitor-recorder.js';
 
 export interface StoredMonitorChunk {
@@ -49,20 +50,9 @@ export class MonitorChunkStoreError extends Error {
   }
 }
 
-const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const bucketPattern = /^(?=.{3,63}$)(?![0-9]+(?:\.[0-9]+){3}$)(?!.*\.\.)(?!.*\.-)(?!.*-\.)[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
-const maximumGeneration = 999_999_999;
 const maximumLiveBytes = 128 * 1024;
 const maximumSealedBytes = 8 * 1024 * 1024;
-
-function validIdentity(sessionId: string, generation: number): boolean {
-  return (
-    sessionIdPattern.test(sessionId) &&
-    Number.isInteger(generation) &&
-    generation >= 1 &&
-    generation <= maximumGeneration
-  );
-}
 
 function validFrames(
   frames: MonitorRecordingBatch['frames'],
@@ -196,7 +186,9 @@ export class S3MonitorChunkStore implements MonitorChunkStore {
     value: MonitorRecordingBatch,
     signal?: AbortSignal,
   ): Promise<StoredMonitorChunk> {
-    if (!validIdentity(sessionId, generation) || !validLive(value)) throw new MonitorChunkStoreError('invalid_chunk');
+    if (!isMonitorRecordingIdentity(sessionId, generation) || !validLive(value)) {
+      throw new MonitorChunkStoreError('invalid_chunk');
+    }
     const encoded = encode(
       this.bucket,
       sessionId,
@@ -224,7 +216,7 @@ export class S3MonitorChunkStore implements MonitorChunkStore {
     value: SealedMonitorRecording,
     signal?: AbortSignal,
   ): Promise<StoredMonitorChunk> {
-    if (!validIdentity(sessionId, generation) || !validSealed(value)) {
+    if (!isMonitorRecordingIdentity(sessionId, generation) || !validSealed(value)) {
       throw new MonitorChunkStoreError('invalid_chunk');
     }
     const encoded = encode(

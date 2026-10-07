@@ -10,6 +10,7 @@ import {
   type MonitorRecordingCheckpoint,
   type SealedMonitorRecording,
 } from './monitor-recorder.js';
+import { isMonitorRecordingGeneration, isMonitorRecordingSessionId } from './monitor-recording-identity.js';
 import type { StoredMonitorChunk } from './monitor-chunk-store.js';
 
 export const monitorRecorderLease = Object.freeze({
@@ -19,6 +20,15 @@ export const monitorRecorderLease = Object.freeze({
 });
 
 export type MonitorRecordingStatus = 'recording' | 'draining' | 'complete' | 'incomplete';
+
+export const monitorRecordingIncompleteReasons = [
+  'task_lost',
+  'recorder_lost',
+  'drain_timeout',
+  'limit_exceeded',
+  'data_gap',
+] as const;
+export type MonitorRecordingIncompleteReason = (typeof monitorRecordingIncompleteReasons)[number];
 
 export interface MonitorRecordingState extends MonitorRecordingCheckpoint {
   schemaVersion: 1;
@@ -70,6 +80,15 @@ export interface MonitorRecordingStateStore {
   ): Promise<void>;
 }
 
+export interface MonitorRecordingLifecycleStore {
+  markIncomplete(
+    sessionId: string,
+    reason: MonitorRecordingIncompleteReason,
+    completedAt: string,
+    signal?: AbortSignal,
+  ): Promise<void>;
+}
+
 export type MonitorRecordingStoreErrorCode =
   | 'invalid_config'
   | 'invalid_input'
@@ -96,11 +115,9 @@ export class MonitorRecordingStoreError extends Error {
   }
 }
 
-const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const recorderIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const tableNamePattern = /^[A-Za-z0-9_.-]{3,255}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
-const maximumGeneration = 999_999_999;
 
 const recordingKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'RECORDING' });
 const sessionKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'STATE' });
@@ -122,15 +139,19 @@ function exactKeys(value: Record<string, unknown>, expected: readonly string[]):
 }
 
 function validSessionId(value: string): boolean {
-  return sessionIdPattern.test(value);
+  return isMonitorRecordingSessionId(value);
 }
 
 function validRecorderId(value: string): boolean {
   return recorderIdPattern.test(value);
 }
 
+function validIncompleteReason(value: unknown): value is MonitorRecordingIncompleteReason {
+  return (monitorRecordingIncompleteReasons as readonly unknown[]).includes(value);
+}
+
 function validGeneration(value: number): boolean {
-  return Number.isInteger(value) && value >= 1 && value <= maximumGeneration;
+  return isMonitorRecordingGeneration(value);
 }
 
 function validCursor(value: number): boolean {
@@ -253,7 +274,7 @@ function validState(value: unknown, sessionId: string): value is MonitorRecordin
     (state.cutoffAt !== null && !isMonitorControlTimestamp(state.cutoffAt)) ||
     (state.drainDeadlineAt !== null && !isMonitorControlTimestamp(state.drainDeadlineAt)) ||
     (state.completedAt !== null && !isMonitorControlTimestamp(state.completedAt)) ||
-    (state.reason !== null && (typeof state.reason !== 'string' || state.reason.length < 1 || state.reason.length > 80))
+    (state.reason !== null && !validIncompleteReason(state.reason))
   ) {
     return false;
   }
@@ -309,7 +330,7 @@ function validState(value: unknown, sessionId: string): value is MonitorRecordin
       state.sealed.frameCount === state.cursor
     );
   }
-  return state.sealed === null && state.reason !== null;
+  return state.sealed === null && validIncompleteReason(state.reason);
 }
 
 function validLease(value: MonitorRecorderLease): boolean {
@@ -343,7 +364,7 @@ function cloneState(value: MonitorRecordingState): MonitorRecordingState {
   return structuredClone(value);
 }
 
-export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore {
+export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore, MonitorRecordingLifecycleStore {
   constructor(
     private readonly client: DynamoDBDocumentClient,
     private readonly table: string,
@@ -833,6 +854,118 @@ export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore {
     }
   }
 
+  async markIncomplete(
+    sessionId: string,
+    reason: MonitorRecordingIncompleteReason,
+    completedAt: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!validSessionId(sessionId) || !validIncompleteReason(reason) || !isMonitorControlTimestamp(completedAt)) {
+      throw new MonitorRecordingStoreError('invalid_input');
+    }
+    const current = await this.get(sessionId, signal);
+    if (!current) throw new MonitorRecordingStoreError('invalid_state');
+    if (current.status === 'incomplete') {
+      const publicRecording = await this.sessionRecordingState(sessionId, signal);
+      if (current.reason === reason && publicRecording?.status === 'incomplete' && publicRecording.reason === reason) {
+        return;
+      }
+      throw new MonitorRecordingStoreError('invalid_state');
+    }
+    if (current.status !== 'recording' && current.status !== 'draining') {
+      throw new MonitorRecordingStoreError('invalid_state');
+    }
+    if (
+      current.status === 'draining' &&
+      current.cutoffAt !== null &&
+      Date.parse(completedAt) < Date.parse(current.cutoffAt)
+    ) {
+      throw new MonitorRecordingStoreError('invalid_input');
+    }
+    if (
+      reason === 'drain_timeout' &&
+      (current.status !== 'draining' || Date.parse(completedAt) < Date.parse(current.drainDeadlineAt!))
+    ) {
+      throw new MonitorRecordingStoreError('invalid_state');
+    }
+    const next: MonitorRecordingState = {
+      ...current,
+      status: 'incomplete',
+      recorderId: null,
+      leaseExpiresAt: null,
+      cutoffAt: current.cutoffAt ?? completedAt,
+      drainDeadlineAt: current.drainDeadlineAt ?? completedAt,
+      sealed: null,
+      reason,
+      updatedAt: completedAt,
+      completedAt,
+    };
+    const command = new TransactWriteCommand({
+      ClientRequestToken: randomUUID(),
+      TransactItems: [
+        {
+          Put: {
+            TableName: this.table,
+            Item: { ...recordingKey(sessionId), data: next },
+            ConditionExpression: '#data = :current',
+            ExpressionAttributeNames: { '#data': 'data' },
+            ExpressionAttributeValues: { ':current': current },
+          },
+        },
+        {
+          Update: {
+            TableName: this.table,
+            Key: sessionKey(sessionId),
+            UpdateExpression:
+              'SET #data.#view.#recording.#status = :incomplete, #data.#view.#recording.#reason = :reason',
+            ConditionExpression:
+              'attribute_exists(PK) AND ' +
+              '(#data.#view.#status = :resolved OR #data.#view.#status = :failed OR ' +
+              '#data.#view.#status = :ended OR #data.#view.#status = :abandoned OR #data.#view.#status = :error) AND ' +
+              '#data.#view.#recording.#status = :currentStatus AND #data.#view.#recording.#reason = :empty',
+            ExpressionAttributeNames: {
+              '#data': 'data',
+              '#view': 'view',
+              '#status': 'status',
+              '#recording': 'recording',
+              '#reason': 'reason',
+            },
+            ExpressionAttributeValues: {
+              ':resolved': 'resolved',
+              ':failed': 'failed',
+              ':ended': 'ended',
+              ':abandoned': 'abandoned',
+              ':error': 'error',
+              ':currentStatus': current.status,
+              ':empty': null,
+              ':incomplete': 'incomplete',
+              ':reason': reason,
+            },
+          },
+        },
+      ],
+    });
+    try {
+      await this.client.send(command, sendOptions(signal));
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const [saved, publicRecording] = await Promise.all([
+        this.get(sessionId, signal),
+        this.sessionRecordingState(sessionId, signal),
+      ]);
+      if (
+        saved?.status === 'incomplete' &&
+        saved.reason === reason &&
+        publicRecording?.status === 'incomplete' &&
+        publicRecording.reason === reason
+      ) {
+        return;
+      }
+      if (conditionalFailure(error)) throw new MonitorRecordingStoreError('invalid_state');
+      throw error;
+    }
+  }
+
   private claimed(sessionId: string, state: MonitorRecordingState): ClaimedMonitorRecording {
     return {
       lease: { sessionId, recorderId: state.recorderId!, generation: state.generation },
@@ -890,12 +1023,22 @@ export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore {
   }
 
   private async sessionRecordingStatus(sessionId: string, signal?: AbortSignal): Promise<string | undefined> {
+    return (await this.sessionRecordingState(sessionId, signal))?.status;
+  }
+
+  private async sessionRecordingState(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<{ status: string; reason: string | null } | undefined> {
     const result = await this.client.send(
       new GetCommand({ TableName: this.table, Key: sessionKey(sessionId), ConsistentRead: true }),
       sendOptions(signal),
     );
     const data = result.Item?.data;
     if (!isRecord(data) || !isRecord(data.view) || !isRecord(data.view.recording)) return undefined;
-    return typeof data.view.recording.status === 'string' ? data.view.recording.status : undefined;
+    const status = data.view.recording.status;
+    const reason = data.view.recording.reason;
+    if (typeof status !== 'string' || (reason !== null && typeof reason !== 'string')) return undefined;
+    return { status, reason };
   }
 }
