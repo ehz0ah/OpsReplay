@@ -167,10 +167,11 @@ test('authentication failure is stable and does not disclose the supplied secret
   });
 });
 
-test('a rejected gateway request is distinct from an invalid monitor response', async (t) => {
+test('a rejected gateway request follows the shared remote error contract', async (t) => {
   const tls = testTls();
+  let message = 'Invalid monitor request.';
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (_request, response) => {
-    sendJson(response, 400, { code: 'INVALID_REQUEST', message: 'Invalid monitor request.' });
+    sendJson(response, 400, { code: 'INVALID_REQUEST', message });
   });
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
@@ -181,6 +182,8 @@ test('a rejected gateway request is distinct from an invalid monitor response', 
   });
 
   await assert.rejects(client.health(), errorCode('invalid_request'));
+  message = 'Drifted monitor message.';
+  await assert.rejects(client.health(), errorCode('invalid_response'));
 });
 
 test('the client refuses a server limited to TLS 1.2', async (t) => {

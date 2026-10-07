@@ -3,6 +3,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY packages/contracts/schemas/ packages/contracts/schemas/
+COPY packages/contracts/private/ packages/contracts/private/
 COPY apps/monitor/src/ apps/monitor/src/
 COPY apps/monitor/test/control-client.ts apps/monitor/test/control-client.ts
 COPY scripts/build-monitor.mjs scripts/build-monitor.mjs

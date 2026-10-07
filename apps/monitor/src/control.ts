@@ -1,23 +1,22 @@
 import type { MetricFrame, PublicFrame } from './types.js';
 import { MonitorError, limits } from './types.js';
 import type { Frame } from './monitor.js';
+import type {
+  MonitorControlFrame,
+  MonitorControlFramePage,
+  MonitorControlHealth,
+  MonitorControlSealResponse,
+  MonitorControlStartResponse,
+} from '../../../packages/contracts/private/monitor-control.js';
+import {
+  isMonitorControlTimestamp,
+  monitorControlSchema,
+} from '../../../packages/contracts/private/monitor-control.js';
 
-export type ControlHealth = 'starting' | 'ready' | 'failed';
-export interface ControlFrame {
-  source: string;
-  sequence: number;
-  recordedAt: string;
-  payload: PublicFrame;
-}
-export interface FramePage {
-  frames: ControlFrame[];
-  nextSequence: number;
-  sealed: boolean;
-}
-export interface SealResult {
-  cutoffAt: string;
-  final: MetricFrame;
-}
+export type ControlHealth = MonitorControlHealth;
+export type ControlFrame = MonitorControlFrame<PublicFrame>;
+export type FramePage = MonitorControlFramePage<PublicFrame>;
+export type SealResult = MonitorControlSealResponse<MetricFrame>;
 
 interface ControlledMonitor {
   readonly failure: MonitorError['code'] | null;
@@ -43,12 +42,9 @@ const scheduler: ControlScheduler = {
     return { close: () => clearInterval(timer) };
   },
 };
-const canonicalTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-
 export function parseCutoffAt(value: string): number {
   const parsed = Date.parse(value);
-  if (!canonicalTimestamp.test(value) || !Number.isFinite(parsed) || new Date(parsed).toISOString() !== value)
-    throw new MonitorError('invalid_boundary');
+  if (!isMonitorControlTimestamp(value)) throw new MonitorError('invalid_boundary');
   return parsed;
 }
 
@@ -83,7 +79,7 @@ export class MonitorControl {
     return this.initialising;
   }
 
-  start(): { startedAt: string } {
+  start(): MonitorControlStartResponse {
     if (this.healthState !== 'ready' || this.sealedAt !== undefined) throw new MonitorError('invalid_boundary');
     if (this.startedAt === undefined) {
       this.startedAt = this.monitor.start();
@@ -95,7 +91,9 @@ export class MonitorControl {
 
   read(after: number): FramePage {
     if (this.startedAt === undefined) throw new MonitorError('invalid_boundary');
-    const frames = this.monitor.read(after, limits.controlFramesPerRead).map((frame) => this.wireFrame(frame));
+    const frames = this.monitor
+      .read(after, monitorControlSchema.maximumFramesPerPage)
+      .map((frame) => this.wireFrame(frame));
     return {
       frames,
       nextSequence: frames.at(-1)?.sequence ?? after,

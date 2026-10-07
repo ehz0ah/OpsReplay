@@ -3,9 +3,19 @@ import { createServer } from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Server } from 'node:https';
 import { MIMEType } from 'node:util';
-import { parseCutoffAt } from './control.js';
 import type { MonitorControl } from './control.js';
+import type { MetricFrame, PublicFrame } from './types.js';
 import { MonitorError, limits } from './types.js';
+import type {
+  MonitorControlErrorCode,
+  MonitorControlResponse,
+} from '../../../packages/contracts/private/monitor-control.js';
+import {
+  isMonitorControlSealRequest,
+  monitorControlErrorBody,
+  monitorControlSchema,
+  parseMonitorControlCursor,
+} from '../../../packages/contracts/private/monitor-control.js';
 
 export interface ControlServerOptions {
   key: Buffer | string;
@@ -18,25 +28,15 @@ interface Window {
   second: number;
   count: number;
 }
-const errorBodies = {
-  AUTH_FAILED: { status: 401, message: 'Monitor authentication failed.' },
-  INVALID_REQUEST: { status: 400, message: 'Invalid monitor request.' },
-  INVALID_STATE: { status: 409, message: 'Monitor state does not permit this operation.' },
-  RATE_LIMITED: { status: 429, message: 'Monitor request rate exceeded.' },
-  UNAVAILABLE: { status: 503, message: 'Monitor is not available.' },
-  INTERNAL_ERROR: { status: 500, message: 'Monitor operation failed.' },
-} as const;
-type ErrorCode = keyof typeof errorBodies;
-
 class ControlRequestError extends Error {
-  constructor(readonly code: ErrorCode) {
+  constructor(readonly code: MonitorControlErrorCode) {
     super(code);
   }
 }
 
-function send(response: ServerResponse, status: number, value: object): void {
+function send(response: ServerResponse, status: number, value: MonitorControlResponse<PublicFrame, MetricFrame>): void {
   const body = Buffer.from(JSON.stringify(value));
-  if (body.byteLength > limits.bodyBytes) throw new ControlRequestError('INTERNAL_ERROR');
+  if (body.byteLength > monitorControlSchema.maximumResponseBytes) throw new ControlRequestError('INTERNAL_ERROR');
   response.writeHead(status, {
     'Content-Type': 'application/json',
     'Content-Length': String(body.byteLength),
@@ -58,7 +58,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
     throw new ControlRequestError('INVALID_REQUEST');
   }
   const length = request.headers['content-length'];
-  if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > limits.controlBodyBytes)) {
+  if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > monitorControlSchema.maximumRequestBytes)) {
     throw new ControlRequestError('INVALID_REQUEST');
   }
   const chunks: Buffer[] = [];
@@ -66,7 +66,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
   for await (const value of request) {
     const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
     bytes += chunk.byteLength;
-    if (bytes > limits.controlBodyBytes) throw new ControlRequestError('INVALID_REQUEST');
+    if (bytes > monitorControlSchema.maximumRequestBytes) throw new ControlRequestError('INVALID_REQUEST');
     chunks.push(chunk);
   }
   if (bytes === 0) throw new ControlRequestError('INVALID_REQUEST');
@@ -86,33 +86,20 @@ function requireEmptyBody(request: IncomingMessage): void {
 }
 
 function cutoff(value: unknown): string {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 1 ||
-    typeof (value as { cutoffAt?: unknown }).cutoffAt !== 'string'
-  ) {
-    throw new ControlRequestError('INVALID_REQUEST');
-  }
-  const result = (value as { cutoffAt: string }).cutoffAt;
-  if (result.length > 40) throw new ControlRequestError('INVALID_REQUEST');
-  try {
-    parseCutoffAt(result);
-  } catch {
-    throw new ControlRequestError('INVALID_REQUEST');
-  }
-  return result;
+  if (!isMonitorControlSealRequest(value)) throw new ControlRequestError('INVALID_REQUEST');
+  return value.cutoffAt;
 }
 
 function cursor(url: URL): number {
-  if ([...url.searchParams.keys()].some((key) => key !== 'after')) throw new ControlRequestError('INVALID_REQUEST');
-  const values = url.searchParams.getAll('after');
-  if (values.length !== 1 || !/^(0|[1-9][0-9]{0,5})$/.test(values[0]!)) {
+  const parameter = monitorControlSchema.routes.frames.cursorParameter;
+  if ([...url.searchParams.keys()].some((key) => key !== parameter)) {
     throw new ControlRequestError('INVALID_REQUEST');
   }
-  const raw = values[0]!;
-  return Number(raw);
+  const values = url.searchParams.getAll(parameter);
+  if (values.length !== 1) throw new ControlRequestError('INVALID_REQUEST');
+  const parsed = parseMonitorControlCursor(values[0]!);
+  if (parsed === undefined) throw new ControlRequestError('INVALID_REQUEST');
+  return parsed;
 }
 
 export function createControlServer(control: MonitorControl, options: ControlServerOptions): Server {
@@ -156,20 +143,23 @@ export function createControlServer(control: MonitorControl, options: ControlSer
         const valid = authorise(request);
         if (!rate(valid)) throw new ControlRequestError('RATE_LIMITED');
         if (!valid) throw new ControlRequestError('AUTH_FAILED');
-        if (url.pathname === '/healthz' && request.method === 'GET' && url.search === '') {
+        const routes = monitorControlSchema.routes;
+        if (url.pathname === routes.health.path && request.method === routes.health.method && url.search === '') {
           requireEmptyBody(request);
           const health = control.health();
-          send(response, health === 'ready' ? 200 : 503, { status: health });
+          send(response, health === 'ready' ? routes.health.readyStatus : routes.health.unavailableStatus, {
+            status: health,
+          });
           return;
         }
-        if (request.method === 'POST' && url.pathname === '/v1/start' && url.search === '') {
+        if (request.method === routes.start.method && url.pathname === routes.start.path && url.search === '') {
           requireEmptyBody(request);
-          send(response, 200, control.start());
-        } else if (request.method === 'GET' && url.pathname === '/v1/frames') {
+          send(response, routes.start.successStatus, control.start());
+        } else if (request.method === routes.frames.method && url.pathname === routes.frames.path) {
           requireEmptyBody(request);
-          send(response, 200, control.read(cursor(url)));
-        } else if (request.method === 'POST' && url.pathname === '/v1/seal' && url.search === '') {
-          send(response, 200, await control.seal(cutoff(await body(request))));
+          send(response, routes.frames.successStatus, control.read(cursor(url)));
+        } else if (request.method === routes.seal.method && url.pathname === routes.seal.path && url.search === '') {
+          send(response, routes.seal.successStatus, await control.seal(cutoff(await body(request))));
         } else {
           throw new ControlRequestError('INVALID_REQUEST');
         }
@@ -179,12 +169,12 @@ export function createControlServer(control: MonitorControl, options: ControlSer
           return;
         }
         response.shouldKeepAlive = false;
-        let code: ErrorCode = 'INTERNAL_ERROR';
+        let code: MonitorControlErrorCode = 'INTERNAL_ERROR';
         if (error instanceof ControlRequestError) code = error.code;
         else if (error instanceof MonitorError && error.code === 'invalid_boundary') code = 'INVALID_STATE';
         else if (error instanceof MonitorError) code = 'UNAVAILABLE';
-        const detail = errorBodies[code];
-        send(response, detail.status, { code, message: detail.message });
+        const detail = monitorControlSchema.errors[code];
+        send(response, detail.status, monitorControlErrorBody(code));
       } finally {
         active--;
       }

@@ -9,6 +9,8 @@
 !apps/monitor/test/control-client.ts
 !packages
 !packages/contracts
+!packages/contracts/private
+!packages/contracts/private/**
 !packages/contracts/schemas
 !packages/contracts/schemas/*.json
 !scripts

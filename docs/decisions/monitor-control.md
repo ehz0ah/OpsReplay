@@ -10,6 +10,9 @@ Use the built-in Node HTTPS server for four bounded JSON operations. A web frame
 adds no needed behavior for this fixed internal interface. Health returns only `starting`,
 `ready`, or `failed`. Every operation requires the existing per-session secret as a bearer
 credential, so invalid traffic cannot consume the gateway's authenticated rate allowance.
+The server and gateway import their routes, response envelopes, timestamp and cursor rules,
+and remote errors from `packages/contracts/private/monitor-control.ts`. This private contract
+is not part of OpenAPI and must not enter a browser bundle.
 
 Use TLS 1.3 and require the client to trust the per-task certificate before it sends the
 secret. Plain HTTP fails. The local test creates a temporary certificate and does not
@@ -62,5 +65,5 @@ size bounds, cursor replay, idempotency, shutdown, and clock skew at sealing. Th
 suite runs the Challenge, monitor, and gateway-like client as separate processes. It
 also proves that a root learner on the shared network cannot use the control API without
 the secret or through plaintext HTTP. Both real 60-second recovery paths pass locally.
-These checks do not prove Fargate isolation, production certificate delivery, or AWS
-network behavior.
+Contract tests reject route, boundary, response, and remote-error drift. These checks do
+not prove Fargate isolation, production certificate delivery, or AWS network behavior.
