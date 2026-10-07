@@ -16,5 +16,5 @@
     "noEmit": true,
     "types": ["node", "aws-lambda"]
   },
-  "include": ["apps/api/**/*.ts", "apps/monitor/**/*.ts", "infra/**/*.ts"]
+  "include": ["apps/api/**/*.ts", "apps/gateway/**/*.ts", "apps/monitor/**/*.ts", "infra/**/*.ts"]
 }

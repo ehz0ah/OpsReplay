@@ -31,6 +31,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 6 October 2026 | Correct the review-fix regressions: normalize Fargate's capacity message, retry S3 conditional-write conflicts once, and restore short cleanup retries for known tasks while retaining the recovery callback |
 | 6 October 2026 | [First monitor measurement increment](monitor-measurement.md): use bounded timestamped request records, direct exact aggregation, real checkout validation, and separate-container tests. Keep network control, resource stats, captures, and cloud readiness separate |
 | 7 October 2026 | [Monitor HTTPS control increment](monitor-control.md): use bounded TLS 1.3 JSON control, per-session bearer authentication, cursor replay, and immutable lifecycle sealing. Keep gateway persistence, browser relay, captures, and AWS validation separate |
+| 7 October 2026 | [Gateway monitor client increment](gateway-monitor-client.md): pin the per-task certificate, reuse one TLS connection, validate monitor responses and sequences, and retry one ambiguous transport failure. Keep recording, browser relay, terminal access, and AWS validation separate |
 
 ## Product decisions
 
