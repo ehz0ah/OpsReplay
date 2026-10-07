@@ -8,3 +8,4 @@ export * from './monitor-recording-store.js';
 export * from './monitor-recording-supervisor.js';
 export * from './recording-service.js';
 export * from './recording-work-source.js';
+export * from './recording-runtime.js';

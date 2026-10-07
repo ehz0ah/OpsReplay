@@ -102,3 +102,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run gateway:test
+
+  gateway-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: docker pull amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
+      - run: npm run gateway:runtime:image:build
+      - run: npm run gateway:runtime:image:test
+      - name: Remove gateway runtime containers after failure or cancellation
+        if: always()
+        run: |
+          docker ps -aq --filter label=opsreplay.test=gateway-runtime | xargs -r docker rm -f
+          docker network ls -q --filter name=opsreplay-gateway-runtime- | xargs -r docker network rm

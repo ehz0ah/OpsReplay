@@ -1,9 +1,11 @@
 # Gateway service boundary
 
 Status: the production monitor HTTPS client, bounded recording controller, durable
-recording adapters, recording-session runner, DynamoDB work source, and bounded service
-supervisor are implemented and tested locally. The gateway process, WebSocket route,
-provisioned recording bucket and gateway role, terminal proxy, and browser relay are not implemented. Follow the
+recording adapters, recording-session runner, DynamoDB work source, bounded service
+supervisor, and recording-only process image are implemented and tested locally. CDK
+defines its private Fargate service, role, bucket, and event source, but keeps the complete
+path disabled by default. No AWS deployment has run. The WebSocket route, terminal proxy,
+and browser relay are not implemented. Follow the
 [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -97,6 +99,15 @@ then cancels remaining runners and stops, so a replacement can resume durable wo
 DynamoDB recording store, and S3 chunk store with the same clients. The gateway AWS
 clients use two attempts and bounded connection and request times.
 
+## Recording process
+
+The recording image starts one Node.js process. It validates the table, bucket, monitor
+port, and concurrency settings before it creates AWS clients. It generates a unique
+recorder identity for that process, runs the supervisor, converts `SIGTERM` and `SIGINT`
+to cancellation, waits for active runners, and then closes the shared clients. Logs use
+only bounded event names, session IDs, status values, and error names or codes. They do
+not include monitor credentials or work records.
+
 Run its local checks with:
 
 ```sh
@@ -104,6 +115,8 @@ npm run gateway:test
 npm run challenge:build
 npm run monitor:image:build
 npm run gateway:image:test
+npm run gateway:runtime:image:build
+npm run gateway:runtime:image:test
 ```
 
 The tests use temporary self-signed certificates and the real monitor HTTPS server. They
@@ -113,10 +126,12 @@ renewal, drain races, restart from a durable checkpoint, exact sealing, work dis
 bounded concurrency, duplicate suppression, and failure isolation. DynamoDB Local also
 tests the keys-only GSI and conditional work retirement. The image test runs the bundled
 runner against the monitor and Challenge containers in one task-like network namespace.
-These checks do not prove Fargate networking, production certificate delivery, IAM, or
-deployed DynamoDB and S3 behaviour.
+The runtime image test starts the real process as a non-root, read-only container. It
+queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`. These
+checks do not prove Fargate networking, production certificate delivery, IAM, or managed
+DynamoDB and S3 behaviour.
 
-Next: deploy the sparse index, recording-work event action, private recording bucket,
-and gateway recording process with narrow IAM and private network access. Validate that
-temporary path in AWS before enabling it. Terminal proxying and browser relay remain
-separate increments.
+Next: perform the approved temporary AWS checkpoint before enabling the recording path.
+That run must validate real ECS events, private port 9443 connectivity, managed DynamoDB
+and S3 behavior, task replacement, and cleanup. Readiness and outcome actions, terminal
+proxying, and browser relay remain separate increments.

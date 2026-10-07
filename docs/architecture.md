@@ -5,10 +5,10 @@ Status: implementation proposal consistent with the preliminary report. The
 locally. Session admission, ECS launch orchestration, and provisioning-expiry cleanup
 have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
 authenticated HTTPS control run locally. The gateway monitor client, bounded recording
-controller, durable recording adapters, and one-session recording runner are implemented
-and tested locally. The session-work adapter, gateway process, and deployed recording
-store do not run. Captures, the remaining handlers, terminal recording and relay, and
-cloud deployment are not implemented.
+controller, durable recording adapters, work source, supervisor, and recording-only
+process are implemented and tested locally. CDK defines their inactive AWS deployment,
+but no AWS run has occurred. Captures, the remaining lifecycle handlers, terminal
+recording and relay, and the public cloud entry points are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
