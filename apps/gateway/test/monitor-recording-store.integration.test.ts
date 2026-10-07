@@ -285,6 +285,35 @@ test('recovers an append whose DynamoDB response was lost', async () => {
   assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
 });
 
+test('recognizes an append committed before a concurrent drain transition', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  let lost = false;
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand && !lost) {
+          lost = true;
+          await setDraining(f, claimed.lease);
+          throw new Error('Commit response lost during drain transition');
+        }
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+
+  await uncertain.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live'), '2026-10-07T00:00:02.000Z');
+
+  const saved = await f.store.get(f.sessionId);
+  assert.equal(lost, true);
+  assert.equal(saved?.status, 'draining');
+  assert.equal(saved?.cursor, 1);
+  assert.equal((await f.rows()).filter((row) => String(row.SK).startsWith('CHUNK#')).length, 1);
+});
+
 test('rejects a missing sequence range without publishing its chunk reference', async () => {
   const f = await fixture();
   const claimed = await claim(f);
@@ -293,6 +322,25 @@ test('rejects a missing sequence range without publishing its chunk reference', 
   await assert.rejects(
     f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live', 1, 2), '2026-10-07T00:00:01.000Z'),
     storeError('invalid_state'),
+  );
+
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 0);
+  assert.equal((await f.rows()).filter((row) => String(row.SK).startsWith('CHUNK#')).length, 0);
+});
+
+test('reports an append that loses the race with the drain transition', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  await setDraining(f, claimed.lease);
+
+  await assert.rejects(
+    f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live'), '2026-10-07T00:00:04.000Z'),
+    storeError('recording_draining'),
+  );
+  await assert.rejects(
+    f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live'), '2026-10-07T00:00:05.000Z'),
+    storeError('stale_lease'),
   );
 
   assert.equal((await f.store.get(f.sessionId))?.cursor, 0);

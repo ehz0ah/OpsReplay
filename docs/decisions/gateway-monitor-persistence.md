@@ -39,7 +39,10 @@ Conditional DynamoDB writes fence stale gateways and reject gaps or a changed mo
 source. Exact retries recover after an uncertain DynamoDB response by reading the
 recording state and the immutable chunk reference. A failed S3 upload cannot advance the
 cursor. A failed DynamoDB commit can leave an unreferenced S3 object, which is safe and
-will be subject to the future recording retention rule.
+will be subject to the future recording retention rule. If an append loses a race with
+the lifecycle transition to `draining`, it returns `recording_draining`. The future
+gateway supervisor must treat this as the signal to stop polling and start sealing, not
+as a recorder failure or a successful append.
 
 Local tests cover concurrent claims, lease expiry and takeover, renewal, stale writers,
 duplicate page commits, uncertain transaction responses, upload ordering, exact sealing,
@@ -47,8 +50,18 @@ and invalid stored data. They do not prove AWS IAM, S3, DynamoDB, or network beh
 
 ## Deferred integration
 
+The readiness action must not move a session out of `provisioning` until the private
+recording item has an active lease and an initialized `startedAt` checkpoint. This keeps
+the learner clock and the recording origin aligned. A first claim after `ready` remains
+invalid because it would omit the start of the attempt.
+
 The lifecycle outcome action must atomically set the recording state to `draining` with
-its fixed `cutoffAt` and `drainDeadlineAt`. The running gateway must claim and renew the
-lease, construct the recorder from the saved checkpoint, and use these adapters. A
-separate private recording bucket and least-privilege gateway role are required before
-deployment. The one-day monitor-secret bucket is not a recording store.
+its fixed `cutoffAt` and `drainDeadlineAt`. The lifecycle writer owns the transition to
+`incomplete` when that deadline expires. Gateway and lifecycle hosts must use
+synchronized UTC clocks. The deadline is an operational bound subject to that bounded
+clock skew. The saved cutoff remains exact and excludes later frames from scoring.
+
+The running gateway must claim and renew the lease, construct the recorder from the
+saved checkpoint, and use these adapters. A separate private recording bucket and
+least-privilege gateway role are required before deployment. The one-day monitor-secret
+bucket is not a recording store.
