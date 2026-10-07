@@ -241,6 +241,50 @@ test('a failed final commit can retry the idempotent monitor seal', async () => 
   assert.ok(sink.sealed);
 });
 
+test('replaces provisional frames with a valid empty sealed stream', async () => {
+  const client = new FakeClient([frame(1, '2026-10-07T00:00:00.001Z')]);
+  const sink = new MemorySink();
+  const recorder = new MonitorRecorder({ client, sink, pollIntervalMs: 50 });
+  const controller = new AbortController();
+  sink.onAppend = () => controller.abort();
+  await recorder.begin();
+  await recorder.record(controller.signal);
+  assert.deepEqual(recorder.checkpoint, { startedAt, source, cursor: 1 });
+
+  sink.failSeal = true;
+  await assert.rejects(recorder.seal(startedAt), /seal failed/);
+  assert.deepEqual(recorder.checkpoint, { startedAt, source, cursor: 1 });
+
+  sink.failSeal = false;
+  const sealed = await recorder.seal(startedAt);
+
+  assert.deepEqual(sealed.frames, []);
+  assert.equal(sealed.source, null);
+  assert.equal(sealed.cursor, 0);
+  assert.equal(client.seals.length, 2);
+  assert.deepEqual(sink.sealed, sealed);
+  assert.deepEqual(recorder.checkpoint, { startedAt, source: null, cursor: 0 });
+});
+
+test('isolates the sealed result and checkpoint from sink mutations', async () => {
+  const client = new FakeClient([frame(1, '2026-10-07T00:00:01.000Z')]);
+  const sink = new MemorySink();
+  sink.seal = async (value) => {
+    (value.frames as MonitorFrame[]).splice(0);
+    value.cursor = 0;
+    value.final.sample.values.request_rate = 999;
+  };
+  const recorder = new MonitorRecorder({ client, sink });
+  await recorder.begin();
+
+  const sealed = await recorder.seal('2026-10-07T00:00:02.000Z');
+
+  assert.equal(sealed.frames.length, 1);
+  assert.equal(sealed.cursor, 1);
+  assert.equal(sealed.final.sample.values.request_rate, 1);
+  assert.deepEqual(recorder.checkpoint, { startedAt, source, cursor: 1 });
+});
+
 test('a replacement can complete an already sealed monitor from its checkpoint', async () => {
   const cutoffAt = '2026-10-07T00:00:02.000Z';
   const client = new FakeClient([frame(1, '2026-10-07T00:00:01.000Z')]);

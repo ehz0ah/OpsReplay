@@ -29,7 +29,14 @@ caller stops polling, the recorder sends the exact lifecycle cutoff to the monit
 then reads the sealed stream again from sequence zero and asks the sink to replace the
 provisional view. This excludes frames after the cutoff and allows the saved final
 references to become the source for scoring and playback. The final metric sample must
-use the same cutoff.
+use the same cutoff. The canonical stream can be empty even when provisional frames were
+committed. Such a stream has a null source and a zero cursor.
+
+Reading from sequence zero keeps canonical filtering in the monitor and does not require
+the sink to interpret provisional frames. Sealed reads remain paced because they use the
+same authenticated request limit as live reads. Tail-only reconciliation is deferred
+until a durable sink can trim provisional data atomically and return the final cursor,
+and measurements show that the added contract is necessary.
 
 Cap one monitor stream at 10,000 frames. This matches the current monitor buffer and
 bounds final reconciliation in memory. A larger published limit needs a new storage and

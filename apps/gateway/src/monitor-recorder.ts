@@ -212,12 +212,12 @@ export class MonitorRecorder {
         source: canonical.source,
         cursor: canonical.cursor,
         frames: canonical.frames,
-        final: structuredClone(result.final),
+        final: result.final,
       };
       await this.sink.seal(structuredClone(recording), signal);
       this.current = { startedAt, source: recording.source, cursor: recording.cursor };
       this.sealed = true;
-      return structuredClone(recording);
+      return recording;
     } finally {
       this.sealing = false;
     }
@@ -251,9 +251,9 @@ export class MonitorRecorder {
   ): Promise<{ source: string | null; cursor: number; frames: MonitorFrame[] }> {
     const frames: MonitorFrame[] = [];
     let cursor = 0;
-    let source = this.current.source;
+    let source: string | null = null;
     while (true) {
-      const page = await this.client.read(cursor, source ?? undefined, signal);
+      const page = await this.client.read(cursor, this.current.source ?? source ?? undefined, signal);
       if (!page.sealed) throw new MonitorRecorderError('invalid_stream');
       if (page.nextSequence > this.maximumFrames) throw new MonitorRecorderError('recording_limit');
       for (const frame of page.frames) {
@@ -262,13 +262,14 @@ export class MonitorRecorder {
           throw new MonitorRecorderError('invalid_stream');
         }
         source ??= frame.source;
-        frames.push(structuredClone(frame));
+        frames.push(frame);
       }
       cursor = page.nextSequence;
       if (page.frames.length === 0) break;
+      // Sealed reads still share the monitor's authenticated request limit. The
+      // protocol does not define a short page as the end of the stream.
       await delay(minimumPollIntervalMs, undefined, signal === undefined ? undefined : { signal });
     }
-    if (this.current.cursor > 0 && cursor === 0) throw new MonitorRecorderError('invalid_stream');
     return { source, cursor, frames };
   }
 }
