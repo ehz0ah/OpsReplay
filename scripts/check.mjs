@@ -276,4 +276,4 @@ for (const file of markdown) {
 console.log('PASS: OpenAPI with ' + routeCount + ' routes, ' + Object.keys(publicSchema.$defs).length + ' public schemas, '
   + challenges.size + ' Challenge manifests, ' + reviews.size + ' review bundle, examples, debrief and review-matching fixtures, '
   + 'leakage cases, and ' + markdown.length + ' Markdown files.');
-console.log('This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run api:test for session provisioning, and npm run infra:test for CDK definitions. Gateway, UI, remaining API routes, and AWS integration remain unimplemented.');
+console.log('This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run gateway:test for the gateway monitor client, npm run api:test for session provisioning, and npm run infra:test for CDK definitions. The gateway service, UI, remaining API routes, and AWS integration remain unimplemented.');

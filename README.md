@@ -18,8 +18,9 @@ validation tools, three synthetic draft Challenge manifests, and a
 The [API](apps/api/README.md) has a session-start Lambda, a separate provisioning-expiry
 Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
 functions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
-recovery, and outages, and exposes authenticated HTTPS control locally. Captures, the
-gateway, remaining API, web application, and cloud deployment are not implemented. The
+recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
+a production monitor client but no running service. Captures, the gateway recorder and
+relay, remaining API, web application, and cloud deployment are not implemented. The
 image is not a published Challenge or a complete session. No public route is enabled.
 
 ## Start here

@@ -13,6 +13,8 @@
     "monitor:build": "node scripts/build-monitor.mjs",
     "monitor:image:build": "docker build --target test -t opsreplay/monitor-test:dev -f apps/monitor/Dockerfile .",
     "monitor:image:test": "node --test apps/monitor/test/image.test.mjs",
+    "gateway:build": "node scripts/build-gateway.mjs",
+    "gateway:test": "npm run gateway:build && node --import tsx --test apps/gateway/test/*.test.ts",
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
     "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
