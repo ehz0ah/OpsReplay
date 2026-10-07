@@ -14,6 +14,12 @@ The server and gateway import their routes, response envelopes, timestamp and cu
 and remote errors from `packages/contracts/private/monitor-control.ts`. This private contract
 is not part of OpenAPI and must not enter a browser bundle.
 
+Published Challenge versions pin their monitor images, while the gateway can roll forward
+separately. A new gateway must therefore accept responses from previously published monitors.
+Existing operations, response shapes, health states, status meanings, and bounds remain stable.
+An incompatible change requires a separately versioned contract. Error classification uses the
+stable code and HTTP status, not message wording.
+
 Use TLS 1.3 and require the client to trust the per-task certificate before it sends the
 secret. Plain HTTP fails. The local test creates a temporary certificate and does not
 define how production certificates are issued or delivered. The Challenge container

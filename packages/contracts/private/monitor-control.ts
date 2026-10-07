@@ -1,3 +1,8 @@
+/**
+ * Compatibility: a new gateway must accept responses from previously published monitor images.
+ * Existing operations, response shapes, health states, status meanings, and bounds stay stable.
+ * An incompatible change requires a separately versioned contract.
+ */
 export const monitorControlSchema = Object.freeze({
   routes: {
     health: { method: 'GET', path: '/healthz', readyStatus: 200, unavailableStatus: 503 },
@@ -10,6 +15,7 @@ export const monitorControlSchema = Object.freeze({
   maximumFramesPerPage: 100,
   maximumRequestBytes: 1_024,
   maximumResponseBytes: 65_536,
+  maximumErrorMessageCharacters: 1_000,
   errors: {
     AUTH_FAILED: { status: 401, message: 'Monitor authentication failed.', clientCode: 'auth_failed' },
     INVALID_REQUEST: { status: 400, message: 'Invalid monitor request.', clientCode: 'invalid_request' },
@@ -190,10 +196,19 @@ export function monitorControlErrorBody<Code extends MonitorControlErrorCode>(
 }
 
 export function monitorControlClientError(status: number, value: unknown): MonitorControlClientErrorCode | undefined {
-  if (!record(value) || !exact(value, ['code', 'message']) || typeof value.code !== 'string') return undefined;
+  if (
+    !record(value) ||
+    !exact(value, ['code', 'message']) ||
+    typeof value.code !== 'string' ||
+    typeof value.message !== 'string' ||
+    value.message.length === 0 ||
+    value.message.length > monitorControlSchema.maximumErrorMessageCharacters
+  ) {
+    return undefined;
+  }
   const code = value.code as MonitorControlErrorCode;
   if (!Object.hasOwn(monitorControlSchema.errors, code)) return undefined;
   const definition = monitorControlSchema.errors[code];
-  if (definition.status !== status || value.message !== definition.message) return undefined;
+  if (definition.status !== status) return undefined;
   return definition.clientCode;
 }

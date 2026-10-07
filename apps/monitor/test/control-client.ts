@@ -99,7 +99,7 @@ async function main(): Promise<number> {
     const framesRoute = monitorControlSchema.routes.frames;
     while (!stop) {
       const page = await call<MonitorControlFramePage<unknown>>(
-        framesRoute.path + '?after=' + cursor,
+        `${framesRoute.path}?${framesRoute.cursorParameter}=${cursor}`,
         framesRoute.method,
       );
       if (
@@ -119,7 +119,7 @@ async function main(): Promise<number> {
     if (sealed.status !== sealRoute.successStatus) throw new MonitorError('monitor_failed');
     while (true) {
       const page = await call<MonitorControlFramePage<unknown>>(
-        framesRoute.path + '?after=' + cursor,
+        `${framesRoute.path}?${framesRoute.cursorParameter}=${cursor}`,
         framesRoute.method,
       );
       if (page.status !== framesRoute.successStatus || !Array.isArray(page.value.frames)) {
