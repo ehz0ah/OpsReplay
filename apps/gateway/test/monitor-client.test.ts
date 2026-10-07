@@ -4,7 +4,8 @@ import type { ServerResponse } from 'node:http';
 import { createServer } from 'node:https';
 import type { Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
-import { setImmediate as immediate } from 'node:timers/promises';
+import type { Duplex } from 'node:stream';
+import { setImmediate as immediate, setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { MonitorClient, MonitorClientError } from '../src/monitor-client.js';
 import { MonitorControl } from '../../monitor/src/control.js';
@@ -49,9 +50,11 @@ async function listen(server: Server): Promise<number> {
 }
 
 async function close(server: Server): Promise<void> {
-  server.closeAllConnections();
   if (!server.listening) return;
-  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => {
+    server.close(error => error ? reject(error) : resolve());
+    server.closeAllConnections();
+  });
 }
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
@@ -147,6 +150,22 @@ test('authentication failure is stable and does not disclose the supplied secret
   });
 });
 
+test('a rejected gateway request is distinct from an invalid monitor response', async t => {
+  const tls = testTls();
+  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (_request, response) => {
+    sendJson(response, 400, { code: 'INVALID_REQUEST', message: 'Invalid monitor request.' });
+  });
+  const port = await listen(server);
+  const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
+  t.after(async () => {
+    client.close();
+    await close(server);
+    tls.close();
+  });
+
+  await assert.rejects(client.health(), errorCode('invalid_request'));
+});
+
 test('the client refuses a server limited to TLS 1.2', async t => {
   const tls = testTls();
   let requests = 0;
@@ -225,28 +244,85 @@ test('request timeout retries once while caller cancellation does not retry', as
   assert.equal(requests, 3);
 });
 
-test('closing the client cancels active and agent-queued requests', async t => {
+test('a waiting seal does not block health checks on the monitor connection', { timeout: 10_000 }, async t => {
   const tls = testTls();
-  let requests = 0;
-  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => { requests++; });
-  const port = await listen(server);
-  const client = new MonitorClient({
-    host: '127.0.0.1', port, certificate: tls.cert, secret, requestTimeoutMs: 1_000,
+  const cutoffAt = '2026-10-07T00:00:05.000Z';
+  let releaseSeal = () => {};
+  let markSealReceived = () => {};
+  const sealGate = new Promise<void>(resolve => { releaseSeal = resolve; });
+  const sealReceived = new Promise<void>(resolve => { markSealReceived = resolve; });
+  let connections = 0;
+  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, async (request, response) => {
+    request.resume();
+    if (request.url === '/v1/seal') {
+      markSealReceived();
+      await sealGate;
+      sendJson(response, 200, { cutoffAt, final: metric });
+      return;
+    }
+    assert.equal(request.url, '/healthz');
+    sendJson(response, 200, { status: 'ready' });
   });
+  server.on('connection', () => { connections++; });
+  const port = await listen(server);
+  const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
   t.after(async () => {
+    releaseSeal();
     client.close();
     await close(server);
     tls.close();
   });
 
+  const sealing = client.seal(cutoffAt);
+  await sealReceived;
+  const checking = client.health();
+  let health: Awaited<typeof checking> | 'blocked';
+  try {
+    health = await Promise.race([checking, delay(1_000, 'blocked' as const)]);
+  } finally {
+    releaseSeal();
+  }
+  assert.equal(await checking, 'ready');
+  assert.equal(await sealing.then(value => value.cutoffAt), cutoffAt);
+  assert.equal(health, 'ready');
+  assert.equal(connections, 2);
+});
+
+test('closing the client cancels active and agent-queued requests', { timeout: 10_000 }, async t => {
+  const tls = testTls();
+  let requests = 0;
+  let closingServer = false;
+  const sockets = new Set<Duplex>();
+  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => { requests++; });
+  server.on('connection', socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+    if (closingServer) socket.destroy();
+  });
+  const port = await listen(server);
+  const client = new MonitorClient({
+    host: '127.0.0.1', port, certificate: tls.cert, secret, requestTimeoutMs: 1_000,
+  });
+  t.after(async () => {
+    closingServer = true;
+    client.close();
+    for (const socket of sockets) socket.destroy();
+    await close(server);
+    tls.close();
+  });
+
+  const firstReceived = once(server, 'request', { signal: AbortSignal.timeout(2_000) });
   const first = client.health();
-  await once(server, 'request');
+  await firstReceived;
+  const secondReceived = once(server, 'request', { signal: AbortSignal.timeout(2_000) });
   const second = client.health();
-  const rejected = [assert.rejects(first, errorCode('closed')), assert.rejects(second, errorCode('closed'))];
+  await secondReceived;
+  const third = client.health();
+  const rejected = [first, second, third].map(pending => assert.rejects(pending, errorCode('closed')));
   client.close();
   await Promise.all(rejected);
   await immediate();
-  assert.equal(requests, 1);
+  assert.equal(requests, 2);
 });
 
 test('the client rejects malformed, oversized, and discontinuous responses', async t => {
