@@ -1,9 +1,9 @@
 # Gateway service boundary
 
 Status: the production monitor HTTPS client, bounded recording controller, durable
-recording adapters, and recording-session runner are implemented and tested locally.
-The session-work adapter, gateway process, WebSocket route, provisioned recording bucket
-and gateway role, terminal proxy, and browser relay are not implemented. Follow the
+recording adapters, recording-session runner, DynamoDB work source, and bounded service
+supervisor are implemented and tested locally. The gateway process, WebSocket route,
+provisioned recording bucket and gateway role, terminal proxy, and browser relay are not implemented. Follow the
 [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -79,12 +79,21 @@ an append observes `draining`, and keeps renewing while the monitor seals at the
 cutoff. Shutdown and lease loss cancel pending monitor work and close the client. The
 runner does not choose an outcome, cutoff, incomplete reason, or score.
 
-The service-level recording supervisor is not implemented because the current lifecycle
-does not yet save the task address or certificate and the documented session work index
-has no implemented writer. That supervisor must run a bounded number of independently
-isolated runners. Its capacity must support recorder attachment within the provisioning
-deadline. Its work source must honor cancellation and supply the task address, public
-monitor certificate, and secret from the private session record.
+`DynamoRecordingWorkSource` queries the sparse recording-work index as an eventually
+consistent hint. It strongly reads each base session before it returns a private task
+address, public monitor certificate, or secret. It retires terminal work by removing the
+exact index entry only while the terminal state is unchanged. The lifecycle expiry
+action owns the transition for overdue provisioning sessions. The index uses a keys-only
+projection, so monitor credentials do not enter it.
+
+`MonitorRecordingSupervisor` runs a configured number of independent runners. It does
+not start the same session twice in one process. It bounds retry-cooldown memory, rotates
+work discovery, and cancels every runner during shutdown. Monitor, storage, and AWS
+failures are isolated and reported per session. Configuration and programming errors
+stop the supervisor. `createGatewayRecordingSupervisor` composes the work source,
+monitor client, runner, DynamoDB recording store, and S3 chunk store with the same
+clients. The gateway AWS clients use two attempts and bounded connection and request
+times.
 
 Run its local checks with:
 
@@ -98,14 +107,14 @@ npm run gateway:image:test
 The tests use temporary self-signed certificates and the real monitor HTTPS server. They
 cover certificate rejection before HTTP, authentication, TLS version, connection reuse,
 one safe retry, deadlines, cancellation, response bounds, sequence continuity, lease
-renewal, drain races, restart from a durable checkpoint, and exact sealing. The image
-test also runs the bundled runner against the monitor and Challenge containers in one
-task-like network namespace. These checks do not prove Fargate networking, production
-certificate delivery, IAM, or deployed DynamoDB and S3 behaviour.
+renewal, drain races, restart from a durable checkpoint, exact sealing, work discovery,
+bounded concurrency, duplicate suppression, and failure isolation. DynamoDB Local also
+tests the keys-only GSI and conditional work retirement. The image test runs the bundled
+runner against the monitor and Challenge containers in one task-like network namespace.
+These checks do not prove Fargate networking, production certificate delivery, IAM, or
+deployed DynamoDB and S3 behaviour.
 
-Next task: implement the lifecycle-owned monitor attachment fields, gateway session-work
-source, and bounded recording supervisor together in
-[issue #18](https://github.com/ehz0ah/OpsReplay/issues/18). The supervisor must isolate
-runner failures so one session cannot stop other active recordings. Provision the
-private recording bucket and gateway IAM only with that deployment path. Terminal
-proxying and browser relay remain separate increments.
+Next: deploy the sparse index, recording-work event action, private recording bucket,
+and gateway recording process with narrow IAM and private network access. Validate that
+temporary path in AWS before enabling it. Terminal proxying and browser relay remain
+separate increments.
