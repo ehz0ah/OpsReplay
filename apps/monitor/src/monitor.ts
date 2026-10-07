@@ -101,9 +101,11 @@ export class Monitor {
   }
 
   private append(payload: PublicFrame): void {
+    const recordedAt = this.now();
+    if (this.cutoff !== undefined && recordedAt > this.cutoff) return;
     if (this.frames.length >= limits.events) throw new MonitorError('record_limit');
     if (!validFrame(payload)) throw new MonitorError('monitor_failed');
-    this.frames.push({ source: this.source, sequence: this.frames.length + 1, recordedAt: this.now(), payload });
+    this.frames.push({ source: this.source, sequence: this.frames.length + 1, recordedAt, payload });
   }
 
   private event(signal: MonitorEvent['signal'], at: number, label: string): void {
@@ -127,6 +129,7 @@ export class Monitor {
   tick(): void {
     if (!this.measurements || this.stopped) return;
     const at = this.now();
+    if (this.cutoff !== undefined && at > this.cutoff) return;
     try {
       this.config.journeys.forEach((j, i) => {
         if (!this.due(this.traffic[i]!, 1000 / j.ratePerSecond, at).ready || this.stopped) return;
@@ -206,11 +209,17 @@ export class Monitor {
     return { type: 'metrics', ...this.measurements.snapshot(at), recovery: { ...recovery } };
   }
 
+  reserveCutoff(at: number): void {
+    if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt
+      || (this.cutoff !== undefined && this.cutoff !== at)) throw new MonitorError('invalid_boundary');
+    this.cutoff = at;
+  }
+
   seal(at = this.cutoff ?? this.now()): Promise<MetricFrame> {
     if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt || at > this.now()
       || (this.cutoff !== undefined && this.cutoff !== at)) throw new MonitorError('invalid_boundary');
     if (this.sealed) return this.sealed.then(frame => structuredClone(frame));
-    this.cutoff = at;
+    this.reserveCutoff(at);
     this.controller.abort();
     this.sealed = this.drain().then(() => this.snapshot(at));
     return this.sealed.then(frame => structuredClone(frame));

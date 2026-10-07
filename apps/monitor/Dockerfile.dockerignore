@@ -7,7 +7,6 @@
 !apps/monitor/src/**
 !apps/monitor/test
 !apps/monitor/test/control-client.ts
-!apps/monitor/test/driver.ts
 !packages
 !packages/contracts
 !packages/contracts/schemas

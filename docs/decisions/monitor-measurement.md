@@ -32,8 +32,8 @@ them with Apache ECharts. Neither chart code nor a generic telemetry platform is
 here. CPU/memory must come from the Challenge runtime, not the monitor process.
 
 Use an in-process lifecycle and sequenced buffer before exposing network control.
-The test image supplies a bounded local driver. It has no control port to bypass the
-authenticated TLS requirement. The driver is not a deployed readiness handler.
+The later authenticated-control increment replaced the temporary stdout driver. The
+runtime image does not contain that driver or another path around the HTTPS control API.
 
 ## Timing and failures
 

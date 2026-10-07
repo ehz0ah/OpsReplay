@@ -3,6 +3,7 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { EventEmitter, once } from 'node:events';
 import type { AddressInfo } from 'node:net';
+import { connect as connectTls } from 'node:tls';
 import test from 'node:test';
 import { MonitorControl } from '../src/control.js';
 import type { ControlScheduler } from '../src/control.js';
@@ -44,7 +45,14 @@ function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:
     tick() { ticks++; },
     read(after = 0, limit = frames.length - after) {
       if (!Number.isInteger(after) || after < 0 || after > frames.length) throw new MonitorError('invalid_boundary');
-      return structuredClone(frames.slice(after, after + limit));
+      return structuredClone(frames.slice(after, after + limit)
+        .filter(frame => cutoff === undefined || frame.recordedAt <= cutoff));
+    },
+    reserveCutoff(at: number) {
+      if (at < Date.parse('2026-10-07T00:00:00.000Z') || (cutoff !== undefined && cutoff !== at)) {
+        throw new MonitorError('invalid_boundary');
+      }
+      cutoff = at;
     },
     async seal(at?: number) {
       if (at === undefined || at < Date.parse('2026-10-07T00:00:00.000Z') || at > Date.parse('2026-10-07T00:01:00.000Z')) {
@@ -116,7 +124,9 @@ test('control waits for a slightly future lifecycle cutoff without changing it',
   const cutoff = now + 10;
   const sealing = f.control.seal(new Date(cutoff).toISOString());
   const replay = f.control.seal(new Date(cutoff).toISOString());
-  assert.equal(f.control.read(0).sealed, false);
+  const reserved = f.control.read(0);
+  assert.equal(reserved.sealed, false);
+  assert.deepEqual(reserved.frames.map(frame => frame.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   queueMicrotask(() => { now = cutoff; });
   const [sealed, replayed] = await Promise.all([sealing, replay]);
   assert.equal(sealed.cutoffAt, '2026-10-07T00:00:05.010Z');
@@ -150,7 +160,7 @@ test('runtime stops on a process signal and removes the server error listener', 
 
 interface Result { status: number; body: unknown }
 async function request(port: number, cert: Buffer, path: string, options: {
-  method?: string; secret?: string; body?: string; trusted?: boolean;
+  method?: string; secret?: string; body?: string; contentType?: string; trusted?: boolean;
 } = {}): Promise<Result> {
   const content = options.body;
   return new Promise((resolve, reject) => {
@@ -160,7 +170,10 @@ async function request(port: number, cert: Buffer, path: string, options: {
       rejectUnauthorized: true,
       headers: {
         ...(options.secret === undefined ? {} : { Authorization: `Bearer ${options.secret}` }),
-        ...(content === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(content) }),
+        ...(content === undefined ? {} : {
+          'Content-Type': options.contentType ?? 'application/json',
+          'Content-Length': Buffer.byteLength(content),
+        }),
       },
     }, response => {
       const chunks: Buffer[] = [];
@@ -187,10 +200,21 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   t.after(() => { server.closeAllConnections(); server.close(); });
   const port = (server.address() as AddressInfo).port;
 
-  assert.deepEqual(await request(port, tls.cert, '/healthz'), { status: 200, body: { status: 'ready' } });
+  assert.deepEqual(await request(port, tls.cert, '/healthz', { secret }), { status: 200, body: { status: 'ready' } });
+  assert.equal((await request(port, tls.cert, '/healthz')).status, 401);
   const wrong = await request(port, tls.cert, '/v1/start', { method: 'POST', secret: 'x'.repeat(43) });
   assert.equal(wrong.status, 401);
   assert.deepEqual(Object.keys(wrong.body as object).sort(), ['code', 'message']);
+  const rejected = connectTls({ host: '127.0.0.1', port, ca: tls.cert, rejectUnauthorized: true });
+  await once(rejected, 'secureConnect');
+  let rejectedResponse = '';
+  rejected.setEncoding('utf8');
+  rejected.on('data', chunk => { rejectedResponse += chunk; });
+  const rejectedClosed = once(rejected, 'close');
+  rejected.write('GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n');
+  await rejectedClosed;
+  assert.match(rejectedResponse, /^HTTP\/1\.1 401 /);
+  assert.match(rejectedResponse.toLowerCase(), /\r\nconnection: close\r\n/);
   await assert.rejects(request(port, tls.cert, '/healthz', { trusted: false }), /self-signed certificate/);
   await assert.rejects(new Promise((resolve, reject) => {
     const req = httpRequest({ host: '127.0.0.1', port, path: '/healthz' }, resolve);
@@ -217,6 +241,14 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   assert.equal((await request(port, tls.cert, '/v1/seal', {
     method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07' }),
   })).status, 400);
+  assert.equal((await request(port, tls.cert, '/v1/seal', {
+    method: 'POST', secret, contentType: 'application/json; charset=utf-8',
+    body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+  })).status, 200);
+  assert.equal((await request(port, tls.cert, '/v1/seal', {
+    method: 'POST', secret, contentType: 'application/json; charset=iso-8859-1',
+    body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+  })).status, 400);
   const sealed = await request(port, tls.cert, '/v1/seal', {
     method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
   });
@@ -231,5 +263,48 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   now = 2000;
   const unauthenticated = await Promise.all(Array.from({ length: 9 }, () => request(port, tls.cert, '/healthz')));
   assert.equal(unauthenticated.filter(result => result.status === 429).length, 1);
+  assert.equal((await request(port, tls.cert, '/healthz', { secret })).status, 200);
   assert.equal(f.failed, null);
+});
+
+test('concurrent request limit applies to pipelined work on one TLS connection', async t => {
+  const tls = testTls();
+  t.after(() => tls.close());
+  let now = Date.parse('2026-10-07T00:00:05.000Z');
+  const f = fixture(true, () => now);
+  await f.control.initialise();
+  f.control.start();
+  const server = createControlServer(f.control, { key: tls.key, cert: tls.cert, secret });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const port = (server.address() as AddressInfo).port;
+  const socket = connectTls({ host: '127.0.0.1', port, ca: tls.cert, rejectUnauthorized: true });
+  t.after(() => socket.destroy());
+  await once(socket, 'secureConnect');
+
+  const cutoffAt = new Date(now + 25).toISOString();
+  const content = JSON.stringify({ cutoffAt });
+  const message = `POST /v1/seal HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${secret}\r\n`
+    + `Content-Type: application/json\r\nContent-Length: ${Buffer.byteLength(content)}\r\n`
+    + `Connection: keep-alive\r\n\r\n${content}`;
+  let received = '';
+  socket.setEncoding('utf8');
+  const responses = new Promise<number[]>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timed out waiting for pipelined responses')), 2000);
+    socket.on('data', chunk => {
+      received += chunk;
+      const statuses = [...received.matchAll(/HTTP\/1\.1 (\d{3})/g)].map(match => Number(match[1]));
+      if (statuses.length === limits.controlConcurrentRequests + 1) {
+        clearTimeout(timeout);
+        resolve(statuses);
+      }
+    });
+    socket.on('error', error => { clearTimeout(timeout); reject(error); });
+  });
+  socket.write(message.repeat(limits.controlConcurrentRequests + 1));
+  setTimeout(() => { now = Date.parse(cutoffAt); }, 5);
+  const statuses = await responses;
+  assert.equal(statuses.filter(status => status === 200).length, limits.controlConcurrentRequests);
+  assert.equal(statuses.filter(status => status === 429).length, 1);
 });

@@ -30,7 +30,8 @@ load fail admission. It never checks a Challenge ID or requires reference fix co
    rate. Checks run every second without overlap. Samples are emitted every five seconds.
 4. `read(cursor)` returns sequenced records with a stable source ID, recording timestamp,
    and a public `metrics` or `timeline` payload. Reads do not delete data. Treat records
-   as provisional until the cutoff is sealed.
+   as provisional until the cutoff is sealed. When sealing starts, the cutoff is reserved
+   before any wait, so later reads cannot return records beyond it.
 5. `seal(cutoff)` stops work, cancels unfinished requests, and returns the final metrics.
    Repeating it returns the same result. A different cutoff is rejected. Reads after
    sealing exclude records learned after the cutoff, including backdated outage events.
@@ -49,19 +50,21 @@ The future gateway will save the records and relay only public payloads.
 The runtime listens on port 9443 with TLS 1.3. The gateway must verify the per-task
 certificate before it sends the 32-byte base64url session secret. The monitor reads its
 certificate, private key, and secret from its own environment. The Challenge container
-does not receive them. Certificate issuance and production delivery are not implemented.
+does not receive them. Production must deliver all three values through the encrypted
+per-session S3 environment file, never through a plaintext `RunTask` override. Certificate
+issuance and production delivery are not implemented.
 
 | Operation | Result |
 | --- | --- |
-| `GET /healthz` | Unauthenticated `starting`, `ready`, or `failed` status with no private detail |
+| `GET /healthz` | Authenticated `starting`, `ready`, or `failed` status with no private detail |
 | `POST /v1/start` | Idempotently starts measurement and returns `startedAt` |
 | `GET /v1/frames?after=<sequence>` | Returns up to 100 public frames, the next sequence, and seal state |
 | `POST /v1/seal` | Idempotently seals the immutable `cutoffAt` and returns final metrics |
 
-All `/v1` operations require the bearer session secret. Plain HTTP fails. Requests have
+All operations require the bearer session secret. Plain HTTP fails. Requests have
 fixed JSON errors and never return manifests, validator definitions, probe definitions,
 credentials, or internal errors. The server caps request bodies at 1 KiB, headers at
-2 KiB, active connections at 16, authenticated requests at 32 per second, and
+2 KiB, active connections and concurrent requests at 16, authenticated requests at 32 per second, and
 unauthenticated requests at 8 per second. Requests time out after six seconds.
 
 ## Measurements
@@ -109,8 +112,8 @@ probe's completion time. Probe labels describe symptoms, not hidden causes.
 - A scheduling delay under five seconds skips missed work and resumes at the current
   slot without a catch-up burst. The observed request rate shows the reduced traffic.
   A gap of five seconds or more stops measurement as `schedule_gap`.
-- The local output driver waits for writes and fails after one second of blocked output.
-  It logs fixed error codes and never dumps manifests, response bodies, or stack traces.
+- The HTTPS runtime logs fixed error codes and never dumps manifests, response bodies,
+  credentials, or stack traces.
 
 These bounds need load measurements before expanding beyond the reference Challenge.
 
@@ -142,11 +145,12 @@ rejection, cursor reads, immutable sealing, and access from the learner network 
 credentials. Unit tests use real loopback HTTP servers for malformed and slow responses,
 and controlled clocks for scheduler and cutoff races.
 
-The Dockerfile builds a **test image** with the private reference manifest. Its default
-runtime serves the HTTPS control API. `dist/monitor/core.cjs` remains the reusable core
-bundle. A local gateway substitute starts measurement, polls and resumes by sequence,
-and seals on SIGTERM. It exists only for integration tests and is not the real gateway
-or cloud lifecycle.
+The Dockerfile's default `runtime` target contains only `runtime.cjs`. The local image
+command selects a separate `test` target that adds the private reference manifest and
+gateway substitute. `dist/monitor/core.cjs` remains a reusable build artifact outside the
+runtime image. The gateway substitute starts measurement, polls and resumes by sequence,
+and seals on SIGTERM. It exists only for integration tests and is not the real gateway or
+cloud lifecycle.
 
 Local Docker checks do not prove Fargate isolation, cloud timing, or complete recording.
 The complete monitor publication harness, including repeated scenario runs, remains a

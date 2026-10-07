@@ -26,6 +26,7 @@ interface ControlledMonitor {
   start(): number;
   tick(): void;
   read(after?: number, limit?: number): Frame[];
+  reserveCutoff(at: number): void;
   seal(at?: number): Promise<MetricFrame>;
   fail(code: MonitorError['code']): void;
   drain(): Promise<void>;
@@ -99,6 +100,7 @@ export class MonitorControl {
     if (this.sealing) return structuredClone(await this.sealing);
     if (cutoff < this.startedAt
       || cutoff - this.monitor.now() > limits.controlCutoffLeadMs) throw new MonitorError('invalid_boundary');
+    this.monitor.reserveCutoff(cutoff);
     this.sealedAt = cutoff;
     this.sealing = this.sealAt(cutoff).catch(error => {
       this.monitor.fail(error instanceof MonitorError ? error.code : 'monitor_failed');

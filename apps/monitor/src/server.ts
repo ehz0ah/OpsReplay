@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Server } from 'node:https';
+import { MIMEType } from 'node:util';
 import { parseCutoffAt } from './control.js';
 import type { MonitorControl } from './control.js';
 import { MonitorError, limits } from './types.js';
@@ -41,7 +42,14 @@ function send(response: ServerResponse, status: number, value: object): void {
 }
 
 async function body(request: IncomingMessage): Promise<unknown> {
-  if (request.headers['content-type'] !== 'application/json') throw new ControlRequestError('INVALID_REQUEST');
+  const contentType = request.headers['content-type'];
+  try {
+    if (typeof contentType !== 'string') throw new Error('missing content type');
+    const mediaType = new MIMEType(contentType);
+    const charset = mediaType.params.get('charset');
+    if (mediaType.essence !== 'application/json'
+      || (charset !== null && charset.toLowerCase() !== 'utf-8')) throw new Error('invalid content type');
+  } catch { throw new ControlRequestError('INVALID_REQUEST'); }
   const length = request.headers['content-length'];
   if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > limits.controlBodyBytes)) {
     throw new ControlRequestError('INVALID_REQUEST');
@@ -115,18 +123,17 @@ export function createControlServer(control: MonitorControl, options: ControlSer
     response.setTimeout(limits.controlRequestMs, () => response.destroy());
     active++;
     try {
-      if (active > limits.controlConnections) throw new ControlRequestError('RATE_LIMITED');
+      if (active > limits.controlConcurrentRequests) throw new ControlRequestError('RATE_LIMITED');
       const url = new URL(request.url ?? '', 'https://monitor.invalid');
+      const valid = authorise(request);
+      if (!rate(valid)) throw new ControlRequestError('RATE_LIMITED');
+      if (!valid) throw new ControlRequestError('AUTH_FAILED');
       if (url.pathname === '/healthz' && request.method === 'GET' && url.search === '') {
-        if (!rate(false)) throw new ControlRequestError('RATE_LIMITED');
         requireEmptyBody(request);
         const health = control.health();
         send(response, health === 'ready' ? 200 : 503, { status: health });
         return;
       }
-      const valid = authorise(request);
-      if (!rate(valid)) throw new ControlRequestError('RATE_LIMITED');
-      if (!valid) throw new ControlRequestError('AUTH_FAILED');
       if (request.method === 'POST' && url.pathname === '/v1/start' && url.search === '') {
         requireEmptyBody(request);
         send(response, 200, control.start());
@@ -152,9 +159,8 @@ export function createControlServer(control: MonitorControl, options: ControlSer
   server.maxConnections = limits.controlConnections;
   server.headersTimeout = limits.controlRequestMs;
   server.requestTimeout = limits.controlRequestMs;
-  server.keepAliveTimeout = 1000;
+  server.keepAliveTimeout = limits.controlRequestMs;
   server.maxHeadersCount = 16;
-  server.maxRequestsPerSocket = 32;
   server.on('clientError', (_error, socket) => socket.destroy());
   return server;
 }
