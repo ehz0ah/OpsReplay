@@ -35,5 +35,7 @@ recording ownership and persistence.
 Local tests use the real monitor HTTPS server and temporary certificates. They cover the
 full control lifecycle, exact certificate trust, TLS 1.2 rejection, authentication,
 keep-alive reuse, retry, timeout, cancellation, malformed and oversized responses, and
-sequence continuity. These checks do not validate Fargate networking, certificate
-issuance or delivery, DynamoDB leases, S3 recording, or browser delivery.
+sequence continuity. A container test runs the production client bundle against the real
+monitor and Challenge images in one task-like network namespace. These checks do not
+validate Fargate networking, certificate issuance or delivery, DynamoDB leases, S3
+recording, or browser delivery.

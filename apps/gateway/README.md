@@ -38,13 +38,17 @@ Run its local checks with:
 
 ```sh
 npm run gateway:test
+npm run challenge:build
+npm run monitor:image:build
+npm run gateway:image:test
 ```
 
 The tests use temporary self-signed certificates and the real monitor HTTPS server. They
 cover certificate rejection before HTTP, authentication, TLS version, connection reuse,
 one safe retry, deadlines, cancellation, response bounds, sequence continuity, and the
-start/read/seal lifecycle. They do not prove Fargate networking or production certificate
-delivery.
+start/read/seal lifecycle. The image test also runs the production gateway bundle in a
+separate container against the monitor and Challenge containers in one task-like network
+namespace. These checks do not prove Fargate networking or production certificate delivery.
 
 Next task: use this client in a bounded recording controller that owns the saved monitor
 cursor and final cutoff. Terminal proxying and browser relay remain separate increments.
