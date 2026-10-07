@@ -41,7 +41,9 @@ for ECS `RUNNING` task-state events. It validates one ENI private IPv4 address, 
 saved cluster and task identity, stores the private address, and adds one sparse
 recording-work index entry in the same conditional update. It does not mark the session
 ready or run the recorder. Its EventBridge rule and Lambda deployment are not part of
-this increment.
+the handler increment. CDK now defines its Lambda, bounded retries, encrypted failure
+queue, alarm, and ECS task-state rule. One activation parameter keeps the rule and
+function disabled with the recording service until an approved AWS checkpoint.
 
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
@@ -55,10 +57,10 @@ The deployed handler has no development identity or local endpoint switch. A fut
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
 that route. Tests construct the authorizer context directly.
 
-This increment does not provide status/end routes, readiness, terminal access, or a
-running recording supervisor. The two deployed Lambda definitions have zero reserved
-concurrency, and the start Lambda has no trigger. The recording-work action is bundled
-but not deployed yet. Do not enable the flow until the remaining integration is ready.
+This increment does not provide status/end routes, readiness, or terminal access. The
+start and expiry Lambda definitions have zero reserved concurrency, and the start Lambda
+has no trigger. The recording-work action and gateway recording service are also
+inactive by default. Do not enable the flow until its AWS integration checks pass.
 Do not seed the draft repository Challenge as published content.
 
 ## Local checks
@@ -96,5 +98,6 @@ These directories do not belong in Git.
 - Lambdas: 20 second timeout and 256 MiB memory, not yet performance-tuned.
 - Reuse only clients and validators, never learner state, across invocations.
 
-Next: query the real work index and supervise bounded concurrent recording runners.
-Local Docker remains a test tool, not a second platform runtime.
+Next: validate the inactive recording deployment in the approved AWS account, then add
+the separate readiness and outcome actions. Local Docker remains a test tool, not a
+second platform runtime.

@@ -1,0 +1,15 @@
+**
+!package.json
+!package-lock.json
+!apps
+!apps/gateway
+!apps/gateway/src
+!apps/gateway/src/**
+!packages
+!packages/contracts
+!packages/contracts/schemas
+!packages/contracts/schemas/*.json
+!packages/contracts/private
+!packages/contracts/private/**
+!scripts
+!scripts/build-gateway.mjs

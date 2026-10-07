@@ -7,13 +7,13 @@ import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
-test('the session-start stack has separate disabled start and expiry actions', () => {
+test('the stack preserves separate disabled start and expiry actions', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-cdk-'));
   try {
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 2);
+    template.resourceCountIs('AWS::Lambda::Function', 3);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -28,12 +28,12 @@ test('the session-start stack has separate disabled start and expiry actions', (
       UpdateReplacePolicy: 'Retain',
       Properties: { BillingMode: 'PAY_PER_REQUEST' },
     });
-    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 1);
+    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 2);
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
       MaximumRetryAttempts: 2,
       MaximumEventAgeInSeconds: 900,
     });
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 2);
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 4);
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
       Namespace: 'AWS/Lambda',
       MetricName: 'AsyncEventsDropped',
@@ -88,6 +88,14 @@ test('the session-start stack has separate disabled start and expiry actions', (
       'AWS::CloudWatch::Alarm',
       'AWS::S3::Bucket',
       'AWS::S3::BucketPolicy',
+      'AWS::EC2::SecurityGroup',
+      'AWS::EC2::SecurityGroupIngress',
+      'AWS::SQS::Queue',
+      'AWS::SQS::QueuePolicy',
+      'AWS::Events::Rule',
+      'AWS::Lambda::Permission',
+      'AWS::ECS::TaskDefinition',
+      'AWS::ECS::Service',
     ]);
     for (const resource of resources) assert.ok(allowed.has(resource.Type), `Unexpected resource: ${resource.Type}`);
     const actions = new Set<string>();
@@ -108,7 +116,12 @@ test('the session-start stack has separate disabled start and expiry actions', (
       'dynamodb:DeleteItem',
       'dynamodb:GetItem',
       'dynamodb:PutItem',
+      'dynamodb:Query',
       'dynamodb:UpdateItem',
+      'ecr:BatchCheckLayerAvailability',
+      'ecr:BatchGetImage',
+      'ecr:GetAuthorizationToken',
+      'ecr:GetDownloadUrlForLayer',
       'ecs:DescribeTasks',
       'ecs:ListTasks',
       'ecs:RunTask',
@@ -123,12 +136,20 @@ test('the session-start stack has separate disabled start and expiry actions', (
       's3:PutObjectTagging',
       'scheduler:CreateSchedule',
       'scheduler:GetSchedule',
+      'sqs:GetQueueAttributes',
+      'sqs:GetQueueUrl',
+      'sqs:SendMessage',
     ]);
-    assert.deepEqual([...wildcardActions], ['ecs:ListTasks']);
+    assert.deepEqual([...wildcardActions].sort(), ['ecr:GetAuthorizationToken', 'ecs:ListTasks']);
     for (const fn of resources.filter((item) => item.Type === 'AWS::Lambda::Function')) {
       assert.equal(fn.Properties?.VpcConfig, undefined);
-      assert.equal(fn.Properties?.ReservedConcurrentExecutions, 0);
     }
+    assert.equal(
+      resources.filter(
+        (item) => item.Type === 'AWS::Lambda::Function' && item.Properties?.ReservedConcurrentExecutions === 0,
+      ).length,
+      2,
+    );
     for (const role of resources.filter((item) => item.Type === 'AWS::IAM::Role')) {
       assert.equal(role.Properties?.ManagedPolicyArns, undefined);
     }

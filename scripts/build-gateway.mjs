@@ -6,7 +6,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 await rm(fileURLToPath(new URL('../dist/gateway/', import.meta.url)), { recursive: true, force: true });
 await build({
   absWorkingDir: root,
-  entryPoints: { client: 'apps/gateway/src/index.ts' },
+  entryPoints: {
+    client: 'apps/gateway/src/index.ts',
+    runtime: 'apps/gateway/src/recording-main.ts',
+  },
   outdir: 'dist/gateway',
   outExtension: { '.js': '.cjs' },
   bundle: true,

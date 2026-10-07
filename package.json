@@ -21,6 +21,8 @@
     "gateway:build": "node scripts/build-gateway.mjs",
     "gateway:test": "npm run gateway:build && node --import tsx --test apps/gateway/test/*.test.ts",
     "gateway:image:test": "npm run gateway:build && node --test apps/gateway/test/image.test.mjs",
+    "gateway:runtime:image:build": "docker build --platform linux/amd64 --target runtime -t opsreplay/gateway-recording:dev -f apps/gateway/Dockerfile .",
+    "gateway:runtime:image:test": "node --test apps/gateway/test/runtime-image.test.mjs",
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
     "check": "node scripts/check.mjs && node --import tsx --test packages/contracts/private/*.test.ts && node --test scripts/*.test.mjs",
