@@ -23,7 +23,7 @@
     "gateway:image:test": "npm run gateway:build && node --test apps/gateway/test/image.test.mjs",
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
-    "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
+    "check": "node scripts/check.mjs && node --import tsx --test packages/contracts/private/*.test.ts && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs && prettier --write packages/contracts/openapi.json",
     "typecheck": "tsc --noEmit",
     "api:build": "node scripts/build-start-session.mjs",

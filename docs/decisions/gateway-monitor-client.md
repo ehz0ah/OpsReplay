@@ -7,7 +7,10 @@ delivery, and AWS deployment remain separate.
 ## Choices
 
 Use Node's HTTPS client without a web framework. The module has four typed operations
-that match the monitor's fixed control API. It does not own routing or run a server.
+that match the monitor's fixed control API. The client and server use the same private
+contract for routes, response envelopes, timestamp and cursor rules, and remote errors.
+That contract is not part of public OpenAPI or a browser bundle. The client does not own
+routing or run a server.
 
 Pin the exact per-task X.509 certificate and require TLS 1.3. The task address is a
 private IP, so identity comes from the exact certificate instead of public DNS. Node

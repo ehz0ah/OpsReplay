@@ -7,8 +7,26 @@ import { MIMEType } from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import publicSchema from '../../../packages/contracts/schemas/public.schema.json';
+import type {
+  MonitorControlClientErrorCode,
+  MonitorControlFrame,
+  MonitorControlFramePage,
+  MonitorControlHealth,
+  MonitorControlSealRequest,
+  MonitorControlSealResponse,
+} from '../../../packages/contracts/private/monitor-control.js';
+import {
+  isMonitorControlFramePage,
+  isMonitorControlHealthResponse,
+  isMonitorControlSealResponse,
+  isMonitorControlSource,
+  isMonitorControlStartResponse,
+  isMonitorControlTimestamp,
+  monitorControlClientError,
+  monitorControlSchema,
+} from '../../../packages/contracts/private/monitor-control.js';
 
-export type MonitorHealth = 'starting' | 'ready' | 'failed';
+export type MonitorHealth = MonitorControlHealth;
 export interface MonitorMetricFrame {
   type: 'metrics';
   sample: { at: string; values: Record<string, number> };
@@ -26,21 +44,9 @@ export interface MonitorTimelineFrame {
   };
 }
 export type MonitorPayload = MonitorMetricFrame | MonitorTimelineFrame;
-export interface MonitorFrame {
-  source: string;
-  sequence: number;
-  recordedAt: string;
-  payload: MonitorPayload;
-}
-export interface MonitorFramePage {
-  frames: MonitorFrame[];
-  nextSequence: number;
-  sealed: boolean;
-}
-export interface MonitorSealResult {
-  cutoffAt: string;
-  final: MonitorMetricFrame;
-}
+export type MonitorFrame = MonitorControlFrame<MonitorPayload>;
+export type MonitorFramePage = MonitorControlFramePage<MonitorPayload>;
+export type MonitorSealResult = MonitorControlSealResponse<MonitorMetricFrame>;
 
 export type MonitorClientErrorCode =
   | 'invalid_config'
@@ -49,12 +55,8 @@ export type MonitorClientErrorCode =
   | 'request_timeout'
   | 'tls_failed'
   | 'transport_failed'
-  | 'invalid_request'
   | 'invalid_response'
-  | 'auth_failed'
-  | 'invalid_state'
-  | 'rate_limited'
-  | 'unavailable';
+  | MonitorControlClientErrorCode;
 
 const errorMessages: Record<MonitorClientErrorCode, string> = {
   invalid_config: 'Monitor client configuration is invalid.',
@@ -91,13 +93,9 @@ interface ResponseValue {
   value: unknown;
 }
 
-const responseBytes = 65_536;
-const maximumCursor = 999_999;
 const defaultRequestTimeoutMs = 7_000;
 const maximumRequestTimeoutMs = 30_000;
 const secretPattern = /^[A-Za-z0-9_-]{43}$/;
-const sourcePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const canonicalTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const retryable = new Set<MonitorClientErrorCode>(['request_timeout', 'transport_failed']);
 const tlsErrorCodes = new Set([
   'CERT_HAS_EXPIRED',
@@ -110,33 +108,12 @@ const tlsErrorCodes = new Set([
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
 ]);
-const remoteErrors = {
-  AUTH_FAILED: { status: 401, code: 'auth_failed' },
-  INVALID_REQUEST: { status: 400, code: 'invalid_request' },
-  INVALID_STATE: { status: 409, code: 'invalid_state' },
-  RATE_LIMITED: { status: 429, code: 'rate_limited' },
-  UNAVAILABLE: { status: 503, code: 'unavailable' },
-  INTERNAL_ERROR: { status: 500, code: 'unavailable' },
-} as const satisfies Record<string, { status: number; code: MonitorClientErrorCode }>;
-
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
 const validGatewayMessage = ajv.addSchema(publicSchema).getSchema(`${publicSchema.$id}#/$defs/GatewayServerMessage`)!;
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function exact(value: Record<string, unknown>, keys: string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
-
-function timestamp(value: unknown): value is string {
-  if (typeof value !== 'string' || !canonicalTimestamp.test(value)) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function publicPayload(value: unknown): value is MonitorPayload {
@@ -149,76 +126,9 @@ function metric(value: unknown): value is MonitorMetricFrame {
   return publicPayload(value) && value.type === 'metrics';
 }
 
-function health(value: unknown): value is { status: MonitorHealth } {
-  return (
-    record(value) &&
-    exact(value, ['status']) &&
-    (value.status === 'starting' || value.status === 'ready' || value.status === 'failed')
-  );
-}
-
-function started(value: unknown): value is { startedAt: string } {
-  return record(value) && exact(value, ['startedAt']) && timestamp(value.startedAt);
-}
-
-function frame(value: unknown): value is MonitorFrame {
-  return (
-    record(value) &&
-    exact(value, ['source', 'sequence', 'recordedAt', 'payload']) &&
-    typeof value.source === 'string' &&
-    sourcePattern.test(value.source) &&
-    Number.isInteger(value.sequence) &&
-    (value.sequence as number) >= 1 &&
-    (value.sequence as number) <= maximumCursor &&
-    timestamp(value.recordedAt) &&
-    publicPayload(value.payload)
-  );
-}
-
-function page(value: unknown, after: number, expectedSource?: string): value is MonitorFramePage {
-  if (
-    !record(value) ||
-    !exact(value, ['frames', 'nextSequence', 'sealed']) ||
-    !Array.isArray(value.frames) ||
-    value.frames.length > 100 ||
-    !Number.isInteger(value.nextSequence) ||
-    (value.nextSequence as number) < after ||
-    (value.nextSequence as number) > maximumCursor ||
-    typeof value.sealed !== 'boolean'
-  )
-    return false;
-  let sequence = after;
-  let source = expectedSource;
-  for (const valueFrame of value.frames) {
-    if (
-      !frame(valueFrame) ||
-      valueFrame.sequence !== sequence + 1 ||
-      (source !== undefined && valueFrame.source !== source)
-    )
-      return false;
-    source ??= valueFrame.source;
-    sequence = valueFrame.sequence;
-  }
-  return value.nextSequence === sequence;
-}
-
-function sealed(value: unknown, cutoffAt: string): value is MonitorSealResult {
-  return record(value) && exact(value, ['cutoffAt', 'final']) && value.cutoffAt === cutoffAt && metric(value.final);
-}
-
 function remoteError(status: number, value: unknown): MonitorClientError {
-  if (
-    !record(value) ||
-    !exact(value, ['code', 'message']) ||
-    typeof value.code !== 'string' ||
-    typeof value.message !== 'string' ||
-    value.message.length === 0 ||
-    value.message.length > 1_000
-  )
-    return new MonitorClientError('invalid_response');
-  const detail = remoteErrors[value.code as keyof typeof remoteErrors];
-  if (!detail || detail.status !== status) return new MonitorClientError('invalid_response');
-  return new MonitorClientError(detail.code);
+  const code = monitorControlClientError(status, value);
+  return new MonitorClientError(code ?? 'invalid_response');
 }
 
 function pinError(): Error {
@@ -252,7 +162,10 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
     if (mediaType.essence !== 'application/json' || (charset !== null && charset.toLowerCase() !== 'utf-8'))
       throw new MonitorClientError('invalid_response');
     const length = response.headers['content-length'];
-    if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > responseBytes)) {
+    if (
+      length !== undefined &&
+      (!/^[0-9]+$/.test(length) || Number(length) > monitorControlSchema.maximumResponseBytes)
+    ) {
       throw new MonitorClientError('invalid_response');
     }
     const chunks: Buffer[] = [];
@@ -260,7 +173,7 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
     for await (const value of response) {
       const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
       bytes += chunk.byteLength;
-      if (bytes > responseBytes) throw new MonitorClientError('invalid_response');
+      if (bytes > monitorControlSchema.maximumResponseBytes) throw new MonitorClientError('invalid_response');
       chunks.push(chunk);
     }
     if (bytes === 0) throw new MonitorClientError('invalid_response');
@@ -328,22 +241,26 @@ export class MonitorClient {
   }
 
   async health(signal?: AbortSignal): Promise<MonitorHealth> {
-    const response = await this.call('/healthz', 'GET', undefined, signal);
+    const route = monitorControlSchema.routes.health;
+    const response = await this.call(route.path, route.method, undefined, signal);
     if (
-      (response.status !== 200 && response.status !== 503) ||
-      !health(response.value) ||
-      (response.status === 200) !== (response.value.status === 'ready')
+      (response.status !== route.readyStatus && response.status !== route.unavailableStatus) ||
+      !isMonitorControlHealthResponse(response.value) ||
+      (response.status === route.readyStatus) !== (response.value.status === 'ready')
     ) {
-      if (response.status !== 200 && response.status !== 503) throw remoteError(response.status, response.value);
+      if (response.status !== route.readyStatus && response.status !== route.unavailableStatus) {
+        throw remoteError(response.status, response.value);
+      }
       throw new MonitorClientError('invalid_response');
     }
     return response.value.status;
   }
 
   async start(signal?: AbortSignal): Promise<{ startedAt: string }> {
-    const response = await this.call('/v1/start', 'POST', undefined, signal);
-    if (response.status !== 200) throw remoteError(response.status, response.value);
-    if (!started(response.value)) throw new MonitorClientError('invalid_response');
+    const route = monitorControlSchema.routes.start;
+    const response = await this.call(route.path, route.method, undefined, signal);
+    if (response.status !== route.successStatus) throw remoteError(response.status, response.value);
+    if (!isMonitorControlStartResponse(response.value)) throw new MonitorClientError('invalid_response');
     return response.value;
   }
 
@@ -351,23 +268,35 @@ export class MonitorClient {
     if (
       !Number.isInteger(after) ||
       after < 0 ||
-      after > maximumCursor ||
-      (expectedSource !== undefined && !sourcePattern.test(expectedSource))
+      after > monitorControlSchema.maximumCursor ||
+      (expectedSource !== undefined && !isMonitorControlSource(expectedSource))
     ) {
       throw new MonitorClientError('invalid_config');
     }
-    const response = await this.call(`/v1/frames?after=${after}`, 'GET', undefined, signal);
-    if (response.status !== 200) throw remoteError(response.status, response.value);
-    if (!page(response.value, after, expectedSource)) throw new MonitorClientError('invalid_response');
+    const route = monitorControlSchema.routes.frames;
+    const response = await this.call(
+      `${route.path}?${route.cursorParameter}=${after}`,
+      route.method,
+      undefined,
+      signal,
+    );
+    if (response.status !== route.successStatus) throw remoteError(response.status, response.value);
+    if (!isMonitorControlFramePage(response.value, after, publicPayload, expectedSource)) {
+      throw new MonitorClientError('invalid_response');
+    }
     return response.value;
   }
 
   async seal(cutoffAt: string, signal?: AbortSignal): Promise<MonitorSealResult> {
-    if (!timestamp(cutoffAt)) throw new MonitorClientError('invalid_config');
-    const body = Buffer.from(JSON.stringify({ cutoffAt }));
-    const response = await this.call('/v1/seal', 'POST', body, signal);
-    if (response.status !== 200) throw remoteError(response.status, response.value);
-    if (!sealed(response.value, cutoffAt)) throw new MonitorClientError('invalid_response');
+    if (!isMonitorControlTimestamp(cutoffAt)) throw new MonitorClientError('invalid_config');
+    const request = { cutoffAt } satisfies MonitorControlSealRequest;
+    const body = Buffer.from(JSON.stringify(request));
+    const route = monitorControlSchema.routes.seal;
+    const response = await this.call(route.path, route.method, body, signal);
+    if (response.status !== route.successStatus) throw remoteError(response.status, response.value);
+    if (!isMonitorControlSealResponse(response.value, cutoffAt, metric)) {
+      throw new MonitorClientError('invalid_response');
+    }
     return response.value;
   }
 

@@ -10,6 +10,7 @@ import type { ControlScheduler } from '../src/control.js';
 import type { Frame } from '../src/monitor.js';
 import { waitForRuntimeStop } from '../src/runtime-lifecycle.js';
 import { createControlServer } from '../src/server.js';
+import { monitorControlErrorBody, monitorControlSchema } from '../../../packages/contracts/private/monitor-control.js';
 import { limits, MonitorError } from '../src/types.js';
 import type { FailureCode, MetricFrame } from '../src/types.js';
 import { testTls } from './tls.js';
@@ -270,7 +271,7 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   assert.equal((await request(port, tls.cert, '/healthz')).status, 401);
   const wrong = await request(port, tls.cert, '/v1/start', { method: 'POST', secret: 'x'.repeat(43) });
   assert.equal(wrong.status, 401);
-  assert.deepEqual(Object.keys(wrong.body as object).sort(), ['code', 'message']);
+  assert.deepEqual(wrong.body, monitorControlErrorBody('AUTH_FAILED'));
   const rejected = connectTls({ host: '127.0.0.1', port, ca: tls.cert, rejectUnauthorized: true });
   await once(rejected, 'secureConnect');
   let rejectedResponse = '';
@@ -310,7 +311,7 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
       await request(port, tls.cert, '/v1/seal', {
         method: 'POST',
         secret,
-        body: ' '.repeat(limits.controlBodyBytes + 1),
+        body: ' '.repeat(monitorControlSchema.maximumRequestBytes + 1),
       })
     ).status,
     400,

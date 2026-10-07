@@ -3,6 +3,13 @@ import { request } from 'node:https';
 import { setTimeout as delay } from 'node:timers/promises';
 import { writeJson } from '../src/output.js';
 import { limits, MonitorError } from '../src/types.js';
+import type {
+  MonitorControlFramePage,
+  MonitorControlHealthResponse,
+  MonitorControlSealResponse,
+  MonitorControlStartResponse,
+} from '../../../packages/contracts/private/monitor-control.js';
+import { monitorControlSchema } from '../../../packages/contracts/private/monitor-control.js';
 
 const endpoint = 'https://127.0.0.1:9443';
 
@@ -61,8 +68,9 @@ async function waitUntilReady(timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const health = await call<{ status?: string }>('/healthz');
-      if (health.status === 200 && health.value.status === 'ready') return;
+      const route = monitorControlSchema.routes.health;
+      const health = await call<MonitorControlHealthResponse>(route.path, route.method);
+      if (health.status === route.readyStatus && health.value.status === 'ready') return;
       if (health.value.status === 'failed') throw new MonitorError('initial_state_failed');
     } catch (error) {
       if (error instanceof MonitorError && error.code === 'initial_state_failed') throw error;
@@ -83,24 +91,40 @@ async function main(): Promise<number> {
     const timeout = Number(process.env.OPSREPLAY_MONITOR_CLIENT_START_TIMEOUT_MS ?? '30000');
     if (!Number.isInteger(timeout) || timeout < 100 || timeout > 30_000) throw new MonitorError('invalid_config');
     await waitUntilReady(timeout);
-    const started = await call<{ startedAt: string }>('/v1/start', 'POST');
-    if (started.status !== 200) throw new MonitorError('monitor_failed');
+    const startRoute = monitorControlSchema.routes.start;
+    const started = await call<MonitorControlStartResponse>(startRoute.path, startRoute.method);
+    if (started.status !== startRoute.successStatus) throw new MonitorError('monitor_failed');
     await writeJson(process.stdout, { type: 'monitor_started', at: started.value.startedAt });
     let cursor = 0;
+    const framesRoute = monitorControlSchema.routes.frames;
     while (!stop) {
-      const page = await call<{ frames: { sequence: number }[]; nextSequence: number }>('/v1/frames?after=' + cursor);
-      if (page.status !== 200 || !Array.isArray(page.value.frames) || !Number.isInteger(page.value.nextSequence))
+      const page = await call<MonitorControlFramePage<unknown>>(
+        framesRoute.path + '?after=' + cursor,
+        framesRoute.method,
+      );
+      if (
+        page.status !== framesRoute.successStatus ||
+        !Array.isArray(page.value.frames) ||
+        !Number.isInteger(page.value.nextSequence)
+      ) {
         throw new MonitorError('output_failed');
+      }
       for (const frame of page.value.frames) await writeJson(process.stdout, frame);
       cursor = page.value.nextSequence;
       await delay(100);
     }
     const cutoffAt = new Date().toISOString();
-    const sealed = await call<{ final: object }>('/v1/seal', 'POST', { cutoffAt });
-    if (sealed.status !== 200) throw new MonitorError('monitor_failed');
+    const sealRoute = monitorControlSchema.routes.seal;
+    const sealed = await call<MonitorControlSealResponse<object>>(sealRoute.path, sealRoute.method, { cutoffAt });
+    if (sealed.status !== sealRoute.successStatus) throw new MonitorError('monitor_failed');
     while (true) {
-      const page = await call<{ frames: { sequence: number }[]; nextSequence: number }>('/v1/frames?after=' + cursor);
-      if (page.status !== 200 || !Array.isArray(page.value.frames)) throw new MonitorError('output_failed');
+      const page = await call<MonitorControlFramePage<unknown>>(
+        framesRoute.path + '?after=' + cursor,
+        framesRoute.method,
+      );
+      if (page.status !== framesRoute.successStatus || !Array.isArray(page.value.frames)) {
+        throw new MonitorError('output_failed');
+      }
       for (const frame of page.value.frames) await writeJson(process.stdout, frame);
       cursor = page.value.nextSequence;
       if (page.value.frames.length === 0) break;
