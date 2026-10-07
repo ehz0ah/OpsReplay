@@ -35,11 +35,11 @@ image is not a published Challenge or a complete session. No public route is ena
 
 ## Product
 
-| Mode | Purpose |
-| --- | --- |
-| Learn | Curated documented failures: category, summary, lessons, official report link, related exercises |
-| Challenges | Investigate and recover a live misconfigured environment, then debrief, play back, or retry |
-| Code Review | Flag risky lines in a diff and compare them with reference findings |
+| Mode        | Purpose                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------ |
+| Learn       | Curated documented failures: category, summary, lessons, official report link, related exercises |
+| Challenges  | Investigate and recover a live misconfigured environment, then debrief, play back, or retry      |
+| Code Review | Flag risky lines in a diff and compare them with reference findings                              |
 
 Challenges are the main development focus. Challenges and Code Review use Easy, Medium,
 and Hard tiers. Access is freemium in every mode: Free covers a limited set, mostly Easy,
@@ -108,19 +108,19 @@ answer leakage.
 
 ## Specifications
 
-| Document | Owns |
-| --- | --- |
-| [PRD](docs/PRD.md) | Product scope and acceptance criteria |
-| [Architecture](docs/architecture.md) | Components, AWS deployment, isolation, trade-offs |
-| [Challenge environments](docs/challenges.md) | Tasks, monitor, recording, scoring, debrief, playback |
-| [Data model](docs/data-model.md) | Records, keys, conditional writes, retention |
-| [API](docs/api.md) | REST behaviour, gateway protocol, errors |
-| [Design](docs/design.md) | Learner flows and frontend behaviour |
-| [LLM integration](docs/llm.md) | Context, proposals, limits, provider failure |
-| [Content guide](docs/content-authoring.md) | Images, manifests, Learn, reviews, release checks |
-| [Evaluation](docs/evaluation.md) | System, LLM, learner, and cost evaluation |
-| [Implementation plan](docs/implementation-plan.md) | Work packages and dates |
-| [Decision register](docs/decisions/README.md) | Decision status and change process |
+| Document                                           | Owns                                                  |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| [PRD](docs/PRD.md)                                 | Product scope and acceptance criteria                 |
+| [Architecture](docs/architecture.md)               | Components, AWS deployment, isolation, trade-offs     |
+| [Challenge environments](docs/challenges.md)       | Tasks, monitor, recording, scoring, debrief, playback |
+| [Data model](docs/data-model.md)                   | Records, keys, conditional writes, retention          |
+| [API](docs/api.md)                                 | REST behaviour, gateway protocol, errors              |
+| [Design](docs/design.md)                           | Learner flows and frontend behaviour                  |
+| [LLM integration](docs/llm.md)                     | Context, proposals, limits, provider failure          |
+| [Content guide](docs/content-authoring.md)         | Images, manifests, Learn, reviews, release checks     |
+| [Evaluation](docs/evaluation.md)                   | System, LLM, learner, and cost evaluation             |
+| [Implementation plan](docs/implementation-plan.md) | Work packages and dates                               |
+| [Decision register](docs/decisions/README.md)      | Decision status and change process                    |
 
 Google's [Wheel of Misfortune](https://sre.google/workbook/postmortem-culture/) is the
 educational reference for reenacting previous incidents. OpsReplay adapts it for

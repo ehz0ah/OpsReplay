@@ -3,7 +3,12 @@ import type { EcsLaunchArguments, LaunchFailure, SessionRecord } from '../start-
 export interface LifecycleStorePort {
   session(id: string, abortSignal?: AbortSignal): Promise<SessionRecord | undefined>;
   saveTask(id: string, taskArn: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
-  failStartWithoutTask(id: string, endedAt: string, failure: LaunchFailure, abortSignal?: AbortSignal): Promise<SessionRecord>;
+  failStartWithoutTask(
+    id: string,
+    endedAt: string,
+    failure: LaunchFailure,
+    abortSignal?: AbortSignal,
+  ): Promise<SessionRecord>;
   markStartFailed(id: string, endedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
   completeStartFailure(id: string, completedAt: string, abortSignal?: AbortSignal): Promise<SessionRecord>;
 }
@@ -29,9 +34,13 @@ export interface EnvironmentPort {
 }
 
 export class LaunchRejectedError extends Error {
-  constructor(readonly failure: LaunchFailure) { super('ECS rejected the task launch'); }
+  constructor(readonly failure: LaunchFailure) {
+    super('ECS rejected the task launch');
+  }
 }
 
 export class CleanupPendingError extends Error {
-  constructor() { super('Provisioning cleanup is not yet confirmed'); }
+  constructor() {
+    super('Provisioning cleanup is not yet confirmed');
+  }
 }

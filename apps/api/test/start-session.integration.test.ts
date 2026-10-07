@@ -22,7 +22,12 @@ import { MonitorSecretFile } from '../src/session-lifecycle/aws-secret.js';
 import type { ProvisionResult } from '../src/session-lifecycle/provision.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
-before(async () => { database = await startLocalDatabase(); }, { timeout: 60_000 });
+before(
+  async () => {
+    database = await startLocalDatabase();
+  },
+  { timeout: 60_000 },
+);
 after(() => database?.close());
 const current = '2026-10-05T02:00:00.000Z';
 const owner = '11111111-1111-4111-8111-111111111111';
@@ -38,40 +43,77 @@ const launchConfiguration: LaunchConfiguration = {
   monitorContainerName: 'monitor',
   secretBucketArn: 'arn:aws:s3:::test-secrets',
 };
-const request = (): StartRequest => ({ requestId: randomUUID(), challengeId: 'wrong-upstream-port', challengeVersion: '0.1.0' });
+const request = (): StartRequest => ({
+  requestId: randomUUID(),
+  challengeId: 'wrong-upstream-port',
+  challengeVersion: '0.1.0',
+});
 function event(body: unknown, actor: unknown = owner): APIGatewayProxyEvent {
   // Synthetic API Gateway event. No development identity exists in the deployed handler.
   return {
-    httpMethod: 'POST', resource: '/v1/sessions', path: '/v1/sessions',
-    headers: {}, multiValueHeaders: {}, pathParameters: null, queryStringParameters: null,
-    multiValueQueryStringParameters: null, stageVariables: null, isBase64Encoded: false,
-    body: JSON.stringify(body), requestContext: { authorizer: { claims: { sub: actor } } },
+    httpMethod: 'POST',
+    resource: '/v1/sessions',
+    path: '/v1/sessions',
+    headers: {},
+    multiValueHeaders: {},
+    pathParameters: null,
+    queryStringParameters: null,
+    multiValueQueryStringParameters: null,
+    stageVariables: null,
+    isBase64Encoded: false,
+    body: JSON.stringify(body),
+    requestContext: { authorizer: { claims: { sub: actor } } },
   } as unknown as APIGatewayProxyEvent;
 }
 function content(): ContentVersion {
   return {
-    mode: 'challenge', status: 'published', plan: 'free',
-    challenge: { id: 'wrong-upstream-port', version: '0.1.0', title: 'Storefront returns 502', tier: 'easy', category: 'networking' },
+    mode: 'challenge',
+    status: 'published',
+    plan: 'free',
+    challenge: {
+      id: 'wrong-upstream-port',
+      version: '0.1.0',
+      title: 'Storefront returns 502',
+      tier: 'easy',
+      category: 'networking',
+    },
     alert: { title: 'Checkout errors', summary: 'Checkout requests fail.', severity: 'critical' },
     dashboard: [{ id: 'error_rate', label: 'Errors', unit: 'percent' }],
-    hintCount: 2, timeLimits: { free: 1200, pro: 1800 },
+    hintCount: 2,
+    timeLimits: { free: 1200, pro: 1800 },
     // Synthetic publication pins for tests only. The repository Challenge remains a draft.
-    pins: { taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
-      challengeImageDigest: `sha256:${'a'.repeat(64)}`, monitorImageDigest: `sha256:${'b'.repeat(64)}` },
+    pins: {
+      taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
+      challengeImageDigest: `sha256:${'a'.repeat(64)}`,
+      monitorImageDigest: `sha256:${'b'.repeat(64)}`,
+    },
   };
 }
 type Store = Pick<StartStore, 'receipt' | 'session' | 'active' | 'snapshot' | 'commit'>;
 async function fixture() {
   const table = `test-${randomUUID()}`;
-  await database.client.send(new CreateTableCommand({
-    TableName: table, BillingMode: 'PAY_PER_REQUEST',
-    KeySchema: [{ AttributeName: 'PK', KeyType: 'HASH' }, { AttributeName: 'SK', KeyType: 'RANGE' }],
-    AttributeDefinitions: [{ AttributeName: 'PK', AttributeType: 'S' }, { AttributeName: 'SK', AttributeType: 'S' }],
-  }));
-  const put = (key: { PK: string; SK: string }, data: unknown) => database.document.send(new PutCommand({ TableName: table, Item: { ...key, data } }));
-  const remove = (key: { PK: string; SK: string }) => database.document.send(new DeleteCommand({ TableName: table, Key: key }));
-  const get = async (key: { PK: string; SK: string }) => (await database.document.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))).Item?.data;
-  const rows = async () => (await database.document.send(new ScanCommand({ TableName: table, ConsistentRead: true }))).Items ?? [];
+  await database.client.send(
+    new CreateTableCommand({
+      TableName: table,
+      BillingMode: 'PAY_PER_REQUEST',
+      KeySchema: [
+        { AttributeName: 'PK', KeyType: 'HASH' },
+        { AttributeName: 'SK', KeyType: 'RANGE' },
+      ],
+      AttributeDefinitions: [
+        { AttributeName: 'PK', AttributeType: 'S' },
+        { AttributeName: 'SK', AttributeType: 'S' },
+      ],
+    }),
+  );
+  const put = (key: { PK: string; SK: string }, data: unknown) =>
+    database.document.send(new PutCommand({ TableName: table, Item: { ...key, data } }));
+  const remove = (key: { PK: string; SK: string }) =>
+    database.document.send(new DeleteCommand({ TableName: table, Key: key }));
+  const get = async (key: { PK: string; SK: string }) =>
+    (await database.document.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))).Item?.data;
+  const rows = async () =>
+    (await database.document.send(new ScanCommand({ TableName: table, ConsistentRead: true }))).Items ?? [];
   await put(keys.content('wrong-upstream-port', '0.1.0'), content());
   const store = new StartStore(database.document, table);
   const logs: unknown[] = [];
@@ -82,16 +124,38 @@ async function fixture() {
     assert.ok(saved);
     return saved;
   };
-  const makeHandler = (overrides: Partial<Store> = {},
-    provision: (sessionId: string, abortSignal?: AbortSignal) => Promise<ProvisionResult> = defaultProvision) => createStartHandler({
-    store: {
-      receipt: store.receipt.bind(store), session: store.session.bind(store), active: store.active.bind(store),
-      snapshot: store.snapshot.bind(store), commit: store.commit.bind(store), ...overrides,
-    },
-    launchConfiguration, provision,
-    now: () => new Date(current), newSecret: () => 's'.repeat(43), log: entry => logs.push(entry),
-  });
-  return { table, store, put, remove, get, rows, logs, provisions, defaultProvision, makeHandler, handler: makeHandler() };
+  const makeHandler = (
+    overrides: Partial<Store> = {},
+    provision: (sessionId: string, abortSignal?: AbortSignal) => Promise<ProvisionResult> = defaultProvision,
+  ) =>
+    createStartHandler({
+      store: {
+        receipt: store.receipt.bind(store),
+        session: store.session.bind(store),
+        active: store.active.bind(store),
+        snapshot: store.snapshot.bind(store),
+        commit: store.commit.bind(store),
+        ...overrides,
+      },
+      launchConfiguration,
+      provision,
+      now: () => new Date(current),
+      newSecret: () => 's'.repeat(43),
+      log: (entry) => logs.push(entry),
+    });
+  return {
+    table,
+    store,
+    put,
+    remove,
+    get,
+    rows,
+    logs,
+    provisions,
+    defaultProvision,
+    makeHandler,
+    handler: makeHandler(),
+  };
 }
 const bodyOf = (response: { body: string }) => JSON.parse(response.body);
 
@@ -117,8 +181,10 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.equal(saved.launchArguments.clientToken, session.id);
   assert.equal(saved.launchArguments.startedBy, session.id);
   assert.equal(JSON.stringify(saved.launchArguments).includes(saved.monitorSecret), false);
-  assert.equal(saved.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value,
-    `arn:aws:s3:::test-secrets/sessions/${session.id}.env`);
+  assert.equal(
+    saved.launchArguments.overrides.containerOverrides[0].environmentFiles[0].value,
+    `arn:aws:s3:::test-secrets/sessions/${session.id}.env`,
+  );
   assert.equal(saved.taskArn, null);
   assert.deepEqual(saved.provisioningCleanup, { status: 'pending', completedAt: null });
   assert.deepEqual(saved.pins, content().pins);
@@ -135,7 +201,15 @@ test('whitespace, property order, and UUID case do not create a new request', as
   const input = request();
   const first = bodyOf(await f.handler(event(input), context));
   const next = event(input);
-  next.body = JSON.stringify({ challengeVersion: input.challengeVersion, requestId: input.requestId.toUpperCase(), challengeId: input.challengeId }, null, 2);
+  next.body = JSON.stringify(
+    {
+      challengeVersion: input.challengeVersion,
+      requestId: input.requestId.toUpperCase(),
+      challengeId: input.challengeId,
+    },
+    null,
+    2,
+  );
   const second = bodyOf(await f.handler(next, context));
   assert.equal(second.replayed, true);
   assert.deepEqual(second.session, first.session);
@@ -170,13 +244,15 @@ test('a receipt committed during access checks wins over a new-operation rejecti
   const f = await fixture();
   const input = request();
   let snapshotReads = 0;
-  const handler = f.makeHandler({ snapshot: async (actor, start) => {
-    if (++snapshotReads === 1) {
-      assert.equal((await f.handler(event(input), context)).statusCode, 200);
-      await f.remove(keys.content(input.challengeId, input.challengeVersion));
-    }
-    return f.store.snapshot(actor, start);
-  } });
+  const handler = f.makeHandler({
+    snapshot: async (actor, start) => {
+      if (++snapshotReads === 1) {
+        assert.equal((await f.handler(event(input), context)).statusCode, 200);
+        await f.remove(keys.content(input.challengeId, input.challengeVersion));
+      }
+      return f.store.snapshot(actor, start);
+    },
+  });
   const response = await handler(event(input), context);
   assert.equal(response.statusCode, 200);
   assert.equal(bodyOf(response).replayed, true);
@@ -184,10 +260,13 @@ test('a receipt committed during access checks wins over a new-operation rejecti
 });
 
 test('identity and request validation reject bad input before any database access', async () => {
-  const fail = async (): Promise<never> => { throw new Error('Database must not be called'); };
+  const fail = async (): Promise<never> => {
+    throw new Error('Database must not be called');
+  };
   const handler = createStartHandler({
     store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
-    launchConfiguration, provision: fail,
+    launchConfiguration,
+    provision: fail,
   });
   for (const actor of [null, '', 'a#b', { sub: owner }, 'x'.repeat(129)]) {
     assert.equal((await handler(event(request(), actor), context)).statusCode, 401);
@@ -195,8 +274,15 @@ test('identity and request validation reject bad input before any database acces
   const spoof = event(request(), null);
   spoof.headers = { Authorization: 'Bearer fake', 'x-user-id': owner };
   assert.equal((await handler(spoof, context)).statusCode, 401);
-  for (const body of [null, [], {}, { ...request(), userId: owner }, { ...request(), requestId: 'bad' },
-    { ...request(), challengeId: '../private' }, { ...request(), challengeVersion: 'latest' }]) {
+  for (const body of [
+    null,
+    [],
+    {},
+    { ...request(), userId: owner },
+    { ...request(), requestId: 'bad' },
+    { ...request(), challengeId: '../private' },
+    { ...request(), challengeVersion: 'latest' },
+  ]) {
     assert.equal((await handler(event(body), context)).statusCode, 400);
   }
   for (const body of ['{', ' '.repeat(13_000), JSON.stringify('é'.repeat(6000))]) {
@@ -210,13 +296,20 @@ test('identity and request validation reject bad input before any database acces
 test('base64 API Gateway bodies use the same contract', async () => {
   const f = await fixture();
   const input = request();
-  const response = await f.handler({ ...event(input), isBase64Encoded: true, body: Buffer.from(JSON.stringify(input)).toString('base64') }, context);
+  const response = await f.handler(
+    { ...event(input), isBase64Encoded: true, body: Buffer.from(JSON.stringify(input)).toString('base64') },
+    context,
+  );
   assert.equal(response.statusCode, 200);
 });
 
 test('missing, draft, retired, and mismatched content cannot start', async () => {
-  for (const version of [undefined, { ...content(), status: 'draft' }, { ...content(), status: 'retired' },
-    { ...content(), challenge: { ...content().challenge, version: '0.2.0' } }]) {
+  for (const version of [
+    undefined,
+    { ...content(), status: 'draft' },
+    { ...content(), status: 'retired' },
+    { ...content(), challenge: { ...content().challenge, version: '0.2.0' } },
+  ]) {
     const f = await fixture();
     if (version) await f.put(keys.content('wrong-upstream-port', '0.1.0'), version);
     else await f.remove(keys.content('wrong-upstream-port', '0.1.0'));
@@ -259,7 +352,8 @@ test('published content requires a configured Pro extension for every learner', 
       const f = await fixture();
       if (learnerPlan === 'pro') await f.put(keys.plan(owner), { plan: 'pro', expiresAt: null });
       await f.put(keys.content('wrong-upstream-port', '0.1.0'), {
-        ...content(), timeLimits: { free: 1200, pro },
+        ...content(),
+        timeLimits: { free: 1200, pro },
       });
       const response = await f.handler(event(request()), context);
       assert.equal(response.statusCode, 422);
@@ -298,7 +392,9 @@ test('the handler preserves time to return an error when its work deadline expir
   const input = request();
   const logs: unknown[] = [];
   let receiptReads = 0;
-  const fail = async (): Promise<never> => { throw new Error('Unexpected storage call'); };
+  const fail = async (): Promise<never> => {
+    throw new Error('Unexpected storage call');
+  };
   const handler = createStartHandler({
     store: {
       receipt: async (_actor, _requestId, abortSignal) => {
@@ -307,13 +403,18 @@ test('the handler preserves time to return an error when its work deadline expir
         await sleep(10_000, undefined, { signal: abortSignal });
         return undefined;
       },
-      session: fail, active: fail, snapshot: fail, commit: fail,
+      session: fail,
+      active: fail,
+      snapshot: fail,
+      commit: fail,
     },
-    launchConfiguration, provision: fail,
-    log: entry => logs.push(entry),
+    launchConfiguration,
+    provision: fail,
+    log: (entry) => logs.push(entry),
   });
   const response = await handler(event(input), {
-    ...context, getRemainingTimeInMillis: () => 1050,
+    ...context,
+    getRemainingTimeInMillis: () => 1050,
   });
   assert.equal(response.statusCode, 500);
   assert.equal(bodyOf(response).requestId, input.requestId);
@@ -323,13 +424,18 @@ test('the handler preserves time to return an error when its work deadline expir
 
 test('the handler starts no storage work when only the response margin remains', async () => {
   let calls = 0;
-  const fail = async (): Promise<never> => { calls++; throw new Error('Unexpected storage call'); };
+  const fail = async (): Promise<never> => {
+    calls++;
+    throw new Error('Unexpected storage call');
+  };
   const handler = createStartHandler({
     store: { receipt: fail, session: fail, active: fail, snapshot: fail, commit: fail },
-    launchConfiguration, provision: fail,
+    launchConfiguration,
+    provision: fail,
   });
   const response = await handler(event(request()), {
-    ...context, getRemainingTimeInMillis: () => 1000,
+    ...context,
+    getRemainingTimeInMillis: () => 1000,
   });
   assert.equal(response.statusCode, 500);
   assert.equal(calls, 0);
@@ -345,7 +451,10 @@ test('attempt labels use finalised non-error progress and enforce the wire limit
       assert.equal(await f.store.active(owner), undefined);
     } else {
       assert.equal(response.statusCode, 200);
-      assert.deepEqual(bodyOf(response).session.attempt, { kind: completedAttempts ? 'retry' : 'first', number: completedAttempts + 1 });
+      assert.deepEqual(bodyOf(response).session.attempt, {
+        kind: completedAttempts ? 'retry' : 'first',
+        number: completedAttempts + 1,
+      });
     }
   }
 });
@@ -355,16 +464,16 @@ test('concurrent copies of one request all resolve to one session', async () => 
   const input = request();
   const responses = await Promise.all(Array.from({ length: 16 }, () => f.handler(event(input), context)));
   for (const response of responses) assert.equal(response.statusCode, 200, response.body);
-  assert.equal(new Set(responses.map(response => bodyOf(response).session.id)).size, 1);
-  assert.equal(responses.filter(response => !bodyOf(response).replayed).length, 1);
+  assert.equal(new Set(responses.map((response) => bodyOf(response).session.id)).size, 1);
+  assert.equal(responses.filter((response) => !bodyOf(response).replayed).length, 1);
   assert.equal((await f.rows()).length, 4);
 });
 
 test('competing requests create one session and no losing receipts', async () => {
   const f = await fixture();
   const responses = await Promise.all(Array.from({ length: 16 }, () => f.handler(event(request()), context)));
-  assert.equal(responses.filter(response => response.statusCode === 200).length, 1);
-  for (const response of responses.filter(response => response.statusCode !== 200)) {
+  assert.equal(responses.filter((response) => response.statusCode === 200).length, 1);
+  for (const response of responses.filter((response) => response.statusCode !== 200)) {
     assert.equal(response.statusCode, 409, response.body);
     assert.equal(bodyOf(response).code, 'ACTIVE_SESSION_EXISTS');
   }
@@ -390,31 +499,37 @@ test('plan, publication, and progress races cancel the whole write', async () =>
     await f.put(keys.plan(owner), { plan: 'pro', expiresAt: null });
     await f.put(keys.content('wrong-upstream-port', '0.1.0'), { ...content(), plan: 'pro' });
     let commits = 0;
-    const handler = f.makeHandler({ commit: async admission => {
-      if (++commits === 1) {
-        if (changed === 'plan') await f.put(keys.plan(owner), { plan: 'free', expiresAt: null });
-        if (changed === 'content') await f.put(keys.content('wrong-upstream-port', '0.1.0'), { ...content(), status: 'retired' });
-        if (changed === 'progress') await f.put(keys.progress(owner, 'wrong-upstream-port'), { completedAttempts: 3 });
-      }
-      await f.store.commit(admission);
-    } });
+    const handler = f.makeHandler({
+      commit: async (admission) => {
+        if (++commits === 1) {
+          if (changed === 'plan') await f.put(keys.plan(owner), { plan: 'free', expiresAt: null });
+          if (changed === 'content')
+            await f.put(keys.content('wrong-upstream-port', '0.1.0'), { ...content(), status: 'retired' });
+          if (changed === 'progress')
+            await f.put(keys.progress(owner, 'wrong-upstream-port'), { completedAttempts: 3 });
+        }
+        await f.store.commit(admission);
+      },
+    });
     const response = await handler(event(request()), context);
     assert.equal(response.statusCode, changed === 'plan' ? 403 : changed === 'content' ? 422 : 200);
     if (changed === 'progress') {
       assert.deepEqual(bodyOf(response).session.attempt, { kind: 'retry', number: 4 });
-      assert.equal((await f.rows()).filter(row => row.SK === 'STATE').length, 1);
-    } else assert.equal((await f.rows()).filter(row => row.SK === 'STATE').length, 0);
+      assert.equal((await f.rows()).filter((row) => row.SK === 'STATE').length, 1);
+    } else assert.equal((await f.rows()).filter((row) => row.SK === 'STATE').length, 0);
   }
 });
 
 test('a lost write response returns the committed session without writing again', async () => {
   const f = await fixture();
   let commits = 0;
-  const handler = f.makeHandler({ commit: async admission => {
-    commits++;
-    await f.store.commit(admission);
-    throw new Error('secret simulated connection loss');
-  } });
+  const handler = f.makeHandler({
+    commit: async (admission) => {
+      commits++;
+      await f.store.commit(admission);
+      throw new Error('secret simulated connection loss');
+    },
+  });
   const input = request();
   const response = await handler(event(input), context);
   assert.equal(response.statusCode, 200);
@@ -427,7 +542,11 @@ test('a lost write response returns the committed session without writing again'
 test('a failed write leaves no partial state and can be retried', async () => {
   const f = await fixture();
   const input = request();
-  const handler = f.makeHandler({ commit: async () => { throw new Error('secret storage outage'); } });
+  const handler = f.makeHandler({
+    commit: async () => {
+      throw new Error('secret storage outage');
+    },
+  });
   const response = await handler(event(input), context);
   assert.equal(response.statusCode, 500);
   assert.equal(response.body.includes('secret'), false);
@@ -439,12 +558,15 @@ test('contention retries are bounded and permanent transaction errors are not re
   for (const code of ['ConditionalCheckFailed', 'ValidationError']) {
     const f = await fixture();
     let commits = 0;
-    const handler = f.makeHandler({ commit: async () => {
-      commits++;
-      throw Object.assign(new Error('private error details'), {
-        name: 'TransactionCanceledException', CancellationReasons: [{ Code: code }],
-      });
-    } });
+    const handler = f.makeHandler({
+      commit: async () => {
+        commits++;
+        throw Object.assign(new Error('private error details'), {
+          name: 'TransactionCanceledException',
+          CancellationReasons: [{ Code: code }],
+        });
+      },
+    });
     const response = await handler(event(request()), context);
     assert.equal(response.statusCode, 500);
     assert.equal(commits, code === 'ConditionalCheckFailed' ? 3 : 1);
@@ -461,7 +583,7 @@ test('a lost response followed by a failed receipt read is recoverable on the ne
       if (writeCompleted) throw new Error('Receipt read failed');
       return f.store.receipt(actor, requestId);
     },
-    commit: async admission => {
+    commit: async (admission) => {
       await f.store.commit(admission);
       writeCompleted = true;
       throw new Error('Response lost');
@@ -479,7 +601,7 @@ test('receipts cannot expose a different owner session', async () => {
   const f = await fixture();
   const input = request();
   const initial = bodyOf(await f.handler(event(input), context));
-  const saved = await f.get(keys.session(initial.session.id)) as SessionRecord;
+  const saved = (await f.get(keys.session(initial.session.id))) as SessionRecord;
   await f.put(keys.session(initial.session.id), { ...saved, ownerId: randomUUID(), secret: 'hidden' });
   const response = await f.handler(event(input), context);
   assert.equal(response.statusCode, 404);
@@ -490,7 +612,7 @@ test('replay returns the current saved outcome, not a stale provisioning respons
   const f = await fixture();
   const input = request();
   const initial = bodyOf(await f.handler(event(input), context));
-  const saved = await f.get(keys.session(initial.session.id)) as SessionRecord;
+  const saved = (await f.get(keys.session(initial.session.id))) as SessionRecord;
   saved.view.status = 'error';
   saved.view.statusReason = 'start_failed';
   saved.view.endedAt = '2026-10-05T02:03:00Z';
@@ -508,8 +630,12 @@ test('replay returns the current saved outcome, not a stale provisioning respons
 test('projection drops private nested fields and logging failures do not fail admission', async () => {
   const f = await fixture();
   const handler = createStartHandler({
-    store: f.store, launchConfiguration, provision: f.defaultProvision,
-    log: () => { throw new Error('logger failed'); },
+    store: f.store,
+    launchConfiguration,
+    provision: f.defaultProvision,
+    log: () => {
+      throw new Error('logger failed');
+    },
   });
   const response = await handler(event(request()), context);
   assert.equal(response.statusCode, 200);
@@ -522,10 +648,19 @@ test('projection drops private nested fields and logging failures do not fail ad
 });
 
 test('the bundled Lambda loads on Node 22 and rejects unauthenticated input without AWS calls', async () => {
-  const names = ['SESSION_TABLE_NAME', 'ECS_CLUSTER_ARN', 'ECS_SUBNET_IDS', 'ECS_SECURITY_GROUP_IDS',
-    'ECS_PLATFORM_VERSION', 'MONITOR_CONTAINER_NAME', 'MONITOR_SECRET_BUCKET_ARN', 'SCHEDULER_GROUP_NAME',
-    'PROVISIONING_EXPIRY_FUNCTION_ARN', 'SCHEDULER_TARGET_ROLE_ARN'] as const;
-  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  const names = [
+    'SESSION_TABLE_NAME',
+    'ECS_CLUSTER_ARN',
+    'ECS_SUBNET_IDS',
+    'ECS_SECURITY_GROUP_IDS',
+    'ECS_PLATFORM_VERSION',
+    'MONITOR_CONTAINER_NAME',
+    'MONITOR_SECRET_BUCKET_ARN',
+    'SCHEDULER_GROUP_NAME',
+    'PROVISIONING_EXPIRY_FUNCTION_ARN',
+    'SCHEDULER_TARGET_ROLE_ARN',
+  ] as const;
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   try {
     process.env.SESSION_TABLE_NAME = 'test-unused';
     process.env.ECS_CLUSTER_ARN = launchConfiguration.clusterArn;
@@ -549,12 +684,16 @@ test('the bundled Lambda loads on Node 22 and rejects unauthenticated input with
 });
 
 test('a stalled database request is aborted by the production transport', { timeout: 10_000 }, async () => {
-  const server = createServer(() => { /* Accept the request without sending a response. */ });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const server = createServer(() => {
+    /* Accept the request without sending a response. */
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   const client = new DynamoDBClient({
-    region: 'us-east-1', endpoint: `http://127.0.0.1:${address.port}`, maxAttempts: 1,
+    region: 'us-east-1',
+    endpoint: `http://127.0.0.1:${address.port}`,
+    maxAttempts: 1,
     credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
     requestHandler: createAwsTransport(2000),
   });
@@ -567,7 +706,7 @@ test('a stalled database request is aborted by the production transport', { time
   } finally {
     client.destroy();
     server.closeAllConnections();
-    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
 
@@ -578,14 +717,32 @@ for (const kind of ['capacity', 'configuration'] as const) {
     let launches = 0;
     const provision = createProvisionSession({
       store: new LifecycleStore(database.document, f.table),
-      schedule: { ensure: async () => {} }, secret: { ensure: async () => {} },
-      environment: new FargateEnvironment({ send: async (command: unknown) => {
-        assert.ok(command instanceof RunTaskCommand);
-        launches++;
-        if (reject) return { failures: [{ reason: kind === 'capacity'
-          ? 'Capacity is unavailable at this time. Please try again later or in a different availability zone' : 'MISSING' }] };
-        return { tasks: [{ taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }] };
-      } } as unknown as ECSClient),
+      schedule: { ensure: async () => {} },
+      secret: { ensure: async () => {} },
+      environment: new FargateEnvironment({
+        send: async (command: unknown) => {
+          assert.ok(command instanceof RunTaskCommand);
+          launches++;
+          if (reject)
+            return {
+              failures: [
+                {
+                  reason:
+                    kind === 'capacity'
+                      ? 'Capacity is unavailable at this time. Please try again later or in a different availability zone'
+                      : 'MISSING',
+                },
+              ],
+            };
+          return {
+            tasks: [
+              {
+                taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              },
+            ],
+          };
+        },
+      } as unknown as ECSClient),
       now: () => new Date(current),
     });
     const handler = f.makeHandler({}, provision);
@@ -623,13 +780,18 @@ test('a published task definition outside the allowed family is rejected before 
 test('start uses the provisioned record without a final read and checks its ownership', async () => {
   const f = await fixture();
   let reads = 0;
-  const handler = f.makeHandler({ session: async (...args) => { reads++; return f.store.session(...args); } });
+  const handler = f.makeHandler({
+    session: async (...args) => {
+      reads++;
+      return f.store.session(...args);
+    },
+  });
   const input = request();
   assert.equal((await handler(event(input), context)).statusCode, 200);
   assert.equal(reads, 0);
   assert.equal((await handler(event(input), context)).statusCode, 200);
   assert.equal(reads, 1); // Replay still verifies ownership before provisioning.
-  const wrongOwner = f.makeHandler({}, async id => ({ ...await f.defaultProvision(id), ownerId: randomUUID() }));
+  const wrongOwner = f.makeHandler({}, async (id) => ({ ...(await f.defaultProvision(id)), ownerId: randomUUID() }));
   assert.equal((await wrongOwner(event(input), context)).statusCode, 404);
 });
 
@@ -638,31 +800,54 @@ test('concurrent starts recover an S3 conditional conflict and still return one 
   const files = new Map<string, unknown>();
   const tasks = new Map<string, unknown>();
   let uploads = 0;
-  const secret = new MonitorSecretFile({ send: async (command: unknown) => {
-    assert.ok(command instanceof PutObjectCommand);
-    uploads++;
-    if (uploads === 1) throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
-    if (files.has(command.input.Key!)) {
-      assert.deepEqual(files.get(command.input.Key!), command.input.Body);
-      throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
-    }
-    files.set(command.input.Key!, command.input.Body);
-    return {};
-  } } as unknown as S3Client);
+  const secret = new MonitorSecretFile({
+    send: async (command: unknown) => {
+      assert.ok(command instanceof PutObjectCommand);
+      uploads++;
+      if (uploads === 1)
+        throw new S3ServiceException({
+          name: 'ConditionalRequestConflict',
+          $fault: 'client',
+          $metadata: { httpStatusCode: 409 },
+        });
+      if (files.has(command.input.Key!)) {
+        assert.deepEqual(files.get(command.input.Key!), command.input.Body);
+        throw new S3ServiceException({
+          name: 'PreconditionFailed',
+          $fault: 'client',
+          $metadata: { httpStatusCode: 412 },
+        });
+      }
+      files.set(command.input.Key!, command.input.Body);
+      return {};
+    },
+  } as unknown as S3Client);
   const provision = createProvisionSession({
-    store: new LifecycleStore(database.document, f.table), secret,
-    schedule: { ensure: async () => {} }, now: () => new Date(current),
-    environment: new FargateEnvironment({ send: async (command: unknown) => {
-      assert.ok(command instanceof RunTaskCommand);
-      if (tasks.has(command.input.clientToken!)) assert.deepEqual(tasks.get(command.input.clientToken!), command.input);
-      tasks.set(command.input.clientToken!, command.input);
-      return { tasks: [{ taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }] };
-    } } as unknown as ECSClient),
+    store: new LifecycleStore(database.document, f.table),
+    secret,
+    schedule: { ensure: async () => {} },
+    now: () => new Date(current),
+    environment: new FargateEnvironment({
+      send: async (command: unknown) => {
+        assert.ok(command instanceof RunTaskCommand);
+        if (tasks.has(command.input.clientToken!))
+          assert.deepEqual(tasks.get(command.input.clientToken!), command.input);
+        tasks.set(command.input.clientToken!, command.input);
+        return {
+          tasks: [
+            { taskArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+          ],
+        };
+      },
+    } as unknown as ECSClient),
   });
   const handler = f.makeHandler({}, provision);
   const input = request();
   const responses = await Promise.all([handler(event(input), context), handler(event(input), context)]);
-  assert.deepEqual(responses.map(result => result.statusCode), [200, 200]);
+  assert.deepEqual(
+    responses.map((result) => result.statusCode),
+    [200, 200],
+  );
   assert.equal(bodyOf(responses[0]!).session.id, bodyOf(responses[1]!).session.id);
   assert.equal(files.size, 1);
   assert.equal(tasks.size, 1);

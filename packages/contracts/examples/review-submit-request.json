@@ -2,8 +2,18 @@
   "requestId": "22222222-2222-4222-8222-222222222222",
   "exerciseVersion": "0.1.0",
   "flags": [
-    { "file": "app/db.py", "side": "new", "line": 5, "concern": "A pool of 20 per process may be more connections than the database allows." },
-    { "file": "gunicorn.conf.py", "side": "new", "line": 2, "concern": "Eight workers could overload the CPU on the current instance size." },
+    {
+      "file": "app/db.py",
+      "side": "new",
+      "line": 5,
+      "concern": "A pool of 20 per process may be more connections than the database allows."
+    },
+    {
+      "file": "gunicorn.conf.py",
+      "side": "new",
+      "line": 2,
+      "concern": "Eight workers could overload the CPU on the current instance size."
+    },
     { "file": "app/db.py", "side": "new", "line": 8, "concern": "pool_pre_ping adds a round trip to every checkout." }
   ]
 }

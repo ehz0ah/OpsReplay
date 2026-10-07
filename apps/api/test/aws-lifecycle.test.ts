@@ -26,7 +26,8 @@ import { loadLaunchConfiguration } from '../src/start-session/configuration.js';
 import type { SessionRecord } from '../src/start-session/types.js';
 
 // AWS official RunTask capacity message, not a synthetic failure code.
-const capacityMessage = 'Capacity is unavailable at this time. Please try again later or in a different availability zone';
+const capacityMessage =
+  'Capacity is unavailable at this time. Please try again later or in a different availability zone';
 
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const cluster = 'arn:aws:ecs:ap-southeast-1:123456789012:cluster/opsreplay-test';
@@ -38,37 +39,68 @@ function session(): SessionRecord {
     ownerId: '22222222-2222-4222-8222-222222222222',
     view: {
       id: sessionId,
-      challenge: { id: 'wrong-upstream-port', version: '0.1.0', title: 'Storefront returns 502', tier: 'easy', category: 'networking' },
-      attempt: { kind: 'first', number: 1 }, status: 'provisioning', statusReason: null,
+      challenge: {
+        id: 'wrong-upstream-port',
+        version: '0.1.0',
+        title: 'Storefront returns 502',
+        tier: 'easy',
+        category: 'networking',
+      },
+      attempt: { kind: 'first', number: 1 },
+      status: 'provisioning',
+      statusReason: null,
       alert: { title: 'Checkout errors', summary: 'Checkout requests fail.', severity: 'critical' },
-      dashboard: [], recovery: null, timeLimitSeconds: 1200,
-      createdAt: '2026-10-06T02:00:00.000Z', readyAt: null, endsAt: null, endedAt: null,
+      dashboard: [],
+      recovery: null,
+      timeLimitSeconds: 1200,
+      createdAt: '2026-10-06T02:00:00.000Z',
+      readyAt: null,
+      endsAt: null,
+      endedAt: null,
       hints: { released: [], remaining: 0, nextAvailableAt: null },
       assistance: { hintsReleased: 0, assistantTurns: 0, proposalsRun: 0 },
-      debriefAvailable: false, recording: { status: 'pending', reason: null },
+      debriefAvailable: false,
+      recording: { status: 'pending', reason: null },
     },
     accessGrant: { plan: 'free', admittedAt: '2026-10-06T02:00:00.000Z', timeLimitSeconds: 1200 },
     pins: {
       taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
-      challengeImageDigest: `sha256:${'a'.repeat(64)}`, monitorImageDigest: `sha256:${'b'.repeat(64)}`,
+      challengeImageDigest: `sha256:${'a'.repeat(64)}`,
+      monitorImageDigest: `sha256:${'b'.repeat(64)}`,
     },
     launchArguments: {
       cluster,
       taskDefinition: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
-      clientToken: sessionId, startedBy: sessionId,
-      count: 1, enableExecuteCommand: false, launchType: 'FARGATE', platformVersion: '1.4.0',
-      networkConfiguration: { awsvpcConfiguration: {
-        subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'], assignPublicIp: 'DISABLED',
-      } },
-      overrides: { containerOverrides: [{ name: 'monitor', environment: [
-        { name: 'OPSREPLAY_SESSION_ID', value: sessionId },
-      ], environmentFiles: [{ type: 's3', value: `arn:aws:s3:::test-secrets/sessions/${sessionId}.env` }] }] },
+      clientToken: sessionId,
+      startedBy: sessionId,
+      count: 1,
+      enableExecuteCommand: false,
+      launchType: 'FARGATE',
+      platformVersion: '1.4.0',
+      networkConfiguration: {
+        awsvpcConfiguration: {
+          subnets: ['subnet-0123456789abcdef0'],
+          securityGroups: ['sg-0123456789abcdef0'],
+          assignPublicIp: 'DISABLED',
+        },
+      },
+      overrides: {
+        containerOverrides: [
+          {
+            name: 'monitor',
+            environment: [{ name: 'OPSREPLAY_SESSION_ID', value: sessionId }],
+            environmentFiles: [{ type: 's3', value: `arn:aws:s3:::test-secrets/sessions/${sessionId}.env` }],
+          },
+        ],
+      },
       tags: [{ key: 'opsreplay:session-id', value: sessionId }],
     },
-    monitorSecret, launchFailure: null,
+    monitorSecret,
+    launchFailure: null,
     provisioningDeadline: '2026-10-06T02:03:00.000Z',
     launchRecoveryDeadline: '2026-10-06T02:08:00.000Z',
-    scheduleName: `session-${sessionId}`, taskArn: null,
+    scheduleName: `session-${sessionId}`,
+    taskArn: null,
     provisioningCleanup: { status: 'pending', completedAt: null },
   };
 }
@@ -76,17 +108,19 @@ function session(): SessionRecord {
 test('the Scheduler adapter creates distinct timeout and recovery callbacks before launch', async () => {
   const schedules = new Map<string, CreateScheduleCommand['input']>();
   let created: CreateScheduleCommand['input'] | undefined;
-  const client = { send: async (command: unknown) => {
-    if (command instanceof GetScheduleCommand) {
-      const existing = schedules.get(command.input.Name!);
-      if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
-      return { ...existing, State: 'ENABLED' };
-    }
-    assert.ok(command instanceof CreateScheduleCommand);
-    created = command.input;
-    schedules.set(created.Name!, created);
-    return {};
-  } } as unknown as SchedulerClient;
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof GetScheduleCommand) {
+        const existing = schedules.get(command.input.Name!);
+        if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
+        return { ...existing, State: 'ENABLED' };
+      }
+      assert.ok(command instanceof CreateScheduleCommand);
+      created = command.input;
+      schedules.set(created.Name!, created);
+      return {};
+    },
+  } as unknown as SchedulerClient;
   const schedule = new ProvisioningSchedule(client, {
     groupName: 'test-sessions',
     expiryFunctionArn: 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry',
@@ -100,7 +134,7 @@ test('the Scheduler adapter creates distinct timeout and recovery callbacks befo
   assert.equal(schedules.size, 2);
   assert.equal(schedules.get(record.scheduleName)?.ScheduleExpression, 'at(2026-10-06T02:03:01)');
   assert.equal(schedules.get(`${record.scheduleName}-recovery`)?.ScheduleExpression, 'at(2026-10-06T02:08:01)');
-  assert.equal(new Set([...schedules.values()].map(item => item.ClientToken)).size, 2);
+  assert.equal(new Set([...schedules.values()].map((item) => item.ClientToken)).size, 2);
   assert.equal(created?.ScheduleExpressionTimezone, 'UTC');
   assert.equal(created?.ActionAfterCompletion, 'DELETE');
   assert.equal(created?.FlexibleTimeWindow?.Mode, 'OFF');
@@ -110,20 +144,25 @@ test('the Scheduler adapter creates distinct timeout and recovery callbacks befo
 
 test('the Scheduler adapter rejects an existing schedule with another target', async () => {
   const record = session();
-  const client = { send: async (command: unknown) => {
-    assert.ok(command instanceof GetScheduleCommand);
-    return {
-      GroupName: 'test-sessions', State: 'ENABLED', FlexibleTimeWindow: { Mode: 'OFF' },
-      ActionAfterCompletion: 'DELETE', ScheduleExpression: 'at(2026-10-06T02:03:00)',
-      ScheduleExpressionTimezone: 'UTC',
-      Target: {
-        Arn: 'arn:aws:lambda:ap-southeast-1:123456789012:function:wrong-target',
-        RoleArn: 'arn:aws:iam::123456789012:role/test-scheduler',
-        Input: JSON.stringify({ sessionId }),
-        RetryPolicy: { MaximumEventAgeInSeconds: 900, MaximumRetryAttempts: 20 },
-      },
-    };
-  } } as unknown as SchedulerClient;
+  const client = {
+    send: async (command: unknown) => {
+      assert.ok(command instanceof GetScheduleCommand);
+      return {
+        GroupName: 'test-sessions',
+        State: 'ENABLED',
+        FlexibleTimeWindow: { Mode: 'OFF' },
+        ActionAfterCompletion: 'DELETE',
+        ScheduleExpression: 'at(2026-10-06T02:03:00)',
+        ScheduleExpressionTimezone: 'UTC',
+        Target: {
+          Arn: 'arn:aws:lambda:ap-southeast-1:123456789012:function:wrong-target',
+          RoleArn: 'arn:aws:iam::123456789012:role/test-scheduler',
+          Input: JSON.stringify({ sessionId }),
+          RetryPolicy: { MaximumEventAgeInSeconds: 900, MaximumRetryAttempts: 20 },
+        },
+      };
+    },
+  } as unknown as SchedulerClient;
   const schedule = new ProvisioningSchedule(client, {
     groupName: 'test-sessions',
     expiryFunctionArn: 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry',
@@ -135,17 +174,19 @@ test('the Scheduler adapter rejects an existing schedule with another target', a
 test('the Scheduler adapter recovers when another invocation created the same schedule', async () => {
   const schedules = new Map<string, CreateScheduleCommand['input']>();
   let created: CreateScheduleCommand['input'] | undefined;
-  const client = { send: async (command: unknown) => {
-    if (command instanceof GetScheduleCommand) {
-      const existing = schedules.get(command.input.Name!);
-      if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
-      return { ...existing, State: 'ENABLED' };
-    }
-    assert.ok(command instanceof CreateScheduleCommand);
-    created = command.input;
-    schedules.set(created.Name!, created);
-    throw new ConflictException({ $metadata: {}, Message: 'exists', message: 'exists' });
-  } } as unknown as SchedulerClient;
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof GetScheduleCommand) {
+        const existing = schedules.get(command.input.Name!);
+        if (!existing) throw new ResourceNotFoundException({ $metadata: {}, Message: 'missing', message: 'missing' });
+        return { ...existing, State: 'ENABLED' };
+      }
+      assert.ok(command instanceof CreateScheduleCommand);
+      created = command.input;
+      schedules.set(created.Name!, created);
+      throw new ConflictException({ $metadata: {}, Message: 'exists', message: 'exists' });
+    },
+  } as unknown as SchedulerClient;
   const schedule = new ProvisioningSchedule(client, {
     groupName: 'test-sessions',
     expiryFunctionArn: 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry',
@@ -158,11 +199,13 @@ test('the Scheduler adapter recovers when another invocation created the same sc
 test('the Fargate adapter sends the persisted RunTask arguments unchanged', async () => {
   const record = session();
   let sent: RunTaskCommand['input'] | undefined;
-  const client = { send: async (command: unknown) => {
-    assert.ok(command instanceof RunTaskCommand);
-    sent = command.input;
-    return { tasks: [{ taskArn }] };
-  } } as unknown as ECSClient;
+  const client = {
+    send: async (command: unknown) => {
+      assert.ok(command instanceof RunTaskCommand);
+      sent = command.input;
+      return { tasks: [{ taskArn }] };
+    },
+  } as unknown as ECSClient;
   const environment = new FargateEnvironment(client);
   assert.equal(await environment.launch(record.launchArguments), taskArn);
   assert.deepEqual(sent, record.launchArguments);
@@ -170,7 +213,9 @@ test('the Fargate adapter sends the persisted RunTask arguments unchanged', asyn
 
 test('the Fargate adapter distinguishes a confirmed rejection from an uncertain result', async () => {
   const record = session();
-  const rejected = new FargateEnvironment({ send: async () => ({ failures: [{ reason: capacityMessage }] }) } as unknown as ECSClient);
+  const rejected = new FargateEnvironment({
+    send: async () => ({ failures: [{ reason: capacityMessage }] }),
+  } as unknown as ECSClient);
   await assert.rejects(rejected.launch(record.launchArguments), LaunchRejectedError);
   const uncertain = new FargateEnvironment({ send: async () => ({}) } as unknown as ECSClient);
   await assert.rejects(uncertain.launch(record.launchArguments), /exactly one task/);
@@ -179,37 +224,45 @@ test('the Fargate adapter distinguishes a confirmed rejection from an uncertain 
 test('the Fargate adapter finds only matching active tasks and bounds cluster scans', async () => {
   let lists = 0;
   const otherArn = taskArn.replace(/a/g, 'b');
-  const client = { send: async (command: unknown) => {
-    if (command instanceof ListTasksCommand) {
-      lists++;
-      assert.deepEqual(command.input, { cluster, startedBy: sessionId, maxResults: 100 });
-      return { taskArns: [taskArn, otherArn] };
-    }
-    assert.ok(command instanceof DescribeTasksCommand);
-    return { tasks: [
-      { taskArn, startedBy: sessionId, lastStatus: 'PENDING' },
-      { taskArn: otherArn, startedBy: randomUUID(), lastStatus: 'RUNNING' },
-    ] };
-  } } as unknown as ECSClient;
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof ListTasksCommand) {
+        lists++;
+        assert.deepEqual(command.input, { cluster, startedBy: sessionId, maxResults: 100 });
+        return { taskArns: [taskArn, otherArn] };
+      }
+      assert.ok(command instanceof DescribeTasksCommand);
+      return {
+        tasks: [
+          { taskArn, startedBy: sessionId, lastStatus: 'PENDING' },
+          { taskArn: otherArn, startedBy: randomUUID(), lastStatus: 'RUNNING' },
+        ],
+      };
+    },
+  } as unknown as ECSClient;
   const environment = new FargateEnvironment(client);
   assert.deepEqual(await environment.findActive(cluster, sessionId), [{ taskArn, lastStatus: 'PENDING' }]);
   assert.equal(lists, 1);
 
-  const overflowing = new FargateEnvironment({ send: async (command: unknown) => {
-    assert.ok(command instanceof ListTasksCommand);
-    return { taskArns: [], nextToken: 'more' };
-  } } as unknown as ECSClient);
+  const overflowing = new FargateEnvironment({
+    send: async (command: unknown) => {
+      assert.ok(command instanceof ListTasksCommand);
+      return { taskArns: [], nextToken: 'more' };
+    },
+  } as unknown as ECSClient);
   await assert.rejects(overflowing.findActive(cluster, sessionId), /safety bound/);
 });
 
 test('the Fargate adapter describes and stops the exact saved task', async () => {
   const commands: unknown[] = [];
-  const client = { send: async (command: unknown) => {
-    commands.push(command);
-    if (command instanceof DescribeTasksCommand) return { tasks: [{ taskArn, lastStatus: 'STOPPED' }] };
-    assert.ok(command instanceof StopTaskCommand);
-    return {};
-  } } as unknown as ECSClient;
+  const client = {
+    send: async (command: unknown) => {
+      commands.push(command);
+      if (command instanceof DescribeTasksCommand) return { tasks: [{ taskArn, lastStatus: 'STOPPED' }] };
+      assert.ok(command instanceof StopTaskCommand);
+      return {};
+    },
+  } as unknown as ECSClient;
   const environment = new FargateEnvironment(client);
   assert.deepEqual(await environment.describe(cluster, taskArn), { taskArn, lastStatus: 'STOPPED' });
   await environment.stop(cluster, taskArn, 'expired');
@@ -233,7 +286,9 @@ test('runtime configuration rejects missing or malformed deployment values', () 
     clusterArn: cluster,
     subnetIds: ['subnet-0123456789abcdef0', 'subnet-11111111111111111'],
     securityGroupIds: ['sg-0123456789abcdef0'],
-    platformVersion: '1.4.0', monitorContainerName: 'monitor', secretBucketArn: 'arn:aws:s3:::test-secrets',
+    platformVersion: '1.4.0',
+    monitorContainerName: 'monitor',
+    secretBucketArn: 'arn:aws:s3:::test-secrets',
   });
   assert.deepEqual(loadScheduleConfiguration(environment), {
     groupName: 'test-sessions',
@@ -248,8 +303,11 @@ test('the expiry handler validates events and preserves time for retries', async
   const calls: { sessionId: string; signal: AbortSignal | undefined }[] = [];
   const logs: unknown[] = [];
   const handler = createExpiryHandler({
-    expire: async (id, signal) => { calls.push({ sessionId: id, signal }); return 'cleaned'; },
-    log: entry => logs.push(entry),
+    expire: async (id, signal) => {
+      calls.push({ sessionId: id, signal });
+      return 'cleaned';
+    },
+    log: (entry) => logs.push(entry),
   });
   await handler({ sessionId }, { getRemainingTimeInMillis: () => 20_000 });
   assert.equal(calls[0]?.sessionId, sessionId);
@@ -263,19 +321,34 @@ test('the bundled expiry Lambda rejects malformed events before AWS calls', asyn
   try {
     process.env.SESSION_TABLE_NAME = 'test-unused';
     const bundled = createRequire(import.meta.url)('../../../dist/expire-provisioning/index.cjs');
-    await assert.rejects(bundled.handler({ sessionId: 'invalid' }, { getRemainingTimeInMillis: () => 20_000 }), /Invalid/);
+    await assert.rejects(
+      bundled.handler({ sessionId: 'invalid' }, { getRemainingTimeInMillis: () => 20_000 }),
+      /Invalid/,
+    );
   } finally {
     if (previous === undefined) delete process.env.SESSION_TABLE_NAME;
     else process.env.SESSION_TABLE_NAME = previous;
   }
 });
 
-for (const reasons of [['RESOURCE:CPU'], ['RESOURCE:MEMORY', 'RESOURCE:ENI'], ['MISSING'], ['INACTIVE'], ['RESOURCE:CPU', 'MISSING'], ['private detail here']]) {
+for (const reasons of [
+  ['RESOURCE:CPU'],
+  ['RESOURCE:MEMORY', 'RESOURCE:ENI'],
+  ['MISSING'],
+  ['INACTIVE'],
+  ['RESOURCE:CPU', 'MISSING'],
+  ['private detail here'],
+]) {
   test(`RunTask failure classification: ${reasons.join(', ')}`, async () => {
-    const environment = new FargateEnvironment({ send: async () => ({ failures: reasons.map(reason => ({ reason })) }) } as unknown as ECSClient);
+    const environment = new FargateEnvironment({
+      send: async () => ({ failures: reasons.map((reason) => ({ reason })) }),
+    } as unknown as ECSClient);
     await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
       assert.ok(error instanceof LaunchRejectedError);
-      assert.equal(error.failure.kind, reasons.every(reason => reason.startsWith('RESOURCE:')) ? 'capacity' : 'configuration');
+      assert.equal(
+        error.failure.kind,
+        reasons.every((reason) => reason.startsWith('RESOURCE:')) ? 'capacity' : 'configuration',
+      );
       assert.equal(JSON.stringify(error).includes('private detail here'), false);
       return true;
     });
@@ -286,17 +359,27 @@ test('monitor secret upload uses an encrypted immutable object and keeps plainte
   const record = session();
   const signal = AbortSignal.timeout(1000);
   let uploads = 0;
-  const secret = new MonitorSecretFile({ send: async (command: unknown, options: unknown) => {
-    assert.ok(command instanceof PutObjectCommand);
-    assert.deepEqual(options, { abortSignal: signal });
-    assert.deepEqual(command.input, {
-      Bucket: 'test-secrets', Key: `sessions/${sessionId}.env`,
-      Body: `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`,
-      ContentType: 'text/plain; charset=utf-8', ServerSideEncryption: 'AES256', IfNoneMatch: '*',
-    });
-    if (uploads++) throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
-    return {};
-  } } as unknown as S3Client);
+  const secret = new MonitorSecretFile({
+    send: async (command: unknown, options: unknown) => {
+      assert.ok(command instanceof PutObjectCommand);
+      assert.deepEqual(options, { abortSignal: signal });
+      assert.deepEqual(command.input, {
+        Bucket: 'test-secrets',
+        Key: `sessions/${sessionId}.env`,
+        Body: `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`,
+        ContentType: 'text/plain; charset=utf-8',
+        ServerSideEncryption: 'AES256',
+        IfNoneMatch: '*',
+      });
+      if (uploads++)
+        throw new S3ServiceException({
+          name: 'PreconditionFailed',
+          $fault: 'client',
+          $metadata: { httpStatusCode: 412 },
+        });
+      return {};
+    },
+  } as unknown as S3Client);
   await secret.ensure(record, signal);
   await secret.ensure(record, signal);
   assert.equal(uploads, 2);
@@ -307,15 +390,19 @@ test('monitor secret upload uses an encrypted immutable object and keeps plainte
 });
 
 test('monitor secret upload does not hide storage failures', async () => {
-  const secret = new MonitorSecretFile({ send: async () => {
-    throw new S3ServiceException({ name: 'AccessDenied', $fault: 'client', $metadata: { httpStatusCode: 403 } });
-  } } as unknown as S3Client);
+  const secret = new MonitorSecretFile({
+    send: async () => {
+      throw new S3ServiceException({ name: 'AccessDenied', $fault: 'client', $metadata: { httpStatusCode: 403 } });
+    },
+  } as unknown as S3Client);
   await assert.rejects(secret.ensure(session()), { name: 'AccessDenied' });
 });
 
 test('the documented Fargate capacity message normalizes before classification and logging', async () => {
   for (const message of [capacityMessage, `${capacityMessage}.`, 'Capacity is unavailable at this time.']) {
-    const environment = new FargateEnvironment({ send: async () => ({ failures: [{ reason: message }] }) } as unknown as ECSClient);
+    const environment = new FargateEnvironment({
+      send: async () => ({ failures: [{ reason: message }] }),
+    } as unknown as ECSClient);
     await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
       assert.ok(error instanceof LaunchRejectedError);
       assert.deepEqual(error.failure, { kind: 'capacity', reasons: ['CAPACITY'] });
@@ -323,9 +410,9 @@ test('the documented Fargate capacity message normalizes before classification a
       return true;
     });
   }
-  const environment = new FargateEnvironment({ send: async () => ({ failures: [
-    { reason: capacityMessage }, { reason: 'MISSING' },
-  ] }) } as unknown as ECSClient);
+  const environment = new FargateEnvironment({
+    send: async () => ({ failures: [{ reason: capacityMessage }, { reason: 'MISSING' }] }),
+  } as unknown as ECSClient);
   await assert.rejects(environment.launch(session().launchArguments), (error: unknown) => {
     assert.ok(error instanceof LaunchRejectedError);
     assert.deepEqual(error.failure, { kind: 'configuration', reasons: ['CAPACITY', 'MISSING'] });
@@ -337,14 +424,26 @@ for (const outcome of ['uploaded', 'already_exists'] as const) {
   test(`S3 conditional conflict is retried once and then ${outcome}`, async () => {
     const inputs: PutObjectCommand['input'][] = [];
     const signal = AbortSignal.timeout(1000);
-    const secret = new MonitorSecretFile({ send: async (command: unknown, options: unknown) => {
-      assert.ok(command instanceof PutObjectCommand);
-      assert.deepEqual(options, { abortSignal: signal });
-      inputs.push(command.input);
-      if (inputs.length === 1) throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
-      if (outcome === 'already_exists') throw new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 } });
-      return {};
-    } } as unknown as S3Client);
+    const secret = new MonitorSecretFile({
+      send: async (command: unknown, options: unknown) => {
+        assert.ok(command instanceof PutObjectCommand);
+        assert.deepEqual(options, { abortSignal: signal });
+        inputs.push(command.input);
+        if (inputs.length === 1)
+          throw new S3ServiceException({
+            name: 'ConditionalRequestConflict',
+            $fault: 'client',
+            $metadata: { httpStatusCode: 409 },
+          });
+        if (outcome === 'already_exists')
+          throw new S3ServiceException({
+            name: 'PreconditionFailed',
+            $fault: 'client',
+            $metadata: { httpStatusCode: 412 },
+          });
+        return {};
+      },
+    } as unknown as S3Client);
     await secret.ensure(session(), signal);
     assert.equal(inputs.length, 2);
     assert.deepEqual(inputs[0], inputs[1]);
@@ -353,10 +452,16 @@ for (const outcome of ['uploaded', 'already_exists'] as const) {
 
 test('repeated S3 conditional conflicts fail after one retry', async () => {
   let calls = 0;
-  const secret = new MonitorSecretFile({ send: async () => {
-    calls++;
-    throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
-  } } as unknown as S3Client);
+  const secret = new MonitorSecretFile({
+    send: async () => {
+      calls++;
+      throw new S3ServiceException({
+        name: 'ConditionalRequestConflict',
+        $fault: 'client',
+        $metadata: { httpStatusCode: 409 },
+      });
+    },
+  } as unknown as S3Client);
   await assert.rejects(secret.ensure(session()), { name: 'ConditionalRequestConflict' });
   assert.equal(calls, 2);
 });
@@ -364,11 +469,17 @@ test('repeated S3 conditional conflicts fail after one retry', async () => {
 test('the S3 conflict retry obeys the invocation deadline', async () => {
   let calls = 0;
   const controller = new AbortController();
-  const secret = new MonitorSecretFile({ send: async () => {
-    calls++;
-    controller.abort();
-    throw new S3ServiceException({ name: 'ConditionalRequestConflict', $fault: 'client', $metadata: { httpStatusCode: 409 } });
-  } } as unknown as S3Client);
+  const secret = new MonitorSecretFile({
+    send: async () => {
+      calls++;
+      controller.abort();
+      throw new S3ServiceException({
+        name: 'ConditionalRequestConflict',
+        $fault: 'client',
+        $metadata: { httpStatusCode: 409 },
+      });
+    },
+  } as unknown as S3Client);
   await assert.rejects(secret.ensure(session(), controller.signal), { name: 'AbortError' });
   assert.equal(calls, 1);
 });

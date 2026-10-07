@@ -14,8 +14,14 @@ function required(environment: NodeJS.ProcessEnv, name: string): string {
 }
 
 function identifiers(environment: NodeJS.ProcessEnv, name: string, pattern: RegExp, maximum: number): string[] {
-  const values = required(environment, name).split(',').map(value => value.trim());
-  if (values.length > maximum || values.some(value => !pattern.test(value)) || new Set(values).size !== values.length) {
+  const values = required(environment, name)
+    .split(',')
+    .map((value) => value.trim());
+  if (
+    values.length > maximum ||
+    values.some((value) => !pattern.test(value)) ||
+    new Set(values).size !== values.length
+  ) {
     throw new Error(`${name} is invalid`);
   }
   return values;

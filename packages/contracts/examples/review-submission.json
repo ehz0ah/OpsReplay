@@ -35,9 +35,7 @@
       "startLine": 5,
       "endLine": 6,
       "found": true,
-      "matchedFlags": [
-        0
-      ]
+      "matchedFlags": [0]
     },
     {
       "id": "long-pool-timeout",
@@ -59,14 +57,10 @@
       "startLine": 2,
       "endLine": 2,
       "found": true,
-      "matchedFlags": [
-        1
-      ]
+      "matchedFlags": [1]
     }
   ],
-  "unmatchedFlags": [
-    2
-  ],
+  "unmatchedFlags": [2],
   "summary": {
     "found": 2,
     "missed": 1

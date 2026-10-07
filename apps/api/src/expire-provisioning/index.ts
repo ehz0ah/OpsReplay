@@ -9,10 +9,12 @@ import { createExpiryHandler } from './handler.js';
 const table = process.env.SESSION_TABLE_NAME;
 if (!table) throw new Error('SESSION_TABLE_NAME is required');
 
-const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({
-  maxAttempts: 2,
-  requestHandler: createAwsTransport(2000),
-}));
+const dynamo = DynamoDBDocumentClient.from(
+  new DynamoDBClient({
+    maxAttempts: 2,
+    requestHandler: createAwsTransport(2000),
+  }),
+);
 const expire = createExpireProvisioning({
   store: new LifecycleStore(dynamo, table),
   environment: new FargateEnvironment(createEcsClient()),
@@ -20,5 +22,5 @@ const expire = createExpireProvisioning({
 
 export const handler = createExpiryHandler({
   expire,
-  log: entry => console.info(JSON.stringify(entry)),
+  log: (entry) => console.info(JSON.stringify(entry)),
 });

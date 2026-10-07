@@ -23,10 +23,10 @@ assistant, or leaves the tab, so failed requests accumulate while the fault rema
 
 Starting a Challenge runs one Fargate task with two containers:
 
-| Container | Contents | Learner access |
-| --- | --- | --- |
-| `challenge` | The Challenge image: the service stack under a process supervisor, and a terminal server that gives the learner a root shell | Full root shell |
-| `monitor` | The shared monitor image, configured by the manifest: traffic generator, metrics, validators, health probes, captures, and a control port for the gateway | None |
+| Container   | Contents                                                                                                                                                  | Learner access  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `challenge` | The Challenge image: the service stack under a process supervisor, and a terminal server that gives the learner a root shell                              | Full root shell |
+| `monitor`   | The shared monitor image, configured by the manifest: traffic generator, metrics, validators, health probes, captures, and a control port for the gateway | None            |
 
 The containers share the task's network namespace, so the monitor reaches services over
 localhost. Watched configuration and log paths are shared with the monitor read-only
@@ -97,8 +97,8 @@ stateDiagram-v2
      (proposed), found by a sweep that runs every minute;
    - `error` with `environment_exited` when the platform stops the task for another
      reason.
-   A lost or unhealthy monitor ends the attempt as a platform `error`, not recovery or
-   zero impact. Recording becomes incomplete if its final samples cannot be recovered.
+     A lost or unhealthy monitor ends the attempt as a platform `error`, not recovery or
+     zero impact. Recording becomes incomplete if its final samples cannot be recovered.
 4. **Drain.** The outcome write also fixes `endedAt`, sets recording to `draining`, and
    sets `drainDeadlineAt`, proposed at 30 seconds later. These values never move on a
    retry. Input closes when the gateway observes the outcome. Activity after `endedAt`
@@ -266,13 +266,13 @@ matching.
 The first implementation reports raw components only. Weights and any combined score
 remain open.
 
-| Component | Definition |
-| --- | --- |
-| `timeToRecoverySeconds` | From `readyAt` to the start of the final sustained passing window. Null unless resolved |
-| `totalRequests`, `failedRequests` | Monitor counters from `readyAt` to the outcome |
-| `commandCount` | Recorded commands, as the proposed measure of investigation effort |
+| Component                          | Definition                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `timeToRecoverySeconds`            | From `readyAt` to the start of the final sustained passing window. Null unless resolved           |
+| `totalRequests`, `failedRequests`  | Monitor counters from `readyAt` to the outcome                                                    |
+| `commandCount`                     | Recorded commands, as the proposed measure of investigation effort                                |
 | `observedOutages`, `outageSeconds` | Health probe outage count and summed duration per probe. These do not assert who caused an outage |
-| Assistance | Hints released, assistant turns, and proposals run |
+| Assistance                         | Hints released, assistant turns, and proposals run                                                |
 
 Reduced impact counts even when the root cause remains, because a mitigation lowers
 `failedRequests`. Time to recovery starts at the passing window, not at its end, so the

@@ -40,7 +40,7 @@ async function main() {
   });
   try {
     if (process.env.OPSREPLAY_EXPECT_TLS_FAILURE === '1') {
-      await assert.rejects(client.health(), error => {
+      await assert.rejects(client.health(), (error) => {
         assert.ok(error instanceof MonitorClientError);
         assert.equal(error.code, 'tls_failed');
         return true;
@@ -61,19 +61,21 @@ async function main() {
     assert.equal(finalPage.sealed, true);
     assert.ok(finalPage.frames.length > 0);
     assert.equal(finalPage.nextSequence, finalPage.frames.at(-1).sequence);
-    process.stdout.write(JSON.stringify({
-      health,
-      startedAt: started.startedAt,
-      frameCount: finalPage.frames.length,
-      nextSequence: finalPage.nextSequence,
-      sealed: finalPage.sealed,
-    }) + '\n');
+    process.stdout.write(
+      JSON.stringify({
+        health,
+        startedAt: started.startedAt,
+        frameCount: finalPage.frames.length,
+        nextSequence: finalPage.nextSequence,
+        sealed: finalPage.sealed,
+      }) + '\n',
+    );
   } finally {
     client.close();
   }
 }
 
-main().catch(error => {
+main().catch((error) => {
   const code = error instanceof MonitorClientError ? error.code : 'test_failed';
   process.stderr.write(JSON.stringify({ error: code }) + '\n');
   process.exitCode = 1;

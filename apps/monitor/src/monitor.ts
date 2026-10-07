@@ -7,15 +7,35 @@ import { journey, validateCheck } from './checks.js';
 import { Measurements } from './measurements.js';
 import { RecoveryChecks } from './recovery.js';
 import { limits, MonitorError, monotonicClock } from './types.js';
-import type { Clock, FailureCode, MetricFrame, MonitorConfig, MonitorEvent, PublicFrame, Recovery, Transport } from './types.js';
+import type {
+  Clock,
+  FailureCode,
+  MetricFrame,
+  MonitorConfig,
+  MonitorEvent,
+  PublicFrame,
+  Recovery,
+  Transport,
+} from './types.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
 const validFrame = ajv.addSchema(publicSchema).getSchema(publicSchema.$id + '#/$defs/GatewayServerMessage')!;
-interface Schedule { lastSlot: number; busy: boolean }
-interface Due { ready: boolean; missed: boolean }
+interface Schedule {
+  lastSlot: number;
+  busy: boolean;
+}
+interface Due {
+  ready: boolean;
+  missed: boolean;
+}
 const schedule = (): Schedule => ({ lastSlot: -1, busy: false });
-export interface Frame { source: string; sequence: number; recordedAt: number; payload: PublicFrame }
+export interface Frame {
+  source: string;
+  sequence: number;
+  recordedAt: number;
+  payload: PublicFrame;
+}
 
 export class Monitor {
   private readonly controller = new AbortController();
@@ -36,8 +56,11 @@ export class Monitor {
   private previousRecovery: Recovery['state'] = 'failing';
   failure: FailureCode | null = null;
 
-  constructor(private readonly config: MonitorConfig, private readonly transport: Transport,
-    private readonly clock: Clock = monotonicClock()) {
+  constructor(
+    private readonly config: MonitorConfig,
+    private readonly transport: Transport,
+    private readonly clock: Clock = monotonicClock(),
+  ) {
     this.config = structuredClone(config);
     setMaxListeners(limits.inFlight, this.controller.signal);
     this.traffic = this.config.journeys.map(schedule);
@@ -46,9 +69,15 @@ export class Monitor {
     this.recovery = new RecoveryChecks(this.config.validators);
   }
 
-  get startedAt(): number | null { return this.measurements?.startedAt ?? null; }
-  get stopped(): boolean { return this.controller.signal.aborted; }
-  now(): number { return this.clock.now(); }
+  get startedAt(): number | null {
+    return this.measurements?.startedAt ?? null;
+  }
+  get stopped(): boolean {
+    return this.controller.signal.aborted;
+  }
+  now(): number {
+    return this.clock.now();
+  }
 
   async verifyInitialState(): Promise<boolean> {
     if (this.measurements || this.stopped) throw new MonitorError('invalid_boundary');
@@ -57,14 +86,21 @@ export class Monitor {
     const signal = this.controller.signal;
     this.preparing = (async () => {
       const [checks, probes] = await Promise.all([
-        Promise.all(this.config.validators.map(v => validateCheck(v.check, this.config.journeys, this.transport, signal))),
-        Promise.all(this.config.probes.map(p => this.transport.tcp(p.check.host, p.check.port, p.check.timeoutMs, signal))),
+        Promise.all(
+          this.config.validators.map((v) => validateCheck(v.check, this.config.journeys, this.transport, signal)),
+        ),
+        Promise.all(
+          this.config.probes.map((p) => this.transport.tcp(p.check.host, p.check.port, p.check.timeoutMs, signal)),
+        ),
       ]);
-      this.prepared = !signal.aborted && checks.some(passed => !passed) && probes.every(Boolean);
+      this.prepared = !signal.aborted && checks.some((passed) => !passed) && probes.every(Boolean);
       return this.prepared;
     })();
-    try { return await this.preparing; }
-    finally { this.preparing = undefined; }
+    try {
+      return await this.preparing;
+    } finally {
+      this.preparing = undefined;
+    }
   }
 
   start(): number {
@@ -82,8 +118,12 @@ export class Monitor {
   }
 
   private launch(run: () => Promise<void>): void {
-    if (this.pending.size >= limits.inFlight) { this.fail('traffic_capacity'); return; }
-    const work = run().catch(error => this.fail(error instanceof MonitorError ? error.code : 'monitor_failed'))
+    if (this.pending.size >= limits.inFlight) {
+      this.fail('traffic_capacity');
+      return;
+    }
+    const work = run()
+      .catch((error) => this.fail(error instanceof MonitorError ? error.code : 'monitor_failed'))
       .finally(() => this.pending.delete(work));
     this.pending.add(work);
   }
@@ -109,8 +149,16 @@ export class Monitor {
   }
 
   private event(signal: MonitorEvent['signal'], at: number, label: string): void {
-    this.append({ type: 'timeline', event: { id: `${this.source}:${this.frames.length + 1}`,
-      at: new Date(at).toISOString(), kind: 'monitor', signal, label } });
+    this.append({
+      type: 'timeline',
+      event: {
+        id: `${this.source}:${this.frames.length + 1}`,
+        at: new Date(at).toISOString(),
+        kind: 'monitor',
+        signal,
+        label,
+      },
+    });
   }
 
   private checkResult(index: number, ok: boolean, at: number): void {
@@ -120,7 +168,11 @@ export class Monitor {
     this.history.push({ at, view });
     if (view.state !== this.previousRecovery) {
       const signals = { failing: 'recovery_lost', sustaining: 'recovery_sustaining', met: 'recovered' } as const;
-      const labels = { failing: 'Recovery checks failed', sustaining: 'Recovery checks are passing', met: 'Checkout recovery confirmed' };
+      const labels = {
+        failing: 'Recovery checks failed',
+        sustaining: 'Recovery checks are passing',
+        met: 'Checkout recovery confirmed',
+      };
       this.event(signals[view.state], at, labels[view.state]);
       this.previousRecovery = view.state;
     }
@@ -155,7 +207,9 @@ export class Monitor {
           try {
             const ok = await validateCheck(v.check, this.config.journeys, this.transport, this.controller.signal);
             if (!this.stopped) this.checkResult(i, ok, this.now());
-          } finally { state.busy = false; }
+          } finally {
+            state.busy = false;
+          }
         });
       });
       this.config.probes.forEach((probe, i) => {
@@ -166,7 +220,12 @@ export class Monitor {
         state.busy = true;
         this.launch(async () => {
           try {
-            const ok = await this.transport.tcp(probe.check.host, probe.check.port, probe.check.timeoutMs, this.controller.signal);
+            const ok = await this.transport.tcp(
+              probe.check.host,
+              probe.check.port,
+              probe.check.timeoutMs,
+              this.controller.signal,
+            );
             if (this.stopped) return;
             const finished = this.now();
             if (ok) {
@@ -180,28 +239,41 @@ export class Monitor {
                 state.outage = true;
               }
             }
-          } finally { state.busy = false; }
+          } finally {
+            state.busy = false;
+          }
         });
       });
       if (this.due(this.samples, limits.sampleMs, at).ready && !this.stopped) {
         const frame = this.snapshot(at);
         if (!this.failure && (this.cutoff === undefined || at <= this.cutoff)) this.append(frame);
       }
-    } catch (error) { this.fail(error instanceof MonitorError ? error.code : 'monitor_failed'); }
+    } catch (error) {
+      this.fail(error instanceof MonitorError ? error.code : 'monitor_failed');
+    }
   }
 
   read(after = 0, limit = this.frames.length - after): Frame[] {
-    if (!Number.isInteger(after) || after < 0 || after > this.frames.length
-      || !Number.isInteger(limit) || limit < 0) throw new MonitorError('invalid_boundary');
-    return structuredClone(this.frames.slice(after, after + limit)
-      .filter(f => this.cutoff === undefined || f.recordedAt <= this.cutoff));
+    if (!Number.isInteger(after) || after < 0 || after > this.frames.length || !Number.isInteger(limit) || limit < 0)
+      throw new MonitorError('invalid_boundary');
+    return structuredClone(
+      this.frames.slice(after, after + limit).filter((f) => this.cutoff === undefined || f.recordedAt <= this.cutoff),
+    );
   }
 
-  async drain(): Promise<void> { await Promise.all([...this.pending]); }
+  async drain(): Promise<void> {
+    await Promise.all(this.pending);
+  }
 
   snapshot(at = this.now()): MetricFrame {
-    if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt || at > this.now()
-      || (this.cutoff !== undefined && at > this.cutoff)) throw new MonitorError('invalid_boundary');
+    if (
+      !this.measurements ||
+      !Number.isFinite(at) ||
+      at < this.measurements.startedAt ||
+      at > this.now() ||
+      (this.cutoff !== undefined && at > this.cutoff)
+    )
+      throw new MonitorError('invalid_boundary');
     if (this.failure) throw new MonitorError(this.failure);
     let index = this.history.length - 1;
     while (index > 0 && this.history[index]!.at > at) index--;
@@ -210,18 +282,29 @@ export class Monitor {
   }
 
   reserveCutoff(at: number): void {
-    if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt
-      || (this.cutoff !== undefined && this.cutoff !== at)) throw new MonitorError('invalid_boundary');
+    if (
+      !this.measurements ||
+      !Number.isFinite(at) ||
+      at < this.measurements.startedAt ||
+      (this.cutoff !== undefined && this.cutoff !== at)
+    )
+      throw new MonitorError('invalid_boundary');
     this.cutoff = at;
   }
 
   seal(at = this.cutoff ?? this.now()): Promise<MetricFrame> {
-    if (!this.measurements || !Number.isFinite(at) || at < this.measurements.startedAt || at > this.now()
-      || (this.cutoff !== undefined && this.cutoff !== at)) throw new MonitorError('invalid_boundary');
-    if (this.sealed) return this.sealed.then(frame => structuredClone(frame));
+    if (
+      !this.measurements ||
+      !Number.isFinite(at) ||
+      at < this.measurements.startedAt ||
+      at > this.now() ||
+      (this.cutoff !== undefined && this.cutoff !== at)
+    )
+      throw new MonitorError('invalid_boundary');
+    if (this.sealed) return this.sealed.then((frame) => structuredClone(frame));
     this.reserveCutoff(at);
     this.controller.abort();
     this.sealed = this.drain().then(() => this.snapshot(at));
-    return this.sealed.then(frame => structuredClone(frame));
+    return this.sealed.then((frame) => structuredClone(frame));
   }
 }

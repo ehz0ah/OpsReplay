@@ -38,15 +38,24 @@ function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:
   let cutoff: number | undefined;
   const frames = Array.from({ length: 105 }, (_, index) => frame(index + 1));
   const monitor = {
-    get failure() { return failed; },
+    get failure() {
+      return failed;
+    },
     now: currentTime,
-    async verifyInitialState() { return ready; },
-    start() { return Date.parse('2026-10-07T00:00:00.000Z'); },
-    tick() { ticks++; },
+    async verifyInitialState() {
+      return ready;
+    },
+    start() {
+      return Date.parse('2026-10-07T00:00:00.000Z');
+    },
+    tick() {
+      ticks++;
+    },
     read(after = 0, limit = frames.length - after) {
       if (!Number.isInteger(after) || after < 0 || after > frames.length) throw new MonitorError('invalid_boundary');
-      return structuredClone(frames.slice(after, after + limit)
-        .filter(frame => cutoff === undefined || frame.recordedAt <= cutoff));
+      return structuredClone(
+        frames.slice(after, after + limit).filter((frame) => cutoff === undefined || frame.recordedAt <= cutoff),
+      );
     },
     reserveCutoff(at: number) {
       if (at < Date.parse('2026-10-07T00:00:00.000Z') || (cutoff !== undefined && cutoff !== at)) {
@@ -55,26 +64,49 @@ function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:
       cutoff = at;
     },
     async seal(at?: number) {
-      if (at === undefined || at < Date.parse('2026-10-07T00:00:00.000Z') || at > Date.parse('2026-10-07T00:01:00.000Z')) {
+      if (
+        at === undefined ||
+        at < Date.parse('2026-10-07T00:00:00.000Z') ||
+        at > Date.parse('2026-10-07T00:01:00.000Z')
+      ) {
         throw new MonitorError('invalid_boundary');
       }
       cutoff ??= at;
       if (cutoff !== at) throw new MonitorError('invalid_boundary');
       return structuredClone(final);
     },
-    fail(code: FailureCode) { failed ??= code; },
+    fail(code: FailureCode) {
+      failed ??= code;
+    },
     async drain() {},
   };
   const scheduler: ControlScheduler = {
     every(callback, intervalMs) {
       assert.equal(intervalMs, 25);
       callback();
-      return { close: () => { timerClosed++; } };
+      return {
+        close: () => {
+          timerClosed++;
+        },
+      };
     },
   };
   const control = new MonitorControl(monitor, scheduler);
-  return { control, get ticks() { return ticks; }, get timerClosed() { return timerClosed; },
-    get failed() { return failed; }, get cutoff() { return cutoff; } };
+  return {
+    control,
+    get ticks() {
+      return ticks;
+    },
+    get timerClosed() {
+      return timerClosed;
+    },
+    get failed() {
+      return failed;
+    },
+    get cutoff() {
+      return cutoff;
+    },
+  };
 }
 
 test('control initialises, starts once, pages frames, and seals one immutable cutoff', async () => {
@@ -92,7 +124,10 @@ test('control initialises, starts once, pages frames, and seals one immutable cu
   assert.equal(first.nextSequence, 100);
   assert.equal(first.frames[0]!.recordedAt, '2026-10-07T00:00:05.001Z');
   const second = f.control.read(first.nextSequence);
-  assert.deepEqual(second.frames.map(value => value.sequence), [101, 102, 103, 104, 105]);
+  assert.deepEqual(
+    second.frames.map((value) => value.sequence),
+    [101, 102, 103, 104, 105],
+  );
   assert.equal(second.sealed, false);
   const sealed = await f.control.seal('2026-10-07T00:00:05.000Z');
   assert.deepEqual(await f.control.seal('2026-10-07T00:00:05.000Z'), sealed);
@@ -126,8 +161,13 @@ test('control waits for a slightly future lifecycle cutoff without changing it',
   const replay = f.control.seal(new Date(cutoff).toISOString());
   const reserved = f.control.read(0);
   assert.equal(reserved.sealed, false);
-  assert.deepEqual(reserved.frames.map(frame => frame.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  queueMicrotask(() => { now = cutoff; });
+  assert.deepEqual(
+    reserved.frames.map((frame) => frame.sequence),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  );
+  queueMicrotask(() => {
+    now = cutoff;
+  });
   const [sealed, replayed] = await Promise.all([sealing, replay]);
   assert.equal(sealed.cutoffAt, '2026-10-07T00:00:05.010Z');
   assert.deepEqual(replayed, sealed);
@@ -158,37 +198,60 @@ test('runtime stops on a process signal and removes the server error listener', 
   assert.equal(signals.listenerCount('SIGTERM'), 0);
 });
 
-interface Result { status: number; body: unknown }
-async function request(port: number, cert: Buffer, path: string, options: {
-  method?: string; secret?: string; body?: string; contentType?: string; trusted?: boolean;
-} = {}): Promise<Result> {
+interface Result {
+  status: number;
+  body: unknown;
+}
+async function request(
+  port: number,
+  cert: Buffer,
+  path: string,
+  options: {
+    method?: string;
+    secret?: string;
+    body?: string;
+    contentType?: string;
+    trusted?: boolean;
+  } = {},
+): Promise<Result> {
   const content = options.body;
   return new Promise((resolve, reject) => {
-    const req = httpsRequest({
-      host: '127.0.0.1', port, path, method: options.method ?? 'GET',
-      ca: options.trusted === false ? undefined : cert,
-      rejectUnauthorized: true,
-      headers: {
-        ...(options.secret === undefined ? {} : { Authorization: `Bearer ${options.secret}` }),
-        ...(content === undefined ? {} : {
-          'Content-Type': options.contentType ?? 'application/json',
-          'Content-Length': Buffer.byteLength(content),
-        }),
+    const req = httpsRequest(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: options.method ?? 'GET',
+        ca: options.trusted === false ? undefined : cert,
+        rejectUnauthorized: true,
+        headers: {
+          ...(options.secret === undefined ? {} : { Authorization: `Bearer ${options.secret}` }),
+          ...(content === undefined
+            ? {}
+            : {
+                'Content-Type': options.contentType ?? 'application/json',
+                'Content-Length': Buffer.byteLength(content),
+              }),
+        },
       },
-    }, response => {
-      const chunks: Buffer[] = [];
-      response.on('data', chunk => chunks.push(Buffer.from(chunk)));
-      response.on('end', () => {
-        try { resolve({ status: response.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }); }
-        catch (error) { reject(error); }
-      });
-    });
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => {
+          try {
+            resolve({ status: response.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
     req.on('error', reject);
     req.end(content);
   });
 }
 
-test('HTTPS control API authenticates, resumes by cursor, seals idempotently, and bounds invalid traffic', async t => {
+test('HTTPS control API authenticates, resumes by cursor, seals idempotently, and bounds invalid traffic', async (t) => {
   const tls = testTls();
   t.after(() => tls.close());
   const f = fixture();
@@ -197,7 +260,10 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   const server = createControlServer(f.control, { key: tls.key, cert: tls.cert, secret, now: () => now });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
   const port = (server.address() as AddressInfo).port;
 
   assert.deepEqual(await request(port, tls.cert, '/healthz', { secret }), { status: 200, body: { status: 'ready' } });
@@ -209,65 +275,121 @@ test('HTTPS control API authenticates, resumes by cursor, seals idempotently, an
   await once(rejected, 'secureConnect');
   let rejectedResponse = '';
   rejected.setEncoding('utf8');
-  rejected.on('data', chunk => { rejectedResponse += chunk; });
+  rejected.on('data', (chunk) => {
+    rejectedResponse += chunk;
+  });
   const rejectedClosed = once(rejected, 'close');
   rejected.write('GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n');
   await rejectedClosed;
   assert.match(rejectedResponse, /^HTTP\/1\.1 401 /);
   assert.match(rejectedResponse.toLowerCase(), /\r\nconnection: close\r\n/);
   await assert.rejects(request(port, tls.cert, '/healthz', { trusted: false }), /self-signed certificate/);
-  await assert.rejects(new Promise((resolve, reject) => {
-    const req = httpRequest({ host: '127.0.0.1', port, path: '/healthz' }, resolve);
-    req.on('error', reject);
-    req.end();
-  }));
+  await assert.rejects(
+    new Promise((resolve, reject) => {
+      const req = httpRequest({ host: '127.0.0.1', port, path: '/healthz' }, resolve);
+      req.on('error', reject);
+      req.end();
+    }),
+  );
 
   const started = await request(port, tls.cert, '/v1/start', { method: 'POST', secret });
   assert.equal(started.status, 200);
   assert.deepEqual(await request(port, tls.cert, '/v1/start', { method: 'POST', secret }), started);
   const page = await request(port, tls.cert, '/v1/frames?after=100', { secret });
   assert.equal(page.status, 200);
-  assert.deepEqual((page.body as { frames: { sequence: number }[] }).frames.map(value => value.sequence), [101, 102, 103, 104, 105]);
+  assert.deepEqual(
+    (page.body as { frames: { sequence: number }[] }).frames.map((value) => value.sequence),
+    [101, 102, 103, 104, 105],
+  );
   assert.ok(!JSON.stringify(page.body).includes('private'));
   assert.equal((await request(port, tls.cert, '/v1/frames?after=-1', { secret })).status, 400);
   assert.equal((await request(port, tls.cert, '/v1/frames?after=0&after=1', { secret })).status, 400);
   assert.equal((await request(port, tls.cert, '/v1/frames?after=0', { secret, body: '{}' })).status, 400);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: ' '.repeat(limits.controlBodyBytes + 1),
-  })).status, 400);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z', extra: true }),
-  })).status, 400);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07' }),
-  })).status, 400);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, contentType: 'application/json; charset=utf-8',
-    body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
-  })).status, 200);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, contentType: 'application/json; charset=iso-8859-1',
-    body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
-  })).status, 400);
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        body: ' '.repeat(limits.controlBodyBytes + 1),
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z', extra: true }),
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        body: JSON.stringify({ cutoffAt: '2026-10-07' }),
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        contentType: 'application/json; charset=iso-8859-1',
+        body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+      })
+    ).status,
+    400,
+  );
   const sealed = await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+    method: 'POST',
+    secret,
+    body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
   });
   assert.equal(sealed.status, 200);
-  assert.deepEqual(await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
-  }), sealed);
-  assert.equal((await request(port, tls.cert, '/v1/seal', {
-    method: 'POST', secret, body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:06.000Z' }),
-  })).status, 409);
+  assert.deepEqual(
+    await request(port, tls.cert, '/v1/seal', {
+      method: 'POST',
+      secret,
+      body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:05.000Z' }),
+    }),
+    sealed,
+  );
+  assert.equal(
+    (
+      await request(port, tls.cert, '/v1/seal', {
+        method: 'POST',
+        secret,
+        body: JSON.stringify({ cutoffAt: '2026-10-07T00:00:06.000Z' }),
+      })
+    ).status,
+    409,
+  );
 
   now = 2000;
   const unauthenticated = await Promise.all(Array.from({ length: 9 }, () => request(port, tls.cert, '/healthz')));
-  assert.equal(unauthenticated.filter(result => result.status === 429).length, 1);
+  assert.equal(unauthenticated.filter((result) => result.status === 429).length, 1);
   assert.equal((await request(port, tls.cert, '/healthz', { secret })).status, 200);
   assert.equal(f.failed, null);
 });
 
-test('concurrent request limit applies to pipelined work on one TLS connection', async t => {
+test('concurrent request limit applies to pipelined work on one TLS connection', async (t) => {
   const tls = testTls();
   t.after(() => tls.close());
   let now = Date.parse('2026-10-07T00:00:05.000Z');
@@ -277,7 +399,10 @@ test('concurrent request limit applies to pipelined work on one TLS connection',
   const server = createControlServer(f.control, { key: tls.key, cert: tls.cert, secret });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
   const port = (server.address() as AddressInfo).port;
   const socket = connectTls({ host: '127.0.0.1', port, ca: tls.cert, rejectUnauthorized: true });
   t.after(() => socket.destroy());
@@ -285,26 +410,32 @@ test('concurrent request limit applies to pipelined work on one TLS connection',
 
   const cutoffAt = new Date(now + 25).toISOString();
   const content = JSON.stringify({ cutoffAt });
-  const message = `POST /v1/seal HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${secret}\r\n`
-    + `Content-Type: application/json\r\nContent-Length: ${Buffer.byteLength(content)}\r\n`
-    + `Connection: keep-alive\r\n\r\n${content}`;
+  const message =
+    `POST /v1/seal HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${secret}\r\n` +
+    `Content-Type: application/json\r\nContent-Length: ${Buffer.byteLength(content)}\r\n` +
+    `Connection: keep-alive\r\n\r\n${content}`;
   let received = '';
   socket.setEncoding('utf8');
   const responses = new Promise<number[]>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Timed out waiting for pipelined responses')), 2000);
-    socket.on('data', chunk => {
+    socket.on('data', (chunk) => {
       received += chunk;
-      const statuses = [...received.matchAll(/HTTP\/1\.1 (\d{3})/g)].map(match => Number(match[1]));
+      const statuses = [...received.matchAll(/HTTP\/1\.1 (\d{3})/g)].map((match) => Number(match[1]));
       if (statuses.length === limits.controlConcurrentRequests + 1) {
         clearTimeout(timeout);
         resolve(statuses);
       }
     });
-    socket.on('error', error => { clearTimeout(timeout); reject(error); });
+    socket.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
   });
   socket.write(message.repeat(limits.controlConcurrentRequests + 1));
-  setTimeout(() => { now = Date.parse(cutoffAt); }, 5);
+  setTimeout(() => {
+    now = Date.parse(cutoffAt);
+  }, 5);
   const statuses = await responses;
-  assert.equal(statuses.filter(status => status === 200).length, limits.controlConcurrentRequests);
-  assert.equal(statuses.filter(status => status === 429).length, 1);
+  assert.equal(statuses.filter((status) => status === 200).length, limits.controlConcurrentRequests);
+  assert.equal(statuses.filter((status) => status === 429).length, 1);
 });

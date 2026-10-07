@@ -38,18 +38,18 @@ be able to complete the Challenge with the assistant closed.
 
 ## Interaction states
 
-| State | Behaviour |
-| --- | --- |
-| Provisioning | Show progress, allow leaving the page, poll with backoff |
-| Ready | Connect the terminal with a fresh ticket and restore the existing shell |
-| Reconnecting | Keep the last dashboard values visible, say that the clock is still running, reconnect with a new ticket |
-| Replaced | The attempt was opened elsewhere. Offer to take it back here |
+| State              | Behaviour                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provisioning       | Show progress, allow leaving the page, poll with backoff                                                                                                                                               |
+| Ready              | Connect the terminal with a fresh ticket and restore the existing shell                                                                                                                                |
+| Reconnecting       | Keep the last dashboard values visible, say that the clock is still running, reconnect with a new ticket                                                                                               |
+| Replaced           | The attempt was opened elsewhere. Offer to take it back here                                                                                                                                           |
 | Assistant proposal | Show the command, rationale, and caution flag. Confirm only at a verified empty prompt. Show `TERMINAL_BUSY` if a command runs, text is partly typed, or prompt state is unknown. Allow manual copying |
-| Proposal delivery | Show dispatching, accepted, or unknown. Accepted means the terminal accepted input, not that the command succeeded. Unknown requires checking output, not automatic retry |
-| Provider failure | Show the error in the assistant panel only. Terminal, dashboard, and hints are unaffected |
-| Interrupted turn | Show that the reply could not finish. Keep the saved state and let the learner send a new request. Do not rerun the old turn |
-| Outcome | Stop terminal input, show the outcome and reason, open the debrief when it is ready |
-| Debrief pending | Show progress and retry after the returned delay |
+| Proposal delivery  | Show dispatching, accepted, or unknown. Accepted means the terminal accepted input, not that the command succeeded. Unknown requires checking output, not automatic retry                              |
+| Provider failure   | Show the error in the assistant panel only. Terminal, dashboard, and hints are unaffected                                                                                                              |
+| Interrupted turn   | Show that the reply could not finish. Keep the saved state and let the learner send a new request. Do not rerun the old turn                                                                           |
+| Outcome            | Stop terminal input, show the outcome and reason, open the debrief when it is ready                                                                                                                    |
+| Debrief pending    | Show progress and retry after the returned delay                                                                                                                                                       |
 
 Never issue a new start, end, or hint request automatically after an unknown network
 outcome. Repeat the same request ID or read the current state.

@@ -10,9 +10,12 @@ const api = JSON.parse(fs.readFileSync(apiPath));
 function rewrite(value) {
   if (Array.isArray(value)) return value.map(rewrite);
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-      key, key === '$ref' ? item.replace('#/$defs/', '#/components/schemas/') : rewrite(item),
-    ]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        key === '$ref' ? item.replace('#/$defs/', '#/components/schemas/') : rewrite(item),
+      ]),
+    );
   }
   return value;
 }

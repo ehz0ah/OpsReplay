@@ -9,6 +9,11 @@
     "npm": ">=10"
   },
   "scripts": {
+    "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
+    "lint:fix": "oxlint . --fix --deny-warnings --report-unused-disable-directives",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "quality": "npm run lint && npm run format:check && npm run typecheck",
     "monitor:test": "node --import tsx --test apps/monitor/test/*.test.ts",
     "monitor:build": "node scripts/build-monitor.mjs",
     "monitor:image:build": "docker build --target test -t opsreplay/monitor-test:dev -f apps/monitor/Dockerfile .",
@@ -19,7 +24,7 @@
     "challenge:build": "docker build -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
     "challenge:test": "node --test content/challenges/wrong-upstream-port/image.test.mjs",
     "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
-    "contracts:sync": "node scripts/sync-openapi.mjs",
+    "contracts:sync": "node scripts/sync-openapi.mjs && prettier --write packages/contracts/openapi.json",
     "typecheck": "tsc --noEmit",
     "api:build": "node scripts/build-start-session.mjs",
     "api:test": "npm run api:build && node --import tsx --test apps/api/test/*.test.ts",
@@ -33,6 +38,8 @@
     "aws-cdk-lib": "2.272.0",
     "constructs": "10.8.1",
     "esbuild": "0.28.2",
+    "oxlint": "1.87.0",
+    "prettier": "3.9.9",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   },

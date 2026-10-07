@@ -16,6 +16,7 @@ early and record the outcome.
 
 ```sh
 npm ci
+npm run quality
 npm run check
 ```
 

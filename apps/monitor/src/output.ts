@@ -24,6 +24,10 @@ export async function writeJson(stream: Writable, value: unknown, timeoutMs = 10
     const failed = () => done(new MonitorError('output_failed'));
     const timer = setTimeout(failed, timeoutMs);
     stream.once('error', failed);
-    try { stream.write(line, done); } catch { failed(); }
+    try {
+      stream.write(line, done);
+    } catch {
+      failed();
+    }
   });
 }

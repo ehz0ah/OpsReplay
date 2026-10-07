@@ -6,25 +6,25 @@ few known fields afterwards.
 
 ## Records
 
-| Record | Contents | Visibility |
-| --- | --- | --- |
-| ContentVersion | Content ID, immutable version, mode, hash, status, tier, category, plan, provenance. Challenges add the task definition revision and image digests | Catalogue subset public |
-| ChallengeManifest | Environment, traffic, dashboard, alert, validators, probes, planted fault, reference fix, traps, hints, debrief | API, gateway, monitor, and test harness only |
-| ReviewBundle | Diff, context, language, related Challenges, findings | Exercise projection before submission, findings after |
-| LearnEntry | Markdown metadata and body rendered at build time | Free entries public, Pro entries after an entitlement check |
-| Plan | Owner, plan, source, expiry, cohort | Owner, through `GET /v1/me` |
-| Session | Owner, saved access grant and limits, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret and certificate pin, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only |
-| TimelineEvent | Command, monitor, assistance, or lifecycle event | Owner |
-| Capture | Requesting command sequence, `baselineAt`, `startedAt`, `completedAt`, configuration diffs, new log lines, metric sample. Association is not causation | Owner, through playback links |
-| Recording | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references | Status public, objects through playback links |
-| TerminalTicket | Ticket hash, owner, session, expiry | API and gateway only |
-| TerminalInput | Monotonic connection generation and owning connection ID. The terminal server enforces the installed generation | Gateway only |
-| Debrief | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance | Owner, after recording is sealed |
-| Proposal | Session, owner, command, rationale, caution flag, expiry, delivery status, private delivery token, fixed acknowledgement deadline and input generation | Owner projection without delivery token or generation |
-| ConversationTurn | Session or submission, request hash, worker token, fixed expiry, status, text, proposals, token usage | Owner projection, excluding hash and worker token |
-| ReviewSubmission | Owner, saved access grant, exercise version, flags and concerns, match result, answer-informed flag | Owner |
-| Progress | Owner, content ID, first-attempt outcome and score, attempt count, last attempt, assisted flag | Owner |
-| Receipt | Owner or resource scope, request ID, payload hash, result pointer | Server only |
+| Record            | Contents                                                                                                                                                                                                                                                                                  | Visibility                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| ContentVersion    | Content ID, immutable version, mode, hash, status, tier, category, plan, provenance. Challenges add the task definition revision and image digests                                                                                                                                        | Catalogue subset public                                     |
+| ChallengeManifest | Environment, traffic, dashboard, alert, validators, probes, planted fault, reference fix, traps, hints, debrief                                                                                                                                                                           | API, gateway, monitor, and test harness only                |
+| ReviewBundle      | Diff, context, language, related Challenges, findings                                                                                                                                                                                                                                     | Exercise projection before submission, findings after       |
+| LearnEntry        | Markdown metadata and body rendered at build time                                                                                                                                                                                                                                         | Free entries public, Pro entries after an entitlement check |
+| Plan              | Owner, plan, source, expiry, cohort                                                                                                                                                                                                                                                       | Owner, through `GET /v1/me`                                 |
+| Session           | Owner, saved access grant and limits, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret and certificate pin, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only                                      |
+| TimelineEvent     | Command, monitor, assistance, or lifecycle event                                                                                                                                                                                                                                          | Owner                                                       |
+| Capture           | Requesting command sequence, `baselineAt`, `startedAt`, `completedAt`, configuration diffs, new log lines, metric sample. Association is not causation                                                                                                                                    | Owner, through playback links                               |
+| Recording         | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references                                                                                                                                           | Status public, objects through playback links               |
+| TerminalTicket    | Ticket hash, owner, session, expiry                                                                                                                                                                                                                                                       | API and gateway only                                        |
+| TerminalInput     | Monotonic connection generation and owning connection ID. The terminal server enforces the installed generation                                                                                                                                                                           | Gateway only                                                |
+| Debrief           | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance                                                                                                                                                                             | Owner, after recording is sealed                            |
+| Proposal          | Session, owner, command, rationale, caution flag, expiry, delivery status, private delivery token, fixed acknowledgement deadline and input generation                                                                                                                                    | Owner projection without delivery token or generation       |
+| ConversationTurn  | Session or submission, request hash, worker token, fixed expiry, status, text, proposals, token usage                                                                                                                                                                                     | Owner projection, excluding hash and worker token           |
+| ReviewSubmission  | Owner, saved access grant, exercise version, flags and concerns, match result, answer-informed flag                                                                                                                                                                                       | Owner                                                       |
+| Progress          | Owner, content ID, first-attempt outcome and score, attempt count, last attempt, assisted flag                                                                                                                                                                                            | Owner                                                       |
+| Receipt           | Owner or resource scope, request ID, payload hash, result pointer                                                                                                                                                                                                                         | Server only                                                 |
 
 Learn entries and catalogue reads never create sessions. Code Review stores written
 concerns for reflection and never scores them.
@@ -34,31 +34,31 @@ concerns for reflection and never scores them.
 One table is sufficient initially. Normal requests read by key and never scan. Item
 names are a storage convention, not part of the HTTP contract.
 
-| PK | SK | Contents |
-| --- | --- | --- |
-| `USER#<id>` | `PROFILE` | Minimal account preferences |
-| `USER#<id>` | `PLAN` | Plan, source, expiry, cohort |
-| `USER#<id>` | `ACTIVE` | Active-session lock holding the session ID |
-| `USER#<id>` | `PROGRESS#<contentId>` | Learner progress |
-| `USER#<id>` | `START#<requestId>` | Session start receipt |
-| `USER#<id>` | `REVIEWREQ#<requestId>` | Review submission receipt |
-| `CONTENT#<id>` | `VERSION#<version>` | Server-only published Challenge admission snapshot |
-| `SESSION#<id>` | `STATE` | Private session record |
-| `SESSION#<id>` | `RECORDING` | Recorder lease, saved cursors, and final recording state |
-| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range |
-| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>` | Timeline event, time-ordered |
-| `SESSION#<id>` | `TICKET#<sha256>` | Terminal ticket with a TTL |
-| `SESSION#<id>` | `INPUT` | Input generation and owning connection, independent of recorder lease |
-| `SESSION#<id>` | `REQUEST#<requestId>` | End and hint receipts |
-| `SESSION#<id>` | `HINT#<hintId>` | Released hint and time |
-| `SESSION#<id>` | `PROPOSAL#<proposalId>` | Assistant command proposal |
-| `SESSION#<id>` | `TURN#<turnId>` | Challenge assistant turn |
-| `SESSION#<id>` | `CONVERSATION` | Active turn ID and fixed expiry |
-| `SESSION#<id>` | `FINALISED` | Marker that the finaliser has run |
-| `SESSION#<id>` | `DEBRIEF` | Derived debrief and score components |
-| `REVIEW#<id>` | `STATE` | Review submission and match result |
-| `REVIEW#<id>` | `TURN#<turnId>` | Code Review assistant turn |
-| `REVIEW#<id>` | `CONVERSATION` | Active turn ID and fixed expiry |
+| PK             | SK                                       | Contents                                                              |
+| -------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| `USER#<id>`    | `PROFILE`                                | Minimal account preferences                                           |
+| `USER#<id>`    | `PLAN`                                   | Plan, source, expiry, cohort                                          |
+| `USER#<id>`    | `ACTIVE`                                 | Active-session lock holding the session ID                            |
+| `USER#<id>`    | `PROGRESS#<contentId>`                   | Learner progress                                                      |
+| `USER#<id>`    | `START#<requestId>`                      | Session start receipt                                                 |
+| `USER#<id>`    | `REVIEWREQ#<requestId>`                  | Review submission receipt                                             |
+| `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                    |
+| `SESSION#<id>` | `STATE`                                  | Private session record                                                |
+| `SESSION#<id>` | `RECORDING`                              | Recorder lease, saved cursors, and final recording state              |
+| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable object reference and its sequence range                 |
+| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                          |
+| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket with a TTL                                            |
+| `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease |
+| `SESSION#<id>` | `REQUEST#<requestId>`                    | End and hint receipts                                                 |
+| `SESSION#<id>` | `HINT#<hintId>`                          | Released hint and time                                                |
+| `SESSION#<id>` | `PROPOSAL#<proposalId>`                  | Assistant command proposal                                            |
+| `SESSION#<id>` | `TURN#<turnId>`                          | Challenge assistant turn                                              |
+| `SESSION#<id>` | `CONVERSATION`                           | Active turn ID and fixed expiry                                       |
+| `SESSION#<id>` | `FINALISED`                              | Marker that the finaliser has run                                     |
+| `SESSION#<id>` | `DEBRIEF`                                | Derived debrief and score components                                  |
+| `REVIEW#<id>`  | `STATE`                                  | Review submission and match result                                    |
+| `REVIEW#<id>`  | `TURN#<turnId>`                          | Code Review assistant turn                                            |
+| `REVIEW#<id>`  | `CONVERSATION`                           | Active turn ID and fixed expiry                                       |
 
 Event sort keys use the event time, a stable source stream ID, and its sequence number.
 Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
@@ -76,14 +76,14 @@ because admission also recovers an expired turn through a conditional write.
 
 ## Private S3 layout
 
-| Key prefix | Contents | Writer |
-| --- | --- | --- |
-| `content/challenges/<id>/<version>/` | Manifest and debrief assets | Content publication |
-| `content/reviews/<id>/<version>/` | Review bundle | Content publication |
-| `content/learn/<id>/<version>/` | Rendered Pro Learn entry | Learn build step |
-| `sessions/<sessionId>/terminal/<generation>/` | asciicast v2 chunks | Gateway |
-| `sessions/<sessionId>/metrics/<generation>/` | Metric series chunks | Gateway |
-| `sessions/<sessionId>/captures/<generation>/` | Per-command captures | Gateway |
+| Key prefix                                    | Contents                    | Writer              |
+| --------------------------------------------- | --------------------------- | ------------------- |
+| `content/challenges/<id>/<version>/`          | Manifest and debrief assets | Content publication |
+| `content/reviews/<id>/<version>/`             | Review bundle               | Content publication |
+| `content/learn/<id>/<version>/`               | Rendered Pro Learn entry    | Learn build step    |
+| `sessions/<sessionId>/terminal/<generation>/` | asciicast v2 chunks         | Gateway             |
+| `sessions/<sessionId>/metrics/<generation>/`  | Metric series chunks        | Gateway             |
+| `sessions/<sessionId>/captures/<generation>/` | Per-command captures        | Gateway             |
 
 Published content keys are immutable, with a hash in the catalogue manifest. The
 frontend bucket holds only the static application and free Learn pages. Browsers read
@@ -92,26 +92,26 @@ recordings and log captures exceed DynamoDB's item size, which is why they live 
 
 ## Conditional writes
 
-| Operation | Write and condition |
-| --- | --- |
-| Start | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments |
-| Save task | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning` |
-| Ready | Update conditional on `provisioning`, time before its deadline, monitor health, and the current recorder acknowledgement. Save `readyAt` and `endsAt`. The task address is already saved for recorder attachment |
-| Outcome | Transaction conditional on active status: outcome and `endedAt`, recording set to `draining` with a fixed cutoff and drain deadline. The first outcome wins |
-| End | Transaction: the outcome update and the end receipt |
-| Heartbeat | Update `lastSeenAt` conditional on `ready` |
-| Ticket use | Delete conditional on existence and an unexpired `expiresAt`, returning the old item |
-| Hint | Transaction: hint item absent, session hint count equal to the expected value, receipt |
-| Input claim | Increment generation and set connection owner conditional on the previous generation and an active session. Terminal acknowledgement is required before browser readiness |
-| Proposal dispatch | Change `pending` to `dispatching` with a fixed token, conditional on expiry, active session, and input owner |
-| Proposal acknowledgement | Same token only. Record `accepted` after terminal acceptance, `pending` only after definite non-delivery, otherwise `unknown`. No automatic resend |
-| Recorder claim | Claim an absent or expired lease and increment its generation. Renewal requires the same owner and generation |
-| Recording append | Save cursors and object references only after upload, with the current unexpired lease and recording still open. Event identity makes retries idempotent |
-| Seal recording | Conditional on `draining`. `complete` requires the current recorder lease, all final cursors saved without gaps, and time before the drain deadline. Otherwise use `incomplete` and a reason |
-| Finalise | Transaction: `FINALISED` absent, recording sealed, task confirmed stopped, debrief written if ready was reached, progress updated, lock released only if it still names this session |
-| Start turn | Transaction: turn ID absent and conversation slot absent. Store hash, worker token, fixed expiry, `running` turn, and active slot |
-| Expire turn | Transaction: turn still `running`, expiry reached, slot still names the turn. Set `interrupted` and clear the slot |
-| Finish turn | Transaction: `running`, matching worker token and active slot, before expiry. Save terminal result and allowed proposal, then clear the slot |
+| Operation                | Write and condition                                                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start                    | Transaction: start receipt absent, active lock absent, session created in `provisioning` with a fixed deadline, schedule name, and launch arguments                                                              |
+| Save task                | Set ARN only if absent or equal to this ARN. A terminal session still records a late ARN for cleanup, never returns to `provisioning`                                                                            |
+| Ready                    | Update conditional on `provisioning`, time before its deadline, monitor health, and the current recorder acknowledgement. Save `readyAt` and `endsAt`. The task address is already saved for recorder attachment |
+| Outcome                  | Transaction conditional on active status: outcome and `endedAt`, recording set to `draining` with a fixed cutoff and drain deadline. The first outcome wins                                                      |
+| End                      | Transaction: the outcome update and the end receipt                                                                                                                                                              |
+| Heartbeat                | Update `lastSeenAt` conditional on `ready`                                                                                                                                                                       |
+| Ticket use               | Delete conditional on existence and an unexpired `expiresAt`, returning the old item                                                                                                                             |
+| Hint                     | Transaction: hint item absent, session hint count equal to the expected value, receipt                                                                                                                           |
+| Input claim              | Increment generation and set connection owner conditional on the previous generation and an active session. Terminal acknowledgement is required before browser readiness                                        |
+| Proposal dispatch        | Change `pending` to `dispatching` with a fixed token, conditional on expiry, active session, and input owner                                                                                                     |
+| Proposal acknowledgement | Same token only. Record `accepted` after terminal acceptance, `pending` only after definite non-delivery, otherwise `unknown`. No automatic resend                                                               |
+| Recorder claim           | Claim an absent or expired lease and increment its generation. Renewal requires the same owner and generation                                                                                                    |
+| Recording append         | Save cursors and object references only after upload, with the current unexpired lease and recording still open. Event identity makes retries idempotent                                                         |
+| Seal recording           | Conditional on `draining`. `complete` requires the current recorder lease, all final cursors saved without gaps, and time before the drain deadline. Otherwise use `incomplete` and a reason                     |
+| Finalise                 | Transaction: `FINALISED` absent, recording sealed, task confirmed stopped, debrief written if ready was reached, progress updated, lock released only if it still names this session                             |
+| Start turn               | Transaction: turn ID absent and conversation slot absent. Store hash, worker token, fixed expiry, `running` turn, and active slot                                                                                |
+| Expire turn              | Transaction: turn still `running`, expiry reached, slot still names the turn. Set `interrupted` and clear the slot                                                                                               |
+| Finish turn              | Transaction: `running`, matching worker token and active slot, before expiry. Save terminal result and allowed proposal, then clear the slot                                                                     |
 
 Application receipts, not client-token windows, enforce idempotency for the life of a
 session. `RunTask`'s client token covers only the short gap between the start transaction
@@ -151,15 +151,15 @@ null score. They never substitute zero for missing counters.
 DynamoDB has a 400 KB item limit. Proposed application limits, to validate with the
 first image:
 
-| Item | Limit |
-| --- | --- |
-| Timeline event | 16 KB, with command text and output excerpt each capped at 4,000 characters |
-| Commands per attempt | 5,000 |
-| Capture | 256 KB, with at most 200 new lines per watched log |
-| Terminal recording | 20 MB per attempt, after which recording stops and the learner is told |
-| Terminal input | 64 KiB per second per session at the gateway |
-| Chat input | 4,000 characters |
-| Review flags | 50 per submission, 2,000 characters per concern |
+| Item                 | Limit                                                                       |
+| -------------------- | --------------------------------------------------------------------------- |
+| Timeline event       | 16 KB, with command text and output excerpt each capped at 4,000 characters |
+| Commands per attempt | 5,000                                                                       |
+| Capture              | 256 KB, with at most 200 new lines per watched log                          |
+| Terminal recording   | 20 MB per attempt, after which recording stops and the learner is told      |
+| Terminal input       | 64 KiB per second per session at the gateway                                |
+| Chat input           | 4,000 characters                                                            |
+| Review flags         | 50 per submission, 2,000 characters per concern                             |
 
 Reject limits before side effects with a stable error.
 

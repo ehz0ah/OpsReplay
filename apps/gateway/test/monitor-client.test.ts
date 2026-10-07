@@ -17,16 +17,22 @@ import { testTls } from '../../monitor/test/tls.js';
 const secret = 's'.repeat(43);
 const epoch = Date.parse('2026-10-07T00:00:00.000Z');
 const config: MonitorConfig = {
-  journeys: [{
-    id: 'checkout',
-    ratePerSecond: 1,
-    steps: [{ method: 'GET', url: 'http://127.0.0.1/', expectStatus: [200], timeoutMs: 100 }],
-  }],
+  journeys: [
+    {
+      id: 'checkout',
+      ratePerSecond: 1,
+      steps: [{ method: 'GET', url: 'http://127.0.0.1/', expectStatus: [200], timeoutMs: 100 }],
+    },
+  ],
   validators: [{ id: 'checkout-recovers', check: { kind: 'journey', journey: 'checkout' }, sustainSeconds: 60 }],
-  probes: [{
-    id: 'proxy', publicLabel: 'Storefront unavailable',
-    check: { kind: 'tcp', host: '127.0.0.1', port: 80, timeoutMs: 100 }, graceSeconds: 2,
-  }],
+  probes: [
+    {
+      id: 'proxy',
+      publicLabel: 'Storefront unavailable',
+      check: { kind: 'tcp', host: '127.0.0.1', port: 80, timeoutMs: 100 },
+      graceSeconds: 2,
+    },
+  ],
 };
 const transport: Transport = {
   http: async () => ({ status: 502, body: '' }),
@@ -40,7 +46,7 @@ const metric = {
 };
 
 function errorCode(code: MonitorClientError['code']): (error: unknown) => boolean {
-  return error => error instanceof MonitorClientError && error.code === code;
+  return (error) => error instanceof MonitorClientError && error.code === code;
 }
 
 async function listen(server: Server): Promise<number> {
@@ -52,7 +58,7 @@ async function listen(server: Server): Promise<number> {
 async function close(server: Server): Promise<void> {
   if (!server.listening) return;
   await new Promise<void>((resolve, reject) => {
-    server.close(error => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
     server.closeAllConnections();
   });
 }
@@ -63,7 +69,7 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(body);
 }
 
-test('the gateway client uses one pinned TLS connection for the real monitor lifecycle', async t => {
+test('the gateway client uses one pinned TLS connection for the real monitor lifecycle', async (t) => {
   const tls = testTls();
   let now = epoch;
   const monitor = new Monitor(config, transport, { now: () => now });
@@ -71,7 +77,9 @@ test('the gateway client uses one pinned TLS connection for the real monitor lif
   await control.initialise();
   const server = createControlServer(control, { key: tls.key, cert: tls.cert, secret, now: () => now });
   let connections = 0;
-  server.on('connection', () => { connections++; });
+  server.on('connection', () => {
+    connections++;
+  });
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
   t.after(async () => {
@@ -85,14 +93,20 @@ test('the gateway client uses one pinned TLS connection for the real monitor lif
   const firstStart = await client.start();
   assert.deepEqual(await client.start(), firstStart);
   const firstPage = await client.read(0);
-  assert.deepEqual(firstPage.frames.map(value => value.sequence), [1]);
+  assert.deepEqual(
+    firstPage.frames.map((value) => value.sequence),
+    [1],
+  );
   const source = firstPage.frames[0]!.source;
 
   now += 5_000;
   monitor.tick();
   await immediate();
   const resumed = await client.read(firstPage.nextSequence, source);
-  assert.deepEqual(resumed.frames.map(value => value.sequence), [2]);
+  assert.deepEqual(
+    resumed.frames.map((value) => value.sequence),
+    [2],
+  );
   await assert.rejects(client.read(0, '11111111-1111-4111-8111-111111111111'), errorCode('invalid_response'));
 
   const cutoffAt = new Date(now).toISOString();
@@ -103,14 +117,17 @@ test('the gateway client uses one pinned TLS connection for the real monitor lif
   assert.equal(connections, 1);
 });
 
-test('certificate verification finishes before the bearer secret is sent', async t => {
+test('certificate verification finishes before the bearer secret is sent', async (t) => {
   const serverTls = testTls();
   const wrongTls = testTls();
   let requests = 0;
-  const server = createServer({ key: serverTls.key, cert: serverTls.cert, minVersion: 'TLSv1.3' }, (_request, response) => {
-    requests++;
-    sendJson(response, 200, { status: 'ready' });
-  });
+  const server = createServer(
+    { key: serverTls.key, cert: serverTls.cert, minVersion: 'TLSv1.3' },
+    (_request, response) => {
+      requests++;
+      sendJson(response, 200, { status: 'ready' });
+    },
+  );
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: wrongTls.cert, secret });
   t.after(async () => {
@@ -124,7 +141,7 @@ test('certificate verification finishes before the bearer secret is sent', async
   assert.equal(requests, 0);
 });
 
-test('authentication failure is stable and does not disclose the supplied secret', async t => {
+test('authentication failure is stable and does not disclose the supplied secret', async (t) => {
   const tls = testTls();
   const control = {
     health: () => 'ready' as const,
@@ -142,7 +159,7 @@ test('authentication failure is stable and does not disclose the supplied secret
     tls.close();
   });
 
-  await assert.rejects(client.health(), error => {
+  await assert.rejects(client.health(), (error) => {
     assert.ok(error instanceof MonitorClientError);
     assert.equal(error.code, 'auth_failed');
     assert.ok(!error.message.includes(supplied));
@@ -150,7 +167,7 @@ test('authentication failure is stable and does not disclose the supplied secret
   });
 });
 
-test('a rejected gateway request is distinct from an invalid monitor response', async t => {
+test('a rejected gateway request is distinct from an invalid monitor response', async (t) => {
   const tls = testTls();
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (_request, response) => {
     sendJson(response, 400, { code: 'INVALID_REQUEST', message: 'Invalid monitor request.' });
@@ -166,15 +183,21 @@ test('a rejected gateway request is distinct from an invalid monitor response', 
   await assert.rejects(client.health(), errorCode('invalid_request'));
 });
 
-test('the client refuses a server limited to TLS 1.2', async t => {
+test('the client refuses a server limited to TLS 1.2', async (t) => {
   const tls = testTls();
   let requests = 0;
-  const server = createServer({
-    key: tls.key, cert: tls.cert, minVersion: 'TLSv1.2', maxVersion: 'TLSv1.2',
-  }, (_request, response) => {
-    requests++;
-    sendJson(response, 200, { status: 'ready' });
-  });
+  const server = createServer(
+    {
+      key: tls.key,
+      cert: tls.cert,
+      minVersion: 'TLSv1.2',
+      maxVersion: 'TLSv1.2',
+    },
+    (_request, response) => {
+      requests++;
+      sendJson(response, 200, { status: 'ready' });
+    },
+  );
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
   t.after(async () => {
@@ -187,17 +210,22 @@ test('the client refuses a server limited to TLS 1.2', async t => {
   assert.equal(requests, 0);
 });
 
-test('an idempotent request retries one dropped connection and then reuses the socket', async t => {
+test('an idempotent request retries one dropped connection and then reuses the socket', async (t) => {
   const tls = testTls();
   let requests = 0;
   let connections = 0;
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (request, response) => {
     requests++;
     assert.equal(request.headers.authorization, `Bearer ${secret}`);
-    if (requests === 1) { request.socket.destroy(); return; }
+    if (requests === 1) {
+      request.socket.destroy();
+      return;
+    }
     sendJson(response, 200, { status: 'ready' });
   });
-  server.on('connection', () => { connections++; });
+  server.on('connection', () => {
+    connections++;
+  });
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
   t.after(async () => {
@@ -214,16 +242,26 @@ test('an idempotent request retries one dropped connection and then reuses the s
   await assert.rejects(client.health(), errorCode('closed'));
 });
 
-test('request timeout retries once while caller cancellation does not retry', async t => {
+test('request timeout retries once while caller cancellation does not retry', async (t) => {
   const tls = testTls();
   let requests = 0;
-  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => { requests++; });
+  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => {
+    requests++;
+  });
   const port = await listen(server);
   const timed = new MonitorClient({
-    host: '127.0.0.1', port, certificate: tls.cert, secret, requestTimeoutMs: 100,
+    host: '127.0.0.1',
+    port,
+    certificate: tls.cert,
+    secret,
+    requestTimeoutMs: 100,
   });
   const cancelled = new MonitorClient({
-    host: '127.0.0.1', port, certificate: tls.cert, secret, requestTimeoutMs: 1_000,
+    host: '127.0.0.1',
+    port,
+    certificate: tls.cert,
+    secret,
+    requestTimeoutMs: 1_000,
   });
   t.after(async () => {
     timed.close();
@@ -244,13 +282,17 @@ test('request timeout retries once while caller cancellation does not retry', as
   assert.equal(requests, 3);
 });
 
-test('a waiting seal does not block health checks on the monitor connection', { timeout: 10_000 }, async t => {
+test('a waiting seal does not block health checks on the monitor connection', { timeout: 10_000 }, async (t) => {
   const tls = testTls();
   const cutoffAt = '2026-10-07T00:00:05.000Z';
   let releaseSeal = () => {};
   let markSealReceived = () => {};
-  const sealGate = new Promise<void>(resolve => { releaseSeal = resolve; });
-  const sealReceived = new Promise<void>(resolve => { markSealReceived = resolve; });
+  const sealGate = new Promise<void>((resolve) => {
+    releaseSeal = resolve;
+  });
+  const sealReceived = new Promise<void>((resolve) => {
+    markSealReceived = resolve;
+  });
   let connections = 0;
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, async (request, response) => {
     request.resume();
@@ -263,7 +305,9 @@ test('a waiting seal does not block health checks on the monitor connection', { 
     assert.equal(request.url, '/healthz');
     sendJson(response, 200, { status: 'ready' });
   });
-  server.on('connection', () => { connections++; });
+  server.on('connection', () => {
+    connections++;
+  });
   const port = await listen(server);
   const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
   t.after(async () => {
@@ -283,25 +327,31 @@ test('a waiting seal does not block health checks on the monitor connection', { 
     releaseSeal();
   }
   assert.equal(await checking, 'ready');
-  assert.equal(await sealing.then(value => value.cutoffAt), cutoffAt);
+  assert.equal(await sealing.then((value) => value.cutoffAt), cutoffAt);
   assert.equal(health, 'ready');
   assert.equal(connections, 2);
 });
 
-test('closing the client cancels active and agent-queued requests', { timeout: 10_000 }, async t => {
+test('closing the client cancels active and agent-queued requests', { timeout: 10_000 }, async (t) => {
   const tls = testTls();
   let requests = 0;
   let closingServer = false;
   const sockets = new Set<Duplex>();
-  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => { requests++; });
-  server.on('connection', socket => {
+  const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, () => {
+    requests++;
+  });
+  server.on('connection', (socket) => {
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
     if (closingServer) socket.destroy();
   });
   const port = await listen(server);
   const client = new MonitorClient({
-    host: '127.0.0.1', port, certificate: tls.cert, secret, requestTimeoutMs: 1_000,
+    host: '127.0.0.1',
+    port,
+    certificate: tls.cert,
+    secret,
+    requestTimeoutMs: 1_000,
   });
   t.after(async () => {
     closingServer = true;
@@ -318,14 +368,14 @@ test('closing the client cancels active and agent-queued requests', { timeout: 1
   const second = client.health();
   await secondReceived;
   const third = client.health();
-  const rejected = [first, second, third].map(pending => assert.rejects(pending, errorCode('closed')));
+  const rejected = [first, second, third].map((pending) => assert.rejects(pending, errorCode('closed')));
   client.close();
   await Promise.all(rejected);
   await immediate();
   assert.equal(requests, 2);
 });
 
-test('the client rejects malformed, oversized, and discontinuous responses', async t => {
+test('the client rejects malformed, oversized, and discontinuous responses', async (t) => {
   const tls = testTls();
   let mode: 'json' | 'oversized' | 'sequence' = 'json';
   const server = createServer({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3' }, (request, response) => {
@@ -341,10 +391,14 @@ test('the client rejects malformed, oversized, and discontinuous responses', asy
     }
     assert.equal(request.url, '/v1/frames?after=0');
     sendJson(response, 200, {
-      frames: [{
-        source: '11111111-1111-4111-8111-111111111111', sequence: 2,
-        recordedAt: '2026-10-07T00:00:05.000Z', payload: metric,
-      }],
+      frames: [
+        {
+          source: '11111111-1111-4111-8111-111111111111',
+          sequence: 2,
+          recordedAt: '2026-10-07T00:00:05.000Z',
+          payload: metric,
+        },
+      ],
       nextSequence: 2,
       sealed: false,
     });
@@ -367,12 +421,22 @@ test('the client rejects malformed, oversized, and discontinuous responses', asy
 test('configuration and operation inputs fail before network access', async () => {
   const tls = testTls();
   try {
-    assert.throws(() => new MonitorClient({ host: 'localhost', certificate: tls.cert, secret }), errorCode('invalid_config'));
-    assert.throws(() => new MonitorClient({ host: '127.0.0.1', certificate: 'invalid', secret }), errorCode('invalid_config'));
+    assert.throws(
+      () => new MonitorClient({ host: 'localhost', certificate: tls.cert, secret }),
+      errorCode('invalid_config'),
+    );
+    assert.throws(
+      () => new MonitorClient({ host: '127.0.0.1', certificate: 'invalid', secret }),
+      errorCode('invalid_config'),
+    );
     const client = new MonitorClient({ host: '127.0.0.1', certificate: tls.cert, secret });
     try {
       await assert.rejects(client.read(-1), errorCode('invalid_config'));
       await assert.rejects(client.seal('2026-10-07'), errorCode('invalid_config'));
-    } finally { client.close(); }
-  } finally { tls.close(); }
+    } finally {
+      client.close();
+    }
+  } finally {
+    tls.close();
+  }
 });

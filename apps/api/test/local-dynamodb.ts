@@ -18,15 +18,39 @@ export async function startLocalDatabase() {
     created = false;
   };
   try {
-    docker('run', '--detach', '--rm', '--name', name, '--memory', '512m', '--cpus', '1',
-      '--publish', '127.0.0.1::8000', '--label', 'opsreplay.test=session-start', image,
-      '-jar', 'DynamoDBLocal.jar', '-inMemory', '-sharedDb', '-disableTelemetry');
+    docker(
+      'run',
+      '--detach',
+      '--rm',
+      '--name',
+      name,
+      '--memory',
+      '512m',
+      '--cpus',
+      '1',
+      '--publish',
+      '127.0.0.1::8000',
+      '--label',
+      'opsreplay.test=session-start',
+      image,
+      '-jar',
+      'DynamoDBLocal.jar',
+      '-inMemory',
+      '-sharedDb',
+      '-disableTelemetry',
+    );
     created = true;
     const address = docker('port', name, '8000/tcp');
     if (!/^127\.0\.0\.1:[0-9]+$/.test(address)) throw new Error('DynamoDB Local must bind to loopback');
     client = new DynamoDBClient({
-      endpoint: `http://${address}`, region: 'us-east-1', maxAttempts: 1,
-      requestHandler: new NodeHttpHandler({ connectionTimeout: 500, requestTimeout: 1000, throwOnRequestTimeout: true }),
+      endpoint: `http://${address}`,
+      region: 'us-east-1',
+      maxAttempts: 1,
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 500,
+        requestTimeout: 1000,
+        throwOnRequestTimeout: true,
+      }),
       // Explicit dummy credentials prevent all use of personal or work AWS profiles.
       credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
     });

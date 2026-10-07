@@ -16,9 +16,24 @@
     "Connections to port 8081 are refused, and nginx answers every proxied request with 502 Bad Gateway."
   ],
   "keyEvidence": [
-    { "id": "proxy-error-log", "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.", "status": "observed", "commandSeq": 2 },
-    { "id": "listening-sockets", "description": "The socket list shows the application listening on port 8080.", "status": "observed", "commandSeq": 3 },
-    { "id": "proxy-config", "description": "The nginx configuration sets proxy_pass to port 8081.", "status": "attempted", "commandSeq": 4 }
+    {
+      "id": "proxy-error-log",
+      "description": "The nginx error log shows refused connections to upstream 127.0.0.1:8081.",
+      "status": "observed",
+      "commandSeq": 2
+    },
+    {
+      "id": "listening-sockets",
+      "description": "The socket list shows the application listening on port 8080.",
+      "status": "observed",
+      "commandSeq": 3
+    },
+    {
+      "id": "proxy-config",
+      "description": "The nginx configuration sets proxy_pass to port 8081.",
+      "status": "attempted",
+      "commandSeq": 4
+    }
   ],
   "possibleHarmfulActions": [
     {

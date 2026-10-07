@@ -47,8 +47,8 @@ const canonicalTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export function parseCutoffAt(value: string): number {
   const parsed = Date.parse(value);
-  if (!canonicalTimestamp.test(value) || !Number.isFinite(parsed)
-    || new Date(parsed).toISOString() !== value) throw new MonitorError('invalid_boundary');
+  if (!canonicalTimestamp.test(value) || !Number.isFinite(parsed) || new Date(parsed).toISOString() !== value)
+    throw new MonitorError('invalid_boundary');
   return parsed;
 }
 
@@ -61,15 +61,25 @@ export class MonitorControl {
   private sealing: Promise<SealResult> | undefined;
   private sealed = false;
 
-  constructor(private readonly monitor: ControlledMonitor, private readonly ticks: ControlScheduler = scheduler) {}
+  constructor(
+    private readonly monitor: ControlledMonitor,
+    private readonly ticks: ControlScheduler = scheduler,
+  ) {}
 
-  health(): ControlHealth { return this.monitor.failure ? 'failed' : this.healthState; }
+  health(): ControlHealth {
+    return this.monitor.failure ? 'failed' : this.healthState;
+  }
 
   initialise(): Promise<void> {
     if (this.initialising) return this.initialising;
-    this.initialising = this.monitor.verifyInitialState().then(ready => {
-      this.healthState = ready ? 'ready' : 'failed';
-    }).catch(() => { this.healthState = 'failed'; });
+    this.initialising = this.monitor
+      .verifyInitialState()
+      .then((ready) => {
+        this.healthState = ready ? 'ready' : 'failed';
+      })
+      .catch(() => {
+        this.healthState = 'failed';
+      });
     return this.initialising;
   }
 
@@ -85,7 +95,7 @@ export class MonitorControl {
 
   read(after: number): FramePage {
     if (this.startedAt === undefined) throw new MonitorError('invalid_boundary');
-    const frames = this.monitor.read(after, limits.controlFramesPerRead).map(frame => this.wireFrame(frame));
+    const frames = this.monitor.read(after, limits.controlFramesPerRead).map((frame) => this.wireFrame(frame));
     return {
       frames,
       nextSequence: frames.at(-1)?.sequence ?? after,
@@ -98,11 +108,11 @@ export class MonitorControl {
     const cutoff = parseCutoffAt(cutoffAt);
     if (this.sealedAt !== undefined && cutoff !== this.sealedAt) throw new MonitorError('invalid_boundary');
     if (this.sealing) return structuredClone(await this.sealing);
-    if (cutoff < this.startedAt
-      || cutoff - this.monitor.now() > limits.controlCutoffLeadMs) throw new MonitorError('invalid_boundary');
+    if (cutoff < this.startedAt || cutoff - this.monitor.now() > limits.controlCutoffLeadMs)
+      throw new MonitorError('invalid_boundary');
     this.monitor.reserveCutoff(cutoff);
     this.sealedAt = cutoff;
-    this.sealing = this.sealAt(cutoff).catch(error => {
+    this.sealing = this.sealAt(cutoff).catch((error) => {
       this.monitor.fail(error instanceof MonitorError ? error.code : 'monitor_failed');
       throw error;
     });
@@ -111,7 +121,11 @@ export class MonitorControl {
 
   async close(): Promise<void> {
     if (this.sealing) {
-      try { await this.sealing; } catch { /* The failed seal already failed the monitor. */ }
+      try {
+        await this.sealing;
+      } catch {
+        /* The failed seal already failed the monitor. */
+      }
     } else if (this.sealedAt === undefined) this.monitor.fail('monitor_failed');
     this.timer?.close();
     this.timer = undefined;
@@ -130,7 +144,7 @@ export class MonitorControl {
   private async sealAt(cutoff: number): Promise<SealResult> {
     let remaining = cutoff - this.monitor.now();
     while (remaining > 0) {
-      await new Promise(resolve => setTimeout(resolve, remaining));
+      await new Promise((resolve) => setTimeout(resolve, remaining));
       remaining = cutoff - this.monitor.now();
     }
     this.timer?.close();

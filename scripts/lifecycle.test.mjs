@@ -3,8 +3,11 @@ import test from 'node:test';
 import { nextStartupAction, nextFinalisationAction, acceptRecordingComplete } from './reference/lifecycle.mjs';
 
 const start = () => ({
-  status: 'provisioning', provisioningDeadlineAt: 180_000, timeLimitMs: 1_200_000,
-  taskArn: null, launchArguments: { clientToken: 'session-1', taskDefinition: 'pinned:1', secret: 'test-only' },
+  status: 'provisioning',
+  provisioningDeadlineAt: 180_000,
+  timeLimitMs: 1_200_000,
+  taskArn: null,
+  launchArguments: { clientToken: 'session-1', taskDefinition: 'pinned:1', secret: 'test-only' },
 });
 
 // The fake task service retains client-token identity across handler crashes.
@@ -24,7 +27,8 @@ for (const interruptedAfter of ['receipt', 'schedule', 'launch', 'arn', 'ready']
         external.taskArn = tasks.get(key);
       }
       if (action.type === 'save_task') session.taskArn = action.arn;
-      if (action.type === 'mark_ready') Object.assign(session, { status: 'ready', readyAt: action.readyAt, endsAt: action.endsAt });
+      if (action.type === 'mark_ready')
+        Object.assign(session, { status: 'ready', readyAt: action.readyAt, endsAt: action.endsAt });
       return action;
     }
     const beforeCrash = ['receipt', 'schedule', 'launch', 'arn', 'ready'].indexOf(interruptedAfter);
@@ -55,7 +59,13 @@ test('readiness waits for a recorder even with a healthy monitor', () => {
   assert.equal(nextStartupAction(session, { scheduleAt: 180_000, healthy: true }, 1000).type, 'wait');
 });
 
-const drain = () => ({ status: 'draining', reason: null, generation: 2, leaseExpiresAt: 45_000, drainDeadlineAt: 30_000 });
+const drain = () => ({
+  status: 'draining',
+  reason: null,
+  generation: 2,
+  leaseExpiresAt: 45_000,
+  drainDeadlineAt: 30_000,
+});
 const receipt = { generation: 2, allDataSaved: true, hasGaps: false };
 
 test('outcome waits for saved evidence before stop, schedule deletion, and finalisation', () => {
@@ -91,7 +101,10 @@ test('a task found after finalisation is stopped without counting the result aga
   const recording = { ...drain(), status: 'incomplete', reason: 'task_lost' };
   assert.equal(nextStartupAction(session, { taskArn: 'late-task' }, 200_000).type, 'wait');
   assert.equal(nextFinalisationAction(session, recording, { taskStopped: false }, 200_000).type, 'stop_task');
-  assert.equal(nextFinalisationAction(session, recording, { taskStopped: true, scheduleExists: false }, 200_001).type, 'wait');
+  assert.equal(
+    nextFinalisationAction(session, recording, { taskStopped: true, scheduleExists: false }, 200_001).type,
+    'wait',
+  );
 });
 
 test('stale, incomplete, gapped, and expired recorder acknowledgements cannot seal data', () => {
@@ -101,7 +114,8 @@ test('stale, incomplete, gapped, and expired recorder acknowledgements cannot se
     [{ ...receipt, allDataSaved: false }, 1000],
     [{ ...receipt, hasGaps: true }, 1000],
     [receipt, 30_000],
-  ]) assert.deepEqual(acceptRecordingComplete(recording, ack, now), recording);
+  ])
+    assert.deepEqual(acceptRecordingComplete(recording, ack, now), recording);
   const expiredLease = { ...recording, leaseExpiresAt: 500 };
   assert.deepEqual(acceptRecordingComplete(expiredLease, receipt, 1000), expiredLease);
 });
@@ -110,6 +124,9 @@ test('saved ARN does not skip timer repair and an old timer cannot end a ready s
   const session = { ...start(), taskArn: 'task-1' };
   assert.equal(nextStartupAction(session, { scheduleAt: null }, 1000).type, 'set_schedule');
   Object.assign(session, { status: 'ready', endsAt: 1_210_000 });
-  assert.deepEqual(nextStartupAction(session, { scheduleAt: 180_000 }, 180_000), { type: 'set_schedule', at: 1_210_000 });
+  assert.deepEqual(nextStartupAction(session, { scheduleAt: 180_000 }, 180_000), {
+    type: 'set_schedule',
+    at: 1_210_000,
+  });
   assert.deepEqual(nextStartupAction(session, { scheduleAt: null }, 1_210_000), { type: 'time_limit' });
 });

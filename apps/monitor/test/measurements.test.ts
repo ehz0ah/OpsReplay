@@ -6,8 +6,8 @@ import { limits } from '../src/types.js';
 
 test('RPS, failures, and exact p95 describe the same five-second request window', () => {
   const data = new Measurements(1000);
-  for (let i = 1; i <= 20; i++) data.record({ startedAt: 1000, completedAt: 1000 + i * 100,
-    durationMs: i * 10, failed: i <= 5 });
+  for (let i = 1; i <= 20; i++)
+    data.record({ startedAt: 1000, completedAt: 1000 + i * 100, durationMs: i * 10, failed: i <= 5 });
   const result = data.snapshot(6000);
   assert.deepEqual(result.counters, { totalRequests: 20, failedRequests: 5 });
   assert.equal(result.sample.values.request_rate, 4);
@@ -33,7 +33,10 @@ test('warm-up and post-cutoff requests do not change a sealed period', () => {
 test('empty periods and malformed times cannot fabricate latency', () => {
   const data = new Measurements(1000);
   assert.deepEqual(data.snapshot(1000).sample.values, {});
-  assert.throws(() => data.record({ startedAt: 1100, completedAt: 1000, durationMs: -100, failed: false }), /invalid_boundary/);
+  assert.throws(
+    () => data.record({ startedAt: 1100, completedAt: 1000, durationMs: -100, failed: false }),
+    /invalid_boundary/,
+  );
   assert.throws(() => data.snapshot(NaN), /invalid_boundary/);
 });
 
@@ -93,6 +96,8 @@ test('historical cutoffs use cumulative prefixes and reject out-of-order complet
   data.record({ startedAt: 500, completedAt: 2000, durationMs: 1500, failed: false });
   assert.deepEqual(data.snapshot(1500).counters, { totalRequests: 1, failedRequests: 1 });
   assert.deepEqual(data.snapshot(2500).counters, { totalRequests: 2, failedRequests: 1 });
-  assert.throws(() => data.record({ startedAt: 0, completedAt: 1500, durationMs: 1500, failed: false }),
-    /invalid_boundary/);
+  assert.throws(
+    () => data.record({ startedAt: 0, completedAt: 1500, durationMs: 1500, failed: false }),
+    /invalid_boundary/,
+  );
 });

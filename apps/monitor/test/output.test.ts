@@ -5,7 +5,12 @@ import { writeJson } from '../src/output.js';
 
 test('output waits for the write callback and bounds stalled consumers', async () => {
   const lines: string[] = [];
-  const sink = new Writable({ write(chunk, _encoding, callback) { lines.push(chunk.toString()); callback(); } });
+  const sink = new Writable({
+    write(chunk, _encoding, callback) {
+      lines.push(chunk.toString());
+      callback();
+    },
+  });
   await writeJson(sink, { type: 'metrics', value: 1 });
   assert.deepEqual(lines, ['{"type":"metrics","value":1}\n']);
   await assert.rejects(writeJson(sink, 'x'.repeat(65537)), /output_failed/);
@@ -16,7 +21,11 @@ test('output waits for the write callback and bounds stalled consumers', async (
 });
 
 test('a write failure is handled without exposing its error or leaving an unhandled event', async () => {
-  const failed = new Writable({ write(_chunk, _encoding, callback) { callback(new Error('private-output-path')); } });
+  const failed = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback(new Error('private-output-path'));
+    },
+  });
   await assert.rejects(writeJson(failed, { value: 1 }), /^MonitorError: output_failed$/);
-  await new Promise(resolve => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
 });

@@ -25,7 +25,10 @@ function parseAt(expression: string | undefined): number | undefined {
 }
 
 export class ProvisioningSchedule implements ProvisioningSchedulePort {
-  constructor(private readonly client: SchedulerClient, private readonly configuration: ScheduleConfiguration) {}
+  constructor(
+    private readonly client: SchedulerClient,
+    private readonly configuration: ScheduleConfiguration,
+  ) {}
 
   private target(sessionId: string): Target {
     return {
@@ -36,32 +39,40 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
     };
   }
 
-  private validExisting(existing: GetScheduleCommandOutput, session: SessionRecord, deadline: string, now: Date): boolean {
+  private validExisting(
+    existing: GetScheduleCommandOutput,
+    session: SessionRecord,
+    deadline: string,
+    now: Date,
+  ): boolean {
     const scheduledAt = parseAt(existing.ScheduleExpression);
-    const latestSafeWakeup = Math.max(
-      ceilToSecond(Date.parse(deadline)),
-      ceilToSecond(now.getTime() + 60_000),
+    const latestSafeWakeup = Math.max(ceilToSecond(Date.parse(deadline)), ceilToSecond(now.getTime() + 60_000));
+    return (
+      existing.GroupName === this.configuration.groupName &&
+      existing.State === 'ENABLED' &&
+      existing.FlexibleTimeWindow?.Mode === 'OFF' &&
+      existing.ActionAfterCompletion === 'DELETE' &&
+      existing.ScheduleExpressionTimezone === 'UTC' &&
+      scheduledAt !== undefined &&
+      scheduledAt >= Date.parse(deadline) &&
+      scheduledAt <= latestSafeWakeup &&
+      existing.Target?.Arn === this.configuration.expiryFunctionArn &&
+      existing.Target?.RoleArn === this.configuration.targetRoleArn &&
+      existing.Target?.Input === JSON.stringify({ sessionId: session.view.id }) &&
+      existing.Target?.RetryPolicy?.MaximumEventAgeInSeconds === 900 &&
+      existing.Target?.RetryPolicy?.MaximumRetryAttempts === 20
     );
-    return existing.GroupName === this.configuration.groupName
-      && existing.State === 'ENABLED'
-      && existing.FlexibleTimeWindow?.Mode === 'OFF'
-      && existing.ActionAfterCompletion === 'DELETE'
-      && existing.ScheduleExpressionTimezone === 'UTC'
-      && scheduledAt !== undefined
-      && scheduledAt >= Date.parse(deadline)
-      && scheduledAt <= latestSafeWakeup
-      && existing.Target?.Arn === this.configuration.expiryFunctionArn
-      && existing.Target?.RoleArn === this.configuration.targetRoleArn
-      && existing.Target?.Input === JSON.stringify({ sessionId: session.view.id })
-      && existing.Target?.RetryPolicy?.MaximumEventAgeInSeconds === 900
-      && existing.Target?.RetryPolicy?.MaximumRetryAttempts === 20;
   }
 
   private async get(name: string, abortSignal?: AbortSignal): Promise<GetScheduleCommandOutput | undefined> {
     try {
-      return await this.client.send(new GetScheduleCommand({
-        GroupName: this.configuration.groupName, Name: name,
-      }), sendOptions(abortSignal));
+      return await this.client.send(
+        new GetScheduleCommand({
+          GroupName: this.configuration.groupName,
+          Name: name,
+        }),
+        sendOptions(abortSignal),
+      );
     } catch (error) {
       if (error instanceof ResourceNotFoundException) return undefined;
       throw error;
@@ -77,11 +88,17 @@ export class ProvisioningSchedule implements ProvisioningSchedulePort {
     await this.ensureAt(session, session.scheduleName, session.provisioningDeadline, now, abortSignal);
   }
 
-  private async ensureAt(session: SessionRecord, name: string, deadline: string, now: Date,
-    abortSignal?: AbortSignal): Promise<void> {
+  private async ensureAt(
+    session: SessionRecord,
+    name: string,
+    deadline: string,
+    now: Date,
+    abortSignal?: AbortSignal,
+  ): Promise<void> {
     const existing = await this.get(name, abortSignal);
     if (existing) {
-      if (!this.validExisting(existing, session, deadline, now)) throw new Error('Existing provisioning schedule does not match the session');
+      if (!this.validExisting(existing, session, deadline, now))
+        throw new Error('Existing provisioning schedule does not match the session');
       return;
     }
     const scheduleAt = new Date(Math.max(Date.parse(deadline), now.getTime() + 60_000));
@@ -117,8 +134,9 @@ export function loadScheduleConfiguration(environment: NodeJS.ProcessEnv): Sched
   const targetRoleArn = environment.SCHEDULER_TARGET_ROLE_ARN;
   if (!groupName || !/^[0-9A-Za-z-_.]{1,64}$/.test(groupName)) throw new Error('SCHEDULER_GROUP_NAME is invalid');
   const lambdaArn = /^arn:aws[a-z-]*:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9-_]+$/;
-  const roleArn = /^arn:aws[a-z-]*:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_\/-]+$/;
-  if (!expiryFunctionArn || !lambdaArn.test(expiryFunctionArn)) throw new Error('PROVISIONING_EXPIRY_FUNCTION_ARN is invalid');
+  const roleArn = /^arn:aws[a-z-]*:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+$/;
+  if (!expiryFunctionArn || !lambdaArn.test(expiryFunctionArn))
+    throw new Error('PROVISIONING_EXPIRY_FUNCTION_ARN is invalid');
   if (!targetRoleArn || !roleArn.test(targetRoleArn)) throw new Error('SCHEDULER_TARGET_ROLE_ARN is invalid');
   return { groupName, expiryFunctionArn, targetRoleArn };
 }

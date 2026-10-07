@@ -8,7 +8,9 @@ export async function waitForRuntimeStop(server: EventEmitter, signals: EventEmi
     await Promise.race([
       once(signals, 'SIGINT', options),
       once(signals, 'SIGTERM', options),
-      once(server, 'error', options).then(([error]) => { throw error; }),
+      once(server, 'error', options).then(([error]) => {
+        throw error;
+      }),
     ]);
   } finally {
     controller.abort();

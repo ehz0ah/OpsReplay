@@ -32,9 +32,15 @@ export function createExpiryHandler({ expire, log = () => {} }: Dependencies) {
       result = await expire(sessionId, abortSignal);
     } finally {
       try {
-        log({ operation: 'expire_provisioning', sessionId: validUuid(sessionId) ? sessionId : 'invalid',
-          result, durationMs: Math.round(performance.now() - started) });
-      } catch { /* Logging must not change cleanup results. */ }
+        log({
+          operation: 'expire_provisioning',
+          sessionId: validUuid(sessionId) ? sessionId : 'invalid',
+          result,
+          durationMs: Math.round(performance.now() - started),
+        });
+      } catch {
+        /* Logging must not change cleanup results. */
+      }
     }
   };
 }

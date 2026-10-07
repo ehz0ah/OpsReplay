@@ -16,7 +16,7 @@ function run(command, args) {
 }
 
 function success(result) {
-  assert.equal(result.status, 0, result.error?.message ?? (result.stderr + result.stdout));
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr + result.stdout);
   return result.stdout.trim();
 }
 
@@ -63,8 +63,17 @@ async function fresh(t) {
 }
 
 function http(id, path, { port = 80, json, body, contentType, method } = {}) {
-  const args = ['curl', '--silent', '--show-error', '--connect-timeout', '1', '--max-time', '4',
-    '--write-out', '\n%{http_code}'];
+  const args = [
+    'curl',
+    '--silent',
+    '--show-error',
+    '--connect-timeout',
+    '1',
+    '--max-time',
+    '4',
+    '--write-out',
+    '\n%{http_code}',
+  ];
   if (json !== undefined) args.push('--json', JSON.stringify(json));
   if (body !== undefined) args.push('--data-binary', body);
   if (contentType !== undefined) args.push('--header', 'Content-Type: ' + contentType);
@@ -72,8 +81,12 @@ function http(id, path, { port = 80, json, body, contentType, method } = {}) {
   args.push(`http://127.0.0.1:${port}${path}`);
   const result = exec(id, ...args);
   const split = result.stdout.lastIndexOf('\n');
-  return { code: result.status, status: Number(result.stdout.slice(split + 1)),
-    body: result.stdout.slice(0, split), error: result.stderr };
+  return {
+    code: result.status,
+    status: Number(result.stdout.slice(split + 1)),
+    body: result.stdout.slice(0, split),
+    error: result.stderr,
+  };
 }
 
 function expectHttp(response, status) {
@@ -83,18 +96,35 @@ function expectHttp(response, status) {
 }
 
 function sql(id, statement) {
-  return success(exec(id, 'runuser', '-u', 'postgres', '--', 'psql', '-X', '-d', 'shop',
-    '-At', '-v', 'ON_ERROR_STOP=1', '-c', statement));
+  return success(
+    exec(
+      id,
+      'runuser',
+      '-u',
+      'postgres',
+      '--',
+      'psql',
+      '-X',
+      '-d',
+      'shop',
+      '-At',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      statement,
+    ),
+  );
 }
 
 function nginxWorkers(id) {
   const processes = success(exec(id, 'ps', '-C', 'nginx', '-o', 'pid=,args='));
-  return new Set([...processes.matchAll(/^\s*(\d+)\s+nginx: worker process\b/gm)].map(match => match[1]));
+  return new Set([...processes.matchAll(/^\s*(\d+)\s+nginx: worker process\b/gm)].map((match) => match[1]));
 }
 
 function childPids(id, parentPid) {
-  return success(exec(id, 'ps', '-eo', 'pid=,ppid=')).split('\n')
-    .map(line => line.trim().split(/\s+/))
+  return success(exec(id, 'ps', '-eo', 'pid=,ppid='))
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
     .filter(([, parent]) => parent === parentPid)
     .map(([pid]) => pid);
 }
@@ -106,12 +136,12 @@ async function repair(id) {
   // Reload is asynchronous: one new worker can return 200 while old workers still return 502.
   await eventually(() => {
     const workers = nginxWorkers(id);
-    return workers.size > 0 && [...oldWorkers].every(pid => !workers.has(pid));
+    return workers.size > 0 && [...oldWorkers].every((pid) => !workers.has(pid));
   }, 'Old nginx workers did not exit after the reference repair');
   expectHttp(http(id, '/'), 200);
 }
 
-test('fresh image has real services, observable 502 evidence, and restricted local settings', async t => {
+test('fresh image has real services, observable 502 evidence, and restricted local settings', async (t) => {
   const id = await fresh(t);
   expectHttp(http(id, '/'), 502);
   expectHttp(http(id, '/', { port: 8080 }), 200);
@@ -119,8 +149,11 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   for (const service of manifest.environment.services) {
     for (const path of [...service.configFiles, ...service.logFiles]) success(exec(id, 'test', '-f', path));
   }
-  const observed = [success(exec(id, 'cat', '/var/log/nginx/error.log')),
-    success(exec(id, 'ss', '-ltnp')), success(exec(id, 'cat', '/etc/nginx/nginx.conf'))];
+  const observed = [
+    success(exec(id, 'cat', '/var/log/nginx/error.log')),
+    success(exec(id, 'ss', '-ltnp')),
+    success(exec(id, 'cat', '/etc/nginx/nginx.conf')),
+  ];
   for (const [index, evidence] of manifest.debrief.keyEvidence.entries()) {
     for (const pattern of evidence.outputPatterns) assert.match(observed[index], new RegExp(pattern));
   }
@@ -138,7 +171,7 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   assert.equal(inspect.HostConfig.PidsLimit, 128);
   assert.deepEqual(inspect.Mounts, []);
   assert.equal(Object.keys(inspect.HostConfig.PortBindings ?? {}).length, 0);
-  assert.ok(inspect.HostConfig.CapDrop.some(cap => cap.replace(/^CAP_/, '') === 'NET_RAW'));
+  assert.ok(inspect.HostConfig.CapDrop.some((cap) => cap.replace(/^CAP_/, '') === 'NET_RAW'));
   const capabilities = success(exec(id, 'cat', '/proc/self/status')).match(/^CapEff:\s*([0-9a-f]+)$/m);
   assert.ok(capabilities);
   assert.equal(BigInt('0x' + capabilities[1]) & (1n << 13n), 0n, 'NET_RAW must actually be absent');
@@ -146,7 +179,7 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   success(exec(id, 'test', '!', '-e', '/var/run/docker.sock'));
 });
 
-test('startup checks are explicit and stopping a service does not end the container', async t => {
+test('startup checks are explicit and stopping a service does not end the container', async (t) => {
   const id = await fresh(t);
   const [before] = JSON.parse(success(docker('inspect', id)));
   assert.deepEqual(before.Config.Healthcheck, { Test: ['NONE'] });
@@ -163,7 +196,7 @@ test('startup checks are explicit and stopping a service does not end the contai
   success(exec(id, 'opsreplay-check-startup'));
 });
 
-test('moving the application to port 8081 is a valid repair', async t => {
+test('moving the application to port 8081 is a valid repair', async (t) => {
   const id = await fresh(t);
   success(exec(id, 'sed', '-i', 's/127.0.0.1:8080/127.0.0.1:8081/', '/etc/shop/gunicorn.conf.py'));
   success(exec(id, 'service', 'shop', 'restart'));
@@ -179,7 +212,7 @@ test('moving the application to port 8081 is a valid repair', async t => {
   assert.equal(inspect.State.Health, undefined);
 });
 
-test('reference fix stores orders, survives service/container restarts, and a fresh attempt resets', async t => {
+test('reference fix stores orders, survives service/container restarts, and a fresh attempt resets', async (t) => {
   const id = await fresh(t);
   await repair(id);
   const reference = randomUUID();
@@ -188,8 +221,15 @@ test('reference fix stores orders, survives service/container restarts, and a fr
   assert.equal(order.reference, reference);
   assert.equal(order.status, 'confirmed');
   assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
-  assert.deepEqual(JSON.parse(sql(id,
-    `SELECT row_to_json(saved) FROM (SELECT id, reference, status FROM orders WHERE id = '${order.id}') saved`)), order);
+  assert.deepEqual(
+    JSON.parse(
+      sql(
+        id,
+        `SELECT row_to_json(saved) FROM (SELECT id, reference, status FROM orders WHERE id = '${order.id}') saved`,
+      ),
+    ),
+    order,
+  );
   success(exec(id, 'service', 'shop', 'restart'));
   assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
   success(exec(id, 'service', 'postgres', 'stop'));
@@ -206,7 +246,7 @@ test('reference fix stores orders, survives service/container restarts, and a fr
   assert.match(success(exec(retry, 'cat', '/etc/nginx/nginx.conf')), /proxy_pass http:\/\/127\.0\.0\.1:8081;/);
 });
 
-test('checkout handles absent references, invalid input, and missing orders without false success', async t => {
+test('checkout handles absent references, invalid input, and missing orders without false success', async (t) => {
   const id = await fresh(t);
   await repair(id);
   const first = JSON.parse(expectHttp(http(id, '/api/checkout', { json: {} }), 201));
@@ -215,7 +255,14 @@ test('checkout handles absent references, invalid input, and missing orders with
   assert.notEqual(first.reference, second.reference);
   const emptyRequest = JSON.parse(expectHttp(http(id, '/api/checkout', { method: 'POST' }), 201));
   assert.ok(emptyRequest.reference);
-  for (const json of [null, [], { extra: true }, { reference: '' }, { reference: 12 }, { reference: 'a'.repeat(129) }]) {
+  for (const json of [
+    null,
+    [],
+    { extra: true },
+    { reference: '' },
+    { reference: 12 },
+    { reference: 'a'.repeat(129) },
+  ]) {
     expectHttp(http(id, '/api/checkout', { json }), 400);
   }
   for (const request of [
@@ -224,8 +271,7 @@ test('checkout handles absent references, invalid input, and missing orders with
     { body: '{"reference":"missing-type"}', contentType: '' },
     { body: '{"reference":"wrong-type"}', contentType: 'text/plain' },
   ]) {
-    assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', request), 400)),
-      { error: 'invalid_checkout' });
+    assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', request), 400)), { error: 'invalid_checkout' });
   }
   for (const port of [80, 8080]) {
     expectHttp(http(id, '/api/checkout', { port, json: { reference: 'a'.repeat(5000) } }), 413);
@@ -234,7 +280,7 @@ test('checkout handles absent references, invalid input, and missing orders with
   assert.equal(sql(id, 'SELECT count(*) FROM orders'), '3');
 });
 
-test('shop reload applies Gunicorn settings but environment changes require restart', async t => {
+test('shop reload applies Gunicorn settings but environment changes require restart', async (t) => {
   const id = await fresh(t);
   await repair(id);
   const master = success(exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'pid', 'shop'));
@@ -250,11 +296,12 @@ test('shop reload applies Gunicorn settings but environment changes require rest
   const order = JSON.parse(expectHttp(http(id, '/api/checkout', { json: { reference: randomUUID() } }), 201));
   assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
   success(exec(id, 'service', 'shop', 'restart'));
-  assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', { json: {} }), 503)),
-    { error: 'database_unavailable' });
+  assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/checkout', { json: {} }), 503)), {
+    error: 'database_unavailable',
+  });
 });
 
-test('invalid reload fails but leaves the original nginx workers serving 502', async t => {
+test('invalid reload fails but leaves the original nginx workers serving 502', async (t) => {
   const id = await fresh(t);
   const commands = manifest.traps[0].safeAlternative.commands;
   for (const command of commands.slice(0, -1)) success(exec(id, 'sh', '-ec', command));
@@ -264,7 +311,7 @@ test('invalid reload fails but leaves the original nginx workers serving 502', a
   assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
 });
 
-test('invalid restart takes nginx down and a valid configuration can start it again', async t => {
+test('invalid restart takes nginx down and a valid configuration can start it again', async (t) => {
   const id = await fresh(t);
   const commands = manifest.traps[0].commands;
   for (const command of commands.slice(0, -1)) success(exec(id, 'sh', '-ec', command));
@@ -272,17 +319,27 @@ test('invalid restart takes nginx down and a valid configuration can start it ag
   assert.equal(http(id, '/').code, 7, 'Proxy should refuse connections');
   expectHttp(http(id, '/', { port: 8080 }), 200);
   assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
-  success(exec(id, 'sed', '-i', 's#proxy_pass http://127.0.0.1:8080$#proxy_pass http://127.0.0.1:8080;#', '/etc/nginx/nginx.conf'));
+  success(
+    exec(
+      id,
+      'sed',
+      '-i',
+      's#proxy_pass http://127.0.0.1:8080$#proxy_pass http://127.0.0.1:8080;#',
+      '/etc/nginx/nginx.conf',
+    ),
+  );
   success(exec(id, 'nginx', '-t'));
   success(exec(id, 'service', 'nginx', 'restart'));
   expectHttp(http(id, '/'), 200);
 });
 
-test('an incomplete database setup is rejected on restart', async t => {
+test('an incomplete database setup is rejected on restart', async (t) => {
   const id = await fresh(t);
   success(exec(id, 'rm', '/var/lib/postgresql/data/.opsreplay-initialized'));
   success(docker('restart', '--time', '10', id));
-  await eventually(() => success(docker('inspect', '--format', '{{.State.Status}}', id)) === 'exited',
-    'An incomplete database must not start the application');
+  await eventually(
+    () => success(docker('inspect', '--format', '{{.State.Status}}', id)) === 'exited',
+    'An incomplete database must not start the application',
+  );
   assert.equal(success(docker('inspect', '--format', '{{.State.ExitCode}}', id)), '1');
 });

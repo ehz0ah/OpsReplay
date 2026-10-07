@@ -3,7 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { DynamoDBDocumentClient, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { ValidateFunction } from 'ajv';
-import { validContent, validLock, validPlan, validProgress, validReceipt, validSession, validSessionRelations } from './validation.js';
+import {
+  validContent,
+  validLock,
+  validPlan,
+  validProgress,
+  validReceipt,
+  validSession,
+  validSessionRelations,
+} from './validation.js';
 import type { Admission, StartRequest } from './types.js';
 
 export const keys = {
@@ -17,7 +25,10 @@ export const keys = {
 type Key = { PK: string; SK: string };
 
 export class StartStore {
-  constructor(private readonly client: DynamoDBDocumentClient, private readonly table: string) {}
+  constructor(
+    private readonly client: DynamoDBDocumentClient,
+    private readonly table: string,
+  ) {}
 
   private async get<T>(key: Key, validate: ValidateFunction<T>, abortSignal?: AbortSignal): Promise<T | undefined> {
     const command = new GetCommand({ TableName: this.table, Key: key, ConsistentRead: true });
@@ -35,7 +46,9 @@ export class StartStore {
     if (session && !validSessionRelations(session)) throw new Error('Invalid stored session relationships');
     return session;
   }
-  active(owner: string, abortSignal?: AbortSignal) { return this.get(keys.active(owner), validLock, abortSignal); }
+  active(owner: string, abortSignal?: AbortSignal) {
+    return this.get(keys.active(owner), validLock, abortSignal);
+  }
 
   async snapshot(owner: string, request: StartRequest, abortSignal?: AbortSignal) {
     const [content, plan, progress] = await Promise.all([
@@ -49,16 +62,26 @@ export class StartStore {
   async commit(admission: Admission, abortSignal?: AbortSignal): Promise<void> {
     const { session, receipt, request, snapshot } = admission;
     const owner = session.ownerId;
-    const put = (key: Key, data: object) => ({ Put: {
-      TableName: this.table, Item: { ...key, data }, ConditionExpression: 'attribute_not_exists(PK)',
-    } });
-    const unchanged = (key: Key, data: object | undefined) => ({ ConditionCheck: {
-      TableName: this.table, Key: key,
-      ...(data === undefined ? { ConditionExpression: 'attribute_not_exists(PK)' } : {
-        ConditionExpression: '#data = :expected',
-        ExpressionAttributeNames: { '#data': 'data' }, ExpressionAttributeValues: { ':expected': data },
-      }),
-    } });
+    const put = (key: Key, data: object) => ({
+      Put: {
+        TableName: this.table,
+        Item: { ...key, data },
+        ConditionExpression: 'attribute_not_exists(PK)',
+      },
+    });
+    const unchanged = (key: Key, data: object | undefined) => ({
+      ConditionCheck: {
+        TableName: this.table,
+        Key: key,
+        ...(data === undefined
+          ? { ConditionExpression: 'attribute_not_exists(PK)' }
+          : {
+              ConditionExpression: '#data = :expected',
+              ExpressionAttributeNames: { '#data': 'data' },
+              ExpressionAttributeValues: { ':expected': data },
+            }),
+      },
+    });
     const input: TransactWriteCommandInput = {
       // SDK retries reuse this token and the exact transaction. Receipts outlive its window.
       ClientRequestToken: randomUUID(),

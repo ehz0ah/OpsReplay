@@ -2,27 +2,109 @@
   "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   "expiresAt": "2026-10-05T02:30:00Z",
   "terminal": [
-    { "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/terminal/1/0001.cast?X-Amz-Expires=300&X-Amz-Signature=example", "startedAt": "2026-10-05T02:00:44Z", "endedAt": "2026-10-05T02:07:03Z" }
+    {
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/terminal/1/0001.cast?X-Amz-Expires=300&X-Amz-Signature=example",
+      "startedAt": "2026-10-05T02:00:44Z",
+      "endedAt": "2026-10-05T02:07:03Z"
+    }
   ],
   "metrics": [
-    { "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/metrics/1/0001.json?X-Amz-Expires=300&X-Amz-Signature=example", "startedAt": "2026-10-05T02:00:42Z", "endedAt": "2026-10-05T02:07:03Z" }
+    {
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/metrics/1/0001.json?X-Amz-Expires=300&X-Amz-Signature=example",
+      "startedAt": "2026-10-05T02:00:42Z",
+      "endedAt": "2026-10-05T02:07:03Z"
+    }
   ],
   "captures": [
-    { "commandSeq": 1, "baselineAt": "2026-10-05T02:00:42Z", "startedAt": "2026-10-05T02:01:10.200Z", "completedAt": "2026-10-05T02:01:10.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0001.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 2, "baselineAt": "2026-10-05T02:01:10.200Z", "startedAt": "2026-10-05T02:01:45.200Z", "completedAt": "2026-10-05T02:01:45.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0002.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 3, "baselineAt": "2026-10-05T02:01:45.200Z", "startedAt": "2026-10-05T02:02:30.200Z", "completedAt": "2026-10-05T02:02:30.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0003.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 4, "baselineAt": "2026-10-05T02:02:30.200Z", "startedAt": "2026-10-05T02:04:05.200Z", "completedAt": "2026-10-05T02:04:05.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0004.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 5, "baselineAt": "2026-10-05T02:04:05.200Z", "startedAt": "2026-10-05T02:04:21.200Z", "completedAt": "2026-10-05T02:04:21.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0005.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 6, "baselineAt": "2026-10-05T02:04:21.200Z", "startedAt": "2026-10-05T02:04:50.200Z", "completedAt": "2026-10-05T02:04:50.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0006.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 7, "baselineAt": "2026-10-05T02:04:50.200Z", "startedAt": "2026-10-05T02:05:40.200Z", "completedAt": "2026-10-05T02:05:40.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0007.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 8, "baselineAt": "2026-10-05T02:05:40.200Z", "startedAt": "2026-10-05T02:05:50.200Z", "completedAt": "2026-10-05T02:05:50.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0008.json?X-Amz-Expires=300&X-Amz-Signature=example" },
-    { "commandSeq": 9, "baselineAt": "2026-10-05T02:05:50.200Z", "startedAt": "2026-10-05T02:06:01.200Z", "completedAt": "2026-10-05T02:06:01.400Z", "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0009.json?X-Amz-Expires=300&X-Amz-Signature=example" }
+    {
+      "commandSeq": 1,
+      "baselineAt": "2026-10-05T02:00:42Z",
+      "startedAt": "2026-10-05T02:01:10.200Z",
+      "completedAt": "2026-10-05T02:01:10.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0001.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 2,
+      "baselineAt": "2026-10-05T02:01:10.200Z",
+      "startedAt": "2026-10-05T02:01:45.200Z",
+      "completedAt": "2026-10-05T02:01:45.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0002.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 3,
+      "baselineAt": "2026-10-05T02:01:45.200Z",
+      "startedAt": "2026-10-05T02:02:30.200Z",
+      "completedAt": "2026-10-05T02:02:30.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0003.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 4,
+      "baselineAt": "2026-10-05T02:02:30.200Z",
+      "startedAt": "2026-10-05T02:04:05.200Z",
+      "completedAt": "2026-10-05T02:04:05.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0004.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 5,
+      "baselineAt": "2026-10-05T02:04:05.200Z",
+      "startedAt": "2026-10-05T02:04:21.200Z",
+      "completedAt": "2026-10-05T02:04:21.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0005.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 6,
+      "baselineAt": "2026-10-05T02:04:21.200Z",
+      "startedAt": "2026-10-05T02:04:50.200Z",
+      "completedAt": "2026-10-05T02:04:50.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0006.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 7,
+      "baselineAt": "2026-10-05T02:04:50.200Z",
+      "startedAt": "2026-10-05T02:05:40.200Z",
+      "completedAt": "2026-10-05T02:05:40.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0007.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 8,
+      "baselineAt": "2026-10-05T02:05:40.200Z",
+      "startedAt": "2026-10-05T02:05:50.200Z",
+      "completedAt": "2026-10-05T02:05:50.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0008.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    },
+    {
+      "commandSeq": 9,
+      "baselineAt": "2026-10-05T02:05:50.200Z",
+      "startedAt": "2026-10-05T02:06:01.200Z",
+      "completedAt": "2026-10-05T02:06:01.400Z",
+      "url": "https://opsreplay-private.s3.amazonaws.com/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/captures/1/0009.json?X-Amz-Expires=300&X-Amz-Signature=example"
+    }
   ],
   "highlights": [
-    { "kind": "key_evidence", "at": "2026-10-05T02:01:45Z", "commandSeq": 2, "label": "The nginx error log shows refused connections to upstream 127.0.0.1:8081." },
-    { "kind": "key_evidence", "at": "2026-10-05T02:02:30Z", "commandSeq": 3, "label": "The socket list shows the application listening on port 8080." },
-    { "kind": "possible_harmful_action", "at": "2026-10-05T02:04:20Z", "commandSeq": 5, "label": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections." },
-    { "kind": "outage", "at": "2026-10-05T02:04:22Z", "commandSeq": null, "label": "Storefront proxy stopped accepting connections" },
+    {
+      "kind": "key_evidence",
+      "at": "2026-10-05T02:01:45Z",
+      "commandSeq": 2,
+      "label": "The nginx error log shows refused connections to upstream 127.0.0.1:8081."
+    },
+    {
+      "kind": "key_evidence",
+      "at": "2026-10-05T02:02:30Z",
+      "commandSeq": 3,
+      "label": "The socket list shows the application listening on port 8080."
+    },
+    {
+      "kind": "possible_harmful_action",
+      "at": "2026-10-05T02:04:20Z",
+      "commandSeq": 5,
+      "label": "Restarting nginx after an edit that breaks its configuration stops the proxy, so 502 responses become refused connections."
+    },
+    {
+      "kind": "outage",
+      "at": "2026-10-05T02:04:22Z",
+      "commandSeq": null,
+      "label": "Storefront proxy stopped accepting connections"
+    },
     { "kind": "recovery", "at": "2026-10-05T02:06:03Z", "commandSeq": null, "label": "Recovery checks passing" }
   ],
   "recording": { "status": "complete", "reason": null }

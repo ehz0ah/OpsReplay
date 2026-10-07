@@ -7,13 +7,23 @@ function order(response: HttpResponse | null, status: number, reference: string)
     const data: unknown = JSON.parse(response.body);
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     const value = data as Record<string, unknown>;
-    return typeof value.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value.id)
-      && value.reference === reference && value.status === 'confirmed' ? value.id : null;
-  } catch { return null; }
+    return typeof value.id === 'string' &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(value.id) &&
+      value.reference === reference &&
+      value.status === 'confirmed'
+      ? value.id
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-export async function journey(check: Journey, transport: Transport, signal: AbortSignal,
-  observe?: (step: HttpCheck, run: () => Promise<boolean>) => Promise<boolean>): Promise<boolean> {
+export async function journey(
+  check: Journey,
+  transport: Transport,
+  signal: AbortSignal,
+  observe?: (step: HttpCheck, run: () => Promise<boolean>) => Promise<boolean>,
+): Promise<boolean> {
   for (const step of check.steps) {
     if (signal.aborted) return false;
     const run = async () => {
@@ -25,17 +35,36 @@ export async function journey(check: Journey, transport: Transport, signal: Abor
   return true;
 }
 
-export async function validateCheck(check: ValidatorCheck, journeys: Journey[], transport: Transport,
-  signal: AbortSignal): Promise<boolean> {
+export async function validateCheck(
+  check: ValidatorCheck,
+  journeys: Journey[],
+  transport: Transport,
+  signal: AbortSignal,
+): Promise<boolean> {
   if (check.kind === 'journey') {
-    const target = journeys.find(j => j.id === check.journey);
+    const target = journeys.find((j) => j.id === check.journey);
     return target ? journey(target, transport, signal) : false;
   }
   const reference = randomUUID();
   const options = { timeoutMs: check.timeoutMs, expectStatus: [201] };
-  const id = order(await transport.http({ ...options, method: 'POST',
-    url: new URL('/api/checkout', check.baseUrl).toString() }, signal, { reference }), 201, reference);
+  const id = order(
+    await transport.http(
+      { ...options, method: 'POST', url: new URL('/api/checkout', check.baseUrl).toString() },
+      signal,
+      { reference },
+    ),
+    201,
+    reference,
+  );
   if (!id || signal.aborted) return false;
-  return order(await transport.http({ ...options, method: 'GET',
-    url: new URL('/api/orders/' + id, check.baseUrl).toString() }, signal), 200, reference) === id;
+  return (
+    order(
+      await transport.http(
+        { ...options, method: 'GET', url: new URL('/api/orders/' + id, check.baseUrl).toString() },
+        signal,
+      ),
+      200,
+      reference,
+    ) === id
+  );
 }
