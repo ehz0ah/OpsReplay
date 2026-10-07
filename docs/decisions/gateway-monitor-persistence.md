@@ -28,6 +28,10 @@ recording is one bounded S3 object and its reference is stored directly on the
 `RECORDING` item. Sealing requires `draining`, the exact saved cutoff, a live lease, and
 a time before the fixed drain deadline. One transaction publishes the canonical
 reference and changes both private and public recording state to `complete`.
+The lifecycle writer can instead mark `recording` or `draining` data as `incomplete`
+only after the session is terminal. One transaction clears the lease and changes both
+private and public recording state. The first terminal recording result wins. A retry
+with the same reason is idempotent.
 
 JSON objects carry `schemaVersion: 1`. This is an application format version. It does not
 require S3 bucket versioning. Content hashes and conditional puts provide immutable
@@ -46,7 +50,8 @@ as a recorder failure or a successful append.
 
 Local tests cover concurrent claims, lease expiry and takeover, renewal, stale writers,
 duplicate page commits, uncertain transaction responses, upload ordering, exact sealing,
-and invalid stored data. They do not prove AWS IAM, S3, DynamoDB, or network behaviour.
+incomplete transitions, terminal races, and invalid stored data. They do not prove AWS
+IAM, S3, DynamoDB, or network behaviour.
 
 ## Deferred integration
 
@@ -60,6 +65,12 @@ its fixed `cutoffAt` and `drainDeadlineAt`. The lifecycle writer owns the transi
 `incomplete` when that deadline expires. Gateway and lifecycle hosts must use
 synchronized UTC clocks. The deadline is an operational bound subject to that bounded
 clock skew. The saved cutoff remains exact and excludes later frames from scoring.
+The start-failure paths must also mark a claimed recording `incomplete` after the
+session becomes terminal. This pre-ready transition uses its completion time as both
+the cutoff and drain deadline. A timed-out drain preserves its original cutoff and
+deadline and can use `drain_timeout` only at or after that deadline. Both lifecycle
+paths must retry the transition until the private recording item and public session
+view have the same terminal state.
 
 The running gateway must claim and renew the lease, construct the recorder from the
 saved checkpoint, and use these adapters. A separate private recording bucket and
