@@ -34,13 +34,14 @@ continue from its last saved sequence without a second measurement stream.
 
 ## Lifecycle and timing
 
-Start is idempotent and returns the fixed measurement origin. Seal accepts the platform
-lifecycle cutoff once. A retry with the same cutoff returns the same result, while a
-different cutoff fails. To handle a small process-clock boundary, control accepts a
-cutoff no more than five seconds ahead of the monitor clock, waits for that clock to
-reach it, then passes the exact timestamp to the monitor. It reserves the cutoff before
-waiting, so concurrent reads exclude later records. It never rounds, subtracts, or replaces
-the lifecycle cutoff.
+Start is idempotent and returns the fixed measurement origin, including after sealing.
+This lets a replacement recorder verify the stream before it retries the same seal. Seal
+accepts the platform lifecycle cutoff once. A retry with the same cutoff returns the same
+result, while a different cutoff fails. To handle a small process-clock boundary, control
+accepts a cutoff no more than five seconds ahead of the monitor clock, waits for that
+clock to reach it, then passes the exact timestamp to the monitor. It reserves the cutoff
+before waiting, so concurrent reads exclude later records. It never rounds, subtracts,
+or replaces the lifecycle cutoff.
 
 Frames relayed before the gateway learns the lifecycle outcome remain provisional. At an
 outcome, the gateway stops live relay, discards records after `endedAt`, seals at that exact

@@ -1,9 +1,9 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client, bounded recording controller, and durable
-recording adapters are implemented and tested locally. The gateway process, WebSocket
-route, provisioned recording bucket and gateway role, terminal proxy, and browser relay
-are not implemented. Follow the
+Status: the production monitor HTTPS client, bounded recording controller, durable
+recording adapters, and recording-session runner are implemented and tested locally.
+The session-work adapter, gateway process, WebSocket route, provisioned recording bucket
+and gateway role, terminal proxy, and browser relay are not implemented. Follow the
 [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -53,7 +53,7 @@ and asks the sink to replace provisional data. This removes frames collected aft
 gateway's delayed observation of the outcome. The final sample must use the same cutoff.
 The recorder caps a stream at 10,000 frames.
 
-The controller does not claim or renew the recorder lease. A later gateway service
+The controller does not claim or renew the recorder lease. The recording-session runner
 supplies the current checkpoint and a sink scoped to its valid lease.
 
 ## Monitor recording persistence
@@ -69,8 +69,22 @@ already be `draining`, the exact saved cutoff, a current lease, and time remaini
 the drain deadline. It then atomically publishes the canonical S3 reference and changes
 both recording records to `complete`.
 
-These are library modules. No gateway process or AWS recording bucket uses them yet.
 The existing one-day monitor-secret bucket is intentionally not used for recordings.
+
+## Recording runtime
+
+`MonitorRecordingRunner` owns one claimed recording generation. It starts lease renewal
+before monitor attachment, resumes the saved checkpoint, stops polling when renewal or
+an append observes `draining`, and keeps renewing while the monitor seals at the saved
+cutoff. Shutdown and lease loss cancel pending monitor work and close the client. The
+runner does not choose an outcome, cutoff, incomplete reason, or score.
+
+`MonitorRecordingWorker` consumes validated private session work through an injected
+source and runs one session at a time. Claim conflicts and lease loss use bounded
+backoff. The source must honor cancellation and supply the task address, public monitor
+certificate, and secret from the private session record. The production source is not
+implemented because the current lifecycle does not yet save the task address or
+certificate and the documented session work index has no implemented writer.
 
 Run its local checks with:
 
@@ -83,12 +97,13 @@ npm run gateway:image:test
 
 The tests use temporary self-signed certificates and the real monitor HTTPS server. They
 cover certificate rejection before HTTP, authentication, TLS version, connection reuse,
-one safe retry, deadlines, cancellation, response bounds, sequence continuity, and the
-start/read/seal lifecycle. The image test also runs the production gateway bundle in a
-separate container against the monitor and Challenge containers in one task-like network
-namespace. These checks do not prove Fargate networking or production certificate delivery.
+one safe retry, deadlines, cancellation, response bounds, sequence continuity, lease
+renewal, drain races, restart from a durable checkpoint, and exact sealing. The image
+test also runs the bundled runner against the monitor and Challenge containers in one
+task-like network namespace. These checks do not prove Fargate networking, production
+certificate delivery, IAM, or deployed DynamoDB and S3 behaviour.
 
-Next task: run the monitor client, recorder, lease renewal, and persistence sink inside a
-bounded gateway service process. Provision the private recording bucket and gateway IAM
-only when that service has a deployment path. Terminal proxying and browser relay remain
-separate increments.
+Next task: implement the lifecycle-owned monitor attachment fields and the gateway's
+session-work source, then compose this worker into the service process. Provision the
+private recording bucket and gateway IAM only with that deployment path. Terminal
+proxying and browser relay remain separate increments.

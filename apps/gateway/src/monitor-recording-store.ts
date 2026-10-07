@@ -89,6 +89,17 @@ export interface MonitorRecordingLifecycleStore {
   ): Promise<void>;
 }
 
+export interface MonitorRecordingLeaseStore {
+  get(sessionId: string, signal?: AbortSignal): Promise<MonitorRecordingState | undefined>;
+  claim(value: ClaimMonitorRecording, signal?: AbortSignal): Promise<ClaimedMonitorRecording>;
+  renew(
+    lease: MonitorRecorderLease,
+    now: string,
+    leaseDurationMs?: number,
+    signal?: AbortSignal,
+  ): Promise<MonitorRecordingState>;
+}
+
 export type MonitorRecordingStoreErrorCode =
   | 'invalid_config'
   | 'invalid_input'
@@ -364,7 +375,9 @@ function cloneState(value: MonitorRecordingState): MonitorRecordingState {
   return structuredClone(value);
 }
 
-export class DynamoMonitorRecordingStore implements MonitorRecordingStateStore, MonitorRecordingLifecycleStore {
+export class DynamoMonitorRecordingStore
+  implements MonitorRecordingStateStore, MonitorRecordingLifecycleStore, MonitorRecordingLeaseStore
+{
   constructor(
     private readonly client: DynamoDBDocumentClient,
     private readonly table: string,

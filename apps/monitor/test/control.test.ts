@@ -32,7 +32,7 @@ function frame(sequence: number): Frame {
   };
 }
 
-function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:00.000Z')) {
+function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:00.000Z'), failSeal = false) {
   let ticks = 0;
   let timerClosed = 0;
   let failed: FailureCode | null = null;
@@ -74,6 +74,7 @@ function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:
       }
       cutoff ??= at;
       if (cutoff !== at) throw new MonitorError('invalid_boundary');
+      if (failSeal) throw new MonitorError('monitor_failed');
       return structuredClone(final);
     },
     fail(code: FailureCode) {
@@ -132,6 +133,8 @@ test('control initialises, starts once, pages frames, and seals one immutable cu
   assert.equal(second.sealed, false);
   const sealed = await f.control.seal('2026-10-07T00:00:05.000Z');
   assert.deepEqual(await f.control.seal('2026-10-07T00:00:05.000Z'), sealed);
+  assert.deepEqual(f.control.start(), started);
+  assert.equal(f.ticks, 2);
   await assert.rejects(f.control.seal('2026-10-07T00:00:06.000Z'), /invalid_boundary/);
   assert.equal(f.control.read(105).sealed, true);
   assert.equal(f.timerClosed, 1);
@@ -146,6 +149,17 @@ test('control fails closed before readiness and when stopped without a lifecycle
   assert.throws(() => f.control.start(), /invalid_boundary/);
   await f.control.close();
   assert.equal(f.failed, 'monitor_failed');
+});
+
+test('control does not accept start after sealing fails', async () => {
+  const f = fixture(true, () => Date.parse('2026-10-07T00:01:00.000Z'), true);
+  await f.control.initialise();
+  f.control.start();
+
+  await assert.rejects(f.control.seal('2026-10-07T00:00:05.000Z'), /monitor_failed/);
+
+  assert.equal(f.control.health(), 'failed');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
 });
 
 test('control waits for a slightly future lifecycle cutoff without changing it', async () => {

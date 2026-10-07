@@ -237,6 +237,8 @@ test('bundled gateway recorder resumes and seals the real monitor stream', { tim
     assert.ok(result.frameCount >= 2);
     assert.equal(result.nextSequence, result.frameCount);
     assert.equal(result.sealed, true);
+    assert.equal(result.runnerStatus, 'complete');
+    assert.equal(result.runnerSealCount, 1);
   } finally {
     removeContainer(monitor);
     removeContainer(challenge);
