@@ -60,6 +60,11 @@ export interface MonitorRecorderOptions {
 }
 
 export const monitorRecordingLimits = Object.freeze({ maximumFrames: 10_000 });
+export const monitorRecordingPolling = Object.freeze({
+  defaultIntervalMs: 500,
+  minimumIntervalMs: 50,
+  maximumIntervalMs: 5_000,
+});
 
 export type MonitorRecorderErrorCode = 'invalid_config' | 'invalid_state' | 'invalid_stream' | 'recording_limit';
 
@@ -77,10 +82,6 @@ export class MonitorRecorderError extends Error {
   }
 }
 
-const defaultPollIntervalMs = 500;
-const maximumPollIntervalMs = 5_000;
-const minimumPollIntervalMs = 50;
-
 function validCheckpoint(value: MonitorRecordingCheckpoint, maximumFrames: number): boolean {
   if (
     !Number.isInteger(value.cursor) ||
@@ -97,7 +98,7 @@ function validCheckpoint(value: MonitorRecordingCheckpoint, maximumFrames: numbe
 }
 
 function cloneCheckpoint(value: MonitorRecordingCheckpoint): MonitorRecordingCheckpoint {
-  return { ...value };
+  return { startedAt: value.startedAt, source: value.source, cursor: value.cursor };
 }
 
 function cancelled(error: unknown, signal: AbortSignal): boolean {
@@ -120,13 +121,13 @@ export class MonitorRecorder {
   private sealed = false;
 
   constructor(options: MonitorRecorderOptions) {
-    const pollIntervalMs = options.pollIntervalMs ?? defaultPollIntervalMs;
+    const pollIntervalMs = options.pollIntervalMs ?? monitorRecordingPolling.defaultIntervalMs;
     const maximumFrames = options.maximumFrames ?? monitorRecordingLimits.maximumFrames;
     const checkpoint = options.checkpoint ?? { startedAt: null, source: null, cursor: 0 };
     if (
       !Number.isInteger(pollIntervalMs) ||
-      pollIntervalMs < minimumPollIntervalMs ||
-      pollIntervalMs > maximumPollIntervalMs ||
+      pollIntervalMs < monitorRecordingPolling.minimumIntervalMs ||
+      pollIntervalMs > monitorRecordingPolling.maximumIntervalMs ||
       !Number.isInteger(maximumFrames) ||
       maximumFrames < 1 ||
       maximumFrames > monitorRecordingLimits.maximumFrames ||
@@ -176,7 +177,9 @@ export class MonitorRecorder {
         try {
           const fullPage = await this.pull(signal);
           if (!signal.aborted) {
-            await delay(fullPage ? minimumPollIntervalMs : this.pollIntervalMs, undefined, { signal });
+            await delay(fullPage ? monitorRecordingPolling.minimumIntervalMs : this.pollIntervalMs, undefined, {
+              signal,
+            });
           }
         } catch (error) {
           if (cancelled(error, signal)) break;
@@ -269,7 +272,7 @@ export class MonitorRecorder {
       if (page.frames.length === 0) break;
       // Sealed reads still share the monitor's authenticated request limit. The
       // protocol does not define a short page as the end of the stream.
-      await delay(minimumPollIntervalMs, undefined, signal === undefined ? undefined : { signal });
+      await delay(monitorRecordingPolling.minimumIntervalMs, undefined, signal === undefined ? undefined : { signal });
     }
     return { source, cursor, frames };
   }

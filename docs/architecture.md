@@ -4,10 +4,11 @@ Status: implementation proposal consistent with the preliminary report. The
 [reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
 locally. Session admission, ECS launch orchestration, and provisioning-expiry cleanup
 have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
-authenticated HTTPS control run locally. The gateway monitor client and bounded
-recording controller and durable recording adapters are implemented and tested locally,
-but no gateway process or deployed recording store runs. Captures, the remaining handlers, terminal recording and
-relay, and cloud deployment are not implemented.
+authenticated HTTPS control run locally. The gateway monitor client, bounded recording
+controller, durable recording adapters, and one-session recording runner are implemented
+and tested locally. The session-work adapter, gateway process, and deployed recording
+store do not run. Captures, the remaining handlers, terminal recording and relay, and
+cloud deployment are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these

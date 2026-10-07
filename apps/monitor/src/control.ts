@@ -80,8 +80,9 @@ export class MonitorControl {
   }
 
   start(): MonitorControlStartResponse {
-    if (this.healthState !== 'ready' || this.sealedAt !== undefined) throw new MonitorError('invalid_boundary');
+    if (this.health() !== 'ready') throw new MonitorError('invalid_boundary');
     if (this.startedAt === undefined) {
+      if (this.sealedAt !== undefined) throw new MonitorError('invalid_boundary');
       this.startedAt = this.monitor.start();
       this.monitor.tick();
       this.timer = this.ticks.every(() => this.monitor.tick(), 25);

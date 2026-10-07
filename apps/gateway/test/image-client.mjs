@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const require = createRequire(import.meta.url);
-const { MonitorClient, MonitorClientError, MonitorRecorder } = require('/test/client.cjs');
+const { MonitorClient, MonitorClientError, MonitorRecorder, MonitorRecordingRunner } = require('/test/client.cjs');
 
 class MemoryRecordingSink {
   startedAt = null;
@@ -43,6 +43,63 @@ class MemoryRecordingSink {
 
   nextAppend() {
     return new Promise((resolve) => this.waiters.push(resolve));
+  }
+}
+
+class RunnerRecordingStore {
+  constructor(state) {
+    this.state = structuredClone(state);
+    this.sealCount = 0;
+  }
+
+  async get() {
+    return structuredClone(this.state);
+  }
+
+  async claim(value) {
+    assert.equal(value.sessionId, this.state.sessionId);
+    this.state.recorderId = value.recorderId;
+    return {
+      lease: { sessionId: value.sessionId, recorderId: value.recorderId, generation: this.state.generation },
+      state: structuredClone(this.state),
+    };
+  }
+
+  async renew() {
+    return structuredClone(this.state);
+  }
+
+  async begin() {
+    assert.fail('A resumed recording must not begin durable state again');
+  }
+
+  async append() {
+    assert.fail('A draining recording must not append a live page');
+  }
+
+  async seal(_lease, value, reference) {
+    assert.equal(value.cutoffAt, this.state.cutoffAt);
+    assert.equal(reference.phase, 'sealed');
+    this.sealCount++;
+    this.state.status = 'complete';
+  }
+}
+
+class RunnerChunkStore {
+  async putLive() {
+    assert.fail('A draining recording must not upload a live page');
+  }
+
+  async putSealed(sessionId, generation, value) {
+    return {
+      phase: 'sealed',
+      objectKey: `sessions/${sessionId}/metrics/${generation}/sealed/test.json`,
+      sha256: 'a'.repeat(64),
+      source: value.source,
+      after: 0,
+      nextSequence: value.cursor,
+      frameCount: value.frames.length,
+    };
   }
 }
 
@@ -114,6 +171,33 @@ async function main() {
     assert.ok(sealed.frames.length >= 2);
     assert.equal(sealed.cursor, sealed.frames.at(-1).sequence);
     assert.deepEqual(sink.sealed, sealed);
+
+    const runnerStore = new RunnerRecordingStore({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      schemaVersion: 1,
+      status: 'draining',
+      recorderId: null,
+      generation: 1,
+      leaseExpiresAt: new Date(Date.now() + 15_000).toISOString(),
+      startedAt: sealed.startedAt,
+      source: sealed.source,
+      cursor: sealed.cursor,
+      cutoffAt,
+      drainDeadlineAt: new Date(Date.now() + 30_000).toISOString(),
+      sealed: null,
+      reason: null,
+      updatedAt: cutoffAt,
+      completedAt: null,
+    });
+    const runnerResult = await new MonitorRecordingRunner({
+      sessionId: runnerStore.state.sessionId,
+      recorderId: 'gateway-image-test',
+      client,
+      chunks: new RunnerChunkStore(),
+      recordings: runnerStore,
+      pollIntervalMs: 100,
+    }).run(new AbortController().signal);
+
     process.stdout.write(
       JSON.stringify({
         health,
@@ -123,6 +207,8 @@ async function main() {
         frameCount: sealed.frames.length,
         nextSequence: sealed.cursor,
         sealed: sink.sealed !== null,
+        runnerStatus: runnerResult.status,
+        runnerSealCount: runnerStore.sealCount,
       }) + '\n',
     );
   } finally {

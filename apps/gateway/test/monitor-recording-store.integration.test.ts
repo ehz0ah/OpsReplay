@@ -9,8 +9,15 @@ import {
   TransactWriteCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
-import type { MonitorFrame, MonitorMetricFrame } from '../src/monitor-client.js';
-import type { StoredMonitorChunk } from '../src/monitor-chunk-store.js';
+import {
+  MonitorClientError,
+  type MonitorFrame,
+  type MonitorFramePage,
+  type MonitorMetricFrame,
+} from '../src/monitor-client.js';
+import type { MonitorChunkStore, StoredMonitorChunk } from '../src/monitor-chunk-store.js';
+import { MonitorRecordingRunner, type ClosableMonitorRecordingClient } from '../src/monitor-recording-runner.js';
+import type { MonitorRecordingBatch, SealedMonitorRecording } from '../src/monitor-recorder.js';
 import {
   DynamoMonitorRecordingStore,
   MonitorRecordingStoreError,
@@ -603,4 +610,136 @@ test('rejects claims for missing sessions and invalid persisted recording data',
   );
   await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'RECORDING' }, { schemaVersion: 99 });
   await assert.rejects(f.store.get(f.sessionId), storeError('invalid_store'));
+});
+
+class RunnerWait {
+  private pending: { resolve: () => void; reject: (error: Error) => void }[] = [];
+
+  readonly wait = (_milliseconds: number, signal: AbortSignal): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+        return;
+      }
+      const item = {
+        resolve: () => {
+          signal.removeEventListener('abort', abort);
+          resolve();
+        },
+        reject,
+      };
+      const abort = () => {
+        this.pending = this.pending.filter((candidate) => candidate !== item);
+        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      this.pending.push(item);
+    });
+
+  release(): void {
+    const item = this.pending.shift();
+    assert.ok(item);
+    item.resolve();
+  }
+
+  get count(): number {
+    return this.pending.length;
+  }
+}
+
+class RunnerClient implements ClosableMonitorRecordingClient {
+  private sealed = false;
+  closed = false;
+
+  async start(): Promise<{ startedAt: string }> {
+    return { startedAt };
+  }
+
+  async read(after: number, _expectedSource?: string, signal?: AbortSignal): Promise<MonitorFramePage> {
+    if (this.sealed) {
+      const frames = after === 0 ? [frame()] : [];
+      return { frames, nextSequence: frames.at(-1)?.sequence ?? after, sealed: true };
+    }
+    if (after === 0) return { frames: [frame()], nextSequence: 1, sealed: false };
+    return await new Promise((_resolve, reject) => {
+      const cancel = () => reject(new MonitorClientError('cancelled'));
+      if (signal?.aborted) cancel();
+      else signal?.addEventListener('abort', cancel, { once: true });
+    });
+  }
+
+  async seal(actualCutoffAt: string) {
+    this.sealed = true;
+    return { cutoffAt: actualCutoffAt, final: metric(actualCutoffAt) };
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+}
+
+class RunnerChunks implements MonitorChunkStore {
+  async putLive(
+    actualSessionId: string,
+    generation: number,
+    value: MonitorRecordingBatch,
+  ): Promise<StoredMonitorChunk> {
+    return reference(actualSessionId, generation, 'live', value.after, value.nextSequence);
+  }
+
+  async putSealed(
+    actualSessionId: string,
+    generation: number,
+    value: SealedMonitorRecording,
+  ): Promise<StoredMonitorChunk> {
+    return reference(actualSessionId, generation, 'sealed', 0, value.cursor);
+  }
+}
+
+async function eventually(check: () => Promise<boolean>, message: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await check()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.fail(message);
+}
+
+test('the runner drives the durable store from claim through canonical sealing', async () => {
+  const f = await fixture();
+  const client = new RunnerClient();
+  const waits = new RunnerWait();
+  let clock = now;
+  const running = new MonitorRecordingRunner({
+    sessionId: f.sessionId,
+    recorderId: 'gateway-runner',
+    client,
+    chunks: new RunnerChunks(),
+    recordings: f.store,
+    leaseDurationMs: 5_000,
+    renewalIntervalMs: 1_000,
+    pollIntervalMs: 50,
+    now: () => clock,
+    wait: waits.wait,
+  }).run(new AbortController().signal);
+
+  await eventually(async () => (await f.store.get(f.sessionId))?.cursor === 1 && waits.count === 1, 'Page not saved');
+  const active = await f.store.get(f.sessionId);
+  assert.ok(active?.recorderId);
+  clock = '2026-10-07T00:00:04.000Z';
+  await setDraining(
+    f,
+    { sessionId: f.sessionId, recorderId: active.recorderId, generation: active.generation },
+    '2026-10-07T00:00:03.000Z',
+    '2026-10-07T00:00:20.000Z',
+  );
+  waits.release();
+
+  assert.deepEqual(await running, { status: 'complete', generation: 1 });
+  assert.equal(client.closed, true);
+  const saved = await f.store.get(f.sessionId);
+  assert.equal(saved?.status, 'complete');
+  assert.equal(saved?.cutoffAt, '2026-10-07T00:00:03.000Z');
+  assert.equal(saved?.cursor, 1);
+  assert.equal(saved?.sealed?.phase, 'sealed');
+  assert.deepEqual(await publicRecording(f), { status: 'complete', reason: null });
 });
