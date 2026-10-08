@@ -1,0 +1,67 @@
+name: Implementation task
+description: Define a bounded task tied to an agreed requirement.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for approved implementation work. Keep product proposals and design discussions in a blank issue until the team agrees on the requirement.
+
+  - type: input
+    id: requirement
+    attributes:
+      label: Requirement or work package
+      description: Link the PRD requirement, implementation work package, or agreed decision.
+      placeholder: I03 or a repository link
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: State the observable result and the value it adds.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope-and-owner
+    attributes:
+      label: Scope and owner
+      description: Name the owner and list the intended components or files. State what is outside this task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List required contracts, issues, services, or decisions. Write None if the task has no dependencies.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable success results and relevant failure cases.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: State the tests or measurements that will prove the acceptance criteria.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract-and-scope-impact
+    attributes:
+      label: Contract and scope impact
+      description: List changes to API, gateway, Challenge, review, data, security, AWS, or product contracts. Write None if no contract changes.
+    validations:
+      required: true
