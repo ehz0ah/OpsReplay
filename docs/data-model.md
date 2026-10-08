@@ -170,9 +170,17 @@ first image:
 Reject limits before side effects with a stable error.
 
 Recordings contain everything the learner typed or printed, which may include secrets
-they paste by mistake. The retention period is open and must be agreed before the
-external pilot. S3 lifecycle rules then expire session objects. Deleting a learner
-removes their table items, session prefixes, conversations, and submissions.
+they paste by mistake. Live recording pages carry the `opsreplay-retention=provisional`
+S3 tag and expire seven days after object creation. Sealed recordings carry
+`opsreplay-retention=sealed` and expire after 30 days. This bounds failed uploads and
+superseded data without treating an S3 object as authoritative. See the
+[recording retention decision](decisions/recording-retention.md).
+
+Deleting a learner removes their table items, session prefixes, conversations, and
+submissions. The evaluation owner owns the request. For one session, it deletes
+objects under `sessions/<sessionId>/` before deleting the `SESSION#<sessionId>` partition,
+then verifies that both locations are empty. The owner-authorized deletion action and
+retention periods for non-recording data remain required before the external pilot.
 
 ## Versioning
 

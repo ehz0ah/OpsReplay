@@ -63,7 +63,8 @@ supplies the current checkpoint and a sink scoped to its valid lease.
 `DynamoMonitorRecordingStore` claims and renews a 15-second recorder lease, fences stale
 gateway generations, and commits monitor cursors with immutable chunk references.
 `S3MonitorChunkStore` writes versioned JSON objects with content-addressed keys,
-conditional puts, S3-managed encryption, and SHA-256 checksums.
+conditional puts, S3-managed encryption, SHA-256 checksums, and the required retention
+tag. Live pages expire after seven days. Sealed recordings expire after 30 days.
 
 `DurableMonitorRecordingSink` connects these adapters to `MonitorRecorder`. It uploads an
 object before it advances DynamoDB state. Final sealing requires the lifecycle state to
@@ -72,6 +73,8 @@ the drain deadline. It then atomically publishes the canonical S3 reference and 
 both recording records to `complete`.
 
 The existing one-day monitor-secret bucket is intentionally not used for recordings.
+The [recording retention decision](../../docs/decisions/recording-retention.md) explains
+the separate recording policy and deletion ownership.
 
 ## Recording runtime
 

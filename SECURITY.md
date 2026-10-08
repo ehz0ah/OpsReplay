@@ -20,9 +20,12 @@ Nothing is deployed yet. Before the pilot, verify the controls in
   but this is not an exam or hiring assessment platform.
 - Validate ownership, entitlement, request identity, and bounds server-side. Treat user
   input, terminal output, and log content as untrusted, including in prompts.
-- Recordings contain everything a learner typed or printed. Keep them private, never in
-  application logs, and agree consent and retention before the external pilot. Provide
-  an owner process for deleting a learner's data and recordings.
+- Recordings contain everything a learner typed or printed. Keep them private and never
+  put them in application logs. Obtain informed consent before a recorded external pilot
+  session. Live recording pages expire after seven days and sealed recordings after 30
+  days. The evaluation owner handles deletion requests through the complete
+  session-prefix and DynamoDB-partition deletion path in the
+  [recording retention decision](docs/decisions/recording-retention.md).
 
 If you find an exposed credential, an isolation gap, or an access-control issue, contact
 the project owner privately through the team's agreed channel. Do not post secrets or

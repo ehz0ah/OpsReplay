@@ -38,6 +38,7 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 8 October 2026    | [Recording work publication increment](recording-work-publication.md): create and validate per-session monitor TLS material, persist the public certificate and private task address, and publish one sparse recording-work entry from an ECS task-state event. Keep supervision and AWS event wiring separate                                                   |
 | 8 October 2026    | [Gateway recording supervision increment](gateway-recording-supervision.md): use the sparse index only for discovery, strongly read authoritative session work, and run bounded failure-isolated recording runners. Keep the executable gateway and AWS deployment in the next stacked change                                                                    |
 | 8 October 2026    | [Recording deployment increment](recording-deployment.md): define an inactive recording-work event path and private Fargate recording worker with a dedicated bucket, narrow roles, bounded capacity, and explicit network access. Require a temporary AWS checkpoint before activation                                                                          |
+| 8 October 2026    | [Recording retention and deletion](recording-retention.md): tag live and sealed recording objects at upload, expire provisional data after 7 days and sealed data after 30 days, and assign consent and deletion ownership before an external pilot                                                                                                              |
 
 ## Product decisions
 
@@ -106,7 +107,7 @@ These are engineering rules, not a reason to add a queue or workflow service wit
 | Pro time-limit extension and Free content set                      | Before pilot                          | Team                                                              |
 | Exercise counts and language coverage                              | Content planning, frozen before pilot | Team                                                              |
 | Warm pool size and schedule                                        | After first performance tests         | Cloud contributors                                                |
-| Retention period for recordings, sessions, and conversations       | Before external pilot                 | Team and evaluation owner                                         |
+| Retention period for sessions and conversations                    | Before external pilot                 | Team and evaluation owner                                         |
 | Open-source licence                                                | Before accepting outside reuse        | Team                                                              |
 | Real billing, prices, and institutional operations                 | Beyond the prototype unless approved  | Team                                                              |
 

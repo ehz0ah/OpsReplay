@@ -85,7 +85,10 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
 
     const buckets = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::S3::Bucket');
     assert.equal(buckets.length, 2);
-    const recordingBucket = buckets.find((resource) => resource.Properties?.LifecycleConfiguration === undefined);
+    const recordingBucket = buckets.find((resource) => {
+      const lifecycle = resource.Properties?.LifecycleConfiguration as { Rules?: { Id?: string }[] } | undefined;
+      return lifecycle?.Rules?.some((rule) => rule.Id === 'ExpireProvisionalRecordings');
+    });
     assert.ok(recordingBucket);
     assert.equal(recordingBucket.DeletionPolicy, 'Retain');
     assert.equal(recordingBucket.UpdateReplacePolicy, 'Retain');
@@ -97,6 +100,24 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
     });
     assert.deepEqual(recordingBucket.Properties?.BucketEncryption, {
       ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }],
+    });
+    assert.deepEqual(recordingBucket.Properties?.LifecycleConfiguration, {
+      Rules: [
+        {
+          ExpirationInDays: 7,
+          Id: 'ExpireProvisionalRecordings',
+          Prefix: 'sessions/',
+          Status: 'Enabled',
+          TagFilters: [{ Key: 'opsreplay-retention', Value: 'provisional' }],
+        },
+        {
+          ExpirationInDays: 30,
+          Id: 'ExpireSealedRecordings',
+          Prefix: 'sessions/',
+          Status: 'Enabled',
+          TagFilters: [{ Key: 'opsreplay-retention', Value: 'sealed' }],
+        },
+      ],
     });
 
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -307,7 +328,15 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
     assert.ok(
       statements.some(
         (statement) =>
-          statement.Action === 's3:PutObject' && JSON.stringify(statement.Resource).includes('/sessions/*'),
+          JSON.stringify(statement.Action) === JSON.stringify(['s3:PutObject', 's3:PutObjectTagging']) &&
+          JSON.stringify(statement.Resource).includes('/sessions/*') &&
+          JSON.stringify(statement.Condition) ===
+            JSON.stringify({
+              StringEquals: {
+                's3:RequestObjectTag/opsreplay-retention': ['provisional', 'sealed'],
+              },
+              'ForAllValues:StringEquals': { 's3:RequestObjectTagKeys': ['opsreplay-retention'] },
+            }),
       ),
     );
     assert.equal(
