@@ -51,6 +51,7 @@ function recordingState(overrides: Partial<MonitorRecordingState> = {}): Monitor
     cutoffAt: null,
     drainDeadlineAt: null,
     sealed: null,
+    retainUntil: null,
     reason: null,
     updatedAt: '2026-10-08T00:00:00.000Z',
     completedAt: null,
@@ -290,6 +291,7 @@ class MemoryRecordingStore implements MonitorRecordingLeaseStore, MonitorRecordi
       source: reference.source,
       cursor: reference.nextSequence,
       sealed: clone(reference),
+      retainUntil: '2026-11-07T00:00:10.000Z',
       completedAt: cutoffAt,
     };
   }

@@ -5,6 +5,7 @@ import {
   isMonitorControlTimestamp,
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
+import { recordingRetainUntil } from '../../../packages/contracts/private/recording-retention.js';
 import {
   monitorRecordingLimits,
   type MonitorRecordingCheckpoint,
@@ -39,6 +40,7 @@ export interface MonitorRecordingState extends MonitorRecordingCheckpoint {
   cutoffAt: string | null;
   drainDeadlineAt: string | null;
   sealed: StoredMonitorChunk | null;
+  retainUntil: string | null;
   reason: string | null;
   updatedAt: string;
   completedAt: string | null;
@@ -268,6 +270,7 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
       'cutoffAt',
       'drainDeadlineAt',
       'sealed',
+      'retainUntil',
       'reason',
       'updatedAt',
       'completedAt',
@@ -298,6 +301,7 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
       state.cutoffAt === null &&
       state.drainDeadlineAt === null &&
       state.sealed === null &&
+      state.retainUntil === null &&
       state.reason === null &&
       state.completedAt === null
     );
@@ -312,6 +316,7 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
       state.drainDeadlineAt !== null &&
       Date.parse(state.drainDeadlineAt) >= Date.parse(state.cutoffAt) &&
       state.sealed === null &&
+      state.retainUntil === null &&
       state.reason === null &&
       state.completedAt === null
     );
@@ -321,7 +326,9 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
     state.leaseExpiresAt !== null ||
     state.cutoffAt === null ||
     state.drainDeadlineAt === null ||
-    state.completedAt === null
+    state.completedAt === null ||
+    state.retainUntil === null ||
+    !isMonitorControlTimestamp(state.retainUntil)
   ) {
     return false;
   }
@@ -335,13 +342,18 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
     return (
       state.reason === null &&
       Date.parse(state.completedAt) < Date.parse(state.drainDeadlineAt) &&
+      state.retainUntil === recordingRetainUntil(state.cutoffAt, 'sealed') &&
       validReference(state.sealed, sessionId, state.generation, 'sealed') &&
       state.sealed.source === state.source &&
       state.sealed.nextSequence === state.cursor &&
       state.sealed.frameCount === state.cursor
     );
   }
-  return state.sealed === null && validIncompleteReason(state.reason);
+  return (
+    state.sealed === null &&
+    validIncompleteReason(state.reason) &&
+    state.retainUntil === recordingRetainUntil(state.startedAt ?? state.completedAt, 'provisional')
+  );
 }
 
 function validLease(value: MonitorRecorderLease): boolean {
@@ -447,6 +459,7 @@ export class DynamoMonitorRecordingStore
             cutoffAt: null,
             drainDeadlineAt: null,
             sealed: null,
+            retainUntil: null,
             reason: null,
             updatedAt: value.now,
             completedAt: null,
@@ -791,7 +804,8 @@ export class DynamoMonitorRecordingStore
             UpdateExpression:
               'SET #data.#status = :complete, #data.#source = :source, #data.#cursor = :cursor, ' +
               '#data.#sealed = :sealed, #data.#reason = :empty, #data.#recorderId = :empty, ' +
-              '#data.#leaseExpiresAt = :empty, #data.#updatedAt = :now, #data.#completedAt = :now',
+              '#data.#leaseExpiresAt = :empty, #data.#retainUntil = :retainUntil, ' +
+              '#data.#updatedAt = :now, #data.#completedAt = :now',
             ConditionExpression:
               '#data.#status = :draining AND #data.#recorderId = :recorderId AND #data.#generation = :generation AND ' +
               '#data.#leaseExpiresAt > :now AND #data.#startedAt = :startedAt AND #data.#cutoffAt = :cutoffAt AND ' +
@@ -806,6 +820,7 @@ export class DynamoMonitorRecordingStore
               '#recorderId': 'recorderId',
               '#generation': 'generation',
               '#leaseExpiresAt': 'leaseExpiresAt',
+              '#retainUntil': 'retainUntil',
               '#updatedAt': 'updatedAt',
               '#completedAt': 'completedAt',
               '#startedAt': 'startedAt',
@@ -822,6 +837,7 @@ export class DynamoMonitorRecordingStore
               ':recorderId': lease.recorderId,
               ':generation': lease.generation,
               ':now': now,
+              ':retainUntil': recordingRetainUntil(value.cutoffAt, 'sealed'),
               ':startedAt': value.startedAt,
               ':cutoffAt': value.cutoffAt,
             },
@@ -911,6 +927,7 @@ export class DynamoMonitorRecordingStore
       cutoffAt: current.cutoffAt ?? completedAt,
       drainDeadlineAt: current.drainDeadlineAt ?? completedAt,
       sealed: null,
+      retainUntil: recordingRetainUntil(current.startedAt ?? completedAt, 'provisional'),
       reason,
       updatedAt: completedAt,
       completedAt,

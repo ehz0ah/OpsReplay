@@ -190,6 +190,7 @@ test('claims a session, saves a start, and atomically advances a chunk cursor', 
   assert.equal(saved?.startedAt, startedAt);
   assert.equal(saved?.source, source);
   assert.equal(saved?.cursor, 1);
+  assert.equal(saved?.retainUntil, null);
   const chunks = (await f.rows()).filter((row) => String(row.SK).startsWith('CHUNK#'));
   assert.equal(chunks.length, 1);
   assert.deepEqual((chunks[0]!.data as { reference: unknown }).reference, page);
@@ -418,6 +419,7 @@ test('publishes one canonical sealed reference and makes retries idempotent', as
   assert.equal(saved?.status, 'complete');
   assert.equal(saved?.recorderId, null);
   assert.equal(saved?.leaseExpiresAt, null);
+  assert.equal(saved?.retainUntil, '2026-11-06T00:00:03.000Z');
   assert.deepEqual(saved?.sealed, canonical);
   assert.equal(
     (
@@ -454,6 +456,7 @@ test('marks a claimed recording incomplete after session start fails', async () 
     cutoffAt: completedAt,
     drainDeadlineAt: completedAt,
     sealed: null,
+    retainUntil: '2026-10-14T00:00:02.000Z',
     reason: 'task_lost',
     updatedAt: completedAt,
     completedAt,
@@ -479,6 +482,7 @@ test('marks an expired drain incomplete and preserves its fixed bounds', async (
   assert.equal(saved?.cutoffAt, cutoffAt);
   assert.equal(saved?.drainDeadlineAt, drainDeadlineAt);
   assert.equal(saved?.completedAt, drainDeadlineAt);
+  assert.equal(saved?.retainUntil, '2026-10-14T00:00:01.000Z');
   assert.equal(saved?.reason, 'drain_timeout');
   assert.deepEqual(await publicRecording(f), { status: 'incomplete', reason: 'drain_timeout' });
 });

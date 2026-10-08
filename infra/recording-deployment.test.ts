@@ -339,6 +339,16 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
             }),
       ),
     );
+    assert.ok(
+      statements.some(
+        (statement) =>
+          statement.Effect === 'Deny' &&
+          statement.Action === 's3:PutObjectTagging' &&
+          JSON.stringify(statement.Resource).includes('/sessions/*') &&
+          JSON.stringify(statement.Condition) ===
+            JSON.stringify({ Null: { 's3:ExistingObjectTag/opsreplay-retention': 'false' } }),
+      ),
+    );
     assert.equal(
       statements.some((statement) => {
         const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];

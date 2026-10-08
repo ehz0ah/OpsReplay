@@ -15,7 +15,8 @@ outages no longer have `afterCommandSeq`, and `observedOutages` replaces
 add a required `expiresAt` and a `TURN_INTERRUPTED` stream error. Clients
 must handle these fields before the first runtime release. This revision also replaces
 proposal `run` with `dispatching`, `accepted`, and `unknown`, adds a `proposal_status`
-gateway frame, and requires capture interval timestamps in playback.
+gateway frame, requires capture interval timestamps in playback, and defines
+`RECORDING_EXPIRED` for playback after the recording retention boundary.
 
 ## Common rules
 
@@ -55,6 +56,7 @@ validator or probe definitions, unreleased hints, or review findings.
 | 403    | `ACCESS_DENIED`                                                                                                                                                         |
 | 404    | `NOT_FOUND`                                                                                                                                                             |
 | 409    | `IDEMPOTENCY_CONFLICT`, `ACTIVE_SESSION_EXISTS`, `SESSION_NOT_READY`, `SESSION_ACTIVE`, `SESSION_TERMINAL`, `DEBRIEF_PENDING`, `HINT_NOT_AVAILABLE`, `TURN_IN_PROGRESS` |
+| 410    | `RECORDING_EXPIRED`                                                                                                                                                     |
 | 422    | `VERSION_UNAVAILABLE`, `NO_HINTS_REMAINING`                                                                                                                             |
 | 429    | `LIMIT_EXCEEDED`                                                                                                                                                        |
 | 503    | `CAPACITY_UNAVAILABLE`, with `retryAfterSeconds`                                                                                                                        |
@@ -258,6 +260,11 @@ chunks, and one capture per command, plus the highlights the debrief identified.
 client requests a new manifest when the links expire. The debrief and playback both
 carry the final recording status and reason. Incomplete playback lists only saved
 objects, and its debrief has `score: null`. The client shows the missing-data notice.
+The playback handler reads the authoritative `RECORDING` item before object references.
+At or after its `retainUntil`, playback returns `410 RECORDING_EXPIRED` and creates no
+links. Before that boundary, a referenced object that is missing is an integrity failure,
+not normal expiry. Link expiry cannot be later than `retainUntil`. The debrief remains
+available after recording expiry.
 
 A retry is a new `POST /v1/sessions` with a new request ID. It never changes the first
 attempt's session, debrief, or first-attempt progress.

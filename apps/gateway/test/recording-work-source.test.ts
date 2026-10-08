@@ -83,6 +83,7 @@ function recording(sessionId: string, recorderId: string, leaseExpiresAt: string
       cutoffAt: null,
       drainDeadlineAt: null,
       sealed: null,
+      retainUntil: null,
       reason: null,
       updatedAt: createdAt,
       completedAt: null,

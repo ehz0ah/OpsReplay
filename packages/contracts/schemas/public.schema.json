@@ -22,6 +22,7 @@
             "SESSION_ACTIVE",
             "SESSION_TERMINAL",
             "DEBRIEF_PENDING",
+            "RECORDING_EXPIRED",
             "CAPACITY_UNAVAILABLE",
             "HINT_NOT_AVAILABLE",
             "NO_HINTS_REMAINING",
