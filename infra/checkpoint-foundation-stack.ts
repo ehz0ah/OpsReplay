@@ -9,13 +9,14 @@ import {
   Vpc,
 } from 'aws-cdk-lib/aws-ec2';
 import { CfnCluster } from 'aws-cdk-lib/aws-ecs';
-import { Repository, RepositoryEncryption, TagMutability } from 'aws-cdk-lib/aws-ecr';
+import { Repository, RepositoryEncryption, TagMutability, TagStatus } from 'aws-cdk-lib/aws-ecr';
 import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import type { Construct } from 'constructs';
 
 const workloadSubnetName = 'workloads';
 const vpcCidr = '10.42.0.0/24';
+const vpcDnsResolverIpv4 = '10.42.0.2';
 
 export class CheckpointFoundationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -48,8 +49,6 @@ export class CheckpointFoundationStack extends Stack {
       ],
     });
     const workloadSubnets = vpc.selectSubnets({ subnetGroupName: workloadSubnetName });
-    const resolverCidr = Fn.select(2, Fn.cidr(vpc.vpcCidrBlock, 4, '8'));
-    const resolverIpv4 = Fn.select(0, Fn.split('/', resolverCidr));
 
     const endpointSecurityGroup = new CfnSecurityGroup(this, 'AwsInterfaceEndpointSecurityGroup', {
       vpcId: vpc.vpcId,
@@ -86,14 +85,14 @@ export class CheckpointFoundationStack extends Stack {
           ipProtocol: 'tcp',
           fromPort: 53,
           toPort: 53,
-          cidrIp: Fn.join('', [resolverIpv4, '/32']),
+          cidrIp: `${vpcDnsResolverIpv4}/32`,
           description: 'VPC DNS resolver',
         },
         {
           ipProtocol: 'udp',
           fromPort: 53,
           toPort: 53,
-          cidrIp: Fn.join('', [resolverIpv4, '/32']),
+          cidrIp: `${vpcDnsResolverIpv4}/32`,
           description: 'VPC DNS resolver',
         },
       ],
@@ -140,7 +139,13 @@ export class CheckpointFoundationStack extends Stack {
         encryption: RepositoryEncryption.AES_256,
         imageScanOnPush: true,
         imageTagMutability: TagMutability.IMMUTABLE,
-        lifecycleRules: [{ maxImageCount: 5, description: 'Retain five checkpoint images.' }],
+        lifecycleRules: [
+          {
+            maxImageCount: 5,
+            tagStatus: TagStatus.UNTAGGED,
+            description: 'Retain five untagged checkpoint images.',
+          },
+        ],
         removalPolicy: RemovalPolicy.DESTROY,
         emptyOnDelete: true,
       });
@@ -180,7 +185,7 @@ export class CheckpointFoundationStack extends Stack {
       AwsInterfaceEndpointSecurityGroupId: endpointSecurityGroup.attrGroupId,
       S3GatewayEndpointPrefixListId: s3PrefixListId.valueAsString,
       DynamoDbGatewayEndpointPrefixListId: dynamoDbPrefixListId.valueAsString,
-      VpcDnsResolverIpv4: resolverIpv4,
+      VpcDnsResolverIpv4: vpcDnsResolverIpv4,
       EnvironmentExecutionRoleArn: executionRole.roleArn,
       EnvironmentLogGroupName: environmentLogs.logGroupName,
       GatewayRepositoryUri: gatewayRepository.repositoryUri,

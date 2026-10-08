@@ -41,8 +41,9 @@ account lookups.
 
 The stack is disposable. Its log group and ECR repositories use deletion policies, and
 repository deletion also removes contained checkpoint images. Repository lifecycle
-rules keep at most five images. The VPC endpoints have hourly cost, so the stack must
-exist only during an approved test window.
+rules keep at most five untagged images. Tagged images remain available for task
+definitions that pin their digests. The VPC endpoints have hourly cost, so the stack
+must exist only during an approved test window.
 
 Use the standard CDK bootstrap stack for deployment assets. The bootstrap S3 bucket
 stages Lambda ZIP files for CloudFormation. It is not application storage and is not

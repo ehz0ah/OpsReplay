@@ -18,7 +18,8 @@ Use the [architecture](../docs/architecture.md) and
 - S3 and DynamoDB gateway endpoints;
 - separate environment and interface-endpoint security groups;
 - one ECS cluster;
-- immutable, scan-on-push repositories for the gateway, monitor, and first Challenge;
+- immutable, scan-on-push repositories for the gateway, monitor, and first Challenge,
+  with cleanup limited to untagged images;
 - one environment execution role and one seven-day environment log group.
 
 One Availability Zone reduces endpoint cost for the temporary functional checkpoint.
@@ -145,6 +146,11 @@ Pass the reviewed values to `diff` and `deploy`. Do not copy the placeholders be
 npm run infra:cdk -- diff OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
 npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
 ```
+
+After deployment, inspect the stack outputs. Confirm that `VpcDnsResolverIpv4` is
+`10.42.0.2` before passing it to the application stack. Keep an immutable tag on each
+image digest used by a task definition. The lifecycle rule deletes only older untagged
+images.
 
 Destroy the exact foundation stack after the approved test. Confirm that the ECR
 repositories, endpoints, cluster, log group, subnet, and VPC are absent afterward.
