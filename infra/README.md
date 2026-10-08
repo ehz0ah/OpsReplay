@@ -72,7 +72,9 @@ explicit lifecycle expiry. Live pages are provisional and expire after seven day
 Sealed recordings expire after 30 days. These rules bound unreferenced uploads while
 keeping active recordings safe under the four-hour session limit. Recording objects are
 immutable through content-addressed keys and conditional writes. S3 bucket versioning
-and Intelligent-Tiering are not enabled. See the
+and Intelligent-Tiering are not enabled. The gateway role can tag a new upload with one
+of the two retention classes. An explicit deny prevents it from changing the retention
+tag on an existing object. See the
 [recording retention decision](../docs/decisions/recording-retention.md).
 
 The gateway task has a separate application role and execution role. Its application
@@ -102,8 +104,10 @@ ECR, run private tasks with only the required VPC endpoints, and reach them thro
 gateway. Save test results, stop runtime tasks, destroy the exact test stack, and verify
 leftovers. Cleanup must handle failed tests and have an independent expiry path for a
 crashed runner. Verify the recording tags and lifecycle rules on managed S3. Verify that
-deletion of one test session removes its S3 prefix before its DynamoDB partition. Record
-readiness time, isolation results, cost, and retained resources.
+an initial tagged upload succeeds and a standalone retag attempt fails. Verify that
+deletion of one terminal test session removes its S3 prefix before its DynamoDB partition
+and matching start receipt. Record readiness time, isolation results, cost, and retained
+resources.
 No full-stack AWS run is required for each small PR. This change provides the inactive
 deployment definition only. It does not claim AWS validation.
 

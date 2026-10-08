@@ -16,7 +16,7 @@ few known fields afterwards.
 | Session           | Owner, saved access grant and limits, Challenge ID and version, digests, attempt, status, reason, immutable launch arguments, provisioning deadline, schedule name, task ARN, task address, monitor secret and certificate pin, times, `lastSeenAt`, counters, recovery state, hint count | Public projection only                                      |
 | TimelineEvent     | Command, monitor, assistance, or lifecycle event                                                                                                                                                                                                                                          | Owner                                                       |
 | Capture           | Requesting command sequence, `baselineAt`, `startedAt`, `completedAt`, configuration diffs, new log lines, metric sample. Association is not causation                                                                                                                                    | Owner, through playback links                               |
-| Recording         | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors and immutable object references                                                                                                                                           | Status public, objects through playback links               |
+| Recording         | Status, incomplete reason, fixed cutoff and drain deadline, recorder generation and lease expiry, saved cursors, immutable object references, and authoritative recording retention boundary                                                                                              | Status public, objects through playback links               |
 | TerminalTicket    | Ticket hash, owner, session, expiry                                                                                                                                                                                                                                                       | API and gateway only                                        |
 | TerminalInput     | Monotonic connection generation and owning connection ID. The terminal server enforces the installed generation                                                                                                                                                                           | Gateway only                                                |
 | Debrief           | Observed evidence, attempted checks, possible harmful actions, measured outages, score components, assistance                                                                                                                                                                             | Owner, after recording is sealed                            |
@@ -44,7 +44,7 @@ names are a storage convention, not part of the HTTP contract.
 | `USER#<id>`    | `REVIEWREQ#<requestId>`                  | Review submission receipt                                             |
 | `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                    |
 | `SESSION#<id>` | `STATE`                                  | Private session record                                                |
-| `SESSION#<id>` | `RECORDING`                              | Recorder lease, saved cursors, and final recording state              |
+| `SESSION#<id>` | `RECORDING`                              | Lease, cursors, references, and nullable `retainUntil`                |
 | `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional object reference and its sequence range     |
 | `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                          |
 | `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket with a TTL                                            |
@@ -173,14 +173,23 @@ Recordings contain everything the learner typed or printed, which may include se
 they paste by mistake. Live recording pages carry the `opsreplay-retention=provisional`
 S3 tag and expire seven days after object creation. Sealed recordings carry
 `opsreplay-retention=sealed` and expire after 30 days. This bounds failed uploads and
-superseded data without treating an S3 object as authoritative. See the
+superseded data without treating an S3 object as authoritative. `RECORDING.retainUntil`
+is null while active. It becomes the fixed cutoff plus 30 days for a complete recording,
+or the recording start plus seven days for an incomplete recording. Readers check this
+record before following object references. At or after the boundary, playback returns
+`410 RECORDING_EXPIRED`. Before it, a missing referenced object is an integrity failure.
+The debrief does not expire with the recording. See the
 [recording retention decision](decisions/recording-retention.md).
 
 Deleting a learner removes their table items, session prefixes, conversations, and
-submissions. The evaluation owner owns the request. For one session, it deletes
-objects under `sessions/<sessionId>/` before deleting the `SESSION#<sessionId>` partition,
-then verifies that both locations are empty. The owner-authorized deletion action and
-retention periods for non-recording data remain required before the external pilot.
+submissions. The evaluation owner owns the request. One-session deletion is allowed
+only after the session is terminal, recording is `complete` or `incomplete`, recording
+work is retired, and the owner's active lock does not name the session. It deletes the
+S3 prefix before the `SESSION#<sessionId>` partition, then deletes the matching
+`USER#<ownerId>/START#<requestId>` receipt. It verifies all three locations before it
+confirms deletion and never changes a lock for another session. The owner-authorized
+deletion action and retention periods for non-recording data remain required before the
+external pilot.
 
 ## Versioning
 

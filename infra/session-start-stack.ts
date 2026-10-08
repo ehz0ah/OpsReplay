@@ -18,7 +18,7 @@ import { CfnSecurityGroup, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
 import { CfnService, CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { CfnRule, Rule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
-import { ArnPrincipal, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { ArnPrincipal, Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { SqsDestination } from 'aws-cdk-lib/aws-lambda-destinations';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
@@ -542,6 +542,16 @@ export class SessionStartStack extends Stack {
             ],
           },
           'ForAllValues:StringEquals': { 's3:RequestObjectTagKeys': [recordingRetention.tagKey] },
+        },
+      }),
+    );
+    gatewayRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.DENY,
+        actions: ['s3:PutObjectTagging'],
+        resources: [recordings.arnForObjects('sessions/*')],
+        conditions: {
+          Null: { [`s3:ExistingObjectTag/${recordingRetention.tagKey}`]: 'false' },
         },
       }),
     );

@@ -23,8 +23,10 @@ Nothing is deployed yet. Before the pilot, verify the controls in
 - Recordings contain everything a learner typed or printed. Keep them private and never
   put them in application logs. Obtain informed consent before a recorded external pilot
   session. Live recording pages expire after seven days and sealed recordings after 30
-  days. The evaluation owner handles deletion requests through the complete
-  session-prefix and DynamoDB-partition deletion path in the
+  days. Readers enforce the authoritative recording retention boundary before they
+  follow S3 references. The evaluation owner handles deletion requests only after the
+  session is terminal and recording work is finished. The complete deletion path removes
+  the session prefix, DynamoDB session partition, and matching start receipt as defined in the
   [recording retention decision](docs/decisions/recording-retention.md).
 
 If you find an exposed credential, an isolation gap, or an access-control issue, contact

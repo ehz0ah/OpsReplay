@@ -40,6 +40,18 @@ but its DynamoDB transaction fails, the unreferenced object still expires after 
 Playback and scoring use only the sealed reference stored in DynamoDB. They never infer
 authority from an object tag or an S3 prefix scan.
 
+The authoritative `RECORDING` item has a nullable `retainUntil`. It is null while a
+recording is active. A complete recording uses the fixed cutoff plus 30 days. An
+incomplete recording uses its start time plus seven days, or its completion time when
+recording never started. These anchors occur no later than object creation, so the
+application boundary cannot outlive the corresponding S3 lifecycle period.
+
+Every reader must load `RECORDING` before it follows sealed or chunk references. At or
+after `retainUntil`, playback returns `410 RECORDING_EXPIRED` without reading S3. Before
+that boundary, a missing referenced object is an integrity failure. Pre-signed links
+must not remain valid after `retainUntil`. The debrief remains available after recording
+expiry.
+
 S3 Intelligent-Tiering is not enabled. It changes storage cost, not deletion or consent.
 Live objects are also capped at 128 KiB, so automatic tiering would not address the main
 provisional-object case.
@@ -52,17 +64,26 @@ two retention periods, and how to request deletion. A learner who does not conse
 cannot start a Challenge because a tamper-resistant recording is part of the Challenge
 contract.
 
-The evaluation owner owns deletion requests. Deleting one session removes every object
-under `sessions/<sessionId>/` and every DynamoDB item under `SESSION#<sessionId>`. Delete
-S3 objects first so a failed operation remains discoverable and can be retried. Confirm
-that both locations are empty before confirming deletion to the learner. The recording
-worker has no list or delete permission. A separate operator-authorized deletion action
-must implement this path before the external pilot.
+The evaluation owner owns deletion requests. Refuse deletion while the session is active.
+The session must be terminal, its recording must be `complete` or `incomplete`, its
+recording-work entry must be retired, and no `USER#<ownerId>/ACTIVE` lock may name it.
+Never alter an active lock that names another session.
+
+Delete every object under `sessions/<sessionId>/` first so a failed operation remains
+discoverable and can be retried. Then delete every item under `SESSION#<sessionId>` and
+the matching `USER#<ownerId>/START#<requestId>` receipt whose value names the session.
+The receipt is removed because it points to the deleted session and cannot be replayed
+without that session record. Verify the S3 prefix, session partition, and receipt are all
+absent before confirming deletion to the learner. The recording worker has no list,
+delete, or existing-object retag permission. A separate operator-authorized deletion
+action must implement this path before the external pilot.
 
 ## Validation
 
 Local tests verify that live and sealed uploads carry the required tag, the bucket has
 both lifecycle rules, the provisional period exceeds the maximum active recording
-window, and the gateway role can write only the two approved tag values. These tests do
-not prove managed S3 lifecycle timing or IAM enforcement. Verify both during the
-temporary AWS checkpoint before enabling the recording path.
+window, the gateway role can write only the two approved tag values, and an explicit
+deny protects an existing object's retention tag. These tests do not prove managed S3
+lifecycle timing or IAM enforcement. During the temporary AWS checkpoint, verify an
+initial tagged upload succeeds and a standalone attempt to retag that object fails.
+Also verify the lifecycle rules before enabling the recording path.
