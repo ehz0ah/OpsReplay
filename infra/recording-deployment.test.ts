@@ -211,11 +211,15 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
       ),
     );
     assert.equal(
-      statements.some(
-        (statement) =>
-          ['s3:GetObject', 's3:ListBucket', 's3:DeleteObject'].includes(statement.Action as string) &&
-          JSON.stringify(statement.Resource).includes('Recordings'),
-      ),
+      statements.some((statement) => {
+        const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+        return (
+          actions.some(
+            (action) =>
+              typeof action === 'string' && ['s3:GetObject', 's3:ListBucket', 's3:DeleteObject'].includes(action),
+          ) && JSON.stringify(statement.Resource).includes('Recordings')
+        );
+      }),
       false,
     );
   } finally {
