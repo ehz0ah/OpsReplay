@@ -188,6 +188,7 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
         (statement) =>
           JSON.stringify(statement.Action) ===
             JSON.stringify([
+              'dynamodb:BatchGetItem',
               'dynamodb:ConditionCheckItem',
               'dynamodb:GetItem',
               'dynamodb:PutItem',

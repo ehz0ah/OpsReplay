@@ -405,7 +405,13 @@ export class SessionStartStack extends Stack {
     });
     gatewayRole.addToPolicy(
       new PolicyStatement({
-        actions: ['dynamodb:ConditionCheckItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+        actions: [
+          'dynamodb:BatchGetItem',
+          'dynamodb:ConditionCheckItem',
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+        ],
         resources: [table.tableArn],
         conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
       }),

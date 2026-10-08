@@ -112,6 +112,7 @@ test('the stack preserves separate disabled start and expiry actions', () => {
       }
     }
     assert.deepEqual([...actions].sort(), [
+      'dynamodb:BatchGetItem',
       'dynamodb:ConditionCheckItem',
       'dynamodb:DeleteItem',
       'dynamodb:GetItem',
