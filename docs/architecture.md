@@ -6,8 +6,9 @@ locally. Session admission, ECS launch orchestration, and provisioning-expiry cl
 have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
 authenticated HTTPS control run locally. The gateway monitor client, bounded recording
 controller, durable recording adapters, work source, supervisor, and recording-only
-process are implemented and tested locally. CDK defines their inactive AWS deployment,
-but no AWS run has occurred. Captures, the remaining lifecycle handlers, terminal
+process are implemented and tested locally. CDK defines their inactive AWS deployment
+and the disposable private foundation for its first checkpoint, but no AWS run has
+occurred. Captures, the remaining lifecycle handlers, terminal
 recording and relay, and the public cloud entry points are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as

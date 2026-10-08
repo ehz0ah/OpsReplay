@@ -9,8 +9,9 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: local Challenge image, monitor measurements and control, and disabled session
-provisioning.** The [preliminary report, version 5](docs/reports/preliminary/README.md)
+**Status: local Challenge image, monitor measurements and control, disabled session
+provisioning, and a locally synthesized AWS checkpoint foundation.** The
+[preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
 validation tools, three synthetic draft Challenge manifests, and a
@@ -23,8 +24,9 @@ a production monitor client, bounded recording controller, durable recording ada
 a work source, and an executable recording supervisor. These parts are tested locally,
 including as a hardened container against DynamoDB Local and against the real monitor
 and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
-event action, and private recording service. The complete recording path is disabled by
-default and has not run in AWS. Captures, the terminal proxy, browser relay, remaining
+event action, private recording service, and the isolated network, endpoints, cluster,
+and image repositories for a temporary AWS checkpoint. The complete recording path is
+disabled by default and has not run in AWS. Captures, the terminal proxy, browser relay, remaining
 API, web application, and lifecycle completion are not implemented. The image is not a
 published Challenge or a complete session. No public route is enabled.
 
