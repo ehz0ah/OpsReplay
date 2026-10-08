@@ -51,6 +51,7 @@ export class MonitorRecordingSupervisorError extends Error {
 }
 
 const defaultPollIntervalMs = 2_000;
+const fatalDrainTimeoutMs = 30_000;
 const maximumPollIntervalMs = 30_000;
 const maximumConcurrentRecordings = 64;
 
@@ -250,7 +251,14 @@ export class MonitorRecordingSupervisor {
           if (!expectedCancellation(error, lifetime.signal)) throw error;
         }
       }
-      if (fatal !== undefined) await Promise.all(active.values());
+      if (fatal !== undefined && active.size > 0) {
+        const drainTimer = new AbortController();
+        try {
+          await Promise.race([Promise.all(active.values()), this.wait(fatalDrainTimeoutMs, drainTimer.signal)]);
+        } finally {
+          drainTimer.abort();
+        }
+      }
     } finally {
       lifetime.abort();
       await Promise.all(active.values());

@@ -91,7 +91,8 @@ sessions. The index uses a keys-only projection, so monitor credentials do not e
 not start the same session twice in one process. It bounds retry-cooldown memory, rotates
 work discovery, and cancels every runner during shutdown. Monitor, storage, and AWS
 failures are isolated and reported per session. Configuration and programming errors
-stop new launches, let healthy recordings finish, and then stop the supervisor.
+stop new launches and give healthy recordings up to 30 seconds to finish. The supervisor
+then cancels remaining runners and stops, so a replacement can resume durable work.
 `createGatewayRecordingSupervisor` composes the work source, monitor client, runner,
 DynamoDB recording store, and S3 chunk store with the same clients. The gateway AWS
 clients use two attempts and bounded connection and request times.

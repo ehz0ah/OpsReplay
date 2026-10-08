@@ -342,6 +342,36 @@ test('stops new launches after a programming failure and lets healthy runners fi
   assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, true);
 });
 
+test('bounds fatal draining before it cancels remaining runners', async () => {
+  const items = [work(), work(), work()];
+  const source = new MemoryWorkSource(items);
+  const runners = new Map<string, ControlledRunner[]>();
+  const waits: number[] = [];
+  let expireFatalDrain: (() => void) | undefined;
+  const failure = new TypeError('programming failure');
+  const running = supervisor(source, runners, {
+    wait: (milliseconds, signal) => {
+      signal.throwIfAborted();
+      waits.push(milliseconds);
+      if (milliseconds !== 30_000) return new Promise(() => {});
+      return new Promise((resolve) => {
+        expireFatalDrain = resolve;
+      });
+    },
+  }).run(new AbortController().signal);
+
+  await until(() => runners.size === 2, 'Both recording slots did not start');
+  runners.get(items[0]!.sessionId)![0]!.fail(failure);
+  await until(() => expireFatalDrain !== undefined, 'Fatal drain did not start');
+  assert.deepEqual(waits, [100, 30_000]);
+  assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, false);
+  assert.equal(runners.has(items[2]!.sessionId), false);
+
+  expireFatalDrain!();
+  await assert.rejects(running, (error: unknown) => error === failure);
+  assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, true);
+});
+
 test('does not construct more runners after a fatal factory failure', async () => {
   const items = [work(), work()];
   const constructed: string[] = [];
