@@ -124,30 +124,9 @@ test('checkpoint workloads have private endpoint-only network access', () => {
       ['tcp', 'udp'],
     );
     const resolverIpv4 = rendered.Outputs.VpcDnsResolverIpv4?.Value;
-    assert.deepEqual(resolverIpv4, {
-      'Fn::Select': [
-        0,
-        {
-          'Fn::Split': [
-            '/',
-            {
-              'Fn::Select': [
-                2,
-                {
-                  'Fn::Cidr': [
-                    { 'Fn::GetAtt': [expectStringResourceId(rendered.Resources, 'AWS::EC2::VPC'), 'CidrBlock'] },
-                    4,
-                    '8',
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
+    assert.equal(resolverIpv4, '10.42.0.2');
     for (const rule of environmentEgress.filter((item) => item.Description === 'VPC DNS resolver')) {
-      assert.deepEqual(rule.CidrIp, { 'Fn::Join': ['', [resolverIpv4, '/32']] });
+      assert.equal(rule.CidrIp, '10.42.0.2/32');
     }
 
     const securityGroupRules = securityGroupEntries.flatMap(([, resource]) => [
@@ -203,8 +182,14 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       assert.equal(repository.UpdateReplacePolicy, 'Delete');
       const lifecycle = JSON.parse(
         String((properties.LifecyclePolicy as Record<string, unknown>).LifecyclePolicyText),
-      ) as { rules: { selection: { countNumber: number } }[] };
-      assert.equal(lifecycle.rules[0]?.selection.countNumber, 5);
+      ) as {
+        rules: { selection: { countNumber: number; countType: string; tagStatus: string } }[];
+      };
+      assert.deepEqual(lifecycle.rules[0]?.selection, {
+        countNumber: 5,
+        countType: 'imageCountMoreThan',
+        tagStatus: 'untagged',
+      });
     }
 
     template.resourceCountIs('AWS::IAM::Role', 1);
