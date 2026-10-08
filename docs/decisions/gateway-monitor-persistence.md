@@ -35,7 +35,9 @@ with the same reason is idempotent.
 
 JSON objects carry `schemaVersion: 1`. This is an application format version. It does not
 require S3 bucket versioning. Content hashes and conditional puts provide immutable
-object identities. Lifecycle cleanup can later remove unreferenced provisional objects.
+object identities. Each upload also carries the retention tag defined in the
+[recording retention decision](recording-retention.md). Lifecycle rules expire all live
+pages after seven days and sealed objects after 30 days.
 
 ## Failure and recovery
 
@@ -43,7 +45,7 @@ Conditional DynamoDB writes fence stale gateways and reject gaps or a changed mo
 source. Exact retries recover after an uncertain DynamoDB response by reading the
 recording state and the immutable chunk reference. A failed S3 upload cannot advance the
 cursor. A failed DynamoDB commit can leave an unreferenced S3 object, which is safe and
-will be subject to the future recording retention rule. If an append loses a race with
+expires under the recording lifecycle policy. If an append loses a race with
 the lifecycle transition to `draining`, it returns `recording_draining`. The future
 gateway supervisor must treat this as the signal to stop polling and start sealing, not
 as a recorder failure or a successful append.

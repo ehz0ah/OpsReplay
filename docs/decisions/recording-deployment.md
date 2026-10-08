@@ -54,6 +54,7 @@ the exact event pattern, failure queue, index, bucket, IAM, task definition, net
 rules, and inactive defaults. These checks do not prove AWS behavior. A temporary school
 account run must validate two concurrent attachments, event delivery, private network
 access, managed persistence, lease takeover, cleanup, latency, and retained resources.
-Recording retention and safe cleanup of unreferenced live chunks remain tracked in
-[issue #22](https://github.com/ehz0ah/OpsReplay/issues/22) and must be resolved before
-the external pilot.
+The [recording retention decision](recording-retention.md) tags every object at upload.
+Lifecycle rules expire provisional live pages after seven days and sealed recordings
+after 30 days. Managed S3 expiry and the owner-authorized deletion path still require
+validation during the temporary AWS checkpoint before an external pilot.

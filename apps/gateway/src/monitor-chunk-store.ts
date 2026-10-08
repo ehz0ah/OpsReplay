@@ -6,6 +6,7 @@ import {
   isMonitorControlTimestamp,
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
+import { recordingRetention } from '../../../packages/contracts/private/recording-retention.js';
 import { isMonitorMetricFrame, isMonitorPayload } from './monitor-client.js';
 import { isMonitorRecordingIdentity } from './monitor-recording-identity.js';
 import { monitorRecordingLimits, type MonitorRecordingBatch, type SealedMonitorRecording } from './monitor-recorder.js';
@@ -131,6 +132,11 @@ interface EncodedChunk {
   checksum: string;
 }
 
+function retentionTag(phase: StoredMonitorChunk['phase']): string {
+  const value = phase === 'live' ? recordingRetention.provisionalTagValue : recordingRetention.sealedTagValue;
+  return `${encodeURIComponent(recordingRetention.tagKey)}=${encodeURIComponent(value)}`;
+}
+
 function sortObjectKeys(_key: string, value: unknown): unknown {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return Object.fromEntries(
@@ -252,6 +258,7 @@ export class S3MonitorChunkStore implements MonitorChunkStore {
       ServerSideEncryption: 'AES256',
       ChecksumSHA256: encoded.checksum,
       IfNoneMatch: '*',
+      Tagging: retentionTag(encoded.reference.phase),
       Metadata: {
         schema: '1',
         phase: encoded.reference.phase,

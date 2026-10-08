@@ -67,11 +67,13 @@ the deployment checkpoint. After an alarm, inspect the action logs and failure q
 Keep the learner lock until task stop is confirmed. Never clear locks manually to hide
 an error.
 
-The retained recording bucket has no deletion lifecycle because consent, retention, and
-deletion ownership are still open. [Issue #22](https://github.com/ehz0ah/OpsReplay/issues/22)
-tracks the policy, orphan cleanup, and implementation required before the external
-pilot. Recording objects are immutable through content-addressed keys and conditional
-writes. S3 bucket versioning is not enabled.
+The recording bucket is retained when the stack is deleted, but its tagged objects have
+explicit lifecycle expiry. Live pages are provisional and expire after seven days.
+Sealed recordings expire after 30 days. These rules bound unreferenced uploads while
+keeping active recordings safe under the four-hour session limit. Recording objects are
+immutable through content-addressed keys and conditional writes. S3 bucket versioning
+and Intelligent-Tiering are not enabled. See the
+[recording retention decision](../docs/decisions/recording-retention.md).
 
 The gateway task has a separate application role and execution role. Its application
 role can query only the work index, read and update `SESSION#*` table items, and write
@@ -84,8 +86,9 @@ the endpoint group. That group must be attached to the ECR API, ECR Docker, and
 CloudWatch Logs interface endpoints. The selected subnets must not have an internet or
 NAT route.
 
-The later disposable test stack must choose explicit export and deletion rules.
-Do not assume stack deletion removes retained data, runtime tasks, or bootstrap storage.
+The later disposable test stack must choose explicit export and deletion rules. Stack
+deletion does not remove the retained buckets or table. Their object lifecycle rules
+continue to apply while the buckets exist.
 
 ## First AWS checkpoint
 
@@ -98,7 +101,9 @@ Add repeatable deploy and cleanup commands with that checkpoint. Push pinned ima
 ECR, run private tasks with only the required VPC endpoints, and reach them through the
 gateway. Save test results, stop runtime tasks, destroy the exact test stack, and verify
 leftovers. Cleanup must handle failed tests and have an independent expiry path for a
-crashed runner. Record readiness time, isolation results, cost, and retained resources.
+crashed runner. Verify the recording tags and lifecycle rules on managed S3. Verify that
+deletion of one test session removes its S3 prefix before its DynamoDB partition. Record
+readiness time, isolation results, cost, and retained resources.
 No full-stack AWS run is required for each small PR. This change provides the inactive
 deployment definition only. It does not claim AWS validation.
 

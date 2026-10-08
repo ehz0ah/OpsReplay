@@ -27,6 +27,7 @@ import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
+import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
 
 export class SessionStartStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -134,6 +135,20 @@ export class SessionStartStack extends Stack {
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
+      lifecycleRules: [
+        {
+          id: 'ExpireProvisionalRecordings',
+          prefix: 'sessions/',
+          tagFilters: { [recordingRetention.tagKey]: recordingRetention.provisionalTagValue },
+          expiration: Duration.days(recordingRetention.provisionalDays),
+        },
+        {
+          id: 'ExpireSealedRecordings',
+          prefix: 'sessions/',
+          tagFilters: { [recordingRetention.tagKey]: recordingRetention.sealedTagValue },
+          expiration: Duration.days(recordingRetention.sealedDays),
+        },
+      ],
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
@@ -516,7 +531,19 @@ export class SessionStartStack extends Stack {
       }),
     );
     gatewayRole.addToPolicy(
-      new PolicyStatement({ actions: ['s3:PutObject'], resources: [recordings.arnForObjects('sessions/*')] }),
+      new PolicyStatement({
+        actions: ['s3:PutObject', 's3:PutObjectTagging'],
+        resources: [recordings.arnForObjects('sessions/*')],
+        conditions: {
+          StringEquals: {
+            [`s3:RequestObjectTag/${recordingRetention.tagKey}`]: [
+              recordingRetention.provisionalTagValue,
+              recordingRetention.sealedTagValue,
+            ],
+          },
+          'ForAllValues:StringEquals': { 's3:RequestObjectTagKeys': [recordingRetention.tagKey] },
+        },
+      }),
     );
 
     const gatewayImage = Fn.join('', [

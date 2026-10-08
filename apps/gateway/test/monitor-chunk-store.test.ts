@@ -59,6 +59,7 @@ test('writes a content-addressed immutable monitor page with an S3 checksum', as
   assert.equal(input.IfNoneMatch, '*');
   assert.equal(input.ServerSideEncryption, 'AES256');
   assert.equal(input.ContentType, 'application/json; charset=utf-8');
+  assert.equal(input.Tagging, 'opsreplay-retention=provisional');
   assert.ok(Buffer.isBuffer(input.Body));
   const body = input.Body as Buffer;
   const sha256 = createHash('sha256').update(body).digest('hex');
@@ -169,6 +170,7 @@ test('writes an empty canonical sealed recording and rejects invalid streams', a
   const reference = await store.putSealed(sessionId, 3, sealed);
   assert.equal(reference.objectKey.includes('/sealed/empty/000000-000000-'), true);
   assert.equal(reference.frameCount, 0);
+  assert.equal(commands[0]!.input.Tagging, 'opsreplay-retention=sealed');
 
   await assert.rejects(
     store.putLive(sessionId, 3, {
