@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { GetCommand, QueryCommand, UpdateCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  BatchGetCommand,
+  GetCommand,
+  QueryCommand,
+  UpdateCommand,
+  type DynamoDBDocumentClient,
+} from '@aws-sdk/lib-dynamodb';
 import { generate } from 'selfsigned';
 import { recordingWorkOrder, unfinishedWorkIndex } from '../../../packages/contracts/private/recording-work.js';
 import { DynamoRecordingWorkSource, RecordingWorkSourceError } from '../src/recording-work-source.js';
@@ -61,6 +67,29 @@ function session(
   };
 }
 
+function recording(sessionId: string, recorderId: string, leaseExpiresAt: string) {
+  return {
+    PK: `SESSION#${sessionId}`,
+    SK: 'RECORDING',
+    data: {
+      schemaVersion: 1,
+      status: 'recording',
+      recorderId,
+      generation: 1,
+      leaseExpiresAt,
+      startedAt: null,
+      source: null,
+      cursor: 0,
+      cutoffAt: null,
+      drainDeadlineAt: null,
+      sealed: null,
+      reason: null,
+      updatedAt: createdAt,
+      completedAt: null,
+    },
+  };
+}
+
 test('uses the sparse index as a hint and strongly reads one authoritative session', async () => {
   const activeSessionId = randomUUID();
   const sessionId = randomUUID();
@@ -75,12 +104,16 @@ test('uses the sparse index as a hint and strongly reads one authoritative sessi
         assert.equal(command.input.Limit, 2);
         return { Items: [identity(activeSessionId), identity(sessionId)] };
       }
-      assert.ok(command instanceof GetCommand);
-      assert.equal(command.input.ConsistentRead, true);
-      return { Item: session(sessionId, cert) };
+      assert.ok(command instanceof BatchGetCommand);
+      assert.equal(command.input.RequestItems?.['test-sessions']?.ConsistentRead, true);
+      assert.deepEqual(command.input.RequestItems?.['test-sessions']?.Keys, [
+        { PK: `SESSION#${sessionId}`, SK: 'STATE' },
+        { PK: `SESSION#${sessionId}`, SK: 'RECORDING' },
+      ]);
+      return { Responses: { 'test-sessions': [session(sessionId, cert)] } };
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
   const signal = AbortSignal.timeout(1_000);
 
   assert.deepEqual(await source.discover({ limit: 1, excludedSessionIds: [activeSessionId], now }, signal), {
@@ -111,9 +144,8 @@ test('retires terminal work and leaves expiry to the lifecycle action', async ()
   const client = {
     send: async (command: unknown) => {
       if (command instanceof QueryCommand) return { Items: [identity(terminalId), identity(expiredId)] };
-      if (command instanceof GetCommand) {
-        const sessionId = String(command.input.Key?.PK).slice('SESSION#'.length);
-        return { Item: rows.get(sessionId) };
+      if (command instanceof BatchGetCommand) {
+        return { Responses: { 'test-sessions': [...rows.values()] } };
       }
       assert.ok(command instanceof UpdateCommand);
       const sessionId = String(command.input.Key?.PK).slice('SESSION#'.length);
@@ -124,7 +156,7 @@ test('retires terminal work and leaves expiry to the lifecycle action', async ()
       return {};
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
 
   assert.deepEqual(await source.discover({ limit: 2, excludedSessionIds: [], now }), {
     work: [],
@@ -141,12 +173,13 @@ test('reports an active session with a terminal recording as invalid instead of 
   const client = {
     send: async (command: unknown) => {
       if (command instanceof QueryCommand) return { Items: [identity(sessionId)] };
+      if (command instanceof BatchGetCommand) return { Responses: { 'test-sessions': [invalid] } };
       if (command instanceof GetCommand) return { Item: invalid };
       updates++;
       assert.fail('Invalid work must not be retired');
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
   const workIdentity = { sessionId, workOrder: recordingWorkOrder(createdAt, sessionId) };
 
   assert.deepEqual(await source.discover({ limit: 1, excludedSessionIds: [], now }), {
@@ -177,11 +210,11 @@ test('advances its bounded query cursor after one malformed page', async () => {
         assert.deepEqual(command.input.ExclusiveStartKey, cursor);
         return { Items: [identity(validId)] };
       }
-      assert.ok(command instanceof GetCommand);
-      return { Item: session(validId, cert) };
+      assert.ok(command instanceof BatchGetCommand);
+      return { Responses: { 'test-sessions': [session(validId, cert)] } };
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
 
   assert.deepEqual(await source.discover({ limit: 1, excludedSessionIds: [], now }), {
     work: [],
@@ -208,7 +241,7 @@ test('an uncertain retire response is accepted only after a strong read proves r
       assert.fail('Unexpected command');
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
 
   assert.equal(await source.retire({ sessionId, workOrder: recordingWorkOrder(createdAt, sessionId) }), 'retired');
   assert.equal(removed, true);
@@ -235,7 +268,7 @@ test('does not retire work after another gateway changes the authoritative state
       throw error;
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
 
   assert.equal(await source.retire({ sessionId, workOrder: recordingWorkOrder(createdAt, sessionId) }), 'not_terminal');
   assert.equal(reads, 2);
@@ -250,21 +283,121 @@ test('returns valid work after a malformed entry on the final query page', async
       if (command instanceof QueryCommand) {
         return { Items: [identity(invalidId), identity(validId)] };
       }
-      assert.ok(command instanceof GetCommand);
-      if (command.input.Key?.PK === `SESSION#${invalidId}`) {
+      assert.ok(command instanceof BatchGetCommand);
+      const requestedSessionId = String(command.input.RequestItems?.['test-sessions']?.Keys?.[0]?.PK).slice(
+        'SESSION#'.length,
+      );
+      if (requestedSessionId === invalidId) {
         const malformed = session(invalidId, cert);
         malformed.data.taskAddress = ['10.0.1.42'] as unknown as string;
         malformed.data.monitorSecret = ['s'.repeat(43)] as unknown as string;
-        return { Item: malformed };
+        return { Responses: { 'test-sessions': [malformed] } };
       }
-      return { Item: session(validId, cert) };
+      return { Responses: { 'test-sessions': [session(validId, cert)] } };
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
 
   const result = await source.discover({ limit: 1, excludedSessionIds: [], now });
   assert.equal(result.invalidEntries, 1);
   assert.equal(result.work[0]?.sessionId, validId);
+});
+
+test('skips a live lease held by another gateway but permits owned and expired leases', async () => {
+  const foreignId = randomUUID();
+  const ownedId = randomUUID();
+  const expiredId = randomUUID();
+  const cert = await certificate();
+  const items = [foreignId, ownedId, expiredId].flatMap((sessionId) => [
+    session(sessionId, cert, { status: 'ready', recordingStatus: 'recording' }),
+    recording(
+      sessionId,
+      sessionId === ownedId ? 'gateway-1' : 'gateway-2',
+      sessionId === expiredId ? now : '2026-10-08T00:00:20.000Z',
+    ),
+  ]);
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof QueryCommand) {
+        return { Items: [identity(foreignId), identity(ownedId), identity(expiredId)] };
+      }
+      assert.ok(command instanceof BatchGetCommand);
+      return { Responses: { 'test-sessions': items } };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
+
+  const result = await source.discover({ limit: 3, excludedSessionIds: [], now });
+  assert.deepEqual(
+    result.work.map((item) => item.sessionId),
+    [ownedId, expiredId],
+  );
+  assert.equal(result.invalidEntries, 0);
+});
+
+test('resumes after the last inspected item when a page contains more work than the limit', async () => {
+  const firstId = randomUUID();
+  const secondId = randomUUID();
+  const thirdId = randomUUID();
+  const cert = await certificate();
+  const rows = new Map<string, ReturnType<typeof session>>([
+    [firstId, session(firstId, cert)],
+    [secondId, session(secondId, cert)],
+    [thirdId, session(thirdId, cert)],
+  ]);
+  let queries = 0;
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof QueryCommand) {
+        queries++;
+        if (queries === 1) {
+          assert.equal(command.input.ExclusiveStartKey, undefined);
+          return {
+            Items: [identity(firstId), identity(secondId), identity(thirdId)],
+            LastEvaluatedKey: identity(thirdId),
+          };
+        }
+        assert.deepEqual(command.input.ExclusiveStartKey, identity(firstId));
+        return { Items: [identity(secondId), identity(thirdId)] };
+      }
+      assert.ok(command instanceof BatchGetCommand);
+      const sessionId = String(command.input.RequestItems?.['test-sessions']?.Keys?.[0]?.PK).slice('SESSION#'.length);
+      return { Responses: { 'test-sessions': [rows.get(sessionId)!] } };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
+
+  assert.equal((await source.discover({ limit: 1, excludedSessionIds: [], now })).work[0]?.sessionId, firstId);
+  assert.equal((await source.discover({ limit: 1, excludedSessionIds: [], now })).work[0]?.sessionId, secondId);
+});
+
+test('does not advance discovery when DynamoDB leaves batch keys unprocessed', async () => {
+  const sessionId = randomUUID();
+  let queries = 0;
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof QueryCommand) {
+        queries++;
+        assert.equal(command.input.ExclusiveStartKey, undefined);
+        return { Items: [identity(sessionId)] };
+      }
+      assert.ok(command instanceof BatchGetCommand);
+      return {
+        UnprocessedKeys: {
+          'test-sessions': { Keys: [{ PK: `SESSION#${sessionId}`, SK: 'STATE' }] },
+        },
+      };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await assert.rejects(
+      source.discover({ limit: 1, excludedSessionIds: [], now }),
+      (error: unknown) => error instanceof RecordingWorkSourceError && error.code === 'unavailable',
+    );
+  }
+  assert.equal(queries, 2);
 });
 
 test('skips malformed work and rejects concurrent discovery', async () => {
@@ -280,7 +413,7 @@ test('skips malformed work and rejects concurrent discovery', async () => {
       return { Items: [{ ...identity(sessionId), PK: 'invalid' }] };
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
   const first = source.discover({ limit: 1, excludedSessionIds: [], now });
   await assert.rejects(
     source.discover({ limit: 1, excludedSessionIds: [], now }),
@@ -298,7 +431,7 @@ test('rejects invalid discovery bounds before reading DynamoDB', async () => {
       return {};
     },
   } as unknown as DynamoDBDocumentClient;
-  const source = new DynamoRecordingWorkSource(client, 'test-sessions');
+  const source = new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1');
   const sessionId = randomUUID();
 
   for (const request of [
@@ -315,4 +448,8 @@ test('rejects invalid discovery bounds before reading DynamoDB', async () => {
     );
   }
   assert.equal(calls, 0);
+  assert.throws(
+    () => new DynamoRecordingWorkSource(client, 'test-sessions', 'invalid recorder'),
+    (error: unknown) => error instanceof RecordingWorkSourceError && error.code === 'invalid_config',
+  );
 });

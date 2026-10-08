@@ -1,6 +1,7 @@
 import { X509Certificate } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
+  BatchGetCommand,
   GetCommand,
   QueryCommand,
   UpdateCommand,
@@ -15,6 +16,7 @@ import {
 } from '../../../packages/contracts/private/recording-work.js';
 import { isMonitorControlTimestamp } from '../../../packages/contracts/private/monitor-control.js';
 import { isMonitorRecordingSessionId } from './monitor-recording-identity.js';
+import { isMonitorRecordingState } from './monitor-recording-store.js';
 
 export interface RecordingWork extends RecordingWorkIdentity {
   taskAddress: string;
@@ -40,13 +42,15 @@ export interface RecordingWorkSource {
   retire(value: RecordingWorkIdentity, signal?: AbortSignal): Promise<RecordingWorkRetirement>;
 }
 
-export type RecordingWorkSourceErrorCode = 'invalid_config' | 'invalid_input' | 'invalid_store' | 'invalid_state';
+export type RecordingWorkSourceErrorCode =
+  'invalid_config' | 'invalid_input' | 'invalid_store' | 'invalid_state' | 'unavailable';
 
 const messages: Record<RecordingWorkSourceErrorCode, string> = {
   invalid_config: 'Recording work source configuration is invalid.',
   invalid_input: 'Recording work request is invalid.',
   invalid_store: 'Stored recording work is invalid.',
   invalid_state: 'Recording work source is already reading.',
+  unavailable: 'Recording work could not be read completely.',
 };
 
 export class RecordingWorkSourceError extends Error {
@@ -57,11 +61,13 @@ export class RecordingWorkSourceError extends Error {
 }
 
 const tableNamePattern = /^[A-Za-z0-9_.-]{3,255}$/;
+const recorderIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const monitorSecretPattern = /^[A-Za-z0-9_-]{43}$/;
 const maximumCertificateBytes = 16_384;
 const maximumDiscoveryLimit = 64;
 const maximumExcludedSessions = maximumDiscoveryLimit * 2;
 const maximumQueryItems = maximumDiscoveryLimit + maximumExcludedSessions;
+const maximumBatchCandidates = 50;
 const serverAuthOid = '1.3.6.1.5.5.7.3.1';
 const activeSessionStatuses = new Set(['provisioning', 'ready']);
 const terminalSessionStatuses = new Set(['resolved', 'failed', 'ended', 'abandoned', 'error']);
@@ -69,6 +75,10 @@ const activeRecordingStatuses = new Set(['pending', 'recording', 'draining']);
 const terminalRecordingStatuses = new Set(['complete', 'incomplete']);
 
 type Cursor = QueryCommandOutput['LastEvaluatedKey'];
+
+interface Candidate {
+  identity: RecordingWorkIdentity;
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -119,6 +129,51 @@ function candidateIdentity(value: unknown): RecordingWorkIdentity {
     throw new RecordingWorkSourceError('invalid_store');
   }
   return identity;
+}
+
+function candidateCursor(identity: RecordingWorkIdentity): Exclude<Cursor, undefined> {
+  return {
+    PK: `SESSION#${identity.sessionId}`,
+    SK: 'STATE',
+    [unfinishedWorkIndex.partitionKey]: unfinishedWorkIndex.recordingPartition,
+    [unfinishedWorkIndex.sortKey]: identity.workOrder,
+  };
+}
+
+function storedItemKey(value: unknown): string | undefined {
+  if (!record(value) || typeof value.PK !== 'string' || typeof value.SK !== 'string') return undefined;
+  return `${value.PK}\u0000${value.SK}`;
+}
+
+function sessionItemKey(sessionId: string): string {
+  return `SESSION#${sessionId}\u0000STATE`;
+}
+
+function recordingItemKey(sessionId: string): string {
+  return `SESSION#${sessionId}\u0000RECORDING`;
+}
+
+function heldByAnotherRecorder(
+  value: unknown,
+  identity: RecordingWorkIdentity,
+  recorderId: string,
+  now: string,
+): boolean {
+  if (
+    !record(value) ||
+    value.PK !== `SESSION#${identity.sessionId}` ||
+    value.SK !== 'RECORDING' ||
+    !isMonitorRecordingState(value.data, identity.sessionId)
+  ) {
+    return false;
+  }
+  const state = value.data;
+  return (
+    (state.status === 'recording' || state.status === 'draining') &&
+    state.recorderId !== recorderId &&
+    state.leaseExpiresAt !== null &&
+    Date.parse(state.leaseExpiresAt) > Date.parse(now)
+  );
 }
 
 interface RetirementCondition {
@@ -231,8 +286,11 @@ export class DynamoRecordingWorkSource implements RecordingWorkSource {
   constructor(
     private readonly client: DynamoDBDocumentClient,
     private readonly table: string,
+    private readonly recorderId: string,
   ) {
-    if (!tableNamePattern.test(table)) throw new RecordingWorkSourceError('invalid_config');
+    if (!tableNamePattern.test(table) || !recorderIdPattern.test(recorderId)) {
+      throw new RecordingWorkSourceError('invalid_config');
+    }
   }
 
   async discover(value: DiscoverRecordingWork, signal?: AbortSignal): Promise<RecordingWorkDiscovery> {
@@ -264,48 +322,100 @@ export class DynamoRecordingWorkSource implements RecordingWorkSource {
         }),
         sendOptions(signal),
       );
-      this.cursor = result.LastEvaluatedKey;
       const excluded = new Set(value.excludedSessionIds);
       const work: RecordingWork[] = [];
       let invalidEntries = 0;
-      for (const item of result.Items ?? []) {
-        signal?.throwIfAborted();
-        let identity: RecordingWorkIdentity;
-        try {
-          identity = candidateIdentity(item);
-        } catch (error) {
-          if (!(error instanceof RecordingWorkSourceError) || error.code !== 'invalid_store') throw error;
-          invalidEntries++;
-          continue;
+      const items = result.Items ?? [];
+      let offset = 0;
+      while (offset < items.length && work.length < value.limit) {
+        const candidates: Candidate[] = [];
+        const segment: Array<{ identity?: RecordingWorkIdentity; invalid?: true; excluded?: true }> = [];
+        const batchLimit = Math.min(maximumBatchCandidates, value.limit - work.length);
+        while (offset < items.length && candidates.length < batchLimit) {
+          signal?.throwIfAborted();
+          const item = items[offset++];
+          let identity: RecordingWorkIdentity;
+          try {
+            identity = candidateIdentity(item);
+          } catch (error) {
+            if (!(error instanceof RecordingWorkSourceError) || error.code !== 'invalid_store') throw error;
+            segment.push({ invalid: true });
+            continue;
+          }
+          if (excluded.has(identity.sessionId)) {
+            segment.push({ identity, excluded: true });
+            continue;
+          }
+          const candidate = { identity };
+          candidates.push(candidate);
+          segment.push(candidate);
         }
-        if (excluded.has(identity.sessionId)) continue;
-        const stored = await this.client.send(
-          new GetCommand({
-            TableName: this.table,
-            Key: { PK: `SESSION#${identity.sessionId}`, SK: 'STATE' },
-            ConsistentRead: true,
-          }),
-          sendOptions(signal),
-        );
-        let inspected: Inspection;
-        try {
-          inspected = inspectSession(stored.Item, identity, value.now);
-        } catch (error) {
-          if (!(error instanceof RecordingWorkSourceError) || error.code !== 'invalid_store') throw error;
-          invalidEntries++;
-          continue;
+        const stored = await this.readCandidates(candidates, signal);
+        for (const entry of segment) {
+          signal?.throwIfAborted();
+          if (entry.invalid) {
+            invalidEntries++;
+            continue;
+          }
+          const identity = entry.identity!;
+          this.cursor = candidateCursor(identity);
+          if (entry.excluded) continue;
+          let inspected: Inspection;
+          try {
+            inspected = inspectSession(stored.get(sessionItemKey(identity.sessionId)), identity, value.now);
+          } catch (error) {
+            if (!(error instanceof RecordingWorkSourceError) || error.code !== 'invalid_store') throw error;
+            invalidEntries++;
+            continue;
+          }
+          if (inspected.kind === 'retire') {
+            await this.remove(identity, inspected.condition, signal);
+            continue;
+          }
+          if (
+            inspected.kind === 'work' &&
+            !heldByAnotherRecorder(
+              stored.get(recordingItemKey(identity.sessionId)),
+              identity,
+              this.recorderId,
+              value.now,
+            )
+          ) {
+            work.push(inspected.work);
+          }
         }
-        if (inspected.kind === 'retire') {
-          await this.remove(identity, inspected.condition, signal);
-          continue;
-        }
-        if (inspected.kind === 'work') work.push(inspected.work);
-        if (work.length === value.limit) break;
       }
+      if (offset === items.length) this.cursor = result.LastEvaluatedKey;
       return { work, invalidEntries };
     } finally {
       this.reading = false;
     }
+  }
+
+  private async readCandidates(
+    candidates: readonly Candidate[],
+    signal?: AbortSignal,
+  ): Promise<Map<string, Record<string, unknown>>> {
+    if (candidates.length === 0) return new Map();
+    const keys = candidates.flatMap(({ identity }) => [
+      { PK: `SESSION#${identity.sessionId}`, SK: 'STATE' },
+      { PK: `SESSION#${identity.sessionId}`, SK: 'RECORDING' },
+    ]);
+    const result = await this.client.send(
+      new BatchGetCommand({
+        RequestItems: { [this.table]: { Keys: keys, ConsistentRead: true } },
+      }),
+      sendOptions(signal),
+    );
+    if ((result.UnprocessedKeys?.[this.table]?.Keys?.length ?? 0) > 0) {
+      throw new RecordingWorkSourceError('unavailable');
+    }
+    const stored = new Map<string, Record<string, unknown>>();
+    for (const item of result.Responses?.[this.table] ?? []) {
+      const key = storedItemKey(item);
+      if (key !== undefined && record(item)) stored.set(key, item);
+    }
+    return stored;
   }
 
   async retire(value: RecordingWorkIdentity, signal?: AbortSignal): Promise<RecordingWorkRetirement> {

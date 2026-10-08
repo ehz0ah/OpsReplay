@@ -10,12 +10,13 @@ import {
   type RecordingSessionRunner,
 } from '../src/monitor-recording-supervisor.js';
 import type { MonitorRecordingRunResult } from '../src/monitor-recording-runner.js';
-import type {
-  DiscoverRecordingWork,
-  RecordingWork,
-  RecordingWorkDiscovery,
-  RecordingWorkRetirement,
-  RecordingWorkSource,
+import {
+  RecordingWorkSourceError,
+  type DiscoverRecordingWork,
+  type RecordingWork,
+  type RecordingWorkDiscovery,
+  type RecordingWorkRetirement,
+  type RecordingWorkSource,
 } from '../src/recording-work-source.js';
 
 function work(sessionId = randomUUID()): RecordingWork {
@@ -201,6 +202,35 @@ test('reports invalid work entries without blocking valid work from the same dis
   await running;
 });
 
+test('retries an incomplete batch read without stopping the supervisor', async () => {
+  const item = work();
+  let attempts = 0;
+  const source: RecordingWorkSource = {
+    discover: async () => {
+      attempts++;
+      if (attempts === 1) throw new RecordingWorkSourceError('unavailable');
+      return { work: [item], invalidEntries: 0 };
+    },
+    retire: async () => 'retired',
+  };
+  const runners = new Map<string, ControlledRunner[]>();
+  const events: MonitorRecordingSupervisorEvent[] = [];
+  const controller = new AbortController();
+  const running = supervisor(source, runners, {
+    events,
+    wait: async (_milliseconds, signal) => {
+      signal.throwIfAborted();
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+  }).run(controller.signal);
+
+  await until(() => runners.has(item.sessionId), 'Work was not retried after the incomplete read');
+  assert.ok(events.some((event) => event.type === 'source_failed' && event.error.code === 'unavailable'));
+  runners.get(item.sessionId)![0]!.finish();
+  controller.abort();
+  await running;
+});
+
 test('isolates transient AWS failures but stops on AWS permission failures', async () => {
   const transientItems = [work(), work()];
   const transientSource = new MemoryWorkSource(transientItems);
@@ -237,6 +267,9 @@ test('isolates transient AWS failures but stops on AWS permission failures', asy
   });
   fatalRunners.get(fatalItems[0]!.sessionId)![0]!.fail(denied);
 
+  await until(() => fatalRunners.get(fatalItems[0]!.sessionId)![0]!.closed, 'Permission failure did not close');
+  assert.equal(fatalRunners.get(fatalItems[1]!.sessionId)![0]!.closed, false);
+  fatalRunners.get(fatalItems[1]!.sessionId)![0]!.finish();
   await assert.rejects(fatalRun, (error: unknown) => error === denied);
   assert.equal(fatalRunners.get(fatalItems[1]!.sessionId)![0]!.closed, true);
 });
@@ -291,8 +324,8 @@ test('retries completed work when authoritative state is not terminal yet', asyn
   await running;
 });
 
-test('propagates programming failures and cancels every other active runner', async () => {
-  const items = [work(), work()];
+test('stops new launches after a programming failure and lets healthy runners finish', async () => {
+  const items = [work(), work(), work()];
   const source = new MemoryWorkSource(items);
   const runners = new Map<string, ControlledRunner[]>();
   const running = supervisor(source, runners).run(new AbortController().signal);
@@ -300,6 +333,11 @@ test('propagates programming failures and cancels every other active runner', as
   await until(() => runners.size === 2, 'Both recording slots did not start');
   const failure = new TypeError('programming failure');
   runners.get(items[0]!.sessionId)![0]!.fail(failure);
+  await until(() => runners.get(items[0]!.sessionId)![0]!.closed, 'Failed recording did not close');
+  assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, false);
+  assert.equal(runners.has(items[2]!.sessionId), false);
+
+  runners.get(items[1]!.sessionId)![0]!.finish();
   await assert.rejects(running, (error: unknown) => error === failure);
   assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, true);
 });

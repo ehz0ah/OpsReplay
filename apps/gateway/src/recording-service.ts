@@ -41,7 +41,7 @@ export function createGatewayRecordingSupervisor(
   ) {
     throw new Error('Gateway recording service configuration is invalid.');
   }
-  const source = new DynamoRecordingWorkSource(clients.dynamo, options.sessionTableName);
+  const source = new DynamoRecordingWorkSource(clients.dynamo, options.sessionTableName, options.recorderId);
   const recordings = new DynamoMonitorRecordingStore(clients.dynamo, options.sessionTableName);
   const chunks = new S3MonitorChunkStore(clients.s3, options.recordingBucketName);
   return new MonitorRecordingSupervisor({

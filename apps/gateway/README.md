@@ -80,20 +80,21 @@ cutoff. Shutdown and lease loss cancel pending monitor work and close the client
 runner does not choose an outcome, cutoff, incomplete reason, or score.
 
 `DynamoRecordingWorkSource` queries the sparse recording-work index as an eventually
-consistent hint. It strongly reads each base session before it returns a private task
-address, public monitor certificate, or secret. It retires terminal work by removing the
-exact index entry only while the terminal state is unchanged. The lifecycle expiry
-action owns the transition for overdue provisioning sessions. The index uses a keys-only
-projection, so monitor credentials do not enter it.
+consistent hint. It uses bounded, strongly consistent batch reads to confirm base
+sessions and recording leases before it returns a private task address, public monitor
+certificate, or secret. Work with a live lease held by another gateway is skipped. It
+retires terminal work by removing the exact index entry only while the terminal state is
+unchanged. The lifecycle expiry action owns the transition for overdue provisioning
+sessions. The index uses a keys-only projection, so monitor credentials do not enter it.
 
 `MonitorRecordingSupervisor` runs a configured number of independent runners. It does
 not start the same session twice in one process. It bounds retry-cooldown memory, rotates
 work discovery, and cancels every runner during shutdown. Monitor, storage, and AWS
 failures are isolated and reported per session. Configuration and programming errors
-stop the supervisor. `createGatewayRecordingSupervisor` composes the work source,
-monitor client, runner, DynamoDB recording store, and S3 chunk store with the same
-clients. The gateway AWS clients use two attempts and bounded connection and request
-times.
+stop new launches, let healthy recordings finish, and then stop the supervisor.
+`createGatewayRecordingSupervisor` composes the work source, monitor client, runner,
+DynamoDB recording store, and S3 chunk store with the same clients. The gateway AWS
+clients use two attempts and bounded connection and request times.
 
 Run its local checks with:
 

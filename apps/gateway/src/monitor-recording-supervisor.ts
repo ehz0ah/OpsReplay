@@ -50,7 +50,7 @@ export class MonitorRecordingSupervisorError extends Error {
   }
 }
 
-const defaultPollIntervalMs = 1_000;
+const defaultPollIntervalMs = 2_000;
 const maximumPollIntervalMs = 30_000;
 const maximumConcurrentRecordings = 64;
 
@@ -120,7 +120,7 @@ function operationalFailure(error: unknown): boolean {
   }
   if (error instanceof MonitorChunkStoreError) return error.code === 'chunk_too_large';
   if (error instanceof MonitorRecorderError) return ['invalid_stream', 'recording_limit'].includes(error.code);
-  if (error instanceof RecordingWorkSourceError) return error.code === 'invalid_store';
+  if (error instanceof RecordingWorkSourceError) return ['invalid_store', 'unavailable'].includes(error.code);
   if (error instanceof MonitorRecordingRunnerError) return false;
   if (transientAwsFailure(error)) return true;
   return error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
@@ -178,7 +178,6 @@ export class MonitorRecordingSupervisor {
 
     const fail = (error: unknown): void => {
       if (fatal === undefined) fatal = error;
-      lifetime.abort(error);
     };
 
     const retry = (sessionId: string): void => {
@@ -189,7 +188,14 @@ export class MonitorRecordingSupervisor {
     };
 
     const launch = (work: RecordingWork): void => {
-      if (lifetime.signal.aborted || active.has(work.sessionId) || active.size >= this.concurrency) return;
+      if (
+        fatal !== undefined ||
+        lifetime.signal.aborted ||
+        active.has(work.sessionId) ||
+        active.size >= this.concurrency
+      ) {
+        return;
+      }
       let runner: RecordingSessionRunner;
       try {
         runner = this.createRunner(work);
@@ -206,7 +212,7 @@ export class MonitorRecordingSupervisor {
     };
 
     try {
-      while (!lifetime.signal.aborted) {
+      while (!lifetime.signal.aborted && fatal === undefined) {
         const now = this.now();
         for (const [sessionId, retryAt] of retryAfter) {
           if (retryAt <= now) retryAfter.delete(sessionId);
@@ -233,7 +239,7 @@ export class MonitorRecordingSupervisor {
             }
           }
         }
-        if (fatal !== undefined) throw fatal;
+        if (fatal !== undefined) break;
         if (lifetime.signal.aborted) break;
         try {
           await Promise.race([
@@ -243,8 +249,8 @@ export class MonitorRecordingSupervisor {
         } catch (error) {
           if (!expectedCancellation(error, lifetime.signal)) throw error;
         }
-        if (fatal !== undefined) throw fatal;
       }
+      if (fatal !== undefined) await Promise.all(active.values());
     } finally {
       lifetime.abort();
       await Promise.all(active.values());
