@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { createPrivateKey, randomUUID, X509Certificate } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { Readable } from 'node:stream';
 import { test } from 'node:test';
 import {
   DescribeTasksCommand,
@@ -17,7 +16,14 @@ import {
   ResourceNotFoundException,
   type SchedulerClient,
 } from '@aws-sdk/client-scheduler';
-import { GetObjectCommand, PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectTaggingCommand,
+  PutObjectCommand,
+  S3ServiceException,
+  type S3Client,
+  type Tag,
+} from '@aws-sdk/client-s3';
+import { recordingWorkTiming } from '../../../packages/contracts/private/recording-work.js';
 import { MonitorBootstrapFile } from '../src/session-lifecycle/aws-bootstrap.js';
 import { createMonitorCertificate } from '../src/session-lifecycle/monitor-certificate.js';
 import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
@@ -34,6 +40,20 @@ const capacityMessage =
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const cluster = 'arn:aws:ecs:ap-southeast-1:123456789012:cluster/opsreplay-test';
 const taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/opsreplay-test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+function certificateTagSet(certificate: string): Tag[] {
+  const encoded = Buffer.from(certificate).toString('base64url');
+  const parts = encoded.match(/.{1,256}/g) ?? [];
+  return [
+    { Key: 'opsreplay-certificate-parts', Value: String(parts.length) },
+    ...parts.map((value, index) => ({ Key: `opsreplay-certificate-${index}`, Value: value })),
+  ];
+}
+
+function parseTagging(value: string | undefined): Tag[] {
+  assert.ok(value);
+  return [...new URLSearchParams(value)].map(([Key, Value]) => ({ Key, Value }));
+}
 
 function session(): SessionRecord {
   const monitorSecret = 's'.repeat(43);
@@ -375,7 +395,9 @@ test('monitor certificate is bounded, self-signed, valid for the session, and ma
   assert.ok(Date.parse(certificate.validFrom) <= Date.parse(record.view.createdAt));
   assert.ok(
     Date.parse(certificate.validTo) >=
-      Date.parse(record.launchRecoveryDeadline) + record.accessGrant.timeLimitSeconds * 1000 + 60_000,
+      Date.parse(record.launchRecoveryDeadline) +
+        record.accessGrant.timeLimitSeconds * 1000 +
+        recordingWorkTiming.postSessionWindowMs,
   );
   assert.ok(Buffer.byteLength(pair.certificate) <= 16_384);
   assert.ok(Buffer.byteLength(pair.privateKey) <= 16_384);
@@ -387,18 +409,18 @@ test('monitor bootstrap upload is encrypted, immutable, validated, and reusable'
   let uploads = 0;
   let reads = 0;
   let stored: string | undefined;
+  let storedTags: Tag[] | undefined;
   const bootstrap = new MonitorBootstrapFile({
     send: async (command: unknown, options: unknown) => {
       assert.deepEqual(options, { abortSignal: signal });
-      if (command instanceof GetObjectCommand) {
+      if (command instanceof GetObjectTaggingCommand) {
         reads++;
         assert.deepEqual(command.input, {
           Bucket: 'test-secrets',
           Key: `sessions/${sessionId}.env`,
-          Range: 'bytes=0-65536',
         });
-        assert.ok(stored);
-        return { Body: Readable.from(stored), ContentLength: Buffer.byteLength(stored) };
+        assert.ok(storedTags);
+        return { TagSet: storedTags };
       }
       assert.ok(command instanceof PutObjectCommand);
       uploads++;
@@ -415,6 +437,7 @@ test('monitor bootstrap upload is encrypted, immutable, validated, and reusable'
           $metadata: { httpStatusCode: 412 },
         });
       stored = command.input.Body;
+      storedTags = parseTagging(command.input.Tagging);
       return {};
     },
   } as unknown as S3Client);
@@ -422,6 +445,8 @@ test('monitor bootstrap upload is encrypted, immutable, validated, and reusable'
   assert.ok(stored?.startsWith(`OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}\n`));
   assert.ok(stored?.includes('OPSREPLAY_MONITOR_TLS_CERT_B64='));
   assert.ok(stored?.includes('OPSREPLAY_MONITOR_TLS_KEY_B64='));
+  assert.deepEqual(storedTags, certificateTagSet(certificate));
+  assert.equal(JSON.stringify(storedTags).includes(record.monitorSecret), false);
   assert.equal(await bootstrap.ensure(record, signal), certificate);
   record.monitorCertificate = certificate;
   assert.equal(await bootstrap.ensure(record, signal), certificate);
@@ -467,12 +492,6 @@ test('the documented Fargate capacity message normalizes before classification a
 test('an uncertain bootstrap upload reads and validates the object that actually won', async () => {
   const record = session();
   const winner = await createMonitorCertificate(record);
-  const winnerBody = [
-    `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}`,
-    `OPSREPLAY_MONITOR_TLS_CERT_B64=${Buffer.from(winner.certificate).toString('base64')}`,
-    `OPSREPLAY_MONITOR_TLS_KEY_B64=${Buffer.from(winner.privateKey).toString('base64')}`,
-    '',
-  ].join('\n');
   let writes = 0;
   let reads = 0;
   const bootstrap = new MonitorBootstrapFile({
@@ -481,9 +500,9 @@ test('an uncertain bootstrap upload reads and validates the object that actually
         writes++;
         throw new Error('Upload response lost');
       }
-      assert.ok(command instanceof GetObjectCommand);
+      assert.ok(command instanceof GetObjectTaggingCommand);
       reads++;
-      return { Body: Readable.from(winnerBody), ContentLength: Buffer.byteLength(winnerBody) };
+      return { TagSet: certificateTagSet(winner.certificate) };
     },
   } as unknown as S3Client);
   assert.equal(await bootstrap.ensure(record), winner.certificate);
@@ -495,19 +514,13 @@ for (const outcome of ['uploaded', 'already_exists'] as const) {
   test(`S3 conditional conflict is retried once and then ${outcome}`, async () => {
     const record = session();
     const winner = await createMonitorCertificate(record);
-    const winnerBody = [
-      `OPSREPLAY_MONITOR_SECRET=${record.monitorSecret}`,
-      `OPSREPLAY_MONITOR_TLS_CERT_B64=${Buffer.from(winner.certificate).toString('base64')}`,
-      `OPSREPLAY_MONITOR_TLS_KEY_B64=${Buffer.from(winner.privateKey).toString('base64')}`,
-      '',
-    ].join('\n');
     const inputs: PutObjectCommand['input'][] = [];
     const signal = AbortSignal.timeout(1000);
     const bootstrap = new MonitorBootstrapFile({
       send: async (command: unknown, options: unknown) => {
         assert.deepEqual(options, { abortSignal: signal });
-        if (command instanceof GetObjectCommand) {
-          return { Body: Readable.from(winnerBody), ContentLength: Buffer.byteLength(winnerBody) };
+        if (command instanceof GetObjectTaggingCommand) {
+          return { TagSet: certificateTagSet(winner.certificate) };
         }
         assert.ok(command instanceof PutObjectCommand);
         inputs.push(command.input);
@@ -537,7 +550,7 @@ test('repeated S3 conflicts fail when no bootstrap object exists', async () => {
   let calls = 0;
   const bootstrap = new MonitorBootstrapFile({
     send: async (command: unknown) => {
-      if (command instanceof GetObjectCommand) {
+      if (command instanceof GetObjectTaggingCommand) {
         throw new S3ServiceException({ name: 'NoSuchKey', $fault: 'client', $metadata: { httpStatusCode: 404 } });
       }
       calls++;
@@ -550,6 +563,23 @@ test('repeated S3 conflicts fail when no bootstrap object exists', async () => {
   } as unknown as S3Client);
   await assert.rejects(bootstrap.ensure(session()), { name: 'ConditionalRequestConflict' });
   assert.equal(calls, 2);
+});
+
+test('monitor bootstrap recovery rejects invalid certificate tags', async () => {
+  const record = session();
+  record.monitorCertificate = (await createMonitorCertificate(record)).certificate;
+  const bootstrap = new MonitorBootstrapFile({
+    send: async (command: unknown) => {
+      assert.ok(command instanceof GetObjectTaggingCommand);
+      return {
+        TagSet: [
+          { Key: 'opsreplay-certificate-parts', Value: '2' },
+          { Key: 'opsreplay-certificate-0', Value: 'not-a-certificate' },
+        ],
+      };
+    },
+  } as unknown as S3Client);
+  await assert.rejects(bootstrap.ensure(record), /Invalid stored monitor certificate tags/);
 });
 
 test('the S3 conflict retry obeys the invocation deadline', async () => {

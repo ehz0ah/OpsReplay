@@ -1,13 +1,19 @@
-import { GetObjectCommand, PutObjectCommand, S3Client, S3ServiceException } from '@aws-sdk/client-s3';
+import { GetObjectTaggingCommand, PutObjectCommand, S3Client, S3ServiceException, type Tag } from '@aws-sdk/client-s3';
 import type { SessionRecord } from '../start-session/types.js';
 import type { MonitorBootstrapPort } from './ports.js';
 import { createAwsTransport, sendOptions } from '../shared/aws.js';
-import { validateMonitorCertificatePair, type MonitorCertificatePair } from './monitor-certificate-validation.js';
+import {
+  validateMonitorCertificatePair,
+  validMonitorCertificate,
+  type MonitorCertificatePair,
+} from './monitor-certificate-validation.js';
 import { createMonitorCertificate } from './monitor-certificate.js';
 
-const maximumBootstrapBytes = 65_536;
 const secretPattern = /^[A-Za-z0-9_-]{43}$/;
-const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const certificatePartCountTag = 'opsreplay-certificate-parts';
+const certificatePartTagPrefix = 'opsreplay-certificate-';
+const maximumCertificateTagParts = 8;
+const maximumTagValueCharacters = 256;
 
 interface BootstrapLocation {
   bucket: string;
@@ -36,50 +42,49 @@ function encode(session: SessionRecord, pair: MonitorCertificatePair): string {
   ].join('\n');
 }
 
-function decodeBase64(value: string): string {
-  if (!base64Pattern.test(value)) throw new Error('Invalid stored monitor bootstrap file');
-  const decoded = Buffer.from(value, 'base64');
-  if (decoded.length === 0 || decoded.length > 16_384 || decoded.toString('base64') !== value) {
-    throw new Error('Invalid stored monitor bootstrap file');
+function encodeCertificateTags(certificate: string): string {
+  const encoded = Buffer.from(certificate).toString('base64url');
+  const parts = encoded.match(new RegExp(`.{1,${maximumTagValueCharacters}}`, 'g')) ?? [];
+  if (parts.length === 0 || parts.length > maximumCertificateTagParts) {
+    throw new Error('Monitor certificate does not fit bootstrap tags');
   }
-  return decoded.toString('utf8');
+  const tags = new URLSearchParams([[certificatePartCountTag, String(parts.length)]]);
+  for (const [index, part] of parts.entries()) tags.set(`${certificatePartTagPrefix}${index}`, part);
+  return tags.toString();
 }
 
-function decode(session: SessionRecord, value: string): MonitorCertificatePair {
-  const lines = value.split('\n');
-  if (lines.at(-1) !== '') throw new Error('Invalid stored monitor bootstrap file');
-  lines.pop();
-  if (lines.length !== 3) throw new Error('Invalid stored monitor bootstrap file');
-  const expected = ['OPSREPLAY_MONITOR_SECRET=', 'OPSREPLAY_MONITOR_TLS_CERT_B64=', 'OPSREPLAY_MONITOR_TLS_KEY_B64='];
-  const values = lines.map((line, index) => {
-    const prefix = expected[index]!;
-    if (!line!.startsWith(prefix)) throw new Error('Invalid stored monitor bootstrap file');
-    return line!.slice(prefix.length);
-  });
-  if (values[0] !== session.monitorSecret) throw new Error('Invalid stored monitor bootstrap file');
+function decodeCertificateTags(session: SessionRecord, tagSet: Tag[] | undefined): string {
   try {
-    return validateMonitorCertificatePair(session, {
-      certificate: decodeBase64(values[1]!),
-      privateKey: decodeBase64(values[2]!),
-    });
+    const tags = new Map<string, string>();
+    for (const tag of tagSet ?? []) {
+      if (typeof tag.Key !== 'string' || typeof tag.Value !== 'string' || tags.has(tag.Key)) {
+        throw new Error('Invalid stored monitor certificate tags');
+      }
+      tags.set(tag.Key, tag.Value);
+    }
+    const countText = tags.get(certificatePartCountTag);
+    if (!countText || !/^[1-9][0-9]*$/.test(countText)) throw new Error('Invalid stored monitor certificate tags');
+    const count = Number(countText);
+    if (count > maximumCertificateTagParts) throw new Error('Invalid stored monitor certificate tags');
+    const parts: string[] = [];
+    for (let index = 0; index < count; index++) {
+      const part = tags.get(`${certificatePartTagPrefix}${index}`);
+      if (!part || part.length > maximumTagValueCharacters || !/^[A-Za-z0-9_-]+$/.test(part)) {
+        throw new Error('Invalid stored monitor certificate tags');
+      }
+      parts.push(part);
+    }
+    const encoded = parts.join('');
+    if (Buffer.from(encoded, 'base64url').toString('base64url') !== encoded) {
+      throw new Error('Invalid stored monitor certificate tags');
+    }
+    const certificate = Buffer.from(encoded, 'base64url').toString('utf8');
+    if (!validMonitorCertificate(session, certificate)) throw new Error('Invalid stored monitor certificate tags');
+    return certificate;
   } catch (error) {
-    throw new Error('Invalid stored monitor bootstrap file', { cause: error });
+    if (error instanceof Error && error.message === 'Invalid stored monitor certificate tags') throw error;
+    throw new Error('Invalid stored monitor certificate tags', { cause: error });
   }
-}
-
-async function boundedBody(body: unknown): Promise<string> {
-  if (!body || typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== 'function') {
-    throw new Error('Invalid stored monitor bootstrap file');
-  }
-  const chunks: Buffer[] = [];
-  let length = 0;
-  for await (const value of body as AsyncIterable<Uint8Array | string>) {
-    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
-    length += chunk.length;
-    if (length > maximumBootstrapBytes) throw new Error('Invalid stored monitor bootstrap file');
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks).toString('utf8');
 }
 
 function isConflict(error: unknown, status: number, name: string): boolean {
@@ -103,9 +108,9 @@ export class MonitorBootstrapFile implements MonitorBootstrapPort {
   async ensure(session: SessionRecord, abortSignal?: AbortSignal): Promise<string> {
     const target = location(session);
     if (session.monitorCertificate !== null) {
-      const stored = await this.read(session, target, abortSignal);
-      if (stored.certificate !== session.monitorCertificate) throw new Error('Stored monitor certificate changed');
-      return stored.certificate;
+      const stored = await this.readCertificate(session, target, abortSignal);
+      if (stored !== session.monitorCertificate) throw new Error('Stored monitor certificate changed');
+      return stored;
     }
 
     const pair = validateMonitorCertificatePair(session, await this.createCertificate(session));
@@ -116,6 +121,7 @@ export class MonitorBootstrapFile implements MonitorBootstrapPort {
       ContentType: 'text/plain; charset=utf-8',
       ServerSideEncryption: 'AES256',
       IfNoneMatch: '*',
+      Tagging: encodeCertificateTags(pair.certificate),
     });
     for (let attempt = 0; attempt < 2; attempt++) {
       abortSignal?.throwIfAborted();
@@ -131,7 +137,7 @@ export class MonitorBootstrapFile implements MonitorBootstrapPort {
           canHaveCommitted(error)
         ) {
           try {
-            return (await this.read(session, target, abortSignal)).certificate;
+            return await this.readCertificate(session, target, abortSignal);
           } catch (readError) {
             if (!(readError instanceof S3ServiceException && readError.$metadata.httpStatusCode === 404)) {
               throw readError;
@@ -144,21 +150,19 @@ export class MonitorBootstrapFile implements MonitorBootstrapPort {
     throw new Error('Monitor bootstrap upload did not complete');
   }
 
-  private async read(
+  private async readCertificate(
     session: SessionRecord,
     target: BootstrapLocation,
     abortSignal?: AbortSignal,
-  ): Promise<MonitorCertificatePair> {
+  ): Promise<string> {
     const result = await this.client.send(
-      new GetObjectCommand({
+      new GetObjectTaggingCommand({
         Bucket: target.bucket,
         Key: target.key,
-        Range: `bytes=0-${maximumBootstrapBytes}`,
       }),
       sendOptions(abortSignal),
     );
-    if ((result.ContentLength ?? 0) > maximumBootstrapBytes) throw new Error('Invalid stored monitor bootstrap file');
-    return decode(session, await boundedBody(result.Body));
+    return decodeCertificateTags(session, result.TagSet);
   }
 }
 

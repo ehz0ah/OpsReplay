@@ -91,7 +91,8 @@ export const limits = Object.freeze({
   evaluationMs: 1_000,
   maxScheduleGapMs: 5_000,
   maxSessionMs: 14_400_000,
-  recordingHeadroomMs: recordingWorkTiming.certificateHeadroomMs,
+  // Capacity covers the same bounded post-session drain as certificate validity.
+  recordingHeadroomMs: recordingWorkTiming.postSessionWindowMs,
   controlConnections: 16,
   controlConcurrentRequests: 16,
   controlAuthenticatedRps: 32,

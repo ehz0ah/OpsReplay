@@ -14,16 +14,19 @@ the monitor before sending its bearer secret.
 
 The start action creates one self-signed EC P-256 certificate and private key for each
 session. The certificate is valid from session creation through the launch-recovery
-deadline, admitted session limit, and existing one-minute recording headroom. The
-private S3 environment file contains the monitor secret and base64-encoded certificate
-and key. Only the public certificate is copied to the private session record. The
-private key never enters DynamoDB, ECS API overrides, logs, or source control.
+deadline, admitted session limit, and shared one-minute post-session window. A future
+outcome writer must keep `drainDeadlineAt` within that window. The private S3
+environment file contains the monitor secret and base64-encoded certificate and key.
+Only the public certificate is copied to the private session record. The private key
+never enters DynamoDB, ECS API overrides, logs, or source control.
 
 The environment-file write remains conditional. A competing write, conditional
-conflict, or uncertain response is resolved by a bounded read of the stored object. The
-reader validates the secret, certificate, private key, key match, certificate purpose,
-and validity before returning the public certificate. A saved certificate must match
-the file on every retry. Definite S3 failures remain failures.
+conflict, or uncertain response is resolved by reading the public certificate from tags
+written atomically with the stored object. The reader validates the certificate purpose
+and validity before returning it. The start role can read these tags but cannot read the
+environment-file body. Only the environment execution role can read the monitor secret
+and TLS private key. A saved certificate must match the tags on every retry. Definite
+S3 failures remain failures.
 
 A separate action consumes ECS `RUNNING` task-state events. It accepts one private IPv4
 address from the task ENI, strongly reads the session, checks the saved cluster and task

@@ -103,13 +103,14 @@ stateDiagram-v2
      A lost or unhealthy monitor ends the attempt as a platform `error`, not recovery or
      zero impact. Recording becomes incomplete if its final samples cannot be recovered.
 4. **Drain.** The outcome write also fixes `endedAt`, sets recording to `draining`, and
-   sets `drainDeadlineAt`, proposed at 30 seconds later. These values never move on a
-   retry. Input closes when the gateway observes the outcome. Activity after `endedAt`
-   is excluded from scoring, even if a command was still running. The gateway asks the
-   monitor to seal measurements at that cutoff and uploads the remaining terminal,
-   metric, event, and capture data. It acknowledges `complete` only after the saved
-   objects and events cover the final cursors with no gaps. A limit or unrecoverable gap
-   produces `incomplete` with a reason. Neither state changes the session outcome.
+   sets `drainDeadlineAt`, proposed at 30 seconds later and always within the shared
+   one-minute post-session window. These values never move on a retry. Input closes when
+   the gateway observes the outcome. Activity after `endedAt` is excluded from scoring,
+   even if a command was still running. The gateway asks the monitor to seal measurements
+   at that cutoff and uploads the remaining terminal, metric, event, and capture data. It
+   acknowledges `complete` only after the saved objects and events cover the final
+   cursors with no gaps. A limit or unrecoverable gap produces `incomplete` with a reason.
+   Neither state changes the session outcome.
 5. **Finalisation.** The session stream and sweep call the same finaliser. It waits for
    recording completion before `StopTask`. If the recorder or task is lost, or the drain
    deadline expires, it seals the saved data as `incomplete` and stops the task. It never

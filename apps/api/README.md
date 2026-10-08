@@ -28,10 +28,13 @@ The transaction checks that content, plan, and progress have not changed since t
 read. It stores immutable ECS arguments and a random monitor secret before any external
 effect. The handler creates the recovery callback, then the timeout callback. It creates
 one per-session TLS key pair that covers the bounded recording drain. It writes the
-secret, certificate, and private key to a private, encrypted S3 environment file. It stores only the public certificate in
-DynamoDB and passes only the file reference to ECS `RunTask`. It then saves the returned
-task ARN. Repeating the request uses the saved arguments, bootstrap file, and ECS client
-token. Concurrent copies cannot create two tasks or select different certificates.
+secret, certificate, and private key to a private, encrypted S3 environment file. The
+same write stores the public certificate in object tags for recovery. The start action
+can read the public tags but cannot read the environment-file body. It stores only the
+public certificate in DynamoDB and passes only the file reference to ECS `RunTask`. It
+then saves the returned task ARN. Repeating the request uses the saved arguments,
+bootstrap file, and ECS client token. Concurrent copies cannot create two tasks or
+select different certificates.
 
 The [recording-work handler](src/publish-recording-work/index.ts) is a separate action
 for ECS `RUNNING` task-state events. It validates one ENI private IPv4 address, checks the
