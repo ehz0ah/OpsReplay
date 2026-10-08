@@ -29,8 +29,10 @@ Malformed entries are skipped and reported without blocking valid work from the 
 query. The cursor advances only through inspected entries, so uninspected work remains
 eligible for the next poll. Monitor, storage, and transient AWS failures are reported
 and isolated. Invalid configuration, permission failures, and programming errors stop
-new launches, let active runners finish, and then stop the supervisor. Shutdown cancels
-and awaits every active runner, which closes its monitor client.
+new launches and give active runners up to 30 seconds to finish. The supervisor then
+cancels remaining runners and stops. A replacement can resume from the durable cursor
+after lease expiry. Shutdown cancels and awaits every active runner, which closes its
+monitor client.
 
 The concrete composition uses one shared DynamoDB document client and one shared S3
 client. Their connection timeouts, request timeouts, and retry counts are bounded. This
