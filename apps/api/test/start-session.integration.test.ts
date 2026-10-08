@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { CreateTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -17,7 +16,13 @@ import { createAwsTransport } from '../src/shared/aws.js';
 import { LifecycleStore } from '../src/session-lifecycle/store.js';
 import { createProvisionSession } from '../src/session-lifecycle/provision.js';
 import { RunTaskCommand, type ECSClient } from '@aws-sdk/client-ecs';
-import { GetObjectCommand, PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectTaggingCommand,
+  PutObjectCommand,
+  S3ServiceException,
+  type S3Client,
+  type Tag,
+} from '@aws-sdk/client-s3';
 import { FargateEnvironment } from '../src/session-lifecycle/aws-environment.js';
 import { MonitorBootstrapFile } from '../src/session-lifecycle/aws-bootstrap.js';
 import { createMonitorCertificate } from '../src/session-lifecycle/monitor-certificate.js';
@@ -45,6 +50,12 @@ const launchConfiguration: LaunchConfiguration = {
   monitorContainerName: 'monitor',
   secretBucketArn: 'arn:aws:s3:::test-secrets',
 };
+
+function parseTagging(value: string | undefined): Tag[] {
+  assert.ok(value);
+  return [...new URLSearchParams(value)].map(([Key, Value]) => ({ Key, Value }));
+}
+
 const bootstrap = { ensure: async (record: SessionRecord) => (await createMonitorCertificate(record)).certificate };
 const request = (): StartRequest => ({
   requestId: randomUUID(),
@@ -800,21 +811,21 @@ test('start uses the provisioned record without a final read and checks its owne
 
 test('concurrent starts recover an S3 conditional conflict and still return one session', async () => {
   const f = await fixture();
-  const files = new Map<string, string>();
+  const files = new Map<string, { body: string; tags: Tag[] }>();
   const tasks = new Map<string, unknown>();
   let uploads = 0;
   const bootstrapFile = new MonitorBootstrapFile({
     send: async (command: unknown) => {
-      if (command instanceof GetObjectCommand) {
-        const body = files.get(command.input.Key!);
-        if (typeof body !== 'string') {
+      if (command instanceof GetObjectTaggingCommand) {
+        const file = files.get(command.input.Key!);
+        if (!file) {
           throw new S3ServiceException({
             name: 'NoSuchKey',
             $fault: 'client',
             $metadata: { httpStatusCode: 404 },
           });
         }
-        return { Body: Readable.from(body), ContentLength: Buffer.byteLength(body) };
+        return { TagSet: file.tags };
       }
       assert.ok(command instanceof PutObjectCommand);
       uploads++;
@@ -825,7 +836,8 @@ test('concurrent starts recover an S3 conditional conflict and still return one 
           $metadata: { httpStatusCode: 409 },
         });
       if (files.has(command.input.Key!)) {
-        assert.deepEqual(files.get(command.input.Key!), command.input.Body);
+        assert.deepEqual(files.get(command.input.Key!)?.body, command.input.Body);
+        assert.deepEqual(files.get(command.input.Key!)?.tags, parseTagging(command.input.Tagging));
         throw new S3ServiceException({
           name: 'PreconditionFailed',
           $fault: 'client',
@@ -833,7 +845,7 @@ test('concurrent starts recover an S3 conditional conflict and still return one 
         });
       }
       if (typeof command.input.Body !== 'string') throw new Error('Expected a text bootstrap file');
-      files.set(command.input.Key!, command.input.Body);
+      files.set(command.input.Key!, { body: command.input.Body, tags: parseTagging(command.input.Tagging) });
       return {};
     },
   } as unknown as S3Client);

@@ -6,7 +6,10 @@ export const unfinishedWorkIndex = Object.freeze({
 });
 
 export const recordingWorkTiming = Object.freeze({
-  certificateHeadroomMs: 60_000,
+  // The monitor must remain reachable while the gateway drains and seals the
+  // recording after the session ends. Future outcome writers must keep
+  // drainDeadlineAt within this window.
+  postSessionWindowMs: 60_000,
 });
 
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

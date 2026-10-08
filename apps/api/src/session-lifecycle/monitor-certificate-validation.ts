@@ -15,7 +15,7 @@ export function monitorCertificateValidity(session: SessionRecord): { from: Date
   const created = Date.parse(session.view.createdAt);
   const recovery = Date.parse(session.launchRecoveryDeadline);
   const expires =
-    recovery + session.accessGrant.timeLimitSeconds * millisecondPerSecond + recordingWorkTiming.certificateHeadroomMs;
+    recovery + session.accessGrant.timeLimitSeconds * millisecondPerSecond + recordingWorkTiming.postSessionWindowMs;
   if (!Number.isFinite(created) || !Number.isFinite(expires) || expires <= created) {
     throw new Error('Invalid monitor certificate validity');
   }

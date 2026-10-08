@@ -9,7 +9,7 @@ test('defines one stable sparse index contract for recording work', () => {
     sortKey: 'WorkSK',
     recordingPartition: 'RECORDING',
   });
-  assert.equal(recordingWorkTiming.certificateHeadroomMs, 60_000);
+  assert.equal(recordingWorkTiming.postSessionWindowMs, 60_000);
   assert.equal(
     recordingWorkOrder('2026-10-08T01:02:03.004Z', '11111111-1111-4111-8111-111111111111'),
     '2026-10-08T01:02:03.004Z#SESSION#11111111-1111-4111-8111-111111111111',
