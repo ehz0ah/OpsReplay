@@ -31,13 +31,15 @@ cloud resources deployed by this baseline.
 1. Branch from `main`, using a short name such as `feat/session-store`.
 2. Use `type(scope): imperative summary` for the PR title. The scope is optional.
    Supported types are `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`,
-   `build`, `perf`, and `revert`.
+   `build`, `perf`, and `revert`. Rename titles created by GitHub's Revert button
+   to this format, such as `revert: restore previous gateway behaviour`.
 3. Keep changes focused. Update affected contracts before depending on them.
 4. Include behaviour, rationale, verification, known limits, risk, and rollback in the PR.
 5. Request review from another team member. Reviewers check correctness, scope,
    state visibility, and failure handling as applicable.
-6. Merge after review and successful checks. Branch protection must be enabled
-   separately in GitHub settings. It is not configured by adding this document.
+6. Merge after review and successful required checks. Branch protection is managed
+   in the GitHub `Protect Main` ruleset. After this workflow exists on `main`, a
+   repository owner must add its `title` job to that ruleset.
 
 Use clear commits such as `docs: define session playback semantics`. Do not add
 generated binaries, dependency directories, or AI co-author trailers. The report

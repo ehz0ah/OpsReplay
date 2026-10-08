@@ -43,6 +43,7 @@ for (const title of [
   'add checkpoint foundation',
   'feature(infra): add checkpoint foundation',
   'Feat(infra): add checkpoint foundation',
+  'Revert "feat(infra): add checkpoint foundation"',
   'feat(): add checkpoint foundation',
   'feat(infra):add checkpoint foundation',
   'feat(infra): ',
