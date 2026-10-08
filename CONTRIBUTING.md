@@ -29,11 +29,14 @@ cloud resources deployed by this baseline.
 ## Pull requests
 
 1. Branch from `main`, using a short name such as `feat/session-store`.
-2. Keep changes focused. Update affected contracts before depending on them.
-3. Include behaviour, rationale, verification, and known limits in the PR.
-4. Request review from another team member. Reviewers check correctness, scope,
+2. Use `type(scope): imperative summary` for the PR title. The scope is optional.
+   Supported types are `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`,
+   `build`, `perf`, and `revert`.
+3. Keep changes focused. Update affected contracts before depending on them.
+4. Include behaviour, rationale, verification, known limits, risk, and rollback in the PR.
+5. Request review from another team member. Reviewers check correctness, scope,
    state visibility, and failure handling as applicable.
-5. Merge after review and successful checks. Branch protection must be enabled
+6. Merge after review and successful checks. Branch protection must be enabled
    separately in GitHub settings. It is not configured by adding this document.
 
 Use clear commits such as `docs: define session playback semantics`. Do not add

@@ -1,0 +1,61 @@
+name: Bug report
+description: Report reproducible incorrect behaviour in OpsReplay.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private keys, learner data, or private recordings.
+        Report security issues through the private channel in the [security policy](https://github.com/ehz0ah/OpsReplay/security/policy).
+
+  - type: textarea
+    id: observed-behaviour
+    attributes:
+      label: Observed behaviour
+      description: State what happened. Include the relevant error or incorrect result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: State what you expected and which contract or requirement defines it, if known.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest repeatable setup and command sequence.
+      placeholder: |
+        1. Check out commit ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and revision
+      description: State the commit or branch, OS, Node.js, Docker, browser, and deployment target as applicable. Write N/A for items that do not apply.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: State who or what is affected and whether a safe workaround exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Add redacted logs, screenshots, traces, or related links that help reproduce or diagnose the problem.
+    validations:
+      required: false
