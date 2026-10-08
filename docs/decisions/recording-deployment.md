@@ -30,13 +30,16 @@ write only `sessions/*` objects. The execution role only pulls the gateway image
 writes its log group.
 
 The gateway has its own security group with no inbound rules. It can connect on TCP 9443
-only to a deployment-supplied environment-monitor security group. The stack adds the
-matching inbound rule. The supplied subnets must have no internet or NAT route and must
-provide private access to DynamoDB, S3, ECR, and CloudWatch Logs.
+only to a deployment-supplied environment-monitor security group. HTTPS egress is
+restricted to supplied S3 and DynamoDB gateway-endpoint prefix lists and one interface-
+endpoint security group for ECR and CloudWatch Logs. DNS egress is restricted to the
+supplied VPC resolver address. The stack adds the matching monitor and endpoint ingress
+rules. The supplied subnets must have no internet or NAT route.
 
 One `EnableRecordingPath` parameter controls the three coupled components. It defaults
-to `false`, which disables the event rule, reserves zero publisher concurrency, and runs
-zero gateway tasks. Enabling it is allowed only for the approved AWS checkpoint.
+to `false`, which disables the event rule, reserves zero publisher concurrency, and
+omits the gateway task definition and service. The image digest is required only when
+the path is enabled. Enabling it is allowed only for the approved AWS checkpoint.
 
 ## Limits and validation
 
@@ -51,3 +54,6 @@ the exact event pattern, failure queue, index, bucket, IAM, task definition, net
 rules, and inactive defaults. These checks do not prove AWS behavior. A temporary school
 account run must validate two concurrent attachments, event delivery, private network
 access, managed persistence, lease takeover, cleanup, latency, and retained resources.
+Recording retention and safe cleanup of unreferenced live chunks remain tracked in
+[issue #22](https://github.com/ehz0ah/OpsReplay/issues/22) and must be resolved before
+the external pilot.

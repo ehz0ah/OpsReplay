@@ -25,18 +25,21 @@ not create an API, function URL, ECS cluster, VPC, VPC endpoint, ECR repository,
 balancer, or public route.
 
 `EnableRecordingPath` defaults to `false`. In this state the publisher has zero reserved
-concurrency, the task-state rule is disabled, and the gateway service has zero tasks.
+concurrency, the task-state rule is disabled, and the gateway task definition and service
+are omitted.
 The start and expiry functions remain disabled independently. Enabling the recording
 path sets the publisher concurrency to four, enables its rule, and applies the configured
-gateway desired count. This switch does not make session start public.
+gateway desired count. A valid gateway image digest is required only in this state. This
+switch does not make session start public.
 
 Deployment inputs identify the existing cluster, private subnets, VPC, dedicated
-environment-monitor security group, environment execution role, gateway image digest,
+environment-monitor security group, environment security-group list, environment
+execution role, private endpoint destinations, VPC DNS resolver, gateway image digest,
 service count, and per-process recording capacity. The image must exist in the same
-account and Region under `opsreplay-gateway`, addressed by digest. The environment
-monitor group is the only group passed to new environment tasks. The stack adds ingress
-from the separate gateway group on TCP 9443. It does not give the environment a task
-role.
+account and Region under `opsreplay-gateway`, addressed by digest. The environment list
+must include the monitor group. The stack preserves that list for environment tasks and
+adds ingress from the separate gateway group on TCP 9443. It does not give the
+environment a task role.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated
@@ -65,15 +68,21 @@ Keep the learner lock until task stop is confirmed. Never clear locks manually t
 an error.
 
 The retained recording bucket has no deletion lifecycle because consent, retention, and
-deletion ownership are still open. Recording objects are immutable through
-content-addressed keys and conditional writes. S3 bucket versioning is not enabled.
+deletion ownership are still open. [Issue #22](https://github.com/ehz0ah/OpsReplay/issues/22)
+tracks the policy, orphan cleanup, and implementation required before the external
+pilot. Recording objects are immutable through content-addressed keys and conditional
+writes. S3 bucket versioning is not enabled.
 
 The gateway task has a separate application role and execution role. Its application
 role can query only the work index, read and update `SESSION#*` table items, and write
 only `sessions/*` objects in the recording bucket. Its execution role can pull only the
 `opsreplay-gateway` ECR image and write its log group. The gateway group has no inbound
-rules. It can reach the monitor group on TCP 9443 and private AWS endpoints over HTTPS.
-The selected subnets must not have an internet or NAT route.
+rules. HTTPS egress is restricted to the supplied S3 and DynamoDB gateway-endpoint
+prefix lists and interface-endpoint security group. DNS egress is restricted to the
+supplied VPC resolver address. The stack adds TCP 443 ingress from the gateway group to
+the endpoint group. That group must be attached to the ECR API, ECR Docker, and
+CloudWatch Logs interface endpoints. The selected subnets must not have an internet or
+NAT route.
 
 The later disposable test stack must choose explicit export and deletion rules.
 Do not assume stack deletion removes retained data, runtime tasks, or bootstrap storage.

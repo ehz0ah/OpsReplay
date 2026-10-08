@@ -12,6 +12,7 @@ type Resource = {
   Properties?: Record<string, unknown>;
   DeletionPolicy?: string;
   UpdateReplacePolicy?: string;
+  Condition?: string;
 };
 
 test('the recording path is private, bounded, least-privilege, and disabled by default', () => {
@@ -23,7 +24,9 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
     const rendered = template.toJSON() as {
       Parameters: Record<string, Record<string, unknown>>;
       Conditions: Record<string, unknown>;
+      Rules: Record<string, unknown>;
       Resources: Record<string, Resource>;
+      Outputs: Record<string, Record<string, unknown>>;
     };
 
     assert.deepEqual(rendered.Parameters.EnableRecordingPath, {
@@ -37,6 +40,33 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
     assert.equal(rendered.Parameters.GatewayMaximumConcurrentRecordings?.MaxValue, 64);
     assert.deepEqual(rendered.Parameters.EnvironmentMonitorSecurityGroupId, {
       Type: 'AWS::EC2::SecurityGroup::Id',
+    });
+    assert.deepEqual(rendered.Parameters.EnvironmentSecurityGroupIds, {
+      Type: 'List<AWS::EC2::SecurityGroup::Id>',
+    });
+    assert.deepEqual(rendered.Parameters.GatewayImageDigest, {
+      Type: 'String',
+      Default: '',
+      AllowedPattern: '(|sha256:[a-f0-9]{64})',
+    });
+    assert.deepEqual(rendered.Rules.EnvironmentSecurityGroupsIncludeMonitor, {
+      Assertions: [
+        {
+          Assert: {
+            'Fn::Contains': [{ Ref: 'EnvironmentSecurityGroupIds' }, { Ref: 'EnvironmentMonitorSecurityGroupId' }],
+          },
+          AssertDescription: 'EnvironmentSecurityGroupIds must include EnvironmentMonitorSecurityGroupId.',
+        },
+      ],
+    });
+    assert.deepEqual(rendered.Rules.GatewayImageRequiredWhenRecordingEnabled, {
+      RuleCondition: { 'Fn::Equals': [{ Ref: 'EnableRecordingPath' }, 'true'] },
+      Assertions: [
+        {
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'GatewayImageDigest' }, ''] }] },
+          AssertDescription: 'GatewayImageDigest is required when EnableRecordingPath is true.',
+        },
+      ],
     });
 
     template.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -104,17 +134,65 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
     template.resourceCountIs('AWS::Lambda::Permission', 1);
 
     template.resourceCountIs('AWS::EC2::SecurityGroup', 1);
+    const gatewaySecurityGroups = Object.values(rendered.Resources).filter(
+      (resource) => resource.Type === 'AWS::EC2::SecurityGroup',
+    );
+    assert.equal(gatewaySecurityGroups.length, 1);
+    const gatewayEgress = gatewaySecurityGroups[0]?.Properties?.SecurityGroupEgress as Record<string, unknown>[];
+    assert.equal(gatewayEgress.length, 6);
+    assert.equal(
+      gatewayEgress.some((rule) => rule.CidrIp === '0.0.0.0/0'),
+      false,
+    );
+    assert.deepEqual(gatewayEgress, [
+      {
+        IpProtocol: 'tcp',
+        FromPort: 9443,
+        ToPort: 9443,
+        DestinationSecurityGroupId: { Ref: 'EnvironmentMonitorSecurityGroupId' },
+        Description: 'Authenticated monitor control',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationPrefixListId: { Ref: 'S3GatewayEndpointPrefixListId' },
+        Description: 'S3 gateway endpoint',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationPrefixListId: { Ref: 'DynamoDbGatewayEndpointPrefixListId' },
+        Description: 'DynamoDB gateway endpoint',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationSecurityGroupId: { Ref: 'AwsInterfaceEndpointSecurityGroupId' },
+        Description: 'ECR and CloudWatch Logs interface endpoints',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 53,
+        ToPort: 53,
+        CidrIp: { 'Fn::Join': ['', [{ Ref: 'VpcDnsResolverIpv4' }, '/32']] },
+        Description: 'VPC DNS resolver',
+      },
+      {
+        IpProtocol: 'udp',
+        FromPort: 53,
+        ToPort: 53,
+        CidrIp: { 'Fn::Join': ['', [{ Ref: 'VpcDnsResolverIpv4' }, '/32']] },
+        Description: 'VPC DNS resolver',
+      },
+    ]);
     template.hasResourceProperties('AWS::EC2::SecurityGroup', {
       GroupDescription: 'OpsReplay gateway recording tasks. No inbound listener in this increment.',
-      SecurityGroupEgress: Match.arrayWith([
-        Match.objectLike({
-          IpProtocol: 'tcp',
-          FromPort: 9443,
-          ToPort: 9443,
-          DestinationSecurityGroupId: { Ref: 'EnvironmentMonitorSecurityGroupId' },
-        }),
-      ]),
+      SecurityGroupEgress: gatewayEgress,
     });
+    template.resourceCountIs('AWS::EC2::SecurityGroupIngress', 2);
     template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
       GroupId: { Ref: 'EnvironmentMonitorSecurityGroupId' },
       SourceSecurityGroupId: Match.anyValue(),
@@ -122,7 +200,18 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
       FromPort: 9443,
       ToPort: 9443,
     });
+    template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
+      GroupId: { Ref: 'AwsInterfaceEndpointSecurityGroupId' },
+      SourceSecurityGroupId: Match.anyValue(),
+      IpProtocol: 'tcp',
+      FromPort: 443,
+      ToPort: 443,
+    });
 
+    const gatewayTask = Object.values(rendered.Resources).find(
+      (resource) => resource.Type === 'AWS::ECS::TaskDefinition',
+    );
+    assert.equal(gatewayTask?.Condition, 'RecordingPathEnabled');
     template.hasResourceProperties('AWS::ECS::TaskDefinition', {
       Cpu: '512',
       Memory: '1024',
@@ -147,8 +236,10 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
         }),
       ],
     });
+    const gatewayService = Object.values(rendered.Resources).find((resource) => resource.Type === 'AWS::ECS::Service');
+    assert.equal(gatewayService?.Condition, 'RecordingPathEnabled');
     template.hasResourceProperties('AWS::ECS::Service', {
-      DesiredCount: { 'Fn::If': ['RecordingPathEnabled', { Ref: 'GatewayDesiredCount' }, 0] },
+      DesiredCount: { Ref: 'GatewayDesiredCount' },
       LaunchType: 'FARGATE',
       PlatformVersion: '1.4.0',
       EnableExecuteCommand: false,
@@ -162,6 +253,15 @@ test('the recording path is private, bounded, least-privilege, and disabled by d
           AssignPublicIp: 'DISABLED',
           SecurityGroups: [Match.anyValue()],
           Subnets: { Ref: 'EnvironmentSubnetIds' },
+        },
+      },
+    });
+    assert.equal(rendered.Outputs.GatewayRecordingServiceName?.Condition, 'RecordingPathEnabled');
+
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: {
+          ECS_SECURITY_GROUP_IDS: { 'Fn::Join': [',', { Ref: 'EnvironmentSecurityGroupIds' }] },
         },
       },
     });
