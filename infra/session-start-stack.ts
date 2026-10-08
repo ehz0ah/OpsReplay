@@ -1,5 +1,16 @@
 import { fileURLToPath } from 'node:url';
-import { ArnFormat, Aws, CfnCondition, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import {
+  ArnFormat,
+  Aws,
+  CfnCondition,
+  CfnOutput,
+  CfnParameter,
+  CfnRule as CloudFormationRule,
+  Duration,
+  Fn,
+  RemovalPolicy,
+  Stack,
+} from 'aws-cdk-lib';
 import type { StackProps } from 'aws-cdk-lib';
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
@@ -27,11 +38,30 @@ export class SessionStartStack extends Stack {
     const subnetIds = new CfnParameter(this, 'EnvironmentSubnetIds', {
       type: 'List<AWS::EC2::Subnet::Id>',
     });
+    const securityGroupIds = new CfnParameter(this, 'EnvironmentSecurityGroupIds', {
+      type: 'List<AWS::EC2::SecurityGroup::Id>',
+    });
     const vpcId = new CfnParameter(this, 'EnvironmentVpcId', {
       type: 'AWS::EC2::VPC::Id',
     });
     const environmentMonitorSecurityGroupId = new CfnParameter(this, 'EnvironmentMonitorSecurityGroupId', {
       type: 'AWS::EC2::SecurityGroup::Id',
+    });
+    const awsEndpointSecurityGroupId = new CfnParameter(this, 'AwsInterfaceEndpointSecurityGroupId', {
+      type: 'AWS::EC2::SecurityGroup::Id',
+    });
+    const s3PrefixListId = new CfnParameter(this, 'S3GatewayEndpointPrefixListId', {
+      type: 'String',
+      allowedPattern: 'pl-[0-9a-f]+',
+    });
+    const dynamoDbPrefixListId = new CfnParameter(this, 'DynamoDbGatewayEndpointPrefixListId', {
+      type: 'String',
+      allowedPattern: 'pl-[0-9a-f]+',
+    });
+    const vpcDnsResolverIpv4 = new CfnParameter(this, 'VpcDnsResolverIpv4', {
+      type: 'String',
+      allowedPattern:
+        '(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])',
     });
     const executionRoleArn = new CfnParameter(this, 'EnvironmentExecutionRoleArn', {
       type: 'String',
@@ -39,7 +69,8 @@ export class SessionStartStack extends Stack {
     });
     const gatewayImageDigest = new CfnParameter(this, 'GatewayImageDigest', {
       type: 'String',
-      allowedPattern: 'sha256:[a-f0-9]{64}',
+      default: '',
+      allowedPattern: '(|sha256:[a-f0-9]{64})',
     });
     const gatewayDesiredCount = new CfnParameter(this, 'GatewayDesiredCount', {
       type: 'Number',
@@ -60,6 +91,23 @@ export class SessionStartStack extends Stack {
     });
     const recordingEnabled = new CfnCondition(this, 'RecordingPathEnabled', {
       expression: Fn.conditionEquals(recordingPathEnabled.valueAsString, 'true'),
+    });
+    new CloudFormationRule(this, 'EnvironmentSecurityGroupsIncludeMonitor', {
+      assertions: [
+        {
+          assert: Fn.conditionContains(securityGroupIds.valueAsList, environmentMonitorSecurityGroupId.valueAsString),
+          assertDescription: 'EnvironmentSecurityGroupIds must include EnvironmentMonitorSecurityGroupId.',
+        },
+      ],
+    });
+    new CloudFormationRule(this, 'GatewayImageRequiredWhenRecordingEnabled', {
+      ruleCondition: Fn.conditionEquals(recordingPathEnabled.valueAsString, 'true'),
+      assertions: [
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(gatewayImageDigest.valueAsString, '')),
+          assertDescription: 'GatewayImageDigest is required when EnableRecordingPath is true.',
+        },
+      ],
     });
     const table = new Table(this, 'Sessions', {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
@@ -100,9 +148,41 @@ export class SessionStartStack extends Stack {
           destinationSecurityGroupId: environmentMonitorSecurityGroupId.valueAsString,
           description: 'Authenticated monitor control',
         },
-        { ipProtocol: 'tcp', fromPort: 443, toPort: 443, cidrIp: '0.0.0.0/0', description: 'Private AWS endpoints' },
-        { ipProtocol: 'tcp', fromPort: 53, toPort: 53, cidrIp: '0.0.0.0/0', description: 'VPC DNS' },
-        { ipProtocol: 'udp', fromPort: 53, toPort: 53, cidrIp: '0.0.0.0/0', description: 'VPC DNS' },
+        {
+          ipProtocol: 'tcp',
+          fromPort: 443,
+          toPort: 443,
+          destinationPrefixListId: s3PrefixListId.valueAsString,
+          description: 'S3 gateway endpoint',
+        },
+        {
+          ipProtocol: 'tcp',
+          fromPort: 443,
+          toPort: 443,
+          destinationPrefixListId: dynamoDbPrefixListId.valueAsString,
+          description: 'DynamoDB gateway endpoint',
+        },
+        {
+          ipProtocol: 'tcp',
+          fromPort: 443,
+          toPort: 443,
+          destinationSecurityGroupId: awsEndpointSecurityGroupId.valueAsString,
+          description: 'ECR and CloudWatch Logs interface endpoints',
+        },
+        {
+          ipProtocol: 'tcp',
+          fromPort: 53,
+          toPort: 53,
+          cidrIp: Fn.join('', [vpcDnsResolverIpv4.valueAsString, '/32']),
+          description: 'VPC DNS resolver',
+        },
+        {
+          ipProtocol: 'udp',
+          fromPort: 53,
+          toPort: 53,
+          cidrIp: Fn.join('', [vpcDnsResolverIpv4.valueAsString, '/32']),
+          description: 'VPC DNS resolver',
+        },
       ],
     });
     const monitorIngress = new CfnSecurityGroupIngress(this, 'MonitorIngress', {
@@ -112,6 +192,14 @@ export class SessionStartStack extends Stack {
       fromPort: 9443,
       toPort: 9443,
       description: 'Gateway to monitor control',
+    });
+    const awsEndpointIngress = new CfnSecurityGroupIngress(this, 'AwsEndpointIngress', {
+      groupId: awsEndpointSecurityGroupId.valueAsString,
+      sourceSecurityGroupId: gatewaySecurityGroup.attrGroupId,
+      ipProtocol: 'tcp',
+      fromPort: 443,
+      toPort: 443,
+      description: 'Gateway to private AWS interface endpoints',
     });
     // The ECS agent uses the execution role. Neither container receives AWS credentials.
     secretFiles.addToResourcePolicy(
@@ -297,7 +385,7 @@ export class SessionStartStack extends Stack {
         SESSION_TABLE_NAME: table.tableName,
         ECS_CLUSTER_ARN: clusterArn.valueAsString,
         ECS_SUBNET_IDS: Fn.join(',', subnetIds.valueAsList),
-        ECS_SECURITY_GROUP_IDS: environmentMonitorSecurityGroupId.valueAsString,
+        ECS_SECURITY_GROUP_IDS: Fn.join(',', securityGroupIds.valueAsList),
         ECS_PLATFORM_VERSION: '1.4.0',
         MONITOR_CONTAINER_NAME: 'monitor',
         MONITOR_SECRET_BUCKET_ARN: secretFiles.bucketArn,
@@ -475,14 +563,11 @@ export class SessionStartStack extends Stack {
         },
       ],
     });
+    gatewayTask.cfnOptions.condition = recordingEnabled;
     const gatewayService = new CfnService(this, 'GatewayRecordingService', {
       cluster: clusterArn.valueAsString,
       taskDefinition: gatewayTask.ref,
-      desiredCount: Fn.conditionIf(
-        recordingEnabled.logicalId,
-        gatewayDesiredCount.valueAsNumber,
-        0,
-      ) as unknown as number,
+      desiredCount: gatewayDesiredCount.valueAsNumber,
       launchType: 'FARGATE',
       platformVersion: '1.4.0',
       availabilityZoneRebalancing: 'ENABLED',
@@ -502,10 +587,15 @@ export class SessionStartStack extends Stack {
         },
       },
     });
+    gatewayService.cfnOptions.condition = recordingEnabled;
     gatewayService.addResourceDependency(monitorIngress);
+    gatewayService.addResourceDependency(awsEndpointIngress);
 
     new CfnOutput(this, 'RecordingBucketName', { value: recordings.bucketName });
-    new CfnOutput(this, 'GatewayRecordingServiceName', { value: gatewayService.attrName });
+    new CfnOutput(this, 'GatewayRecordingServiceName', {
+      value: gatewayService.attrName,
+      condition: recordingEnabled,
+    });
     new CfnOutput(this, 'EnvironmentMonitorSecurityGroup', {
       value: environmentMonitorSecurityGroupId.valueAsString,
     });
