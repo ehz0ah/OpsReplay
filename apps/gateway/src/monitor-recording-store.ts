@@ -253,7 +253,7 @@ function validCheckpoint(state: MonitorRecordingState): boolean {
   );
 }
 
-function validState(value: unknown, sessionId: string): value is MonitorRecordingState {
+export function isMonitorRecordingState(value: unknown, sessionId: string): value is MonitorRecordingState {
   if (
     !isRecord(value) ||
     !exactKeys(value, [
@@ -392,7 +392,7 @@ export class DynamoMonitorRecordingStore
       sendOptions(signal),
     );
     if (!result.Item) return undefined;
-    if (!validState(result.Item.data, sessionId)) throw new MonitorRecordingStoreError('invalid_store');
+    if (!isMonitorRecordingState(result.Item.data, sessionId)) throw new MonitorRecordingStoreError('invalid_store');
     return cloneState(result.Item.data);
   }
 
@@ -601,7 +601,9 @@ export class DynamoMonitorRecordingStore
     });
     try {
       const result = await this.client.send(command, sendOptions(signal));
-      if (!validState(result.Attributes?.data, lease.sessionId)) throw new MonitorRecordingStoreError('invalid_store');
+      if (!isMonitorRecordingState(result.Attributes?.data, lease.sessionId)) {
+        throw new MonitorRecordingStoreError('invalid_store');
+      }
       return cloneState(result.Attributes.data);
     } catch (error) {
       if (signal?.aborted) throw error;

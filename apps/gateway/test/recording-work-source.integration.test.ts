@@ -123,7 +123,7 @@ test('discovers authoritative work through a keys-only GSI and retires its exact
     },
   ]);
 
-  const source = new DynamoRecordingWorkSource(database.document, table);
+  const source = new DynamoRecordingWorkSource(database.document, table, 'gateway-1');
   assert.deepEqual(await source.discover({ limit: 1, excludedSessionIds: [], now }), {
     work: [
       {
@@ -164,7 +164,7 @@ test('discovers authoritative work through a keys-only GSI and retires its exact
       return database.document.send(command as never, options as never);
     },
   } as unknown as DynamoDBDocumentClient;
-  const racingSource = new DynamoRecordingWorkSource(racingClient, table);
+  const racingSource = new DynamoRecordingWorkSource(racingClient, table, 'gateway-1');
   assert.equal(await racingSource.retire({ sessionId, workOrder }), 'not_terminal');
   assert.equal(changedState, true);
   const afterRace = await database.document.send(

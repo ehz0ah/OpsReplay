@@ -15,20 +15,22 @@ other sessions.
 
 Use the `unfinished-work` DynamoDB global secondary index only as a discovery hint. The
 work source parses each keys-only result, skips sessions already supervised by the local
-process, and then strongly reads the base session. It returns the private task address,
-public monitor certificate, and secret only after it validates the authoritative session
-state and certificate. Terminal work is retired only while the exact work key and the
-terminal session state remain unchanged. The lifecycle expiry action, not the gateway,
-owns the terminal transition for overdue provisioning sessions.
+process, and then uses bounded, strongly consistent batch reads for the base session and
+recording lease. It skips work with a live lease held by another gateway. It returns the
+private task address, public monitor certificate, and secret only after it validates the
+authoritative session state and certificate. Terminal work is retired only while the
+exact work key and the terminal session state remain unchanged. The lifecycle expiry
+action, not the gateway, owns the terminal transition for overdue provisioning sessions.
 
 Run a bounded number of `MonitorRecordingRunner` instances in one supervisor. One
 session can have only one active runner in that process. A bounded cooldown delays lease
 contention and recoverable failures. The discovery cursor lets other sessions progress.
 Malformed entries are skipped and reported without blocking valid work from the same
-query. Monitor, storage, and transient AWS failures are reported and isolated. Invalid
-configuration, permission failures, and programming errors cancel all active runners
-and stop the supervisor. Shutdown also cancels and awaits every active runner, which
-closes its monitor client.
+query. The cursor advances only through inspected entries, so uninspected work remains
+eligible for the next poll. Monitor, storage, and transient AWS failures are reported
+and isolated. Invalid configuration, permission failures, and programming errors stop
+new launches, let active runners finish, and then stop the supervisor. Shutdown cancels
+and awaits every active runner, which closes its monitor client.
 
 The concrete composition uses one shared DynamoDB document client and one shared S3
 client. Their connection timeouts, request timeouts, and retry counts are bounded. This
