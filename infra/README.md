@@ -2,14 +2,19 @@
 
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, and the private
-gateway recording worker. Nothing is provisioned. The domain and school-account
-deployment permissions remain unverified. The checkpoint commands target the
-`opsreplay` profile in `ap-southeast-1`; this does not select the permanent deployment
-Region.
+gateway recording worker. A manual GitHub Actions workflow can build and publish the
+three checkpoint images after the foundation exists. Nothing is provisioned or
+published. The domain and school-account deployment permissions remain unverified. The
+checkpoint commands target the `opsreplay` profile in `ap-southeast-1`; this does not
+select the permanent deployment Region.
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
 ## Current definitions
+
+`GitHubOidcProviderStack` defines one optional account prerequisite. Deploy it only when
+the account does not already contain the GitHub Actions provider. Keeping this provider
+outside the disposable foundation gives it one stable owner across foundation updates.
 
 `CheckpointFoundationStack` defines the minimum base for the first temporary AWS run:
 
@@ -20,6 +25,8 @@ Use the [architecture](../docs/architecture.md) and
 - one ECS cluster;
 - immutable, scan-on-push repositories for the gateway, monitor, and first Challenge,
   with cleanup limited to untagged images;
+- a `main`-only image publisher role that references the verified account-level GitHub
+  OIDC provider and is restricted to those three repositories;
 - one environment execution role and one seven-day environment log group.
 
 One Availability Zone reduces endpoint cost for the temporary functional checkpoint.
@@ -70,6 +77,15 @@ make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the genera
 resources, permissions, networking, and disabled activation state. The gateway runtime
 image is built and tested separately with `npm run gateway:runtime:image:build` and
 `npm run gateway:runtime:image:test`.
+
+The `Publish checkpoint images` workflow is manual and accepts only `main`. It tests the
+Challenge, Monitor, and gateway images before requesting temporary AWS credentials. It
+uses the `AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN` repository variable, publishes an
+immutable `git-<commit-sha>-<image-config-digest>` tag, and uploads a seven-day JSON
+artifact with all three registry digests. The content-specific suffix avoids collisions
+when a mutable package source produces different bytes during a later build of the same
+commit. Repeated runs reuse only tags that match the tested local images. The workflow
+does not package Lambda code, deploy a stack, or start a task.
 
 The table and secret-file bucket use `Retain` by default. Stack deletion would keep
 their data and storage charges. Secret files use S3-managed encryption, HTTPS, public-access blocking, and
@@ -133,6 +149,27 @@ OpsReplay application.
 npm run infra:cdk -- bootstrap --profile opsreplay --region ap-southeast-1
 ```
 
+Before foundation deployment, check whether the account already has the GitHub Actions
+OIDC provider. Authenticate the `opsreplay` SSO profile first if needed. Inspect each
+returned provider and use only one whose URL is exactly
+`token.actions.githubusercontent.com` and whose `ClientIDList` contains
+`sts.amazonaws.com`.
+
+```sh
+aws sso login --profile opsreplay
+aws iam list-open-id-connect-providers --profile opsreplay
+aws iam get-open-id-connect-provider --profile opsreplay --open-id-connect-provider-arn '<verified-provider-arn>' --query '{Url:Url,ClientIDList:ClientIDList}'
+```
+
+If no GitHub provider exists, deploy the dedicated prerequisite stack once and record
+its `GitHubOidcProviderArn` output. If one exists, do not deploy this stack. Use the
+verified existing ARN instead. Do not attempt to create a second provider with the same
+URL.
+
+```sh
+npm run infra:cdk -- deploy OpsReplayGitHubOidcProvider --profile opsreplay --region ap-southeast-1
+```
+
 Before foundation deployment, obtain the current AWS-managed prefix-list IDs:
 
 ```sh
@@ -143,9 +180,21 @@ aws ec2 describe-managed-prefix-lists --profile opsreplay --region ap-southeast-
 Pass the reviewed values to `diff` and `deploy`. Do not copy the placeholders below.
 
 ```sh
-npm run infra:cdk -- diff OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
-npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
+npm run infra:cdk -- diff OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
+npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
 ```
+
+After foundation deployment, copy the `GitHubImagePublisherRoleArn` stack output into
+the repository variable, then run the workflow from `main`.
+
+```sh
+gh variable set AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN --body '<verified-role-arn>'
+gh workflow run publish-checkpoint-images.yml --ref main
+```
+
+The workflow summary and `checkpoint-image-digests-<commit-sha>` artifact contain the
+digest-pinned image URIs for the later runtime deployment. Do not copy an image digest
+into a published content version until that runtime has passed its AWS checkpoint.
 
 After deployment, inspect the stack outputs. Confirm that `VpcDnsResolverIpv4` is
 `10.42.0.2` before passing it to the application stack. Keep an immutable tag on each
@@ -153,10 +202,15 @@ image digest used by a task definition. The lifecycle rule deletes only older un
 images.
 
 Destroy the exact foundation stack after the approved test. Confirm that the ECR
-repositories, endpoints, cluster, log group, subnet, and VPC are absent afterward.
+repositories, publisher role, endpoints, cluster, log group, subnet, and VPC are absent
+afterward. Remove the repository variable after teardown. If this checkpoint created the
+dedicated provider stack, destroy it only after the foundation and after confirming that
+no other role uses the provider. Never destroy a provider that existed before this
+checkpoint.
 
 ```sh
 npm run infra:cdk -- destroy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1
+npm run infra:cdk -- destroy OpsReplayGitHubOidcProvider --profile opsreplay --region ap-southeast-1
 ```
 
 ## First AWS checkpoint

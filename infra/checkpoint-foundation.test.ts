@@ -10,6 +10,7 @@ import { CheckpointFoundationStack } from './checkpoint-foundation-stack.js';
 interface Resource {
   Type: string;
   Properties?: Record<string, unknown>;
+  Condition?: string;
   DeletionPolicy?: string;
   UpdateReplacePolicy?: string;
 }
@@ -42,6 +43,11 @@ test('checkpoint workloads have private endpoint-only network access', () => {
       Type: 'String',
       AllowedPattern: 'pl-[0-9a-f]+',
       Description: 'AWS-managed DynamoDB prefix list for the deployment Region.',
+    });
+    assert.deepEqual(rendered.Parameters.GitHubOidcProviderArn, {
+      Type: 'String',
+      AllowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com',
+      Description: 'Verified GitHub Actions OIDC provider ARN with the sts.amazonaws.com client ID.',
     });
 
     template.resourceCountIs('AWS::EC2::VPC', 1);
@@ -192,7 +198,9 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       });
     }
 
-    template.resourceCountIs('AWS::IAM::Role', 1);
+    template.resourceCountIs('AWS::IAM::OIDCProvider', 0);
+
+    template.resourceCountIs('AWS::IAM::Role', 2);
     template.hasResourceProperties('AWS::IAM::Role', {
       AssumeRolePolicyDocument: {
         Statement: [
@@ -205,14 +213,52 @@ test('checkpoint repositories and execution permissions are bounded and disposab
         Version: '2012-10-17',
       },
     });
-    const role = Object.values(rendered.Resources).find((resource) => resource.Type === 'AWS::IAM::Role');
-    assert.equal(role?.Properties?.ManagedPolicyArns, undefined);
+    const roleEntries = Object.entries(rendered.Resources).filter(([, resource]) => resource.Type === 'AWS::IAM::Role');
+    const executionRoleEntry = roleEntries.find(
+      ([, role]) =>
+        (role.Properties?.AssumeRolePolicyDocument as { Statement?: { Action?: string }[] })?.Statement?.[0]?.Action ===
+        'sts:AssumeRole',
+    );
+    const publisherRoleEntry = roleEntries.find(
+      ([, role]) =>
+        (role.Properties?.AssumeRolePolicyDocument as { Statement?: { Action?: string }[] })?.Statement?.[0]?.Action ===
+        'sts:AssumeRoleWithWebIdentity',
+    );
+    assert.ok(executionRoleEntry);
+    assert.ok(publisherRoleEntry);
+    assert.equal(executionRoleEntry[1].Properties?.ManagedPolicyArns, undefined);
+    assert.equal(publisherRoleEntry[1].Properties?.ManagedPolicyArns, undefined);
+    assert.deepEqual(publisherRoleEntry[1].Properties?.AssumeRolePolicyDocument, {
+      Statement: [
+        {
+          Action: 'sts:AssumeRoleWithWebIdentity',
+          Condition: {
+            StringEquals: {
+              'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+              'token.actions.githubusercontent.com:sub': 'repo:ehz0ah/OpsReplay:ref:refs/heads/main',
+            },
+          },
+          Effect: 'Allow',
+          Principal: {
+            Federated: { Ref: 'GitHubOidcProviderArn' },
+          },
+        },
+      ],
+      Version: '2012-10-17',
+    });
 
-    const policies = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::IAM::Policy');
-    assert.equal(policies.length, 1);
-    const policy = policies[0]?.Properties;
-    assert.ok(policy);
-    const statements = (policy.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement;
+    const policyEntries = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::IAM::Policy');
+    assert.equal(policyEntries.length, 2);
+    const executionPolicy = policyEntries.find((policy) =>
+      (policy.Properties?.Roles as { Ref?: string }[])?.some((role) => role.Ref === executionRoleEntry[0]),
+    );
+    const publisherPolicy = policyEntries.find((policy) =>
+      (policy.Properties?.Roles as { Ref?: string }[])?.some((role) => role.Ref === publisherRoleEntry[0]),
+    );
+    assert.ok(executionPolicy?.Properties);
+    assert.ok(publisherPolicy?.Properties);
+    const statements = (executionPolicy.Properties.PolicyDocument as { Statement: Record<string, unknown>[] })
+      .Statement;
     assert.deepEqual(
       statements.map((statement) => statement.Action),
       [
@@ -237,6 +283,29 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       (resource) => resource.Properties?.LogGroupName === '/opsreplay/checkpoint/environment',
     );
     assert.deepEqual(statements[2]?.Resource, { 'Fn::GetAtt': [environmentLogGroupId, 'Arn'] });
+
+    const publisherStatements = (publisherPolicy.Properties.PolicyDocument as { Statement: Record<string, unknown>[] })
+      .Statement;
+    assert.deepEqual(
+      publisherStatements.map((statement) => statement.Action),
+      [
+        'ecr:GetAuthorizationToken',
+        [
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:BatchGetImage',
+          'ecr:CompleteLayerUpload',
+          'ecr:InitiateLayerUpload',
+          'ecr:PutImage',
+          'ecr:UploadLayerPart',
+        ],
+      ],
+    );
+    assert.equal(publisherStatements[0]?.Resource, '*');
+    assert.deepEqual(publisherStatements[1]?.Resource, [
+      repositoryArn('opsreplay-gateway'),
+      repositoryArn('opsreplay/monitor'),
+      repositoryArn('opsreplay/challenge-wrong-upstream-port'),
+    ]);
 
     template.hasResource('AWS::Logs::LogGroup', {
       DeletionPolicy: 'Delete',
@@ -282,6 +351,7 @@ test('checkpoint outputs match the existing application-stack deployment inputs'
       'EnvironmentSubnetIds',
       'EnvironmentVpcId',
       'GatewayRepositoryUri',
+      'GitHubImagePublisherRoleArn',
       'MonitorRepositoryUri',
       'S3GatewayEndpointPrefixListId',
       'VpcDnsResolverIpv4',

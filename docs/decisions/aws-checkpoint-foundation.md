@@ -34,6 +34,13 @@ repositories and write only that log group. It is an execution role and is not e
 inside either container. The application stack grants its private bootstrap bucket to
 this role through the bucket policy.
 
+The stack also defines the narrow role needed by the later manual image-publication
+workflow. It references a verified account-level GitHub Actions OIDC provider. The
+provider remains outside the disposable foundation so that one stack owns it for its
+complete lifetime. The publisher role trusts only this repository's `main` branch and
+can read and write images only in the three checkpoint repositories. See the
+[checkpoint image publication decision](checkpoint-image-publication.md).
+
 The stack exports the values already required by `SessionStartStack`. AWS-managed S3
 and DynamoDB prefix-list IDs remain deployment parameters because CloudFormation does
 not expose them from gateway endpoint resources and offline synthesis must not perform
@@ -54,10 +61,13 @@ dedicated repositories.
 
 This increment does not create an environment task definition, run an ECS task, publish
 an image, enable a Lambda, or create a public route. It does not add an ALB, API Gateway,
-Cognito, Route 53, frontend hosting, or LLM infrastructure.
+Cognito, Route 53, frontend hosting, or LLM infrastructure. The publisher role authorizes
+a separate manual workflow. Deploying the foundation does not run that workflow or
+create an account-level identity provider.
 
 Template tests verify the resource allow-list, private subnet, endpoint set, security-
-group egress, execution-role permissions, repository controls, deletion policies, and
-outputs. These tests do not prove AWS deployment. Review the CDK bootstrap template and
-CloudFormation diff before the first account change. Deploy only with the `opsreplay`
-profile in `ap-southeast-1`, then destroy the checkpoint stack after the test.
+group egress, execution-role and publisher permissions, OIDC trust, repository controls,
+deletion policies, and outputs. A separate test checks the optional provider stack. These
+tests do not prove AWS deployment. Review the CDK bootstrap template and CloudFormation
+diff before the first account change. Deploy only with the `opsreplay` profile in
+`ap-southeast-1`, then destroy the checkpoint stack after the test.

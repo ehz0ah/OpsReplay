@@ -117,8 +117,8 @@ function sql(id, statement) {
 }
 
 function nginxWorkers(id) {
-  const processes = success(exec(id, 'ps', '-C', 'nginx', '-o', 'pid=,args='));
-  return new Set([...processes.matchAll(/^\s*(\d+)\s+nginx: worker process\b/gm)].map((match) => match[1]));
+  const master = success(exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'pid', 'nginx'));
+  return new Set(childPids(id, master));
 }
 
 function childPids(id, parentPid) {
