@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 
 ENV LANG=C.UTF-8 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -9,6 +9,7 @@ ENV LANG=C.UTF-8 \
 COPY --chmod=755 rootfs/usr/sbin/policy-rc.d /usr/sbin/policy-rc.d
 COPY rootfs/etc/postgresql-common/createcluster.conf /etc/postgresql-common/createcluster.conf
 RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ca-certificates curl gunicorn iproute2 less nano nginx postgresql-15 \
        procps python3-flask python3-psycopg2 supervisor vim-tiny \

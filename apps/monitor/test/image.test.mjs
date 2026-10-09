@@ -113,6 +113,24 @@ async function eventually(check, message, timeoutMs = 20_000) {
   assert.fail(message);
 }
 
+test('the Monitor runtime image includes the available Debian Perl security update', () => {
+  const version = success(
+    docker(
+      'run',
+      '--rm',
+      '--network',
+      'none',
+      '--entrypoint',
+      'sh',
+      monitorImage,
+      '-c',
+      "version=$(dpkg-query -W -f='${Version}' perl-base) && " +
+        'dpkg --compare-versions "$version" ge "5.36.0-7+deb12u4" && printf "%s" "$version"',
+    ),
+  );
+  assert.notEqual(version, '');
+});
+
 async function fresh(t) {
   const id = success(
     run('sh', [

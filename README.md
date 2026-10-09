@@ -10,7 +10,8 @@ configuration files, and see real consequences. Afterwards they can play back th
 beside the logs and metrics, or retry in a fresh environment.
 
 **Status: local Challenge image, monitor measurements and control, disabled session
-provisioning, and a locally synthesized AWS checkpoint foundation.** The
+provisioning, and a completed disposable AWS checkpoint for image publication and the
+private gateway runtime.** The disposable resources were removed after validation. The
 [preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
@@ -25,10 +26,12 @@ a work source, and an executable recording supervisor. These parts are tested lo
 including as a hardened container against DynamoDB Local and against the real monitor
 and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
 event action, private recording service, and the isolated network, endpoints, cluster,
-and image repositories for a temporary AWS checkpoint. The complete recording path is
-disabled by default and has not run in AWS. Captures, the terminal proxy, browser relay, remaining
-API, web application, and lifecycle completion are not implemented. The image is not a
-published Challenge or a complete session. No public route is enabled.
+and image repositories for a temporary AWS checkpoint. The checkpoint published and
+verified all three images and ran the private gateway service from its exact digest. The
+complete recording path remains disabled and has not run in AWS. Captures, the terminal
+proxy, browser relay, remaining API, web application, and lifecycle completion are not
+implemented. No checkpoint image is currently published in AWS, and no public route is
+enabled.
 
 ## Start here
 

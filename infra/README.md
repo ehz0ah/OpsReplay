@@ -2,11 +2,13 @@
 
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, and the private
-gateway recording worker. A manual GitHub Actions workflow can build and publish the
-three checkpoint images after the foundation exists. Nothing is provisioned or
-published. The domain and school-account deployment permissions remain unverified. The
-checkpoint commands target the `opsreplay` profile in `ap-southeast-1`; this does not
-select the permanent deployment Region.
+gateway recording worker. The first disposable checkpoint verified GitHub OIDC image
+publication and the private gateway runtime in AWS. Its foundation, service, and image
+repositories were then removed. No OpsReplay runtime or image is currently deployed.
+The account-level GitHub OIDC provider and standard CDK bootstrap stack remain. The
+tested school-account permissions apply only to this checkpoint. The checkpoint commands
+target the `opsreplay` profile in `ap-southeast-1`; this does not select the permanent
+deployment Region.
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
@@ -235,6 +237,15 @@ npm run infra:cdk -- destroy OpsReplayGitHubOidcProvider --profile opsreplay --r
 
 ## First AWS checkpoint
 
+The first checkpoint completed on 10 October 2026. GitHub Actions run `37965328481`
+built, tested, and published all three images through OIDC. The artifact digests matched
+the ECR digests. A private gateway Fargate service then ran from the exact published
+gateway digest without a public IP. The disposable runtime and foundation were removed,
+including retained buckets, the retained table, image repositories, and the temporary
+GitHub environment variable. The `CDKToolkit` and account-level
+`OpsReplayGitHubOidcProvider` support stacks remain. This test did not run the complete
+Challenge session or recording path.
+
 Build a small integrated flow before deploying: start, terminal access, investigation
 and repair, recovery, end, and verified cleanup. Use the NUS school account with a
 separate SSO profile. Never use the default or personal AWS profile. Confirm permissions,
@@ -250,8 +261,9 @@ an initial tagged upload succeeds and a standalone retag attempt fails. Verify t
 deletion of one terminal test session removes its S3 prefix before its DynamoDB partition
 and matching start receipt. Record readiness time, isolation results, cost, and retained
 resources.
-No full-stack AWS run is required for each small PR. This change provides the inactive
-deployment definition only. It does not claim AWS validation.
+No full-stack AWS run is required for each small PR. Local checks do not prove later AWS
+changes. Repeat a bounded checkpoint when a change affects a managed-service contract or
+runtime behavior that local tests cannot verify.
 
 Before a pilot, add Route 53, Cognito, the REST API with streaming, separate environment
 configuration, least-privilege roles, budgets and alarms including Fargate vCPU use,

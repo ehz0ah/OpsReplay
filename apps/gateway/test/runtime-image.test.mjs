@@ -61,6 +61,22 @@ async function eventually(check, message, timeoutMs = 20_000) {
   assert.fail(message);
 }
 
+test('the gateway runtime image includes the available Debian Perl security update', () => {
+  const version = docker(
+    'run',
+    '--rm',
+    '--network',
+    'none',
+    '--entrypoint',
+    'sh',
+    gatewayImage,
+    '-c',
+    "version=$(dpkg-query -W -f='${Version}' perl-base) && " +
+      'dpkg --compare-versions "$version" ge "5.36.0-7+deb12u4" && printf "%s" "$version"',
+  );
+  assert.notEqual(version, '');
+});
+
 test('the gateway runtime image discovers work and stops cleanly', { timeout: 60_000 }, async () => {
   const suffix = randomUUID();
   const network = `opsreplay-gateway-runtime-${suffix}`;
