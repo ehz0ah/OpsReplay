@@ -7,7 +7,7 @@ import {
   checkpointImages,
   checkpointTag,
   parseBatchGetImage,
-  parseDockerImageInspect,
+  parseDockerArchiveManifest,
   publishCheckpointImages,
 } from './publish-checkpoint-images.mjs';
 
@@ -22,6 +22,11 @@ const existing = Object.fromEntries(
     { digest: digest(String(index + 1)), configDigest: localConfigDigests[image.localImage] },
   ]),
 );
+const expectedConfigDigests = new Map([
+  ['gateway', digest('a')],
+  ['monitor', digest('b')],
+  ['challenge', digest('c')],
+]);
 
 function temporaryOutput() {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-checkpoint-images-'));
@@ -37,6 +42,7 @@ function environment(output, overrides = {}) {
     GITHUB_REF: 'refs/heads/main',
     GITHUB_SHA: commitSha,
     AWS_REGION: 'ap-southeast-1',
+    CHECKPOINT_IMAGE_BUNDLE: join(output.directory, 'checkpoint-images.tar'),
     CHECKPOINT_IMAGE_MANIFEST: output.manifest,
     GITHUB_STEP_SUMMARY: output.summary,
     ...overrides,
@@ -62,17 +68,18 @@ function batchResponse(repository, values = existing) {
     : JSON.stringify({ images: [], failures: [{ failureCode: 'ImageNotFound' }] });
 }
 
-function inspectLocalImage(command, args) {
-  if (command === 'docker' && args[0] === 'image' && args[1] === 'inspect') {
-    const localImage = args.at(-1);
-    assert.ok(localImage in localConfigDigests);
-    return JSON.stringify([
-      {
-        Id: digest('f'),
-        Descriptor: { annotations: { 'config.digest': localConfigDigests[localImage] } },
-      },
-    ]);
-  }
+function archiveManifest(configDigests = localConfigDigests, configPath = (value) => `blobs/sha256/${value.slice(7)}`) {
+  return JSON.stringify(
+    checkpointImages.map((image) => ({
+      Config: configPath(configDigests[image.localImage]),
+      RepoTags: [image.localImage],
+      Layers: [],
+    })),
+  );
+}
+
+function inspectImageBundle(command, args) {
+  if (command === 'tar' && args[0] === '-xOf' && args.at(-1) === 'manifest.json') return archiveManifest();
   return null;
 }
 
@@ -109,26 +116,49 @@ test('batch image responses distinguish a digest from a missing image', () => {
   );
 });
 
-test('Docker image metadata resolves configuration digests across image stores', () => {
-  const configDigest = digest('a');
-  assert.equal(
-    parseDockerImageInspect(
-      JSON.stringify([{ Id: digest('f'), Descriptor: { annotations: { 'config.digest': configDigest } } }]),
-      'current-engine',
-    ),
-    configDigest,
+test('Docker archive metadata resolves configuration digests across archive formats', () => {
+  assert.deepEqual(parseDockerArchiveManifest(archiveManifest()), expectedConfigDigests);
+  assert.deepEqual(
+    parseDockerArchiveManifest(archiveManifest(localConfigDigests, (value) => `${value.slice(7)}.json`)),
+    expectedConfigDigests,
   );
-  assert.equal(parseDockerImageInspect(JSON.stringify([{ Id: configDigest }]), 'legacy-engine'), configDigest);
-  assert.throws(() => parseDockerImageInspect('not-json', 'invalid'), /invalid image metadata/);
-  assert.throws(() => parseDockerImageInspect(JSON.stringify([]), 'missing'), /unexpected image metadata/);
+  assert.throws(() => parseDockerArchiveManifest('not-json'), /invalid manifest/);
+  assert.throws(() => parseDockerArchiveManifest(JSON.stringify([])), /exactly one/);
+  const duplicate = JSON.parse(archiveManifest());
+  duplicate.push(duplicate[0]);
+  assert.throws(() => parseDockerArchiveManifest(JSON.stringify(duplicate)), /exactly one/);
   assert.throws(
     () =>
-      parseDockerImageInspect(
-        JSON.stringify([{ Id: configDigest, Descriptor: { annotations: { 'config.digest': 'invalid' } } }]),
-        'invalid-digest',
+      parseDockerArchiveManifest(
+        archiveManifest({ ...localConfigDigests, 'opsreplay/gateway-recording:dev': 'sha256:invalid' }),
       ),
-    /invalid image configuration digest/,
+    /invalid configuration digest/,
   );
+});
+
+test('an invalid image archive fails before any AWS request', () => {
+  const output = temporaryOutput();
+  const calls = [];
+  try {
+    assert.throws(
+      () =>
+        publishCheckpointImages({
+          env: environment(output),
+          run: (command, args) => {
+            calls.push([command, args]);
+            if (command === 'tar') return '[]';
+            throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+          },
+        }),
+      /exactly one/,
+    );
+    assert.deepEqual(
+      calls.map(([command]) => command),
+      ['tar'],
+    );
+  } finally {
+    rmSync(output.directory, { recursive: true, force: true });
+  }
 });
 
 test('an existing immutable commit tag is reused without a Docker login or push', () => {
@@ -136,9 +166,9 @@ test('an existing immutable commit tag is reused without a Docker login or push'
   const calls = [];
   const run = (command, args) => {
     calls.push([command, args]);
+    const bundle = inspectImageBundle(command, args);
+    if (bundle !== null) return bundle;
     if (command === 'aws' && args[0] === 'sts') return '123456789012';
-    const localImage = inspectLocalImage(command, args);
-    if (localImage !== null) return localImage;
     if (command === 'aws' && args[1] === 'batch-get-image') {
       return batchResponse(args[args.indexOf('--repository-name') + 1]);
     }
@@ -150,10 +180,12 @@ test('an existing immutable commit tag is reused without a Docker login or push'
       calls.filter(([command, args]) => command === 'docker' && ['login', 'tag', 'push'].includes(args[0])).length,
       0,
     );
-    assert.equal(
-      calls.filter(([command, args]) => command === 'docker' && args[0] === 'image' && args[1] === 'inspect').length,
-      checkpointImages.length,
-    );
+    assert.equal(calls.filter(([command]) => command === 'tar').length, 1);
+    assert.deepEqual(calls.find(([command]) => command === 'tar')?.[1], [
+      '-xOf',
+      environment(output).CHECKPOINT_IMAGE_BUNDLE,
+      'manifest.json',
+    ]);
     for (const image of checkpointImages) {
       const call = calls.find(
         ([command, args]) =>
@@ -189,9 +221,9 @@ test('an existing immutable tag with different tested content fails before login
   };
   const run = (command, args) => {
     calls.push([command, args]);
+    const bundle = inspectImageBundle(command, args);
+    if (bundle !== null) return bundle;
     if (command === 'aws' && args[0] === 'sts') return '123456789012';
-    const localImage = inspectLocalImage(command, args);
-    if (localImage !== null) return localImage;
     if (command === 'aws' && args[1] === 'batch-get-image') {
       return batchResponse(args[args.indexOf('--repository-name') + 1], values);
     }
@@ -219,10 +251,10 @@ test('only missing images are authenticated, pushed, and resolved again', () => 
   let monitorPushed = false;
   const run = (command, args, options = {}) => {
     calls.push([command, args, options]);
+    const bundle = inspectImageBundle(command, args);
+    if (bundle !== null) return bundle;
     if (command === 'aws' && args[0] === 'sts') return '123456789012';
     if (command === 'aws' && args[1] === 'get-login-password') return 'temporary-password';
-    const localImage = inspectLocalImage(command, args);
-    if (localImage !== null) return localImage;
     if (command === 'aws' && args[1] === 'batch-get-image') {
       const repository = args[args.indexOf('--repository-name') + 1];
       if (repository === 'opsreplay/monitor' && monitorPushed) {

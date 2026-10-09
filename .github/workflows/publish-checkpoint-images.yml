@@ -91,12 +91,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: aws-checkpoint
     permissions:
       contents: read
       id-token: write
     env:
       AWS_REGION: ap-southeast-1
       AWS_ROLE_ARN: ${{ vars.AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN }}
+      CHECKPOINT_IMAGE_BUNDLE: artifacts/checkpoint-images.tar
       CHECKPOINT_IMAGE_MANIFEST: artifacts/checkpoint-images.json
     steps:
       - name: Validate publication request
@@ -123,7 +125,7 @@ jobs:
           path: artifacts
 
       - name: Load tested images
-        run: docker load --input artifacts/checkpoint-images.tar
+        run: docker load --input "$CHECKPOINT_IMAGE_BUNDLE"
 
       - name: Configure temporary AWS credentials
         uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5

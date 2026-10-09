@@ -19,7 +19,10 @@ AWS for credentials.
 
 GitHub presents its signed OIDC token to AWS STS and assumes a checkpoint publisher role.
 The role trust requires the `sts.amazonaws.com` audience and the exact subject
-`repo:ehz0ah/OpsReplay:ref:refs/heads/main`. Its permissions are limited to ECR
+`repo:ehz0ah@130889443/OpsReplay@1378586293:environment:aws-checkpoint`. This uses the
+immutable owner and repository IDs enabled for this repository. The publish job declares
+that environment. Its deployment rule permits only `main`, and a required reviewer can
+be added before the first publication. The role permissions are limited to ECR
 authentication and image reads and writes in the three checkpoint repositories. It has
 no CloudFormation, S3, ECS, Lambda, IAM mutation, or general deployment permission.
 
@@ -33,12 +36,14 @@ exact GitHub token URL and include `sts.amazonaws.com` in its client ID list.
 Each repository receives an immutable
 `git-<40-character-commit-sha>-<image-configuration-digest>` tag. The content suffix lets
 a later build of the same commit publish different bytes without colliding with a prior
-immutable tag. Before a push, the workflow uses `BatchGetImage`. It reuses an existing
-tag only when its image configuration digest matches the tested local image. A mismatch
-stops publication before registry login or any push. A repeated or partially completed
-run pushes only missing images. Any response other than one image or an explicit
-`ImageNotFound` failure stops publication. Docker receives the ECR password on standard
-input, never as an argument.
+immutable tag. The publisher reads each configuration digest from the `Config` entry in
+the tested `docker save` archive. It does not depend on image-store-specific `docker
+image inspect` output. Before a push, the workflow uses `BatchGetImage`. It reuses an
+existing tag only when its image configuration digest matches the tested archive. A
+mismatch stops publication before registry login or any push. A repeated or partially
+completed run pushes only missing images. Any response other than one image or an
+explicit `ImageNotFound` failure stops publication. Docker receives the ECR password on
+standard input, never as an argument.
 
 The workflow writes a versioned JSON manifest containing the commit, Region, repository,
 tag, digest, and digest-pinned URI for each image. It also writes the digests to the job
@@ -52,8 +57,9 @@ deploy an application stack, define an environment task, activate a Lambda, or s
 ECS task. Lambda ZIP files remain CDK deployment assets in the bootstrap S3 bucket. They
 are not container images and are not published to ECR.
 
-Local tests cover the separate provider boundary, exact trust subject, publisher
-permissions, content-specific tag reuse, partial publication, digest validation, and
-`main` enforcement. Workflow syntax and action pins are checked separately. Only a
-manual run after the foundation deployment can prove STS federation, ECR permissions,
-image upload, and the returned managed-service digests.
+Local tests cover the separate provider boundary, exact environment trust subject,
+publisher permissions, Docker archive formats, content-specific tag reuse, partial
+publication, digest validation, and `main` enforcement. Workflow syntax, environment
+selection, and action pins are checked separately. Only a manual run after the GitHub
+environment and foundation deployment can prove STS federation, ECR permissions, image
+upload, and the returned managed-service digests.
