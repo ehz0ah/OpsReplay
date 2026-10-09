@@ -1,4 +1,4 @@
-import { Aws, CfnOutput, CfnParameter, Fn, RemovalPolicy, Stack, Tags } from 'aws-cdk-lib';
+import { Aws, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, Tags } from 'aws-cdk-lib';
 import type { StackProps } from 'aws-cdk-lib';
 import {
   CfnSecurityGroup,
@@ -10,7 +10,7 @@ import {
 } from 'aws-cdk-lib/aws-ec2';
 import { CfnCluster } from 'aws-cdk-lib/aws-ecs';
 import { Repository, RepositoryEncryption, TagMutability, TagStatus } from 'aws-cdk-lib/aws-ecr';
-import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { FederatedPrincipal, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import type { Construct } from 'constructs';
 
@@ -34,6 +34,11 @@ export class CheckpointFoundationStack extends Stack {
       type: 'String',
       allowedPattern: 'pl-[0-9a-f]+',
       description: 'AWS-managed DynamoDB prefix list for the deployment Region.',
+    });
+    const gitHubOidcProviderArn = new CfnParameter(this, 'GitHubOidcProviderArn', {
+      type: 'String',
+      allowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com',
+      description: 'Verified GitHub Actions OIDC provider ARN with the sts.amazonaws.com client ID.',
     });
 
     const vpc = new Vpc(this, 'Vpc', {
@@ -153,6 +158,44 @@ export class CheckpointFoundationStack extends Stack {
     const monitorRepository = repository('MonitorRepository', 'opsreplay/monitor');
     const challengeRepository = repository('ChallengeRepository', 'opsreplay/challenge-wrong-upstream-port');
 
+    const imagePublisherRole = new Role(this, 'GitHubImagePublisherRole', {
+      assumedBy: new FederatedPrincipal(
+        gitHubOidcProviderArn.valueAsString,
+        {
+          StringEquals: {
+            'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+            'token.actions.githubusercontent.com:sub': 'repo:ehz0ah/OpsReplay:ref:refs/heads/main',
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity',
+      ),
+      description: 'Publishes immutable checkpoint images from the OpsReplay main branch.',
+      maxSessionDuration: Duration.hours(1),
+    });
+    imagePublisherRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['ecr:GetAuthorizationToken'],
+        resources: ['*'],
+      }),
+    );
+    imagePublisherRole.addToPolicy(
+      new PolicyStatement({
+        actions: [
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:BatchGetImage',
+          'ecr:CompleteLayerUpload',
+          'ecr:InitiateLayerUpload',
+          'ecr:PutImage',
+          'ecr:UploadLayerPart',
+        ],
+        resources: [
+          gatewayRepository.repositoryArn,
+          monitorRepository.repositoryArn,
+          challengeRepository.repositoryArn,
+        ],
+      }),
+    );
+
     const environmentLogs = new LogGroup(this, 'EnvironmentLogs', {
       logGroupName: '/opsreplay/checkpoint/environment',
       retention: RetentionDays.ONE_WEEK,
@@ -191,6 +234,7 @@ export class CheckpointFoundationStack extends Stack {
       GatewayRepositoryUri: gatewayRepository.repositoryUri,
       MonitorRepositoryUri: monitorRepository.repositoryUri,
       ChallengeRepositoryUri: challengeRepository.repositoryUri,
+      GitHubImagePublisherRoleArn: imagePublisherRole.roleArn,
     };
     for (const [name, value] of Object.entries(outputs)) new CfnOutput(this, name, { value });
   }

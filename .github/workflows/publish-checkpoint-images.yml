@@ -1,0 +1,147 @@
+name: Publish checkpoint images
+
+run-name: Publish checkpoint images for ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-checkpoint-images
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate build request
+        env:
+          REQUESTED_REF: ${{ github.ref }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          test "$REQUESTED_REF" = "refs/heads/main" || {
+            echo "Checkpoint images can be published only from main." >&2
+            exit 1
+          }
+          printf '%s' "$REQUESTED_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "GitHub did not provide a complete commit SHA." >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and test Challenge image
+        run: |
+          npm run challenge:build
+          npm run challenge:test
+
+      - name: Build and test Monitor images
+        run: |
+          npm run monitor:image:build
+          npm run monitor:image:test
+          npm run monitor:runtime:image:build
+
+      - name: Build and test Gateway image
+        run: |
+          docker pull amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
+          npm run gateway:runtime:image:build
+          npm run gateway:runtime:image:test
+
+      - name: Save tested image bundle
+        run: |
+          mkdir -p artifacts
+          docker save --output artifacts/checkpoint-images.tar \
+            opsreplay/gateway-recording:dev \
+            opsreplay/monitor:dev \
+            opsreplay/challenge-wrong-upstream-port:dev
+
+      - name: Upload tested image bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checkpoint-image-bundle-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/checkpoint-images.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Remove test containers and networks
+        if: always()
+        run: |
+          docker ps -aq --filter label=opsreplay.test=monitor | xargs -r docker rm -f
+          docker ps -aq --filter label=opsreplay.test=gateway-monitor | xargs -r docker rm -f
+          docker ps -aq --filter label=opsreplay.test=gateway-runtime | xargs -r docker rm -f
+          docker ps -aq --filter name=opsreplay-monitor-shop- | xargs -r docker rm -f
+          docker ps -aq --filter name=opsreplay-gateway-shop- | xargs -r docker rm -f
+          docker network ls -q --filter name=opsreplay-gateway-runtime- | xargs -r docker network rm
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-southeast-1
+      AWS_ROLE_ARN: ${{ vars.AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN }}
+      CHECKPOINT_IMAGE_MANIFEST: artifacts/checkpoint-images.json
+    steps:
+      - name: Validate publication request
+        env:
+          REQUESTED_REF: ${{ github.ref }}
+        run: |
+          test "$REQUESTED_REF" = "refs/heads/main" || {
+            echo "Checkpoint images can be published only from main." >&2
+            exit 1
+          }
+          test -n "$AWS_ROLE_ARN" || {
+            echo "Set the AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN repository variable." >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download tested image bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: checkpoint-image-bundle-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts
+
+      - name: Load tested images
+        run: docker load --input artifacts/checkpoint-images.tar
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: opsreplay-image-publish-${{ github.run_id }}
+          role-duration-seconds: 1800
+          mask-aws-account-id: true
+          unset-current-credentials: true
+
+      - name: Publish immutable images
+        run: node scripts/publish-checkpoint-images.mjs
+
+      - name: Upload digest manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checkpoint-image-digests-${{ github.sha }}
+          path: ${{ env.CHECKPOINT_IMAGE_MANIFEST }}
+          if-no-files-found: error
+          retention-days: 7
