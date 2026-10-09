@@ -1,15 +1,15 @@
 # Checkpoint image publication
 
-Status: implemented locally, AWS publication pending
+Status: verified in AWS; disposable resources removed
 Date: 9 October 2026
 Owner: Cloud contributors
 
 ## Context
 
-The disposable foundation defines three empty ECR repositories. The gateway, Monitor,
-and first Challenge images are tested locally, but no reviewed process publishes them or
-returns the digests required by later task definitions. Long-lived AWS keys must not be
-stored in GitHub.
+The disposable foundation defines three ECR repositories. The gateway, Monitor, and
+first Challenge images need a reviewed process that tests them, publishes them, and
+returns the exact digests required by later task definitions. Long-lived AWS keys must
+not be stored in GitHub.
 
 ## Decision
 
@@ -60,6 +60,16 @@ are not container images and are not published to ECR.
 Local tests cover the separate provider boundary, exact environment trust subject,
 publisher permissions, Docker archive formats, content-specific tag reuse, partial
 publication, digest validation, and `main` enforcement. Workflow syntax, environment
-selection, and action pins are checked separately. Only a manual run after the GitHub
-environment and foundation deployment can prove STS federation, ECR permissions, image
-upload, and the returned managed-service digests.
+selection, and action pins are checked separately.
+
+GitHub Actions run `37965328481` completed the first manual AWS checkpoint on 10 October 2026. It built and tested all three images before it obtained temporary credentials,
+published them through OIDC, and returned digests that matched the live ECR repositories.
+A later checkpoint ran the private gateway Fargate service from the exact published
+digest without a public IP. The disposable service, foundation, and image repositories
+were then removed. The GitHub environment variable was also removed. The account-level
+OIDC provider and standard CDK bootstrap stack remain.
+
+This evidence proves the publication path and bounded gateway runtime tested by that
+checkpoint. It does not prove a complete Challenge session, recording path, or later
+image build. Each changed image still requires its own publication and ECR scan before a
+new AWS runtime claim.
