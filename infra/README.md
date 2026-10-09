@@ -25,8 +25,9 @@ outside the disposable foundation gives it one stable owner across foundation up
 - one ECS cluster;
 - immutable, scan-on-push repositories for the gateway, monitor, and first Challenge,
   with cleanup limited to untagged images;
-- a `main`-only image publisher role that references the verified account-level GitHub
-  OIDC provider and is restricted to those three repositories;
+- an image publisher role that trusts only the `aws-checkpoint` GitHub environment,
+  references the verified account-level GitHub OIDC provider, and is restricted to those
+  three repositories;
 - one environment execution role and one seven-day environment log group.
 
 One Availability Zone reduces endpoint cost for the temporary functional checkpoint.
@@ -80,12 +81,14 @@ image is built and tested separately with `npm run gateway:runtime:image:build` 
 
 The `Publish checkpoint images` workflow is manual and accepts only `main`. It tests the
 Challenge, Monitor, and gateway images before requesting temporary AWS credentials. It
-uses the `AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN` repository variable, publishes an
-immutable `git-<commit-sha>-<image-config-digest>` tag, and uploads a seven-day JSON
-artifact with all three registry digests. The content-specific suffix avoids collisions
-when a mutable package source produces different bytes during a later build of the same
-commit. Repeated runs reuse only tags that match the tested local images. The workflow
-does not package Lambda code, deploy a stack, or start a task.
+uses the protected `aws-checkpoint` environment and its
+`AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN` variable. The publisher reads each image
+configuration digest from the tested Docker archive, publishes an immutable
+`git-<commit-sha>-<image-config-digest>` tag, and uploads a seven-day JSON artifact with
+all three registry digests. The content-specific suffix avoids collisions when a mutable
+package source produces different bytes during a later build of the same commit.
+Repeated runs reuse only tags that match the tested archive. The workflow does not
+package Lambda code, deploy a stack, or start a task.
 
 The table and secret-file bucket use `Retain` by default. Stack deletion would keep
 their data and storage charges. Secret files use S3-managed encryption, HTTPS, public-access blocking, and
@@ -170,6 +173,23 @@ URL.
 npm run infra:cdk -- deploy OpsReplayGitHubOidcProvider --profile opsreplay --region ap-southeast-1
 ```
 
+Before foundation deployment, create a GitHub environment named `aws-checkpoint` under
+Settings, Environments. Set its deployment branches and tags to `Selected branches and
+tags`, then add only the `main` branch. Add a required reviewer if the team wants a
+separate approval before the publish job can request AWS credentials. Do not run the
+workflow with an automatically created, unprotected environment.
+
+Confirm that the repository still uses the immutable OIDC subject prefix recorded in
+the publisher trust policy:
+
+```sh
+gh api repos/ehz0ah/OpsReplay/actions/oidc/customization/sub
+```
+
+The expected response has `use_immutable_subject` set to `true` and `sub_claim_prefix`
+set to `repo:ehz0ah@130889443/OpsReplay@1378586293`. Stop before deployment if either
+value differs.
+
 Before foundation deployment, obtain the current AWS-managed prefix-list IDs:
 
 ```sh
@@ -185,10 +205,10 @@ npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --
 ```
 
 After foundation deployment, copy the `GitHubImagePublisherRoleArn` stack output into
-the repository variable, then run the workflow from `main`.
+the `aws-checkpoint` environment variable, then run the workflow from `main`.
 
 ```sh
-gh variable set AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN --body '<verified-role-arn>'
+gh variable set AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN --env aws-checkpoint --body '<verified-role-arn>'
 gh workflow run publish-checkpoint-images.yml --ref main
 ```
 
@@ -203,10 +223,10 @@ images.
 
 Destroy the exact foundation stack after the approved test. Confirm that the ECR
 repositories, publisher role, endpoints, cluster, log group, subnet, and VPC are absent
-afterward. Remove the repository variable after teardown. If this checkpoint created the
-dedicated provider stack, destroy it only after the foundation and after confirming that
-no other role uses the provider. Never destroy a provider that existed before this
-checkpoint.
+afterward. Remove the `aws-checkpoint` environment variable after teardown. If this
+checkpoint created the dedicated provider stack, destroy it only after the foundation
+and after confirming that no other role uses the provider. Never destroy a provider that
+existed before this checkpoint.
 
 ```sh
 npm run infra:cdk -- destroy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1

@@ -235,7 +235,8 @@ test('checkpoint repositories and execution permissions are bounded and disposab
           Condition: {
             StringEquals: {
               'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-              'token.actions.githubusercontent.com:sub': 'repo:ehz0ah/OpsReplay:ref:refs/heads/main',
+              'token.actions.githubusercontent.com:sub':
+                'repo:ehz0ah@130889443/OpsReplay@1378586293:environment:aws-checkpoint',
             },
           },
           Effect: 'Allow',

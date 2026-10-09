@@ -37,8 +37,9 @@ this role through the bucket policy.
 The stack also defines the narrow role needed by the later manual image-publication
 workflow. It references a verified account-level GitHub Actions OIDC provider. The
 provider remains outside the disposable foundation so that one stack owns it for its
-complete lifetime. The publisher role trusts only this repository's `main` branch and
-can read and write images only in the three checkpoint repositories. See the
+complete lifetime. The publisher role trusts only this repository's `aws-checkpoint`
+GitHub environment. That environment restricts deployments to `main`. The role can read
+and write images only in the three checkpoint repositories. See the
 [checkpoint image publication decision](checkpoint-image-publication.md).
 
 The stack exports the values already required by `SessionStartStack`. AWS-managed S3

@@ -76,25 +76,37 @@ export function parseBatchGetImage(value, repository, tag) {
   throw new Error(`ECR could not resolve ${repository}:${tag}. Failure codes: ${codes || 'unexpected response'}.`);
 }
 
-export function parseDockerImageInspect(value, image) {
+export function parseDockerArchiveManifest(value) {
   let response;
   try {
     response = JSON.parse(value);
   } catch {
-    throw new Error(`Docker returned invalid image metadata for ${image}.`);
+    throw new Error('The Docker image archive contains an invalid manifest.');
   }
-  if (!Array.isArray(response) || response.length !== 1) {
-    throw new Error(`Docker returned unexpected image metadata for ${image}.`);
+  if (!Array.isArray(response)) {
+    throw new Error('The Docker image archive contains an invalid manifest.');
   }
-  const descriptorAnnotations = response[0]?.Descriptor?.annotations ?? response[0]?.Descriptor?.Annotations;
-  const configDigest =
-    descriptorAnnotations && Object.hasOwn(descriptorAnnotations, 'config.digest')
-      ? descriptorAnnotations['config.digest']
-      : response[0]?.Id;
-  if (!digestPattern.test(configDigest)) {
-    throw new Error(`Docker returned an invalid image configuration digest for ${image}.`);
+
+  const configDigests = new Map();
+  for (const image of checkpointImages) {
+    const matchingEntries = response.filter(
+      (entry) => Array.isArray(entry?.RepoTags) && entry.RepoTags.includes(image.localImage),
+    );
+    if (matchingEntries.length !== 1) {
+      throw new Error(`The Docker image archive must contain exactly one ${image.localImage} image.`);
+    }
+    const configPath = matchingEntries[0]?.Config;
+    const match =
+      typeof configPath === 'string'
+        ? /^(?:blobs\/sha256\/([0-9a-f]{64})|([0-9a-f]{64})\.json)$/.exec(configPath)
+        : null;
+    const configDigest = match ? `sha256:${match[1] ?? match[2]}` : '';
+    if (!digestPattern.test(configDigest)) {
+      throw new Error(`The Docker image archive contains an invalid configuration digest for ${image.localImage}.`);
+    }
+    configDigests.set(image.name, configDigest);
   }
-  return configDigest;
+  return configDigests;
 }
 
 function batchGetImage(run, region, repository, tag) {
@@ -136,17 +148,11 @@ export function publishCheckpointImages({ env = process.env, run = defaultRun } 
   const region = env.AWS_REGION ?? '';
   if (!regionPattern.test(region)) throw new Error('AWS_REGION is missing or invalid.');
 
+  const bundlePath = resolve(env.CHECKPOINT_IMAGE_BUNDLE ?? 'artifacts/checkpoint-images.tar');
+  const localConfigDigests = parseDockerArchiveManifest(run('tar', ['-xOf', bundlePath, 'manifest.json']));
   const account = run('aws', ['sts', 'get-caller-identity', '--query', 'Account', '--output', 'text']);
   if (!accountPattern.test(account)) throw new Error('AWS STS returned an invalid account ID.');
   const registry = `${account}.dkr.ecr.${region}.amazonaws.com`;
-  const localConfigDigests = new Map();
-  for (const image of checkpointImages) {
-    const localConfigDigest = parseDockerImageInspect(
-      run('docker', ['image', 'inspect', image.localImage]),
-      image.localImage,
-    );
-    localConfigDigests.set(image.name, localConfigDigest);
-  }
   const resolved = new Map();
   for (const image of checkpointImages) {
     const tag = checkpointTag(commitSha, localConfigDigests.get(image.name));

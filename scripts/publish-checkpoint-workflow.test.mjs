@@ -11,6 +11,7 @@ test('checkpoint publication is manual and has only the required GitHub permissi
   assert.doesNotMatch(workflow, /^  (?:push|pull_request|schedule):/m);
   assert.match(workflow, /^permissions:\n  contents: read\n/m);
   assert.doesNotMatch(buildJob, /id-token:\s*write/);
+  assert.match(publishJob, /^    environment: aws-checkpoint$/m);
   assert.match(publishJob, /^    permissions:\n      contents: read\n      id-token: write\n/m);
   assert.equal((workflow.match(/id-token:\s*write/g) ?? []).length, 1);
 });
@@ -42,6 +43,7 @@ test('the publication job loads the tested bundle before it obtains temporary cr
   assert.ok(credentialsPosition > loadPosition);
   assert.ok(publicationPosition > credentialsPosition);
   assert.match(publishJob, /AWS_CHECKPOINT_IMAGE_PUBLISHER_ROLE_ARN/);
+  assert.match(publishJob, /CHECKPOINT_IMAGE_BUNDLE: artifacts\/checkpoint-images\.tar/);
   assert.match(publishJob, /REQUESTED_REF.*refs\/heads\/main/s);
   assert.doesNotMatch(publishJob, /npm ci|npm run .*:build|docker build/);
 });
