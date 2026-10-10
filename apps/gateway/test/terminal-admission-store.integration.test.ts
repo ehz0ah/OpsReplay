@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
 import {
+  BatchGetCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
   TransactWriteCommand,
+  UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 import {
@@ -222,6 +224,29 @@ test('restarts admission after DynamoDB reports a transaction conflict cancellat
   assert.equal(writes, 2);
 });
 
+test('does not retry definite transaction configuration failures', async () => {
+  const f = await fixture();
+  await f.putTicket(ticketA);
+
+  for (const name of ['AccessDeniedException', 'ValidationException']) {
+    let writes = 0;
+    const client = {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand) {
+          writes++;
+          throw Object.assign(new Error('transaction rejected'), { name });
+        }
+        return database.document.send(command as never, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const store = new DynamoTerminalAdmissionStore(client, f.table);
+
+    await assert.rejects(store.admit(request(f.sessionId)), admissionError('invalid_config'));
+    assert.equal(writes, 1);
+  }
+  assert.ok(await f.ticket(ticketA));
+});
+
 test('rejects invalid, expired, non-ready, and terminal admissions without consuming a valid ticket', async () => {
   const missing = await fixture();
   await assert.rejects(missing.store.admit(request(missing.sessionId)), admissionError('auth_failed'));
@@ -283,4 +308,76 @@ test('authorizes only the current ready-session input owner', async () => {
   );
   await database.document.send(new DeleteCommand({ TableName: f.table, Key: terminalInputKey(f.sessionId) }));
   await assert.rejects(f.store.authorizeInput(admitted), admissionError('replaced'));
+  await database.document.send(
+    new UpdateCommand({
+      TableName: f.table,
+      Key: terminalSessionKey(f.sessionId),
+      UpdateExpression: 'SET #data.#view.#status = :resolved',
+      ExpressionAttributeNames: { '#data': 'data', '#view': 'view', '#status': 'status' },
+      ExpressionAttributeValues: { ':resolved': 'resolved' },
+    }),
+  );
+  await assert.rejects(f.store.authorizeInput(admitted), admissionError('session_terminal'));
+});
+
+test('uses consistent batch reads and retries unprocessed authorization keys once', async () => {
+  const f = await fixture();
+  await f.putTicket(ticketA);
+  const admitted = await f.store.admit(request(f.sessionId));
+  let reads = 0;
+  const client = {
+    send: async (command: unknown, options: unknown) => {
+      if (command instanceof BatchGetCommand) {
+        reads++;
+        assert.equal(command.input.RequestItems?.[f.table]?.ConsistentRead, true);
+        assert.deepEqual(command.input.RequestItems?.[f.table]?.Keys, [
+          terminalSessionKey(f.sessionId),
+          terminalInputKey(f.sessionId),
+        ]);
+        if (reads === 1) return { UnprocessedKeys: command.input.RequestItems };
+      }
+      return database.document.send(command as never, options as never);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const store = new DynamoTerminalAdmissionStore(client, f.table);
+
+  await store.authorizeInput(admitted);
+  assert.equal(reads, 2);
+});
+
+test('fails closed after repeated unprocessed authorization keys', async () => {
+  const f = await fixture();
+  await f.putTicket(ticketA);
+  const admitted = await f.store.admit(request(f.sessionId));
+  let reads = 0;
+  const client = {
+    send: async (command: unknown) => {
+      assert.ok(command instanceof BatchGetCommand);
+      reads++;
+      return { UnprocessedKeys: command.input.RequestItems };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const store = new DynamoTerminalAdmissionStore(client, f.table);
+
+  await assert.rejects(store.authorizeInput(admitted), admissionError('unavailable'));
+  assert.equal(reads, 2);
+});
+
+test('reports authorization IAM rejection as invalid configuration without retrying', async () => {
+  const f = await fixture();
+  let reads = 0;
+  const client = {
+    send: async (command: unknown) => {
+      assert.ok(command instanceof BatchGetCommand);
+      reads++;
+      throw Object.assign(new Error('read rejected'), { name: 'AccessDeniedException' });
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const store = new DynamoTerminalAdmissionStore(client, f.table);
+
+  await assert.rejects(
+    store.authorizeInput({ sessionId: f.sessionId, connectionId: 'gateway-connection-1', generation: 1 }),
+    admissionError('invalid_config'),
+  );
+  assert.equal(reads, 1);
 });

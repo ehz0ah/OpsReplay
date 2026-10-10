@@ -56,9 +56,10 @@ connection ID. Conditional conflicts retry from current state. An uncertain resp
 reconciled before the exact transaction is retried.
 
 `GatewayTerminalSession` passes only the admitted task address and generation to
-`TerminalClient`. It checks current session and input ownership before input, resize, or
-heartbeat. It does not restore a ticket or generation after a failed private connection.
-The browser obtains a new ticket and claims a newer generation instead.
+`TerminalClient`. It checks current session and input ownership with one strongly
+consistent batch read before input, resize, or heartbeat. A failed check does not forward
+the operation. It does not restore a ticket or generation after a failed private
+connection. The browser obtains a new ticket and claims a newer generation instead.
 
 This layer does not issue tickets, inspect an HTTP `Origin`, open a browser WebSocket,
 update persistent learner heartbeats, record terminal output, or change AWS resources.
