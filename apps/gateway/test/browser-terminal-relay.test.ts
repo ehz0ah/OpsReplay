@@ -59,6 +59,20 @@ function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
   });
 }
 
+async function waitForConnectionCount(server: Server, expected: number, timeoutMs = 1_000): Promise<void> {
+  const started = Date.now();
+  while (true) {
+    const count = await new Promise<number>((resolve, reject) => {
+      server.getConnections((error, value) => (error === null ? resolve(value) : reject(error)));
+    });
+    if (count === expected) return;
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`Expected ${expected} server connections, but found ${count}.`);
+    }
+    await delay(5);
+  }
+}
+
 function rawBuffer(data: RawData): Buffer {
   if (Buffer.isBuffer(data)) return data;
   if (data instanceof ArrayBuffer) return Buffer.from(data);
@@ -353,11 +367,7 @@ test('destroys rejected upgrade sockets and survives connection resets', async (
   const halfClosed = await openHalfClosedRejectedUpgrade(runtime.url);
   t.after(() => halfClosed.destroy());
   await Promise.all(Array.from({ length: 50 }, () => resetRejectedUpgrade(runtime.url)));
-  await delay(25);
-  const openConnections = await new Promise<number>((resolve, reject) => {
-    runtime.server.getConnections((error, count) => (error === null ? resolve(count) : reject(error)));
-  });
-  assert.equal(openConnections, 0);
+  await waitForConnectionCount(runtime.server, 0);
 
   const socket = await openClient(runtime.url);
   const inbox = new ClientInbox(socket);
