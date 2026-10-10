@@ -21,7 +21,17 @@ claim a generation, or run a public server.
 
 Validate every server frame, generation, field set, base64 payload, and size before use.
 Process output through the supplied asynchronous consumer so a slow downstream consumer
-applies socket backpressure instead of creating an unbounded application queue.
+stops Gateway socket reads instead of creating an unbounded application queue. Do not
+count time spent in that consumer against an in-flight operation timeout. The caller
+must send a heartbeat at least once every 20 seconds while the connection is otherwise
+idle, which stays below the terminal server's 45-second idle limit.
+
+This is not end-to-end PTY backpressure. The terminal server stops a blocked socket send
+after one second, detaches the client, and keeps only the latest 64 KiB for reconnect
+replay. It does not pause the command. Before browser relay is implemented, define
+whether the server will apply PTY backpressure or the relay will use another bounded,
+user-visible slow-consumer policy. Track that decision in
+[issue #31](https://github.com/ehz0ah/OpsReplay/issues/31).
 
 Serialize input, resize, and heartbeat requests. Their acknowledgements contain a
 generation but no request identifier, so more than one outstanding request of the same

@@ -220,6 +220,129 @@ test('closes the connection and reports uncertain input after an acknowledgement
   if (end.reason === 'error') assert.equal(end.error.code, 'operation_timeout');
 });
 
+test('does not count slow output delivery against input and heartbeat timeouts', async (t) => {
+  for (const kind of ['input', 'heartbeat'] as const) {
+    await t.test(kind, async (t) => {
+      let releaseOutput!: () => void;
+      let outputStarted!: () => void;
+      const blockedOutput = new Promise<void>((resolve) => {
+        releaseOutput = resolve;
+      });
+      t.after(releaseOutput);
+      const outputReceived = new Promise<void>((resolve) => {
+        outputStarted = resolve;
+      });
+      const setup = await fixture(t);
+      const connecting = TerminalClient.connect(
+        {
+          ...options(setup.port, async () => {
+            outputStarted();
+            await blockedOutput;
+          }),
+          operationTimeoutMs: 25,
+        },
+        AbortSignal.timeout(1_000),
+      );
+      const peer = await setup.accept;
+      await peer.receive();
+      ready(peer);
+      const { client } = await connecting;
+
+      let operation: Promise<void>;
+      if (kind === 'input') {
+        peer.send({ type: 'output', generation: 7, data: Buffer.from('blocked').toString('base64') });
+        await outputReceived;
+        operation = client.input(Buffer.from('accepted while output is blocked'));
+        await peer.receive();
+      } else {
+        operation = client.heartbeat();
+        await peer.receive();
+        peer.send({ type: 'output', generation: 7, data: Buffer.from('blocked').toString('base64') });
+        await outputReceived;
+      }
+      peer.send({ type: kind === 'input' ? 'input_accepted' : 'heartbeat', generation: 7 });
+      await delay(50);
+      releaseOutput();
+      await operation;
+      client.close();
+    });
+  }
+});
+
+test('resumes timeout and preserves cancellation while output delivery is slow', async (t) => {
+  await t.test('timeout resumes', async (t) => {
+    let releaseOutput!: () => void;
+    let outputStarted!: () => void;
+    const blockedOutput = new Promise<void>((resolve) => {
+      releaseOutput = resolve;
+    });
+    t.after(releaseOutput);
+    const outputReceived = new Promise<void>((resolve) => {
+      outputStarted = resolve;
+    });
+    const setup = await fixture(t);
+    const connecting = TerminalClient.connect({
+      ...options(setup.port, async () => {
+        outputStarted();
+        await blockedOutput;
+      }),
+      operationTimeoutMs: 25,
+    });
+    const peer = await setup.accept;
+    await peer.receive();
+    ready(peer);
+    const { client } = await connecting;
+
+    peer.send({ type: 'output', generation: 7, data: Buffer.from('blocked').toString('base64') });
+    await outputReceived;
+    const input = client.input(Buffer.from('missing acknowledgement'));
+    await peer.receive();
+    await delay(50);
+    releaseOutput();
+
+    await assert.rejects(input, errorCode('input_uncertain'));
+    const end = await client.ended;
+    assert.equal(end.reason, 'error');
+    if (end.reason === 'error') assert.equal(end.error.code, 'operation_timeout');
+  });
+
+  await t.test('cancellation remains active', async (t) => {
+    let releaseOutput!: () => void;
+    let outputStarted!: () => void;
+    const blockedOutput = new Promise<void>((resolve) => {
+      releaseOutput = resolve;
+    });
+    t.after(releaseOutput);
+    const outputReceived = new Promise<void>((resolve) => {
+      outputStarted = resolve;
+    });
+    const setup = await fixture(t);
+    const connecting = TerminalClient.connect(
+      options(setup.port, async () => {
+        outputStarted();
+        await blockedOutput;
+      }),
+    );
+    const peer = await setup.accept;
+    await peer.receive();
+    ready(peer);
+    const { client } = await connecting;
+
+    peer.send({ type: 'output', generation: 7, data: Buffer.from('blocked').toString('base64') });
+    await outputReceived;
+    const controller = new AbortController();
+    const input = client.input(Buffer.from('cancelled after send'), controller.signal);
+    await peer.receive();
+    controller.abort(new Error('test cancellation'));
+
+    await assert.rejects(input, errorCode('input_uncertain'));
+    const end = await client.ended;
+    assert.equal(end.reason, 'error');
+    if (end.reason === 'error') assert.equal(end.error.code, 'cancelled');
+    releaseOutput();
+  });
+});
+
 test('maps explicit server errors and rejects stale generations without an input retry', async (t) => {
   const { connecting, peer } = await connect(t);
   peer.send({ type: 'error', code: 'STALE_GENERATION' });

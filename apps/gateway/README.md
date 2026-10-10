@@ -33,7 +33,14 @@ The client validates bounded newline-delimited JSON frames and exact generations
 serializes operations because acknowledgements have no request identifier. It does not
 retry. If the connection fails after input is offered but before acknowledgement, the
 operation returns `input_uncertain`. Output delivery applies backpressure through the
-consumer instead of accumulating an unbounded queue.
+consumer instead of accumulating an unbounded queue. Time spent in the output consumer
+does not count against an in-flight operation timeout. The caller must invoke
+`heartbeat()` at least once every 20 seconds while the terminal is otherwise idle.
+
+This backpressure is local to the Gateway client. The Challenge server stops a blocked
+socket send after one second, disconnects the client, and retains only the latest 64 KiB
+for reconnect replay. It does not slow the command running in the PTY. The browser relay
+must define its bounded slow-consumer policy before it is implemented.
 
 This module does not authenticate learners, consume terminal tickets, claim generations,
 open a browser WebSocket, record terminal output, or alter security groups. A container
