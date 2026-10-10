@@ -1,9 +1,10 @@
 # Wrong upstream port: local image
 
-This implements the service stack in [the draft manifest](challenge.json), not a
-complete Challenge session. A [separate monitor test](../../../apps/monitor/README.md)
-now runs traffic and recovery checks beside this image. There is no terminal server,
-gateway, or AWS deployment. The manifest remains unpublished.
+This implements the service stack and private terminal endpoint in
+[the draft manifest](challenge.json), not a complete Challenge session. A
+[separate monitor test](../../../apps/monitor/README.md) runs traffic and recovery
+checks beside this image. There is no browser terminal gateway or AWS deployment.
+The manifest remains unpublished.
 
 ## Build and enter
 
@@ -25,6 +26,11 @@ docker exec -it opsreplay-port bash
 This checks the initial service listeners, not successful checkout. The initial 502
 is intentional. Run it only before learner access. There is no continuous Docker
 health check. Stopping a service or changing its port must not end the container.
+
+The image also starts a private terminal server on TCP port 7681. It owns one root Bash
+PTY for the lifetime of the container attempt. The local run script does not publish
+this port. Image tests connect from inside the container. Browser access, terminal
+tickets, and gateway proxying remain separate work.
 
 The container includes `nano`, `vi` / `vim` (Vim tiny), `curl`, `ss`, `ps`, `less`,
 and `psql`. Inspect the real services and logs:
@@ -73,6 +79,11 @@ or this same container preserves edits and orders. Creating a new container rest
 the original fault and empty database. Interrupted database initialisation requires a
 fresh container. Shared watched-file volumes are deferred to monitor integration.
 
+The terminal process does not open a replacement shell after it stops or after the same
+container restarts. Its generation fence is process memory. Losing that state makes the
+terminal unavailable so that a stale client cannot gain input access to a new shell.
+Create a fresh container for a fresh terminal attempt.
+
 After leaving the shell, discard this local attempt and its edits:
 
 ```sh
@@ -102,8 +113,10 @@ npm run challenge:test
 The tests start fresh containers with the same run script and execute the manifest's
 reference fix, trap, and safe alternative through `docker exec`. They verify real HTTP
 responses, stored orders, service and container restarts, fresh-attempt reset, and local
-runtime restrictions. Each test removes its containers and data, including on failure.
-The suite makes a bounded number of requests and keeps no database volumes. Set
+runtime restrictions. They also verify command input and output, resize, reconnect,
+generation fencing, protocol limits, log redaction, and fail-closed terminal restarts.
+Each test removes its containers and data, including on failure. The suite makes a
+bounded number of requests and keeps no database volumes. Set
 `OPSREPLAY_CHALLENGE_IMAGE` to test a different already-built image reference.
 
 These are image integration checks, not the full publication harness. The separate

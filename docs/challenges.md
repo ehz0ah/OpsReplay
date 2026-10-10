@@ -6,10 +6,11 @@ are drafts. A [local reference image](../content/challenges/wrong-upstream-port/
 implements the wrong-upstream-port service stack and image tests. The
 [monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
 and authenticated HTTPS control. A gateway controller can record, resume, and seal this
-monitor stream through an injected sink. Monitor captures, the terminal server, the
-deployed durable recording store, and the running gateway service do not exist yet. Storage
-adapters for monitor recordings are implemented and tested locally. Numbers marked
-proposed are starting values to measure, not results. The full task and publication
+monitor stream through an injected sink. The reference image has a private interactive
+terminal server. Monitor captures, the terminal recording stream, the deployed durable
+recording store, browser terminal access, and the running gateway service do not exist
+yet. Storage adapters for monitor recordings are implemented and tested locally. Numbers
+marked proposed are starting values to measure, not results. The full task and publication
 requirements below remain unproven.
 
 ## Principle
@@ -63,6 +64,37 @@ Task settings:
 
 The same two images run under local Docker for development and scenario tests, with a
 shared network namespace and volume.
+
+## Private terminal server
+
+The reference Challenge image listens on private TCP port 7681 and owns one root Bash
+PTY. The endpoint is not an authentication boundary. The future gateway must authenticate
+the learner, authorize the session, and consume a terminal ticket before it connects.
+The task security group must accept this port only from the gateway.
+
+The private protocol is newline-delimited JSON. Each frame is at most 24 KiB. The first
+frame must be an `attach` frame with protocol version 1, mode `interactive`, a positive
+input generation, and terminal dimensions from 1 to 500. A successful attach returns
+`ready`. Input and output bytes use base64. Decoded input is at most 16 KiB. `resize` and
+`heartbeat` use the installed generation. Complete PTY writes return `input_accepted`.
+A partial write or timeout returns `INPUT_UNCERTAIN`; callers must not automatically
+retry it.
+
+The server serializes generation installation with input and resize operations. A larger
+generation replaces the active connection and closes it with `REPLACED`. It rejects an
+older attach or operation with `STALE_GENERATION`. The shell stays alive across ordinary
+connection loss. While no client is attached, the server keeps the latest 64 KiB of
+output. The next `ready` frame reports `replayTruncated: true` if older bytes were dropped.
+This replay buffer has no durable sequence cursor and is not the terminal recording
+stream.
+
+At most eight clients can wait or attach. An unattached client has five seconds to send
+its first frame. An attached client has a 45-second idle limit. Terminal bytes are not
+written to process logs. The server does not restart inside the same container. A marker
+under `/run/opsreplay-terminal` prevents a process or container restart from silently
+opening a new shell after the in-memory generation fence is lost. The lifecycle must
+treat that loss as an environment error. A new task starts with a new container and a
+new marker.
 
 ## Lifecycle
 
@@ -234,17 +266,17 @@ link could make it capture its own secret or another file from the monitor conta
 The gateway records terminal input and output as timestamped asciicast v2 chunks outside
 the learner's reach. Playback shows output. Input supports command reconstruction.
 
-Recording belongs to the session, not the browser connection. One gateway holds a
+The complete recording design belongs to the session, not the browser connection. One gateway holds a
 renewable recorder lease, proposed at 15 seconds with renewal every five seconds. It
 keeps reading the terminal and monitor after the browser disconnects. Gateway workers
 discover unclaimed or expired leases through the session work index. A replacement
-increments the recorder generation and resumes from saved cursors. The terminal server
-must buffer sequenced output for bounded reconnects, as the monitor does for its data.
+increments the recorder generation and resumes from saved cursors. A future terminal
+recording stream must buffer sequenced output for bounded reconnects, as the monitor does for its data.
 A buffer overflow or missing range is recorded, never treated as an empty interval.
 Only the recorder creates command events and requests captures. A browser may connect
 through another gateway copy, which proxies input and output but does not record them
-again. The terminal server supports a separate read-only recording stream. Recorder
-loss detection and reconnection do not require an open browser.
+again. The current private terminal server implements only the interactive stream. The
+separate read-only recording stream and recorder reconnection are deferred.
 
 Chunks have immutable keys that include the recorder generation and sequence range.
 The gateway saves object references and event cursors only after successful uploads,
@@ -252,7 +284,7 @@ conditional on its current lease and recording still being open. Stale writers c
 publish objects or complete a drain. Finalisation fixes the accepted references so late
 uploads cannot change playback or scores. Unreferenced objects expire under retention.
 
-The image's shell configuration emits prompt and command markers, such as the OSC 133
+The future shell configuration must emit prompt and command markers, such as the OSC 133
 sequences terminals use for shell integration. They mark prompt start, command start with
 the command line, and command end with the exit status. The gateway removes them from the
 forwarded stream and uses them to form command events. Without markers, it falls back to

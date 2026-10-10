@@ -4,7 +4,7 @@
 import socket
 import sys
 
-for port in (80, 8080, 5432):
+for port in (80, 8080, 5432, 7681):
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=1):
             pass

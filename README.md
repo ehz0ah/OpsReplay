@@ -9,9 +9,9 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: local Challenge image, monitor measurements and control, disabled session
-provisioning, and a completed disposable AWS checkpoint for image publication and the
-private gateway runtime.** The disposable resources were removed after validation. The
+**Status: local Challenge image with a private interactive terminal, monitor measurements
+and control, disabled session provisioning, and a completed disposable AWS checkpoint for
+image publication and the private gateway runtime.** The disposable resources were removed after validation. The
 [preliminary report, version 5](docs/reports/preliminary/README.md)
 defines the accepted product direction. The [decision register](docs/decisions/README.md)
 defines precedence for later refinements. This repository contains design documents, versioned contracts,
@@ -86,7 +86,7 @@ require Docker and use a temporary DynamoDB Local container with dummy credentia
 Fake ECS and Scheduler ports inject lost responses, retries, concurrency, and expiry.
 These checks do not deploy or use an AWS account. To build and test the local Challenge image
 with Docker, run `npm run challenge:build` and `npm run challenge:test`. These separate
-integration tests execute the repair and traps against real services through `docker exec`.
+integration tests exercise the real PTY, repair, and traps against the container.
 Run `npm run monitor:test`, `npm run monitor:image:build`, and
 `npm run monitor:image:test` for the monitor core and the three-process control and
 measurement tests. Run `npm run gateway:runtime:image:build` and
