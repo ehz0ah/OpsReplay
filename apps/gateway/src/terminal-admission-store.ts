@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
+  BatchGetCommand,
   TransactGetCommand,
   TransactWriteCommand,
   type DynamoDBDocumentClient,
@@ -120,6 +121,13 @@ const sessionStatuses = new Set<StoredSession['status']>([
 const terminalStatuses = new Set<StoredSession['status']>(['resolved', 'failed', 'ended', 'abandoned', 'error']);
 const maximumClaimAttempts = 3;
 const maximumTransportAttempts = 2;
+const maximumAuthorizationReadAttempts = 2;
+const definiteTransactionErrors = new Set([
+  'AccessDeniedException',
+  'IdempotentParameterMismatchException',
+  'ResourceNotFoundException',
+  'ValidationException',
+]);
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -145,6 +153,14 @@ function transactionContention(error: unknown): boolean {
         reason.Code === undefined || ['None', 'ConditionalCheckFailed', 'TransactionConflict'].includes(reason.Code),
     )
   );
+}
+
+function definiteDynamoConfigurationFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (definiteTransactionErrors.has(error.name)) return true;
+  if (error.name !== 'TransactionCanceledException') return false;
+  const reasons = (error as Error & { CancellationReasons?: { Code?: string }[] }).CancellationReasons;
+  return reasons?.some((reason) => reason.Code === 'ValidationError') ?? false;
 }
 
 function parseSession(value: unknown, sessionId: string): StoredSession | undefined {
@@ -227,6 +243,9 @@ export class DynamoTerminalAdmissionStore implements TerminalAdmissionStore {
         } catch (error) {
           const stoppedAfterSend = cancelled(signal, error);
           if (stoppedAfterSend) throw stoppedAfterSend;
+          if (definiteDynamoConfigurationFailure(error)) {
+            throw new TerminalAdmissionError('invalid_config', { cause: error });
+          }
           if (transactionContention(error)) break;
           const recovery = await this.readAvailable(request.sessionId, ticketHash, signal);
           const recovered = this.recover(request, prepared, recovery);
@@ -255,7 +274,7 @@ export class DynamoTerminalAdmissionStore implements TerminalAdmissionStore {
     }
     const stopped = cancelled(signal);
     if (stopped) throw stopped;
-    const snapshot = await this.readAvailable(request.sessionId, undefined, signal);
+    const snapshot = await this.readAuthorizationAvailable(request.sessionId, signal);
     activeSession(snapshot.session);
     if (snapshot.input?.connectionId !== request.connectionId || snapshot.input.generation !== request.generation) {
       throw new TerminalAdmissionError('replaced');
@@ -306,6 +325,61 @@ export class DynamoTerminalAdmissionStore implements TerminalAdmissionStore {
       if (cause instanceof TerminalAdmissionError) throw cause;
       const stopped = cancelled(signal, cause);
       if (stopped) throw stopped;
+      if (definiteDynamoConfigurationFailure(cause)) {
+        throw new TerminalAdmissionError('invalid_config', { cause });
+      }
+      throw new TerminalAdmissionError('unavailable', { cause });
+    }
+  }
+
+  private async readAuthorization(sessionId: string, signal?: AbortSignal): Promise<AdmissionSnapshot> {
+    let keys: { PK: string; SK: string }[] = [terminalSessionKey(sessionId), terminalInputKey(sessionId)];
+    const items: Record<string, unknown>[] = [];
+    for (let attempt = 0; attempt < maximumAuthorizationReadAttempts; attempt++) {
+      const result = await this.client.send(
+        new BatchGetCommand({
+          RequestItems: { [this.table]: { Keys: keys, ConsistentRead: true } },
+        }),
+        sendOptions(signal),
+      );
+      for (const item of result.Responses?.[this.table] ?? []) {
+        if (!record(item)) throw new TerminalAdmissionError('invalid_store');
+        items.push(item);
+      }
+      const unprocessed = result.UnprocessedKeys?.[this.table]?.Keys ?? [];
+      if (unprocessed.length === 0) {
+        const partitionKey = `SESSION#${sessionId}`;
+        const sessionValue = items.find((item) => item.PK === partitionKey && item.SK === 'STATE')?.data;
+        const inputValue = items.find((item) => item.PK === partitionKey && item.SK === 'INPUT')?.data;
+        const session = parseSession(sessionValue, sessionId);
+        if (inputValue !== undefined && !isTerminalInputRecord(inputValue, sessionId)) {
+          throw new TerminalAdmissionError('invalid_store');
+        }
+        return { session, ticket: undefined, input: inputValue as TerminalInputRecord | undefined };
+      }
+      if (
+        unprocessed.length > 2 ||
+        unprocessed.some(
+          (key) => !record(key) || key.PK !== `SESSION#${sessionId}` || (key.SK !== 'STATE' && key.SK !== 'INPUT'),
+        )
+      ) {
+        throw new TerminalAdmissionError('invalid_store');
+      }
+      keys = unprocessed as { PK: string; SK: string }[];
+    }
+    throw new TerminalAdmissionError('unavailable');
+  }
+
+  private async readAuthorizationAvailable(sessionId: string, signal?: AbortSignal): Promise<AdmissionSnapshot> {
+    try {
+      return await this.readAuthorization(sessionId, signal);
+    } catch (cause) {
+      if (cause instanceof TerminalAdmissionError) throw cause;
+      const stopped = cancelled(signal, cause);
+      if (stopped) throw stopped;
+      if (definiteDynamoConfigurationFailure(cause)) {
+        throw new TerminalAdmissionError('invalid_config', { cause });
+      }
       throw new TerminalAdmissionError('unavailable', { cause });
     }
   }

@@ -30,9 +30,25 @@ client token. The retry does not consume another generation.
 
 After admission, `GatewayTerminalSession` creates the existing `TerminalClient` with the
 trusted task address and generation. It checks the authoritative session and input owner
-before every input, resize, or heartbeat operation. A replaced or terminal session closes
-the private terminal connection. A failed terminal connection does not roll back the
-generation or restore the ticket because doing so could reopen stale input authority.
+with one strongly consistent batch read before every input, resize, or heartbeat
+operation. A transaction is not required for this read because session status never
+returns to `ready` and input generations only increase. The terminal server remains the
+final generation fence.
+
+The per-operation check is deliberate. The terminal server can reject an old input
+generation, but it cannot detect that the DynamoDB session has reached an outcome. A
+heartbeat-only check would permit input until the next heartbeat. A replaced or terminal
+session closes the private terminal connection. A storage failure rejects the operation
+before it reaches the terminal. The future browser relay must report that definite
+non-delivery instead of silently dropping the input.
+
+A failed terminal connection does not roll back the generation or restore the ticket
+because doing so could reopen stale input authority.
+
+The later terminal runtime must grant its task role `dynamodb:DeleteItem` for
+`SESSION#*` before it enables admission. The current recording-only runtime does not call
+this code, so this increment does not broaden its role. Definite IAM and DynamoDB request
+validation failures return `invalid_config` without an application retry.
 
 ## Validation boundary
 
