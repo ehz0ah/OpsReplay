@@ -1,12 +1,12 @@
 # Gateway service boundary
 
 Status: the production monitor HTTPS client, private terminal TCP client, authenticated
-terminal admission core, bounded recording controller, durable recording adapters,
-recording-session runner, DynamoDB work source, bounded service supervisor, and
-recording-only process image are implemented and tested locally. CDK defines its private
-Fargate service, role, bucket, and event source, but keeps the complete path disabled by
-default. No complete recording deployment has run. Ticket issuance, the WebSocket route,
-and browser relay are not implemented.
+terminal admission core, browser terminal relay component, bounded recording controller,
+durable recording adapters, recording-session runner, DynamoDB work source, bounded
+service supervisor, and recording-only process image are implemented and tested locally.
+CDK defines its private Fargate service, role, bucket, and event source, but keeps the
+complete path disabled by default. No complete recording deployment has run. The relay
+is not connected to the Gateway process, a public route, or AWS.
 Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -43,7 +43,7 @@ The Challenge server continues this pressure through a queue of at most eight fr
 finish within one second detaches the client and makes output continuity uncertain. The
 next attach reports this through `replayTruncated`. The future browser relay must keep its
 send path to one pending frame with an 8 KiB decoded payload, stop after a one-second
-delivery failure, and show this warning to the learner. A live connection replacement
+delivery failure, and send this warning to the browser. A live connection replacement
 also sets the warning because output frames have no acknowledgement.
 
 This module does not authenticate learners, consume terminal tickets, claim generations,
@@ -66,6 +66,30 @@ connection. The browser obtains a new ticket and claims a newer generation inste
 
 This layer does not issue tickets, inspect an HTTP `Origin`, open a browser WebSocket,
 update persistent learner heartbeats, record terminal output, or change AWS resources.
+
+## Browser terminal relay
+
+`GatewayBrowserTerminalRelay` attaches to a Node.js HTTP server and handles only
+`GET /v1/terminal` WebSocket upgrades. It checks an exact origin allowlist before the
+upgrade. The first text frame must be `auth` within five seconds. Authentication uses
+`GatewayTerminalSession`, so ticket consumption, generation claims, task-address
+selection, and per-operation authorization stay in one existing path.
+
+Browser binary frames carry raw terminal input. Text frames carry validated `resize`,
+`heartbeat`, and `run_proposal` messages. Proposal execution is not implemented and
+returns `PROPOSAL_UNAVAILABLE`. The relay serializes private operations, pauses browser
+reads during them, and bounds already-decoded input to 64 messages or 64 KiB.
+
+Terminal output returns as binary frames. Only one output frame of at most 8 KiB can wait
+for browser delivery. A send that does not complete within one second closes the browser
+and private terminal. The next attachment receives the terminal server's
+`replayTruncated` warning. Public errors use fixed text and never include tickets,
+terminal data, task addresses, or internal errors.
+
+The relay is a component, not a new executable in this increment. The existing image
+still starts the recording-only process. Runtime composition, public routing, security
+groups, persistent learner heartbeat updates, dashboard traffic, proposals, recording,
+and AWS validation remain separate work.
 
 ## Monitor client
 
@@ -186,5 +210,6 @@ queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`.
 checks do not prove Fargate networking, production certificate delivery, IAM, or managed
 DynamoDB and S3 behaviour.
 
-Next: add the browser WebSocket relay with the established bounded output policy.
-Terminal recording, outcome actions, and AWS validation remain separate increments.
+Next: compose the browser relay into the Gateway process and validate its runtime path
+before adding public routing. Terminal recording, outcome actions, and AWS validation
+remain separate increments.

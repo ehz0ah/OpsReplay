@@ -3193,9 +3193,12 @@
               },
               "resumed": {
                 "type": "boolean"
+              },
+              "replayTruncated": {
+                "type": "boolean"
               }
             },
-            "required": ["type", "sessionId", "status", "resumed"]
+            "required": ["type", "sessionId", "status", "resumed", "replayTruncated"]
           },
           {
             "type": "object",

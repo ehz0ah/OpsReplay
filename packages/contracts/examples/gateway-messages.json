@@ -14,7 +14,8 @@
       "type": "ready",
       "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       "status": "ready",
-      "resumed": false
+      "resumed": false,
+      "replayTruncated": false
     },
     {
       "type": "metrics",

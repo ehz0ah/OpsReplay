@@ -286,7 +286,9 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
 2. The gateway installs the claimed generation at the terminal server and waits for
    acknowledgement before sending `ready`. It also connects to the monitor through
    authenticated TLS. `resumed` is true when the shell already existed. The
-   terminal server keeps one shell per session across reconnects.
+   terminal server keeps one shell per session across reconnects. `replayTruncated` is
+   true when output continuity became uncertain before this attachment. The client must
+   show that warning to the learner.
 3. The client sends `resize` with columns and rows, and `heartbeat` every 20 seconds
    (proposed), which is below the ALB's default 60-second idle timeout. At most every
    30 seconds, the gateway updates the session's `lastSeenAt` through a write that is
@@ -340,6 +342,14 @@ when its transport can accept that frame immediately. Other `error` codes are
 `TERMINAL_BUSY` when the shell is running a command, `PROPOSAL_UNAVAILABLE`,
 `RATE_LIMITED` when input exceeds the per-session rate, and `INTERNAL_ERROR`. The
 gateway never forwards browser frames to the monitor.
+
+The local relay accepts only the exact terminal path without a query and an origin from
+its configured allowlist. It limits a browser frame to 16 KiB and pauses WebSocket reads
+while a private operation is pending. If frames were already decoded, it keeps at most
+64 messages or 64 KiB. It returns `RATE_LIMITED` and closes when either bound is exceeded.
+It keeps at most one 8 KiB terminal output frame pending and closes both directions if
+browser delivery does not complete within one second. The relay component is tested
+locally but is not connected to the Gateway process, ALB, or AWS service.
 
 ## Assistant turns
 
