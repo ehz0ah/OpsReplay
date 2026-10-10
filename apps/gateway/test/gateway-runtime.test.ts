@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer, get, type Server } from 'node:http';
+import { connect } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import type { GatewayAwsClients } from '../src/aws.js';
 import type { GatewayBrowserTerminalRelayOptions } from '../src/browser-terminal-relay.js';
@@ -239,6 +241,7 @@ test('runs the recording supervisor and terminal listener in one process', async
   });
   assert.equal(f.supervisorOptions()?.recorderId, 'gateway-test');
   assert.equal(f.supervisorOptions()?.maximumConcurrentRecordings, 16);
+  assert.equal(f.server()?.maxConnections, 288);
 
   controller.abort();
   await running;
@@ -246,6 +249,53 @@ test('runs the recording supervisor and terminal listener in one process', async
   assert.ok(f.actions.includes('supervisor_stopped'));
   assert.equal(f.actions.at(-1), 'clients_closed');
   assert.deepEqual(f.events.at(-1), { type: 'service_stopped', recorderId: 'gateway-test' });
+});
+
+test('forces an incomplete HTTP request closed after a fatal recording failure', async () => {
+  const controller = new AbortController();
+  const failSupervisor = deferred<void>();
+  const failure = new Error('fatal');
+  const f = fixture(async () => {
+    await failSupervisor.promise;
+    throw failure;
+  });
+  const running = runGatewayRuntime(configuration(), controller.signal, f.dependencies);
+  await f.supervisorStarted;
+  const started = f.events.find((event) => event.type === 'service_started');
+  assert.ok(started?.listenPort);
+
+  const socket = connect(started.listenPort, '127.0.0.1');
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const connected = () => {
+        socket.off('error', reject);
+        resolve();
+      };
+      socket.once('connect', connected);
+      socket.once('error', reject);
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.write('GET /healthz HTTP/1.1\r\nHost: gateway.test\r\n', (error) =>
+        error == null ? resolve() : reject(error),
+      );
+    });
+
+    socket.on('error', () => {
+      /* Forced shutdown can reset the incomplete request. */
+    });
+    const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+    failSupervisor.resolve();
+    const completed = Promise.all([assert.rejects(running, failure), closed]);
+    const timedOut = await Promise.race([completed.then(() => false), delay(1_000, true, { ref: false })]);
+    assert.equal(timedOut, false);
+    assert.equal(socket.destroyed, true);
+    assert.equal(f.actions.at(-1), 'clients_closed');
+  } finally {
+    socket.destroy();
+    failSupervisor.resolve();
+    controller.abort();
+    await Promise.allSettled([running]);
+  }
 });
 
 test('preserves the recording-only runtime when terminal settings are absent', async () => {

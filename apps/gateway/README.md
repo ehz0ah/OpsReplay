@@ -203,6 +203,9 @@ terminal settings are present. Partial terminal configuration fails startup.
 With no terminal setting, the current inactive AWS definition remains recording-only.
 When enabled, `GET /healthz` returns a fixed readiness response and all other ordinary
 HTTP paths return 404. `GET /v1/terminal` upgrades through the existing relay.
+The HTTP server limits all accepted connections to the configured terminal cap plus a
+fixed allowance of 32 for health checks and ordinary HTTP requests. Shutdown
+force-closes incomplete HTTP requests after it stops accepting new connections.
 
 The process generates one recorder identity, shares bounded AWS clients, converts
 `SIGTERM` and `SIGINT` to cancellation, closes the listener and terminal connections,

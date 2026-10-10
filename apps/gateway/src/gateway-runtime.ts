@@ -19,6 +19,7 @@ const maximumAllowedOrigins = 16;
 const maximumAllowedOriginsCharacters = 4_096;
 const maximumTerminalConnections = 4_096;
 const maximumPendingTerminalAuthentications = 1_024;
+const httpConnectionAllowance = 32;
 
 export interface GatewayTerminalRuntimeConfiguration {
   listenPort: number;
@@ -211,10 +212,14 @@ function listen(server: HttpServer, port: number, signal: AbortSignal): Promise<
 }
 
 function closeServer(server: HttpServer): Promise<void> {
-  if (!server.listening) return Promise.resolve();
+  if (!server.listening) {
+    server.closeAllConnections();
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
     server.close((error) => (error === undefined ? resolve() : reject(error)));
     server.closeIdleConnections();
+    server.closeAllConnections();
   });
 }
 
@@ -304,6 +309,7 @@ export async function runGatewayRuntime(
 
     if (configuration.terminal !== null) {
       server = dependencies.createHttpServer(requestHandler(() => ready));
+      server.maxConnections = configuration.terminal.maximumConnections + httpConnectionAllowance;
       const admissions = dependencies.createAdmissions(clients.dynamo, configuration.sessionTableName);
       relay = dependencies.createRelay(server, {
         allowedOrigins: configuration.terminal.allowedOrigins,
