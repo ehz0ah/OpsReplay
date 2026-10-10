@@ -47,7 +47,7 @@ names are a storage convention, not part of the HTTP contract.
 | `SESSION#<id>` | `RECORDING`                              | Lease, cursors, references, and nullable `retainUntil`                |
 | `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional object reference and its sequence range     |
 | `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                          |
-| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket with a TTL                                            |
+| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket owner, session, ISO expiry, and numeric `ExpiresAt`   |
 | `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease |
 | `SESSION#<id>` | `REQUEST#<requestId>`                    | End and hint receipts                                                 |
 | `SESSION#<id>` | `HINT#<hintId>`                          | Released hint and time                                                |

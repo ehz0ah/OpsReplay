@@ -7,6 +7,8 @@ export const terminalAccessLimits = Object.freeze({
   maximumConnectionIdCharacters: 128,
 });
 
+export const terminalTicketTtlAttribute = 'ExpiresAt';
+
 export interface TerminalTicketRecord {
   schemaVersion: 1;
   sessionId: string;

@@ -1,6 +1,6 @@
 # Gateway terminal admission increment
 
-Status: implemented locally, ticket issuance, browser relay, and AWS validation pending
+Status: implemented locally, browser relay and AWS validation pending
 Date: 10 October 2026
 Owner: Gateway contributors
 

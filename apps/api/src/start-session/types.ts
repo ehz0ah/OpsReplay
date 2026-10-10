@@ -4,6 +4,13 @@ export interface StartRequest {
   challengeVersion: string;
 }
 
+export interface TerminalTicket {
+  sessionId: string;
+  ticket: string;
+  url: string;
+  expiresAt: string;
+}
+
 export type PlanName = 'free' | 'pro';
 export interface ChallengeRef {
   id: string;

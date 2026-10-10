@@ -1,8 +1,8 @@
 # API application boundary
 
 Status: session-start admission, ECS launch orchestration, provisioning-expiry cleanup,
-and recording-work publication are implemented and tested locally. No public route or
-ECS event rule is connected, and no AWS deployment has run. Follow
+recording-work publication, and terminal-ticket issuance are implemented and tested
+locally. No public route or ECS event rule is connected, and no AWS deployment has run. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -45,6 +45,21 @@ the handler increment. CDK now defines its Lambda, bounded retries, encrypted fa
 queue, alarm, and ECS task-state rule. One activation parameter keeps the rule and
 function disabled with the recording service until an approved AWS checkpoint.
 
+The [terminal-ticket handler](src/create-terminal-ticket/index.ts) is a separate action
+for `POST /v1/sessions/{id}/terminal-tickets`. It trusts only the Cognito identity from
+the API Gateway authorizer and accepts no request body. It strongly reads the private
+session, then uses one conditional DynamoDB transaction to confirm the same owner,
+session ID, `ready` status, and private task address before it stores a ticket. The
+response contains a 256-bit base64url ticket, the configured WSS Gateway URL, and a
+60-second expiry. DynamoDB stores only the SHA-256 ticket hash, owner, session, ISO
+expiry, and numeric `ExpiresAt` cleanup value. The raw ticket is not logged or stored.
+
+An uncertain transaction response is reconciled with a transactional read. An exact
+stored ticket is success. A hash collision causes generation of a new ticket. Known
+transaction contention has bounded retries. Provisioning, terminal, ownership, and
+configuration failures fail without storing a ticket. Gateway admission remains
+responsible for consuming the ticket once and claiming the terminal input generation.
+
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
 releases the learner lock only after cleanup is confirmed. Known tasks that are stopping
@@ -57,9 +72,10 @@ The deployed handler has no development identity or local endpoint switch. A fut
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
 that route. Tests construct the authorizer context directly.
 
-This increment does not provide status/end routes, readiness, or terminal access. The
-start and expiry Lambda definitions have zero reserved concurrency, and the start Lambda
-has no trigger. The recording-work action and gateway recording service are also
+The terminal-ticket action has no API Gateway route, Lambda definition, or IAM role yet.
+This increment does not provide status/end routes, readiness, or browser terminal relay.
+The start and expiry Lambda definitions have zero reserved concurrency, and the start
+Lambda has no trigger. The recording-work action and gateway recording service are also
 inactive by default. Do not enable the flow until its AWS integration checks pass.
 Do not seed the draft repository Challenge as published content.
 
@@ -82,9 +98,9 @@ Docker may pull the image on the first run. Fake ECS and Scheduler ports test lo
 responses, duplicate calls, deadline races, and cleanup. These checks do not prove AWS
 IAM, Cognito verification, Scheduler delivery, cloud networking, or Fargate behaviour.
 
-The build creates separate `dist/start-session/`, `dist/expire-provisioning/`, and
-`dist/publish-recording-work/` bundles from the lockfile. CDK output goes to `cdk.out/`.
-These directories do not belong in Git.
+The build creates separate `dist/start-session/`, `dist/create-terminal-ticket/`,
+`dist/expire-provisioning/`, and `dist/publish-recording-work/` bundles from the lockfile.
+CDK output goes to `cdk.out/`. These directories do not belong in Git.
 
 ## Bounds
 
