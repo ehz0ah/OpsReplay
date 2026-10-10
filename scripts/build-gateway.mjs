@@ -8,7 +8,7 @@ await build({
   absWorkingDir: root,
   entryPoints: {
     client: 'apps/gateway/src/index.ts',
-    runtime: 'apps/gateway/src/recording-main.ts',
+    runtime: 'apps/gateway/src/gateway-main.ts',
   },
   outdir: 'dist/gateway',
   outExtension: { '.js': '.cjs' },

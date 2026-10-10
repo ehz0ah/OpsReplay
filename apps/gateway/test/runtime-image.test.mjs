@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { get } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { CreateTableCommand, DynamoDBClient, ListTablesCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import {
+  CreateTableCommand,
+  DynamoDBClient,
+  GetItemCommand,
+  ListTablesCommand,
+  PutItemCommand,
+} from '@aws-sdk/client-dynamodb';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { WebSocket } from 'ws';
 
 const dynamoImage = 'amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4';
 const gatewayImage = process.env.OPSREPLAY_GATEWAY_IMAGE ?? 'opsreplay/gateway-recording:dev';
@@ -59,6 +67,44 @@ async function eventually(check, message, timeoutMs = 20_000) {
     await delay(150);
   }
   assert.fail(message);
+}
+
+function health(address) {
+  return new Promise((resolve, reject) => {
+    const request = get(`http://${address}/healthz`, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    request.once('error', reject);
+  });
+}
+
+function terminalError(address, sessionId, ticket) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://${address}/v1/terminal`, { origin: 'https://app.opsreplay.test' });
+    const timer = setTimeout(() => {
+      socket.terminate();
+      reject(new Error('Gateway terminal response timed out'));
+    }, 10_000);
+    const finish = (callback) => {
+      clearTimeout(timer);
+      socket.terminate();
+      callback();
+    };
+    socket.once('open', () => socket.send(JSON.stringify({ type: 'auth', sessionId, ticket })));
+    socket.once('message', (data, binary) => {
+      finish(() => {
+        try {
+          assert.equal(binary, false);
+          resolve(JSON.parse(data.toString('utf8')));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    socket.once('error', (error) => finish(() => reject(error)));
+  });
 }
 
 test('the gateway runtime image includes the available Debian Perl security update', () => {
@@ -174,6 +220,45 @@ test('the gateway runtime image discovers work and stops cleanly', { timeout: 60
       }),
     );
 
+    const sessionId = randomUUID();
+    const ticket = 't'.repeat(43);
+    const ticketHash = createHash('sha256').update(ticket, 'utf8').digest('hex');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    await client.send(
+      new PutItemCommand({
+        TableName: 'opsreplay-sessions',
+        Item: {
+          PK: { S: `SESSION#${sessionId}` },
+          SK: { S: 'STATE' },
+          data: {
+            M: {
+              ownerId: { S: 'runtime-test-user' },
+              taskAddress: { S: '127.0.0.1' },
+              view: { M: { id: { S: sessionId }, status: { S: 'ready' } } },
+            },
+          },
+        },
+      }),
+    );
+    await client.send(
+      new PutItemCommand({
+        TableName: 'opsreplay-sessions',
+        Item: {
+          PK: { S: `SESSION#${sessionId}` },
+          SK: { S: `TICKET#${ticketHash}` },
+          data: {
+            M: {
+              schemaVersion: { N: '1' },
+              sessionId: { S: sessionId },
+              ownerId: { S: 'runtime-test-user' },
+              expiresAt: { S: expiresAt },
+            },
+          },
+          ExpiresAt: { N: String(Math.floor(Date.parse(expiresAt) / 1000)) },
+        },
+      }),
+    );
+
     docker(
       'run',
       '--detach',
@@ -181,6 +266,8 @@ test('the gateway runtime image discovers work and stops cleanly', { timeout: 60
       gateway,
       '--network',
       network,
+      '--publish',
+      '127.0.0.1::8080',
       '--read-only',
       '--cap-drop',
       'ALL',
@@ -212,6 +299,16 @@ test('the gateway runtime image discovers work and stops cleanly', { timeout: 60
       'MAXIMUM_CONCURRENT_RECORDINGS=2',
       '--env',
       'MONITOR_PORT=9443',
+      '--env',
+      'GATEWAY_PORT=8080',
+      '--env',
+      'TERMINAL_ALLOWED_ORIGINS=https://app.opsreplay.test',
+      '--env',
+      'MAXIMUM_TERMINAL_CONNECTIONS=16',
+      '--env',
+      'MAXIMUM_PENDING_TERMINAL_AUTHENTICATIONS=4',
+      '--env',
+      'TERMINAL_PORT=7681',
       '--label',
       'opsreplay.test=gateway-runtime',
       gatewayImage,
@@ -222,12 +319,44 @@ test('the gateway runtime image discovers work and stops cleanly', { timeout: 60
       return logs.includes('"type":"service_started"') && logs.includes('"type":"source_invalid"');
     }, 'Gateway did not discover the malformed work item through DynamoDB Local');
 
+    const gatewayAddress = docker('port', gateway, '8080/tcp');
+    assert.match(gatewayAddress, /^127\.0\.0\.1:[0-9]+$/);
+    assert.deepEqual(await health(gatewayAddress), { status: 200, body: '{"status":"ready"}\n' });
+    assert.deepEqual(await terminalError(gatewayAddress, sessionId, ticket), {
+      type: 'error',
+      code: 'INTERNAL_ERROR',
+      message: 'The terminal connection failed.',
+    });
+    assert.equal(
+      (
+        await client.send(
+          new GetItemCommand({
+            TableName: 'opsreplay-sessions',
+            Key: { PK: { S: `SESSION#${sessionId}` }, SK: { S: `TICKET#${ticketHash}` } },
+            ConsistentRead: true,
+          }),
+        )
+      ).Item,
+      undefined,
+    );
+    assert.ok(
+      (
+        await client.send(
+          new GetItemCommand({
+            TableName: 'opsreplay-sessions',
+            Key: { PK: { S: `SESSION#${sessionId}` }, SK: { S: 'INPUT' } },
+            ConsistentRead: true,
+          }),
+        )
+      ).Item,
+    );
+
     docker('stop', '--time', '10', gateway);
     const logs = docker('logs', gateway);
     assert.match(logs, /"type":"shutdown_requested","signal":"SIGTERM"/);
     assert.match(logs, /"type":"service_stopped"/);
     assert.doesNotMatch(logs, /"type":"service_failed"/);
-    assert.doesNotMatch(logs, /opsreplay-recordings|AWS_SECRET_ACCESS_KEY/);
+    assert.doesNotMatch(logs, new RegExp(`${ticket}|opsreplay-recordings|AWS_SECRET_ACCESS_KEY`));
   } finally {
     client?.destroy();
     removeContainer(gateway);

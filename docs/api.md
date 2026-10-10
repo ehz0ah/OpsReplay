@@ -350,8 +350,10 @@ its configured allowlist. It limits a browser frame to 16 KiB and pauses WebSock
 while a private operation is pending. If frames were already decoded, it keeps at most
 64 messages or 64 KiB. It returns `RATE_LIMITED` and closes when either bound is exceeded.
 It keeps at most one 8 KiB terminal output frame pending and closes both directions if
-browser delivery does not complete within one second. The relay component is tested
-locally but is not connected to the Gateway process, ALB, or AWS service.
+browser delivery does not complete within one second. The relay is connected to the
+Gateway process when its complete terminal configuration is present. The same listener
+serves `GET /healthz`; other ordinary HTTP routes return 404. The existing AWS definition
+does not enable or route this listener.
 
 ## Assistant turns
 
