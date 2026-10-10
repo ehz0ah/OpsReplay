@@ -12,9 +12,11 @@ provisioning-timeout cleanup. The first monitor increment added real traffic,
 measurements, checkout validation, and outage probes beside the
 reference image. A focused increment then added authenticated monitor network control.
 The gateway monitor client, bounded recording controller, and durable recording adapters
-consume that control API locally. Captures and the running gateway service follow separately. Work
-packages are responsibility groups, not a requirement to complete one subsystem before
-integrating another.
+consume that control API locally. A separate private terminal client connects to the
+reference image and preserves the terminal server's generation and uncertain-input
+semantics. Browser relay, captures, and the complete running gateway follow separately.
+Work packages are responsibility groups, not a requirement to complete one subsystem
+before integrating another.
 
 ## Work packages
 
