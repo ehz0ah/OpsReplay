@@ -8,6 +8,7 @@ never written to the process log.
 
 import base64
 import binascii
+import collections
 import errno
 import fcntl
 import json
@@ -30,6 +31,8 @@ MAX_LINE_BYTES = 24 * 1024
 MAX_INPUT_BYTES = 16 * 1024
 MAX_OUTPUT_BYTES = 8 * 1024
 MAX_REPLAY_BYTES = 64 * 1024
+MAX_PENDING_OUTPUT_BYTES = MAX_REPLAY_BYTES
+MAX_PENDING_OUTPUT_FRAMES = MAX_PENDING_OUTPUT_BYTES // MAX_OUTPUT_BYTES
 ATTACH_TIMEOUT_SECONDS = 5
 IDLE_TIMEOUT_SECONDS = 45
 SEND_TIMEOUT_SECONDS = 1
@@ -158,6 +161,20 @@ class Connection:
     def fail(self, code):
         self.send({"type": "error", "code": code})
 
+    def try_fail(self, code):
+        payload = encoded_frame({"type": "error", "code": code})
+        if not self.send_lock.acquire(blocking=False):
+            return False
+        try:
+            if self.closed.is_set():
+                return False
+            try:
+                return self.sock.send(payload) == len(payload)
+            except (BlockingIOError, OSError):
+                return False
+        finally:
+            self.send_lock.release()
+
     def close(self):
         if self.closed.is_set():
             return
@@ -179,17 +196,23 @@ class TerminalState:
         self.stopping = threading.Event()
         self.generation = 0
         self.active = None
+        self.active_ready = False
         self.ever_attached = False
         self.replay = bytearray()
         self.replay_truncated = False
+        self.pending_output = collections.deque()
+        self.pending_output_bytes = 0
+        self.output_condition = threading.Condition(self.lock)
         self.shell_exit_code = None
         self.child_exit_code = None
         self.child_exit_detected = threading.Event()
         self.shell_exited = threading.Event()
         self.child_pid, self.master_fd = self._start_shell()
         os.set_blocking(self.master_fd, False)
-        self.reader = threading.Thread(target=self._read_output, name="terminal-output", daemon=True)
+        self.reader = threading.Thread(target=self._read_output, name="terminal-pty-reader", daemon=True)
+        self.sender = threading.Thread(target=self._send_output, name="terminal-output-sender", daemon=True)
         self.waiter = threading.Thread(target=self._wait_for_shell, name="terminal-shell-wait", daemon=True)
+        self.sender.start()
         self.reader.start()
         self.waiter.start()
 
@@ -222,24 +245,86 @@ class TerminalState:
             self.replay_truncated = True
         self.replay.extend(data)
 
+    def _queue_output(self, event, byte_count):
+        with self.output_condition:
+            while not self.stopping.is_set() and (
+                len(self.pending_output) >= MAX_PENDING_OUTPUT_FRAMES
+                or self.pending_output_bytes + byte_count > MAX_PENDING_OUTPUT_BYTES
+            ):
+                self.output_condition.wait(timeout=0.5)
+            if self.stopping.is_set():
+                return False
+            self.pending_output.append((event, byte_count))
+            self.pending_output_bytes += byte_count
+            self.output_condition.notify_all()
+            return True
+
     def _deliver_output(self, data):
-        failed = None
-        with self.lock:
-            connection = self.active
-            if connection is None:
-                self._append_replay(data)
-                return
+        while not self.stopping.is_set():
+            with self.output_condition:
+                while self.active is not None and not self.active_ready and not self.stopping.is_set():
+                    self.output_condition.wait(timeout=0.5)
+                if self.stopping.is_set():
+                    return
+                connection = self.active
+                generation = self.generation
+                if connection is None:
+                    self._append_replay(data)
+                    return
+
             frame = {
                 "type": "output",
-                "generation": self.generation,
+                "generation": generation,
                 "data": base64.b64encode(data).decode("ascii"),
             }
-            if not connection.send(frame):
-                self._append_replay(data)
+            if connection.send(frame):
+                return
+
+            connection.close()
+            with self.output_condition:
+                if self.active is connection:
+                    self.active = None
+                    self.active_ready = False
+                if self.active is None:
+                    self.replay_truncated = True
+                self.output_condition.notify_all()
+
+    def _deliver_exit(self, exit_code):
+        with self.output_condition:
+            while self.active is not None and not self.active_ready and not self.stopping.is_set():
+                self.output_condition.wait(timeout=0.5)
+            connection = self.active
+            if connection is not None:
                 self.active = None
-                failed = connection
-        if failed is not None:
-            failed.close()
+                self.active_ready = False
+                self.output_condition.notify_all()
+
+        if connection is not None:
+            connection.send({"type": "exit", "code": exit_code})
+            connection.close()
+        self.shell_exited.set()
+
+    def _send_output(self):
+        while not self.stopping.is_set():
+            with self.output_condition:
+                while not self.pending_output and not self.stopping.is_set():
+                    self.output_condition.wait(timeout=0.5)
+                if self.stopping.is_set():
+                    return
+                event, byte_count = self.pending_output[0]
+
+            event_type, payload = event
+            if event_type == "output":
+                self._deliver_output(payload)
+            else:
+                self._deliver_exit(payload)
+
+            with self.output_condition:
+                self.pending_output.popleft()
+                self.pending_output_bytes -= byte_count
+                self.output_condition.notify_all()
+            if event_type == "exit":
+                return
 
     def _wait_for_shell(self):
         # PTY EOF is not a shell-exit signal when a background job retains the slave fd.
@@ -268,7 +353,8 @@ class TerminalState:
                 return
             if data is None or not data:
                 return
-            self._deliver_output(data)
+            if not self._queue_output(("output", data), len(data)):
+                return
 
     def _read_output(self):
         while not self.stopping.is_set():
@@ -295,7 +381,8 @@ class TerminalState:
                 self._finish_shell(-1)
                 return
 
-            self._deliver_output(data)
+            if not self._queue_output(("output", data), len(data)):
+                return
 
         if self.stopping.is_set():
             return
@@ -304,18 +391,11 @@ class TerminalState:
         self._finish_shell(exit_code)
 
     def _finish_shell(self, exit_code):
-        connection = None
         with self.lock:
             if self.shell_exit_code is not None:
                 return
             self.shell_exit_code = exit_code
-            self.shell_exited.set()
-            connection = self.active
-            self.active = None
-            if connection is not None:
-                connection.send({"type": "exit", "code": exit_code})
-        if connection is not None:
-            connection.close()
+        self._queue_output(("exit", exit_code), 0)
 
     @staticmethod
     def _set_size(master_fd, columns, rows):
@@ -323,8 +403,9 @@ class TerminalState:
 
     def attach(self, connection, generation, columns, rows):
         replaced = None
+        sent = False
         with self.input_lock:
-            with self.lock:
+            with self.output_condition:
                 if self.shell_exit_code is not None:
                     return "SHELL_EXITED"
                 if generation <= self.generation:
@@ -336,7 +417,9 @@ class TerminalState:
                 replaced = self.active
                 self.generation = generation
                 self.active = connection
+                self.active_ready = False
                 connection.generation = generation
+                replay = bytes(self.replay)
                 ready = {
                     "type": "ready",
                     "version": PROTOCOL_VERSION,
@@ -344,28 +427,35 @@ class TerminalState:
                     "resumed": self.ever_attached,
                     "replayTruncated": self.replay_truncated,
                 }
-                sent = connection.send(ready)
+                self.output_condition.notify_all()
+
+            sent = connection.send(ready)
+            if sent:
+                for offset in range(0, len(replay), MAX_OUTPUT_BYTES):
+                    sent = connection.send(
+                        {
+                            "type": "output",
+                            "generation": generation,
+                            "data": base64.b64encode(replay[offset : offset + MAX_OUTPUT_BYTES]).decode("ascii"),
+                        }
+                    )
+                    if not sent:
+                        break
+
+            with self.output_condition:
                 if sent:
                     self.ever_attached = True
-                if sent and self.replay:
-                    for offset in range(0, len(self.replay), MAX_OUTPUT_BYTES):
-                        sent = connection.send(
-                            {
-                                "type": "output",
-                                "generation": generation,
-                                "data": base64.b64encode(self.replay[offset : offset + MAX_OUTPUT_BYTES]).decode("ascii"),
-                            }
-                        )
-                        if not sent:
-                            break
-                if sent:
                     self.replay.clear()
                     self.replay_truncated = False
-                else:
+                    self.active_ready = True
+                elif self.active is connection:
                     self.active = None
-        if replaced is not None:
-            replaced.fail("REPLACED")
-            replaced.close()
+                    self.active_ready = False
+                self.output_condition.notify_all()
+
+            if replaced is not None:
+                replaced.try_fail("REPLACED")
+                replaced.close()
         if not sent:
             connection.close()
             return "CONNECTION_FAILED"
@@ -425,9 +515,11 @@ class TerminalState:
             return self._validate_owner(connection, generation)
 
     def detach(self, connection):
-        with self.lock:
+        with self.output_condition:
             if self.active is connection:
                 self.active = None
+                self.active_ready = False
+                self.output_condition.notify_all()
 
     def close(self):
         self.stopping.set()
@@ -435,6 +527,8 @@ class TerminalState:
         with self.lock:
             connection = self.active
             self.active = None
+            self.active_ready = False
+            self.output_condition.notify_all()
         if connection is not None:
             connection.close()
         try:
@@ -446,6 +540,7 @@ class TerminalState:
         except OSError:
             pass
         self.reader.join(timeout=2)
+        self.sender.join(timeout=2)
         self.waiter.join(timeout=2)
         try:
             os.killpg(self.child_pid, signal.SIGKILL)

@@ -26,12 +26,13 @@ count time spent in that consumer against an in-flight operation timeout. The ca
 must send a heartbeat at least once every 20 seconds while the connection is otherwise
 idle, which stays below the terminal server's 45-second idle limit.
 
-This is not end-to-end PTY backpressure. The terminal server stops a blocked socket send
-after one second, detaches the client, and keeps only the latest 64 KiB for reconnect
-replay. It does not pause the command. Before browser relay is implemented, define
-whether the server will apply PTY backpressure or the relay will use another bounded,
-user-visible slow-consumer policy. Track that decision in
-[issue #31](https://github.com/ehz0ah/OpsReplay/issues/31).
+The Challenge server continues this pressure through one queue of at most eight frames
+and 64 KiB. When the queue is full, it stops PTY reads, which can block the command. A
+client that cannot accept one frame within one second is detached so it cannot block the
+shell forever. The next attach reports `replayTruncated: true` when the replay overflowed
+or the failed send made output continuity uncertain. The future browser relay must keep
+at most one terminal frame with an 8 KiB decoded payload awaiting WebSocket delivery,
+stop after a one-second delivery failure, and show this warning to the learner.
 
 Serialize input, resize, and heartbeat requests. Their acknowledgements contain a
 generation but no request identifier, so more than one outstanding request of the same

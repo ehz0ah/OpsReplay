@@ -5,6 +5,7 @@ import errno
 import importlib.machinery
 import importlib.util
 import json
+import os
 import select
 import socket
 import sys
@@ -18,7 +19,7 @@ MAX_REPLAY_BYTES = 64 * 1024
 SERVER_PATH = "/usr/local/bin/opsreplay-terminal-server"
 
 
-def verify_nonblocking_read():
+def verify_terminal_helpers():
     loader = importlib.machinery.SourceFileLoader("opsreplay_terminal_server", SERVER_PATH)
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
@@ -26,10 +27,61 @@ def verify_nonblocking_read():
     with mock.patch.object(module.os, "read", side_effect=BlockingIOError(errno.EAGAIN, "try again")):
         assert module.read_master(0) is None
 
+    state = module.TerminalState.__new__(module.TerminalState)
+    state.lock = module.threading.RLock()
+    state.output_condition = module.threading.Condition(state.lock)
+    state.stopping = module.threading.Event()
+    state.pending_output = module.collections.deque()
+    state.pending_output_bytes = 0
+    chunk = b"x" * module.MAX_OUTPUT_BYTES
+    for _ in range(module.MAX_PENDING_OUTPUT_FRAMES):
+        assert state._queue_output(("output", chunk), len(chunk))
+    queued = module.threading.Event()
+
+    def queue_one_more():
+        state._queue_output(("output", b"x"), 1)
+        queued.set()
+
+    producer = module.threading.Thread(target=queue_one_more)
+    producer.start()
+    assert not queued.wait(0.1), "output queue exceeded its frame or byte bound"
+    with state.output_condition:
+        _, byte_count = state.pending_output.popleft()
+        state.pending_output_bytes -= byte_count
+        state.output_condition.notify_all()
+    assert queued.wait(1), "output producer did not resume after queue capacity became available"
+    producer.join(timeout=1)
+
+    class FailedConnection:
+        def __init__(self):
+            self.closed = False
+
+        def send(self, _frame):
+            return False
+
+        def close(self):
+            self.closed = True
+
+    failed = FailedConnection()
+    state.active = failed
+    state.active_ready = True
+    state.generation = 1
+    state.replay = bytearray()
+    state.replay_truncated = False
+    state._deliver_output(b"uncertain-output")
+    assert failed.closed
+    assert state.active is None
+    assert state.replay == b"uncertain-output"
+    assert state.replay_truncated is True
+
 
 class TerminalClient:
-    def __init__(self):
-        self.socket = socket.create_connection(("127.0.0.1", PORT), timeout=2)
+    def __init__(self, receive_buffer_bytes=None):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if receive_buffer_bytes is not None:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_bytes)
+        self.socket.settimeout(2)
+        self.socket.connect(("127.0.0.1", PORT))
         self.socket.setblocking(False)
         self.buffer = bytearray()
 
@@ -66,8 +118,8 @@ class TerminalClient:
             self.buffer.extend(chunk)
 
 
-def attach(generation, columns=80, rows=24):
-    client = TerminalClient()
+def attach(generation, columns=80, rows=24, receive_buffer_bytes=None):
+    client = TerminalClient(receive_buffer_bytes)
     client.send(
         {
             "type": "attach",
@@ -131,6 +183,40 @@ def send_input(client, generation, command, expected):
     return bytes(output)
 
 
+def receive_slow_command(client, generation, command, expected, expected_zero_bytes):
+    client.send(
+        {
+            "type": "input",
+            "generation": generation,
+            "data": base64.b64encode(command).decode("ascii"),
+        }
+    )
+    deadline = time.monotonic() + 20
+    accepted = False
+    zero_bytes = 0
+    output_tail = bytearray()
+    while not accepted or expected not in output_tail:
+        frame = client.receive(max(0.01, deadline - time.monotonic()))
+        if frame["type"] == "output":
+            data = base64.b64decode(frame["data"], validate=True)
+            zero_bytes += data.count(b"\0")
+            output_tail.extend(data)
+            del output_tail[: max(0, len(output_tail) - 4096)]
+            time.sleep(0.005)
+        elif frame == {"type": "input_accepted", "generation": generation}:
+            accepted = True
+    assert zero_bytes == expected_zero_bytes, zero_bytes
+
+
+def wait_for_path(path, timeout=10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if os.path.exists(path):
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"timed out waiting for {path}")
+
+
 def rejected_attach(payload, code="INVALID_FRAME"):
     client = TerminalClient()
     if isinstance(payload, bytes):
@@ -159,7 +245,7 @@ def shell_exit():
 
 
 def main():
-    verify_nonblocking_read()
+    verify_terminal_helpers()
     if sys.argv[1] == "shell-exit":
         shell_exit()
         return
@@ -171,20 +257,17 @@ def main():
     assert ready["resumed"] is False, ready
     assert ready["replayTruncated"] is False, ready
 
+    delayed_start = b"delayed-start-" + secret + b"|"
+    encoded_delayed_start = base64.b64encode(delayed_start).decode("ascii")
     delayed_command = (
         "export OPSREPLAY_RECONNECT_VALUE=$(printf '%s' '"
         + encoded_secret
-        + "' | base64 -d); sleep 0.4; printf '%s\\n' \"$OPSREPLAY_RECONNECT_VALUE\"\n"
+        + "' | base64 -d); printf '%s' '"
+        + encoded_delayed_start
+        + "' | base64 -d; sleep 0.4; "
+        + "printf '%s\\n' \"$OPSREPLAY_RECONNECT_VALUE\"\n"
     ).encode("ascii")
-    first.send(
-        {
-            "type": "input",
-            "generation": 1,
-            "data": base64.b64encode(delayed_command).decode("ascii"),
-        }
-    )
-    while first.receive()["type"] != "input_accepted":
-        pass
+    send_input(first, 1, delayed_command, delayed_start)
     first.close()
     time.sleep(0.7)
 
@@ -279,6 +362,56 @@ def main():
     heartbeat = receive_matching(sixth, lambda frame: frame["type"] == "heartbeat")
     assert heartbeat == {"type": "heartbeat", "generation": 6}
     sixth.close()
+
+    slow_bytes = 4 * 1024 * 1024
+    slow_end = b"slow-output-complete-" + secret
+    encoded_slow_end = base64.b64encode(slow_end).decode("ascii")
+    seventh, _ = attach(7, receive_buffer_bytes=4096)
+    slow_command = (
+        f"head -c {slow_bytes} /dev/zero; "
+        f"printf '%s' '{encoded_slow_end}' | base64 -d; printf '\\n'\n"
+    ).encode("ascii")
+    receive_slow_command(seventh, 7, slow_command, slow_end, slow_bytes)
+    seventh.send({"type": "heartbeat", "generation": 7})
+    heartbeat = receive_matching(seventh, lambda frame: frame["type"] == "heartbeat")
+    assert heartbeat == {"type": "heartbeat", "generation": 7}
+    seventh.close()
+
+    stalled_end = b"stalled-output-complete-" + secret
+    encoded_stalled_end = base64.b64encode(stalled_end).decode("ascii")
+    stalled_marker = f"/tmp/opsreplay-terminal-stalled-{secret.decode('ascii')}"
+    try:
+        os.unlink(stalled_marker)
+    except FileNotFoundError:
+        pass
+    eighth, _ = attach(8, receive_buffer_bytes=4096)
+    stalled_command = (
+        "head -c 16777216 /dev/zero; "
+        f"printf '%s' '{encoded_stalled_end}' | base64 -d; "
+        f"touch '{stalled_marker}'\n"
+    ).encode("ascii")
+    eighth.send(
+        {
+            "type": "input",
+            "generation": 8,
+            "data": base64.b64encode(stalled_command).decode("ascii"),
+        }
+    )
+    while eighth.receive()["type"] != "input_accepted":
+        pass
+    time.sleep(0.2)
+    assert not os.path.exists(stalled_marker), "PTY output did not backpressure the command"
+    wait_for_path(stalled_marker)
+
+    ninth, ready = attach(9)
+    assert ready["replayTruncated"] is True, ready
+    receive_output(ninth, stalled_end)
+    ninth.send({"type": "heartbeat", "generation": 9})
+    heartbeat = receive_matching(ninth, lambda frame: frame["type"] == "heartbeat")
+    assert heartbeat == {"type": "heartbeat", "generation": 9}
+    eighth.close()
+    ninth.close()
+    os.unlink(stalled_marker)
 
     print("terminal protocol checks passed")
 

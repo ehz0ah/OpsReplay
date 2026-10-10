@@ -58,5 +58,5 @@ and failure propagation. The existing Gateway image test uses the session layer 
 the real Challenge terminal server and Bash PTY.
 
 This increment does not issue tickets, open a browser WebSocket, update heartbeats,
-record terminal output, resolve the slow-consumer policy, change network rules, or deploy
-to AWS.
+record terminal output, change network rules, or deploy to AWS. The separate terminal
+output decision defines the slow-consumer policy.

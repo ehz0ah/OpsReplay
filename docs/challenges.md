@@ -82,12 +82,15 @@ A partial write or timeout returns `INPUT_UNCERTAIN`; callers must not automatic
 retry it.
 
 The server serializes generation installation with input and resize operations. A larger
-generation replaces the active connection and closes it with `REPLACED`. It rejects an
-older attach or operation with `STALE_GENERATION`. The shell stays alive across ordinary
-connection loss. While no client is attached, the server keeps the latest 64 KiB of
-output. The next `ready` frame reports `replayTruncated: true` if older bytes were dropped.
-This replay buffer has no durable sequence cursor and is not the terminal recording
-stream.
+generation replaces the active connection. The old connection receives `REPLACED` when
+its socket can accept the error immediately, then closes. It rejects an older attach or
+operation with `STALE_GENERATION`. The shell stays alive across ordinary connection loss.
+The server queues at most eight output frames and 64 KiB before it stops PTY reads. A
+client that cannot accept one frame within one second is detached. While no client is
+attached, the server keeps the latest 64 KiB of output. The next `ready` frame reports
+`replayTruncated: true` if older bytes were dropped or a stalled send made delivery
+uncertain. This replay buffer has no durable sequence cursor and is not the terminal
+recording stream.
 
 The gateway's private terminal client validates this protocol, serializes operations,
 and applies output backpressure. It does not retry an input whose acknowledgement is
