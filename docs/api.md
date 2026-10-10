@@ -334,8 +334,9 @@ Only accepted proposals increment `proposalsRun`, once per proposal ID. Unknown 
 still marks the attempt as assisted through its assistant turn.
 
 Only one terminal connection per session is active. A new authenticated connection
-replaces the old one, which receives `error` with `REPLACED` and closes. Other `error`
-codes are `AUTH_FAILED`, `TICKET_EXPIRED`, `SESSION_NOT_READY`, `SESSION_TERMINAL`,
+replaces and closes the old one. The old connection receives `error` with `REPLACED`
+when its transport can accept that frame immediately. Other `error` codes are
+`AUTH_FAILED`, `TICKET_EXPIRED`, `SESSION_NOT_READY`, `SESSION_TERMINAL`,
 `TERMINAL_BUSY` when the shell is running a command, `PROPOSAL_UNAVAILABLE`,
 `RATE_LIMITED` when input exceeds the per-session rate, and `INTERNAL_ERROR`. The
 gateway never forwards browser frames to the monitor.

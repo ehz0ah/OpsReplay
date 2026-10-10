@@ -23,9 +23,13 @@ are serialized. A larger generation replaces the active connection. An older gen
 cannot attach or send input. A complete PTY write receives an acknowledgement. A partial
 or timed-out write is uncertain and must not be retried automatically.
 
-Keep at most 64 KiB of output while no interactive client is attached. Report when older
-bytes were dropped. Do not log terminal input or output. Limit frames, decoded input,
-connections, dimensions, and idle time.
+Separate PTY reads from socket delivery with a queue of at most eight frames and 64 KiB.
+When the queue is full, stop reading the PTY so the command receives backpressure. Do not
+hold terminal state during a socket write. Detach a client that cannot accept one output
+frame within one second. Then retain the latest 64 KiB for reconnect replay. The next
+`ready` frame reports `replayTruncated: true` when replay overflowed or the failed send
+made output continuity uncertain. Do not log terminal input or output. Limit frames,
+decoded input, connections, dimensions, and idle time.
 
 Keep the process stateless outside the container. A marker in the container's `/run`
 directory prevents the process from opening a second shell if the server or container
@@ -52,19 +56,24 @@ A WebSocket server in the Challenge image would duplicate the gateway boundary. 
 private TCP protocol keeps browser authentication and public transport outside the learner
 container. Python standard-library code avoids another runtime package in the image.
 
-The bounded replay buffer improves short interactive reconnects. It is not sufficient for
-durable recording because it has no sequence cursor or read-only consumer. The separate
-recording stream remains required before end-to-end playback can be claimed.
+The bounded queue does not drop bytes for a client that continues to consume output. An
+indefinitely blocked PTY could stop both the command and the shell, so the one-second send
+limit deliberately detaches that client. The bounded replay buffer improves short
+interactive reconnects. It is not sufficient for durable recording because it has no
+sequence cursor or read-only consumer. The separate recording stream remains required
+before end-to-end playback can be claimed.
 
 ## Validation
 
 Image integration tests execute a real command, reconnect to the same shell, resize the
-PTY, replace an older generation, reject stale and malformed frames, enforce input and
-replay bounds, stop cleanly, keep terminal content out of logs, and reject a replacement
-shell after process or container restart. The shell-exit test leaves a background process
-holding the PTY and verifies prompt exit directly. A focused unit check covers a
-non-blocking PTY read that returns `EAGAIN`. Existing service, repair, trap, persistence,
-and isolation checks must continue to pass.
+PTY, replace an older generation, reject stale and malformed frames, enforce input,
+pending-output, and replay bounds, stop cleanly, keep terminal content out of logs, and
+reject a replacement shell after process or container restart. A slow consumer receives
+a complete multi-megabyte stream. A stalled consumer first blocks the command, then
+disconnects and receives an explicit replay-truncation signal after reconnect. The
+shell-exit test leaves a background process holding the PTY and verifies prompt exit
+directly. A focused unit check covers a non-blocking PTY read that returns `EAGAIN`.
+Existing service, repair, trap, persistence, and isolation checks must continue to pass.
 
 These local tests do not prove gateway behavior, task security-group rules, Fargate
 behavior, terminal recording, or AWS deployment. Validate those boundaries in later

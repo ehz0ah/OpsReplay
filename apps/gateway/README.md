@@ -38,10 +38,12 @@ consumer instead of accumulating an unbounded queue. Time spent in the output co
 does not count against an in-flight operation timeout. The caller must invoke
 `heartbeat()` at least once every 20 seconds while the terminal is otherwise idle.
 
-This backpressure is local to the Gateway client. The Challenge server stops a blocked
-socket send after one second, disconnects the client, and retains only the latest 64 KiB
-for reconnect replay. It does not slow the command running in the PTY. The browser relay
-must define its bounded slow-consumer policy before it is implemented.
+The Challenge server continues this pressure through a queue of at most eight frames and
+64 KiB. A full queue stops PTY reads and can block the command. A socket send that cannot
+finish within one second detaches the client and makes output continuity uncertain. The
+next attach reports this through `replayTruncated`. The future browser relay must keep its
+send path to one pending frame with an 8 KiB decoded payload, stop after a one-second
+delivery failure, and show this warning to the learner.
 
 This module does not authenticate learners, consume terminal tickets, claim generations,
 open a browser WebSocket, record terminal output, or alter security groups. A container
@@ -183,6 +185,5 @@ queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`.
 checks do not prove Fargate networking, production certificate delivery, IAM, or managed
 DynamoDB and S3 behaviour.
 
-Next: add the separate terminal-ticket action and session-readiness transition. Resolve
-the bounded slow-consumer policy before the browser WebSocket relay. Terminal recording,
-outcome actions, and AWS validation remain separate increments.
+Next: add the browser WebSocket relay with the established bounded output policy.
+Terminal recording, outcome actions, and AWS validation remain separate increments.
