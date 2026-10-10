@@ -82,7 +82,10 @@ fresh container. Shared watched-file volumes are deferred to monitor integration
 The terminal process does not open a replacement shell after it stops or after the same
 container restarts. Its generation fence is process memory. Losing that state makes the
 terminal unavailable so that a stale client cannot gain input access to a new shell.
-Create a fresh container for a fresh terminal attempt.
+The shell ignores up to ten consecutive Ctrl-D inputs at an empty prompt to reduce
+accidental exits. A deliberate `exit` stops the terminal because a replacement shell
+would hide the loss of shell-local state. Create a fresh container for a fresh terminal
+attempt.
 
 After leaving the shell, discard this local attempt and its edits:
 
