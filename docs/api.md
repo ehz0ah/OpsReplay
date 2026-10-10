@@ -226,7 +226,9 @@ returns `409 SESSION_NOT_READY` while provisioning and `409 SESSION_TERMINAL` af
 outcome. A ticket is 256 random bits in base64url. DynamoDB stores only its SHA-256
 hash, with the owner, session, and an expiry of 60 seconds. A conditional transaction
 rechecks that the owned session is still `ready` before it writes the ticket. Each
-connection needs a new ticket. The ticket never appears in a URL.
+connection needs a new ticket. The ticket never appears in a URL. The deployed API
+Gateway route owns request throttling and returns `429 LIMIT_EXCEEDED` without invoking
+the Lambda.
 
 ### End
 
