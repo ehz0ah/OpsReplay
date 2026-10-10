@@ -10,15 +10,17 @@ the pre-implementation simulated-engine contracts.
 - [Review schema](schemas/review.schema.json) defines private Code Review bundles.
 - [Monitor control contract](private/monitor-control.ts) defines the private gateway-to-monitor routes,
   response envelopes, boundary rules, and remote errors.
+- [Terminal access contract](private/terminal-access.ts) defines private ticket and
+  terminal input-owner records shared by the API and gateway.
 - [Examples](examples/README.md) provide synthetic payload fixtures.
 
 Schemas cannot enforce ownership, conditional writes, isolation, or prompt boundaries by
 themselves. The domain documents define those checks. Update documents, examples, and
 checks with any contract change.
 
-The frontend imports or generates public types only. Challenge, review, and monitor control
-contracts belong to the API, gateway, monitor, and test harness. The monitor control contract
-must not be exported through OpenAPI or a browser bundle.
+The frontend imports or generates public types only. Challenge, review, monitor control,
+and terminal access contracts belong to the API, gateway, monitor, and test harness.
+Private contracts must not be exported through OpenAPI or a browser bundle.
 
 After changing `public.schema.json`, run `npm run contracts:sync` to update the embedded
 OpenAPI component schemas, then `npm run check`. Do not edit the embedded copy directly.

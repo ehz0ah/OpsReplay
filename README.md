@@ -21,17 +21,18 @@ The [API](apps/api/README.md) has a session-start Lambda, a separate provisionin
 Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
 session actions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
 recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
-a production monitor client, a private terminal client, a bounded recording controller,
+a production monitor client, a private terminal client, an authenticated terminal
+admission core, a bounded recording controller,
 durable recording adapters, a work source, and an executable recording supervisor. These
 parts are tested locally, including as a hardened container against DynamoDB Local and
 against the real monitor and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
 event action, private recording service, and the isolated network, endpoints, cluster,
 and image repositories for a temporary AWS checkpoint. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
-complete recording path remains disabled and has not run in AWS. Captures, the terminal
-proxy, browser relay, remaining API, web application, and lifecycle completion are not
-implemented. No checkpoint image is currently published in AWS, and no public route is
-enabled.
+complete recording path remains disabled and has not run in AWS. Ticket issuance,
+captures, the browser WebSocket relay, remaining API, web application, and lifecycle
+completion are not implemented. No checkpoint image is currently published in AWS, and
+no public route is enabled.
 
 ## Start here
 

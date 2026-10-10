@@ -277,13 +277,12 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
 `GatewayServerMessage`.
 
 1. The client sends `auth` with the session ID and ticket within five seconds. The
-   gateway checks the `Origin` header, consumes the ticket through a conditional delete,
-   checks that the session is `ready`, and reads the task address and the per-session
-   monitor secret from the session record.
-2. The gateway claims a new terminal input generation through a conditional write,
-   installs it at the terminal server, and waits for acknowledgement before sending
-   `ready`. It also connects to the monitor through authenticated TLS. `resumed` is true
-   when the shell already existed. The
+   gateway checks the `Origin` header. It then atomically checks that the session is
+   `ready`, consumes the unexpired ticket, and claims the next terminal input generation.
+   The same operation binds the connection to the authoritative private task address.
+2. The gateway installs the claimed generation at the terminal server and waits for
+   acknowledgement before sending `ready`. It also connects to the monitor through
+   authenticated TLS. `resumed` is true when the shell already existed. The
    terminal server keeps one shell per session across reconnects.
 3. The client sends `resize` with columns and rows, and `heartbeat` every 20 seconds
    (proposed), which is below the ALB's default 60-second idle timeout. At most every

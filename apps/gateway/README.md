@@ -1,11 +1,12 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client, private terminal TCP client, bounded
-recording controller, durable recording adapters, recording-session runner, DynamoDB
-work source, bounded service supervisor, and recording-only process image are implemented
-and tested locally. CDK defines its private Fargate service, role, bucket, and event
-source, but keeps the complete path disabled by default. No complete recording deployment
-has run. The WebSocket route, terminal proxy, and browser relay are not implemented.
+Status: the production monitor HTTPS client, private terminal TCP client, authenticated
+terminal admission core, bounded recording controller, durable recording adapters,
+recording-session runner, DynamoDB work source, bounded service supervisor, and
+recording-only process image are implemented and tested locally. CDK defines its private
+Fargate service, role, bucket, and event source, but keeps the complete path disabled by
+default. No complete recording deployment has run. Ticket issuance, the WebSocket route,
+and browser relay are not implemented.
 Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -45,6 +46,22 @@ must define its bounded slow-consumer policy before it is implemented.
 This module does not authenticate learners, consume terminal tickets, claim generations,
 open a browser WebSocket, record terminal output, or alter security groups. A container
 test runs the bundled client against the real Challenge terminal server and Bash PTY.
+
+## Terminal admission and session
+
+`DynamoTerminalAdmissionStore` reads the private session, ticket, and current terminal
+input owner. One transaction confirms the same ready session and task address, consumes
+the unexpired ticket, and installs the next input generation with a server-generated
+connection ID. Conditional conflicts retry from current state. An uncertain response is
+reconciled before the exact transaction is retried.
+
+`GatewayTerminalSession` passes only the admitted task address and generation to
+`TerminalClient`. It checks current session and input ownership before input, resize, or
+heartbeat. It does not restore a ticket or generation after a failed private connection.
+The browser obtains a new ticket and claims a newer generation instead.
+
+This layer does not issue tickets, inspect an HTTP `Origin`, open a browser WebSocket,
+update persistent learner heartbeats, record terminal output, or change AWS resources.
 
 ## Monitor client
 
@@ -165,6 +182,6 @@ queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`.
 checks do not prove Fargate networking, production certificate delivery, IAM, or managed
 DynamoDB and S3 behaviour.
 
-Next: connect the private terminal client to a separately authenticated gateway session
-layer. Terminal tickets, browser WebSockets, generation claims, terminal recording,
-readiness and outcome actions, and AWS validation remain separate increments.
+Next: add the separate terminal-ticket action and session-readiness transition. Resolve
+the bounded slow-consumer policy before the browser WebSocket relay. Terminal recording,
+outcome actions, and AWS validation remain separate increments.
