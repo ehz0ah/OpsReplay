@@ -43,7 +43,8 @@ The Challenge server continues this pressure through a queue of at most eight fr
 finish within one second detaches the client and makes output continuity uncertain. The
 next attach reports this through `replayTruncated`. The future browser relay must keep its
 send path to one pending frame with an 8 KiB decoded payload, stop after a one-second
-delivery failure, and show this warning to the learner.
+delivery failure, and show this warning to the learner. A live connection replacement
+also sets the warning because output frames have no acknowledgement.
 
 This module does not authenticate learners, consume terminal tickets, claim generations,
 open a browser WebSocket, record terminal output, or alter security groups. A container

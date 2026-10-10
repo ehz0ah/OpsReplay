@@ -30,9 +30,10 @@ The Challenge server continues this pressure through one queue of at most eight 
 and 64 KiB. When the queue is full, it stops PTY reads, which can block the command. A
 client that cannot accept one frame within one second is detached so it cannot block the
 shell forever. The next attach reports `replayTruncated: true` when the replay overflowed
-or the failed send made output continuity uncertain. The future browser relay must keep
-at most one terminal frame with an 8 KiB decoded payload awaiting WebSocket delivery,
-stop after a one-second delivery failure, and show this warning to the learner.
+or the failed send made output continuity uncertain. Replacing a live connection reports
+the same warning because output frames have no acknowledgement. The future browser relay
+must keep at most one terminal frame with an 8 KiB decoded payload awaiting WebSocket
+delivery, stop after a one-second delivery failure, and show this warning to the learner.
 
 Serialize input, resize, and heartbeat requests. Their acknowledgements contain a
 generation but no request identifier, so more than one outstanding request of the same

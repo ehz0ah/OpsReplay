@@ -94,7 +94,7 @@ async function main() {
     sessionId,
     generation: 2,
     resumed: true,
-    replayTruncated: false,
+    replayTruncated: true,
   });
   const replaced = await first.session.ended;
   assert.equal(replaced.reason, 'error');

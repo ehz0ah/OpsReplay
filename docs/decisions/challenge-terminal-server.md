@@ -28,8 +28,9 @@ When the queue is full, stop reading the PTY so the command receives backpressur
 hold terminal state during a socket write. Detach a client that cannot accept one output
 frame within one second. Then retain the latest 64 KiB for reconnect replay. The next
 `ready` frame reports `replayTruncated: true` when replay overflowed or the failed send
-made output continuity uncertain. Do not log terminal input or output. Limit frames,
-decoded input, connections, dimensions, and idle time.
+made output continuity uncertain. Replacing a live connection also reports uncertain
+continuity because output frames have no acknowledgement. Do not log terminal input or
+output. Limit frames, decoded input, connections, dimensions, and idle time.
 
 Keep the process stateless outside the container. A marker in the container's `/run`
 directory prevents the process from opening a second shell if the server or container
@@ -39,7 +40,9 @@ would discard shell-local state and hide a discontinuity in the attempt. Bash ig
 to ten consecutive Ctrl-D inputs at an empty prompt to prevent a common accidental exit.
 A deliberate `exit` still ends the terminal. Detect Bash exit from the child process,
 not only from PTY end-of-file, because a background process can keep the PTY slave open.
-A new task uses a new container and starts cleanly.
+After detecting Bash exit, reject new attachments. The active handler stops processing
+new operations while queued tail output and the final `exit` frame are delivered. A new
+task uses a new container and starts cleanly.
 
 This endpoint trusts the private task network. The gateway remains responsible for user
 authentication, session authorization, tickets, and rate limits. This increment does not
@@ -72,8 +75,10 @@ reject a replacement shell after process or container restart. A slow consumer r
 a complete multi-megabyte stream. A stalled consumer first blocks the command, then
 disconnects and receives an explicit replay-truncation signal after reconnect. The
 shell-exit test leaves a background process holding the PTY and verifies prompt exit
-directly. A focused unit check covers a non-blocking PTY read that returns `EAGAIN`.
-Existing service, repair, trap, persistence, and isolation checks must continue to pass.
+directly. It also verifies that type-ahead cannot discard tail output or the exit code.
+Focused unit checks cover a non-blocking PTY read that returns `EAGAIN` and exit delivery
+after queued output. Existing service, repair, trap, persistence, and isolation checks
+must continue to pass.
 
 These local tests do not prove gateway behavior, task security-group rules, Fargate
 behavior, terminal recording, or AWS deployment. Validate those boundaries in later
