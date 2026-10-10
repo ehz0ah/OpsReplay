@@ -29,8 +29,13 @@ An output frame has a one-second send limit. If the active connection cannot acc
 frame, close it, mark output continuity as uncertain, and drain current and later PTY
 output into the existing 64 KiB replay buffer. The next successful `ready` frame sets
 `replayTruncated: true`. This signal means that the resumed view can have a gap because
-the replay buffer overflowed or a stalled send failed. It must remain visible to the
-learner. A successful replay clears the signal.
+the replay buffer overflowed, a stalled send failed, or a live connection was replaced
+without per-frame acknowledgements. It must remain visible to the learner. A successful
+attach clears the signal after delivering the warning and any replay.
+
+After Bash exits, reject new attachments. The active handler stops processing new
+operations until queued tail output and the final `exit` frame are delivered. This keeps
+type-ahead, resize, or heartbeat frames from closing the connection before the exit.
 
 The Gateway keeps no extra output queue. Its asynchronous output consumer must complete
 only after the next relay has accepted the frame into its own bounded send path. The
@@ -58,7 +63,8 @@ The Challenge image test uses a real Bash PTY. A slow client reads a multi-megab
 stream and verifies every byte without disconnecting. A stalled client verifies that the
 command first blocks, the one-second send limit then detaches the client, and reconnect
 reports truncated replay with the final output marker. Unit checks cover the queue bounds
-and the uncertain-delivery signal.
+and the uncertain-delivery signal. Exit checks verify that type-ahead cannot discard
+queued tail output or the final exit code.
 
 These local tests do not validate a browser WebSocket, Fargate networking, or AWS
 deployment.

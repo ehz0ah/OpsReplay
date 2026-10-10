@@ -74,6 +74,58 @@ def verify_terminal_helpers():
     assert state.replay == b"uncertain-output"
     assert state.replay_truncated is True
 
+    class RecordingConnection:
+        def __init__(self):
+            self.frames = []
+            self.closed = False
+
+        def send(self, frame):
+            self.frames.append(frame)
+            return True
+
+        def close(self):
+            self.closed = True
+
+    exit_state = module.TerminalState.__new__(module.TerminalState)
+    exit_state.lock = module.threading.RLock()
+    exit_state.output_condition = module.threading.Condition(exit_state.lock)
+    exit_state.stopping = module.threading.Event()
+    exit_state.pending_output = module.collections.deque()
+    exit_state.pending_output_bytes = 0
+    exit_state.replay = bytearray()
+    exit_state.replay_truncated = False
+    exit_state.generation = 2
+    exit_state.shell_exit_code = 7
+    exit_state.shell_exited = module.threading.Event()
+    active = RecordingConnection()
+    exit_state.active = active
+    exit_state.active_ready = True
+    tail = b"tail-before-exit"
+    exit_state.pending_output.extend([(("output", tail), len(tail)), (("exit", 7), 0)])
+    exit_state.pending_output_bytes = len(tail)
+
+    assert exit_state.heartbeat(active, 2) is module.SHELL_EXIT_PENDING
+    exit_waited = module.threading.Event()
+
+    def wait_for_exit():
+        exit_state.wait_for_exit_delivery()
+        exit_waited.set()
+
+    exit_waiter = module.threading.Thread(target=wait_for_exit)
+    exit_waiter.start()
+    assert not exit_waited.wait(0.1), "operation did not wait for queued terminal exit"
+    exit_sender = module.threading.Thread(target=exit_state._send_output)
+    exit_sender.start()
+    assert exit_waited.wait(1), "operation did not resume after terminal exit delivery"
+    exit_waiter.join(timeout=1)
+    exit_sender.join(timeout=1)
+    assert not exit_waiter.is_alive()
+    assert not exit_sender.is_alive()
+    assert [frame["type"] for frame in active.frames] == ["output", "exit"], active.frames
+    assert base64.b64decode(active.frames[0]["data"], validate=True) == tail
+    assert active.frames[1] == {"type": "exit", "code": 7}
+    assert active.closed
+
 
 class TerminalClient:
     def __init__(self, receive_buffer_bytes=None):
@@ -229,17 +281,30 @@ def rejected_attach(payload, code="INVALID_FRAME"):
 
 def shell_exit():
     client, _ = attach(1)
+    tail = b"tail-before-shell-exit"
+    encoded_tail = base64.b64encode(tail).decode("ascii")
+    exit_command = (
+        "sleep 300 & printf '%s' '"
+        + encoded_tail
+        + "' | base64 -d; printf '\\n'; exit 7\n"
+    ).encode("ascii")
     client.send(
         {
             "type": "input",
             "generation": 1,
-            "data": base64.b64encode(b"sleep 300 & exit\n").decode("ascii"),
+            "data": base64.b64encode(exit_command).decode("ascii"),
         }
     )
+    client.send({"type": "heartbeat", "generation": 1})
     exited = False
+    output = bytearray()
     while not exited:
         frame = client.receive()
-        exited = exited or (frame["type"] == "exit" and frame["code"] == 0)
+        assert frame["type"] != "error", frame
+        if frame["type"] == "output":
+            output.extend(base64.b64decode(frame["data"], validate=True))
+        exited = exited or (frame["type"] == "exit" and frame["code"] == 7)
+    assert tail in output, output
     client.close()
     print("terminal shell-exit check passed")
 
@@ -308,6 +373,7 @@ def main():
 
     fourth, ready = attach(4)
     assert ready["resumed"] is True, ready
+    assert ready["replayTruncated"] is True, ready
     receive_error(third, "REPLACED")
     third.close()
 

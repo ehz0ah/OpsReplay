@@ -89,8 +89,9 @@ The server queues at most eight output frames and 64 KiB before it stops PTY rea
 client that cannot accept one frame within one second is detached. While no client is
 attached, the server keeps the latest 64 KiB of output. The next `ready` frame reports
 `replayTruncated: true` if older bytes were dropped or a stalled send made delivery
-uncertain. This replay buffer has no durable sequence cursor and is not the terminal
-recording stream.
+uncertain. Replacing a live connection also reports uncertain continuity because output
+frames have no acknowledgement. This replay buffer has no durable sequence cursor and is
+not the terminal recording stream.
 
 The gateway's private terminal client validates this protocol, serializes operations,
 and applies output backpressure. It does not retry an input whose acknowledgement is
@@ -106,6 +107,8 @@ treat that loss as an environment error. A new task starts with a new container 
 new marker. Bash ignores up to ten consecutive Ctrl-D inputs at an empty prompt. An
 explicit `exit` terminates the terminal. The server watches the Bash process directly,
 so a background process that keeps the PTY open cannot hide that exit.
+After Bash exits, the active handler stops processing new operations while queued tail
+output and the final `exit` frame are delivered. New attachments remain rejected.
 
 ## Lifecycle
 

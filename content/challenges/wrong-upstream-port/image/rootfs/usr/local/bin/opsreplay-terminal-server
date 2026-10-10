@@ -41,6 +41,7 @@ MAX_GENERATION = 2**53 - 1
 MAX_TERMINAL_DIMENSION = 500
 STATE_DIRECTORY = "/run/opsreplay-terminal"
 STARTED_MARKER = f"{STATE_DIRECTORY}/started"
+SHELL_EXIT_PENDING = object()
 
 
 class ProtocolError(Exception):
@@ -304,6 +305,11 @@ class TerminalState:
             connection.close()
         self.shell_exited.set()
 
+    def wait_for_exit_delivery(self):
+        while not self.shell_exited.wait(timeout=0.5):
+            if self.stopping.is_set():
+                return
+
     def _send_output(self):
         while not self.stopping.is_set():
             with self.output_condition:
@@ -415,6 +421,8 @@ class TerminalState:
                 except OSError:
                     return "SHELL_EXITED"
                 replaced = self.active
+                if replaced is not None:
+                    self.replay_truncated = True
                 self.generation = generation
                 self.active = connection
                 self.active_ready = False
@@ -463,6 +471,8 @@ class TerminalState:
 
     def _validate_owner(self, connection, generation):
         if self.shell_exit_code is not None:
+            if not self.shell_exited.is_set():
+                return SHELL_EXIT_PENDING
             return "SHELL_EXITED"
         if connection is not self.active or generation != self.generation:
             return "STALE_GENERATION"
@@ -582,6 +592,9 @@ class TerminalHandler(socketserver.BaseRequestHandler):
                     if not data or len(data) > MAX_INPUT_BYTES:
                         raise ProtocolError("INVALID_FRAME")
                     failure = state.input(connection, frame_generation, data)
+                    if failure is SHELL_EXIT_PENDING:
+                        state.wait_for_exit_delivery()
+                        return
                     if failure is not None:
                         raise ProtocolError(failure)
                     if not connection.send({"type": "input_accepted", "generation": frame_generation}):
@@ -592,6 +605,9 @@ class TerminalHandler(socketserver.BaseRequestHandler):
                     columns = integer(frame["columns"], 1, MAX_TERMINAL_DIMENSION)
                     rows = integer(frame["rows"], 1, MAX_TERMINAL_DIMENSION)
                     failure = state.resize(connection, frame_generation, columns, rows)
+                    if failure is SHELL_EXIT_PENDING:
+                        state.wait_for_exit_delivery()
+                        return
                     if failure is not None:
                         raise ProtocolError(failure)
                     if not connection.send({"type": "resize_accepted", "generation": frame_generation}):
@@ -600,6 +616,9 @@ class TerminalHandler(socketserver.BaseRequestHandler):
                     exact_keys(frame, {"type", "generation"})
                     frame_generation = integer(frame["generation"], 1, MAX_GENERATION)
                     failure = state.heartbeat(connection, frame_generation)
+                    if failure is SHELL_EXIT_PENDING:
+                        state.wait_for_exit_delivery()
+                        return
                     if failure is not None:
                         raise ProtocolError(failure)
                     if not connection.send({"type": "heartbeat", "generation": frame_generation}):
