@@ -224,8 +224,9 @@ the time limit firing just after resolution, has no effect.
 `POST /v1/sessions/{id}/terminal-tickets` returns a ticket and the gateway URL. It
 returns `409 SESSION_NOT_READY` while provisioning and `409 SESSION_TERMINAL` after the
 outcome. A ticket is 256 random bits in base64url. DynamoDB stores only its SHA-256
-hash, with the owner, session, and an expiry of 60 seconds (proposed). Each connection
-needs a new ticket. The ticket never appears in a URL.
+hash, with the owner, session, and an expiry of 60 seconds. A conditional transaction
+rechecks that the owned session is still `ready` before it writes the ticket. Each
+connection needs a new ticket. The ticket never appears in a URL.
 
 ### End
 

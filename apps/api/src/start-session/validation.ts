@@ -10,6 +10,7 @@ import type {
   SessionRecord,
   SessionView,
   StartRequest,
+  TerminalTicket,
 } from './types.js';
 import { launchFailureReasons } from './types.js';
 import { validMonitorCertificate } from '../session-lifecycle/monitor-certificate-validation.js';
@@ -52,6 +53,7 @@ const pins = object({
 
 export const validRequest = ajv.compile<StartRequest>(ref('StartSessionRequest'));
 export const validView = ajv.compile<SessionView>(ref('SessionView'));
+export const validTerminalTicket = ajv.compile<TerminalTicket>(ref('TerminalTicket'));
 export const validOwner = ajv.compile<string>(owner);
 export const validUuid = ajv.compile<string>(uuid);
 export const validTaskArn = ajv.compile<string>(ecsTaskArn);
