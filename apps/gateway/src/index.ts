@@ -1,4 +1,5 @@
 export * from './aws.js';
+export * from './browser-terminal-relay.js';
 export * from './monitor-client.js';
 export * from './monitor-chunk-store.js';
 export * from './monitor-recorder.js';
