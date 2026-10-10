@@ -7,9 +7,10 @@ implements the wrong-upstream-port service stack and image tests. The
 [monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
 and authenticated HTTPS control. A gateway controller can record, resume, and seal this
 monitor stream through an injected sink. The reference image has a private interactive
-terminal server. Monitor captures, the terminal recording stream, the deployed durable
-recording store, browser terminal access, and the running gateway service do not exist
-yet. Storage adapters for monitor recordings are implemented and tested locally. Numbers
+terminal server, and the gateway has a locally tested client for its private protocol.
+Monitor captures, the terminal recording stream, the deployed durable recording store,
+browser terminal access, and the complete running gateway do not exist yet. Storage
+adapters for monitor recordings are implemented and tested locally. Numbers
 marked proposed are starting values to measure, not results. The full task and publication
 requirements below remain unproven.
 
@@ -87,6 +88,11 @@ connection loss. While no client is attached, the server keeps the latest 64 KiB
 output. The next `ready` frame reports `replayTruncated: true` if older bytes were dropped.
 This replay buffer has no durable sequence cursor and is not the terminal recording
 stream.
+
+The gateway's private terminal client validates this protocol, serializes operations,
+and applies output backpressure. It does not retry an input whose acknowledgement is
+lost. The caller must supply a generation that a later gateway session layer claims from
+authoritative session state. Browser authentication and relay remain separate.
 
 At most eight clients can wait or attach. An unattached client has five seconds to send
 its first frame. An attached client has a 45-second idle limit. Terminal bytes are not

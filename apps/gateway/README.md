@@ -1,12 +1,12 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client, bounded recording controller, durable
-recording adapters, recording-session runner, DynamoDB work source, bounded service
-supervisor, and recording-only process image are implemented and tested locally. CDK
-defines its private Fargate service, role, bucket, and event source, but keeps the complete
-path disabled by default. No AWS deployment has run. The WebSocket route, terminal proxy,
-and browser relay are not implemented. Follow the
-[gateway protocol](../../docs/api.md#terminal-gateway-protocol),
+Status: the production monitor HTTPS client, private terminal TCP client, bounded
+recording controller, durable recording adapters, recording-session runner, DynamoDB
+work source, bounded service supervisor, and recording-only process image are implemented
+and tested locally. CDK defines its private Fargate service, role, bucket, and event
+source, but keeps the complete path disabled by default. No complete recording deployment
+has run. The WebSocket route, terminal proxy, and browser relay are not implemented.
+Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
 
@@ -20,6 +20,24 @@ Keep terminal input ownership separate from recording ownership. Enforce connect
 generations at the terminal server and record uncertain proposal delivery without
 automatic resend. The monitor connection requires authenticated TLS and task identity
 verification. The reference models are not a gateway implementation.
+
+## Terminal client
+
+`TerminalClient` connects to the Challenge terminal server on private TCP port 7681. A
+caller supplies the authoritative task IP, a positive input generation, initial terminal
+dimensions, and an asynchronous output consumer. The client attaches to the existing
+shell, forwards input, resize, and heartbeat operations, and reports replacement, shell
+exit, or transport failure.
+
+The client validates bounded newline-delimited JSON frames and exact generations. It
+serializes operations because acknowledgements have no request identifier. It does not
+retry. If the connection fails after input is offered but before acknowledgement, the
+operation returns `input_uncertain`. Output delivery applies backpressure through the
+consumer instead of accumulating an unbounded queue.
+
+This module does not authenticate learners, consume terminal tickets, claim generations,
+open a browser WebSocket, record terminal output, or alter security groups. A container
+test runs the bundled client against the real Challenge terminal server and Bash PTY.
 
 ## Monitor client
 
@@ -140,7 +158,6 @@ queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`.
 checks do not prove Fargate networking, production certificate delivery, IAM, or managed
 DynamoDB and S3 behaviour.
 
-Next: perform the approved temporary AWS checkpoint before enabling the recording path.
-That run must validate real ECS events, private port 9443 connectivity, managed DynamoDB
-and S3 behavior, task replacement, and cleanup. Readiness and outcome actions, terminal
-proxying, and browser relay remain separate increments.
+Next: connect the private terminal client to a separately authenticated gateway session
+layer. Terminal tickets, browser WebSockets, generation claims, terminal recording,
+readiness and outcome actions, and AWS validation remain separate increments.

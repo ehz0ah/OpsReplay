@@ -12,6 +12,7 @@ const root = fileURLToPath(new URL('../../..', import.meta.url));
 const challengePath = new URL('../../../content/challenges/wrong-upstream-port/', import.meta.url);
 const gatewayBundle = join(root, 'dist/gateway/client.cjs');
 const gatewayDriver = fileURLToPath(new URL('image-client.mjs', import.meta.url));
+const terminalDriver = fileURLToPath(new URL('terminal-image-client.mjs', import.meta.url));
 const containers = new Set();
 
 function run(command, args, timeout = 30_000) {
@@ -168,6 +169,88 @@ function runGateway(challenge, secret, certificate, expectTlsFailure = false) {
     removeContainer(name);
   }
 }
+
+function runTerminalClient(challenge) {
+  const name = 'opsreplay-gateway-terminal-' + randomUUID();
+  const id = success(
+    docker(
+      'create',
+      '--name',
+      name,
+      '--label',
+      'opsreplay.test=gateway-terminal',
+      '--network',
+      'container:' + challenge,
+      '--read-only',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges=true',
+      '--cpus',
+      '0.25',
+      '--memory',
+      '64m',
+      '--memory-swap',
+      '64m',
+      '--pids-limit',
+      '32',
+      '--tmpfs',
+      '/tmp:rw,noexec,nosuid,size=4m',
+      '--mount',
+      `type=bind,src=${gatewayBundle},dst=/test/client.cjs,readonly`,
+      '--mount',
+      `type=bind,src=${terminalDriver},dst=/test/terminal-image-client.mjs,readonly`,
+      '--entrypoint',
+      'node',
+      monitorImage,
+      '/test/terminal-image-client.mjs',
+    ),
+  );
+  containers.add(name);
+  try {
+    assert.equal(id.length, 64);
+    const result = run('docker', ['start', '--attach', name], 30_000);
+    return JSON.parse(success(result));
+  } finally {
+    removeContainer(name);
+  }
+}
+
+test('bundled gateway client controls the real Challenge terminal safely', { timeout: 60_000 }, async () => {
+  const challenge = 'opsreplay-gateway-terminal-shop-' + randomUUID();
+  try {
+    const challengeId = success(
+      run('sh', [fileURLToPath(new URL('run-local.sh', challengePath)), challenge, challengeImage]),
+    );
+    containers.add(challenge);
+    assert.equal(challengeId.length, 64);
+    await eventually(
+      () => exec(challenge, 'opsreplay-check-startup').status === 0,
+      'Challenge listeners did not start',
+    );
+
+    const result = runTerminalClient(challenge);
+    assert.deepEqual(
+      {
+        firstResumed: result.firstResumed,
+        secondResumed: result.secondResumed,
+        replaced: result.replaced,
+        statePreserved: result.statePreserved,
+        exitCode: result.exitCode,
+      },
+      {
+        firstResumed: false,
+        secondResumed: true,
+        replaced: true,
+        statePreserved: true,
+        exitCode: 0,
+      },
+    );
+    assert.ok(result.exitInput === 'accepted' || result.exitInput === 'uncertain');
+  } finally {
+    removeContainer(challenge);
+  }
+});
 
 test('bundled gateway recorder resumes and seals the real monitor stream', { timeout: 150_000 }, async () => {
   const tls = temporaryTls('opsreplay-gateway-monitor-tls-');
