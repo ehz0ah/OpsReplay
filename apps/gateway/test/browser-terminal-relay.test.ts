@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createServer, type Server } from 'node:http';
+import { connect } from 'node:net';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket, type RawData } from 'ws';
@@ -167,7 +168,13 @@ function sessionFixture(replayTruncated = false): SessionFixture {
 
 async function relayFixture(
   opener: BrowserTerminalSessionOpener,
-  overrides: { authTimeoutMs?: number; sendTimeoutMs?: number } = {},
+  overrides: {
+    authTimeoutMs?: number;
+    sendTimeoutMs?: number;
+    heartbeatIntervalMs?: number;
+    maxConnections?: number;
+    maxPendingAuthentications?: number;
+  } = {},
 ): Promise<{ server: Server; relay: GatewayBrowserTerminalRelay; url: string; close(): Promise<void> }> {
   const server = createServer((_request, response) => {
     response.writeHead(404).end();
@@ -177,6 +184,8 @@ async function relayFixture(
     {
       allowedOrigins: [allowedOrigin],
       admissions: unusedAdmissions,
+      maxConnections: 8,
+      maxPendingAuthentications: 4,
       ...overrides,
     },
     { openSession: opener },
@@ -195,6 +204,90 @@ async function relayFixture(
       });
     },
   };
+}
+
+function rejectedUpgradeStatus(url: string, origin: string | undefined): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, origin === undefined ? {} : { origin });
+    socket.once('unexpected-response', (_request, response) => {
+      resolve(response.statusCode ?? 0);
+      response.resume();
+    });
+    socket.once('error', (error) => {
+      if ((error as Error & { code?: string }).code !== 'ECONNRESET') reject(error);
+    });
+  });
+}
+
+function resetRejectedUpgrade(url: string): Promise<void> {
+  const parsed = new URL(url);
+  return new Promise((resolve, reject) => {
+    const socket = connect(Number(parsed.port), parsed.hostname);
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error === undefined || ['ECONNRESET', 'EPIPE'].includes((error as Error & { code?: string }).code ?? '')) {
+        resolve();
+      } else {
+        reject(error);
+      }
+    };
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      finish(new Error('Rejected upgrade socket did not close.'));
+    }, 1_000);
+    socket.once('connect', () => {
+      socket.resume();
+      socket.write(
+        `GET ${parsed.pathname} HTTP/1.1\r\n` +
+          `Host: ${parsed.host}\r\n` +
+          'Connection: Upgrade\r\n' +
+          'Upgrade: websocket\r\n' +
+          'Sec-WebSocket-Version: 13\r\n' +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          'Origin: https://evil.example\r\n\r\n',
+      );
+      setImmediate(() => socket.resetAndDestroy());
+    });
+    socket.once('error', finish);
+    socket.once('close', () => finish());
+  });
+}
+
+function openHalfClosedRejectedUpgrade(url: string): Promise<ReturnType<typeof connect>> {
+  const parsed = new URL(url);
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: parsed.hostname, port: Number(parsed.port), allowHalfOpen: true });
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error === undefined || (error as Error & { code?: string }).code === 'ECONNRESET') resolve(socket);
+      else reject(error);
+    };
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      finish(new Error('Rejected upgrade did not finish its response.'));
+    }, 1_000);
+    socket.once('connect', () => {
+      socket.resume();
+      socket.write(
+        `GET ${parsed.pathname} HTTP/1.1\r\n` +
+          `Host: ${parsed.host}\r\n` +
+          'Connection: Upgrade\r\n' +
+          'Upgrade: websocket\r\n' +
+          'Sec-WebSocket-Version: 13\r\n' +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          'Origin: https://evil.example\r\n\r\n',
+      );
+    });
+    socket.once('end', () => finish());
+    socket.once('close', () => finish());
+    socket.once('error', finish);
+  });
 }
 
 test('relays authenticated browser input, control messages, output, and replay state', async (t) => {
@@ -232,8 +325,8 @@ test('relays authenticated browser input, control messages, output, and replay s
     code: 'PROPOSAL_UNAVAILABLE',
     message: 'Proposal execution is not available.',
   });
-  await waitFor(() => f.calls.length >= 3);
-  assert.deepEqual(f.calls.slice(0, 3), ['input:whoami\n', 'resize:120x32', 'heartbeat']);
+  await waitFor(() => f.calls.length >= 2);
+  assert.deepEqual(f.calls, ['input:whoami\n', 'resize:120x32']);
   assert.equal(socket.readyState, WebSocket.OPEN);
 
   await closeClient(socket);
@@ -246,19 +339,51 @@ test('rejects a missing or untrusted browser origin before opening a session', a
   t.after(() => runtime.close());
 
   for (const origin of [undefined, 'https://evil.example']) {
-    const status = await new Promise<number>((resolve, reject) => {
-      const socket = new WebSocket(runtime.url, origin === undefined ? {} : { origin });
-      socket.once('unexpected-response', (_request, response) => {
-        resolve(response.statusCode ?? 0);
-        response.resume();
-      });
-      socket.once('error', (error) => {
-        if ((error as Error & { code?: string }).code !== 'ECONNRESET') reject(error);
-      });
-    });
+    const status = await rejectedUpgradeStatus(runtime.url, origin);
     assert.equal(status, 403);
   }
   assert.equal(f.options.length, 0);
+});
+
+test('destroys rejected upgrade sockets and survives connection resets', async (t) => {
+  const f = sessionFixture();
+  const runtime = await relayFixture(f.opener);
+  t.after(() => runtime.close());
+
+  const halfClosed = await openHalfClosedRejectedUpgrade(runtime.url);
+  t.after(() => halfClosed.destroy());
+  await Promise.all(Array.from({ length: 50 }, () => resetRejectedUpgrade(runtime.url)));
+  await delay(25);
+  const openConnections = await new Promise<number>((resolve, reject) => {
+    runtime.server.getConnections((error, count) => (error === null ? resolve(count) : reject(error)));
+  });
+  assert.equal(openConnections, 0);
+
+  const socket = await openClient(runtime.url);
+  const inbox = new ClientInbox(socket);
+  socket.send(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  assert.equal((await inbox.json()).type, 'ready');
+  await closeClient(socket);
+});
+
+test('bounds total and pending terminal connections before admission', async (t) => {
+  const f = sessionFixture();
+  const runtime = await relayFixture(f.opener, { maxConnections: 2, maxPendingAuthentications: 1 });
+  t.after(() => runtime.close());
+
+  const pending = await openClient(runtime.url);
+  assert.equal(await rejectedUpgradeStatus(runtime.url, allowedOrigin), 503);
+
+  const inbox = new ClientInbox(pending);
+  pending.send(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  assert.equal((await inbox.json()).type, 'ready');
+  await delay(0);
+
+  const second = await openClient(runtime.url);
+  assert.equal(await rejectedUpgradeStatus(runtime.url, allowedOrigin), 503);
+
+  await closeClient(second);
+  await closeClient(pending);
 });
 
 test('rejects another path and URL query before the WebSocket upgrade', async (t) => {
@@ -364,6 +489,7 @@ class FakePeer implements GatewayBrowserPeer {
   terminated = false;
   readonly sent: { data: string | Buffer; binary: boolean }[] = [];
   readonly sendCallbacks: ((error?: Error | null) => void)[] = [];
+  pings = 0;
   private messageListener: ((data: Buffer, binary: boolean) => void) | undefined;
   private closeListener: (() => void) | undefined;
   private errorListener: (() => void) | undefined;
@@ -375,6 +501,11 @@ class FakePeer implements GatewayBrowserPeer {
   send(data: string | Buffer, binary: boolean, callback: (error?: Error | null) => void): void {
     this.sent.push({ data, binary });
     this.sendCallbacks.push(callback);
+  }
+
+  ping(callback: (error?: Error | null) => void): void {
+    this.pings++;
+    callback();
   }
 
   close(): void {
@@ -477,7 +608,99 @@ test('rejects oversized output before it reaches the browser send queue', async 
   assert.ok(f.calls.includes('close'));
 });
 
-test('bounds queued browser input while one private operation is blocked', async () => {
+test('keeps both idle relay legs alive without a browser timer', async () => {
+  const peer = new FakePeer();
+  const f = sessionFixture();
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+    heartbeatIntervalMs: 20,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peer.sent.length === 1);
+  peer.completeSend(0);
+
+  await waitFor(() => peer.pings === 1);
+  assert.ok(f.calls.includes('heartbeat'));
+
+  connection.shutdown();
+  await connection.closed;
+});
+
+test('coalesces queued browser input while one private operation is blocked', async () => {
+  const peer = new FakePeer();
+  const releaseInput = deferred<void>();
+  const base = sessionFixture();
+  const inputs: string[] = [];
+  const opener: BrowserTerminalSessionOpener = async (options, signal) => {
+    const opened = await base.opener(options, signal);
+    opened.session.input = async (data) => {
+      inputs.push(Buffer.from(data).toString('utf8'));
+      if (inputs.length === 1) await releaseInput.promise;
+    };
+    return opened;
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: opener,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peer.sent.length === 1);
+  peer.completeSend(0);
+  await delay(0);
+
+  peer.message(Buffer.from('a'), true);
+  await waitFor(() => inputs.length === 1);
+  for (let index = 0; index < 65; index++) peer.message(Buffer.from('b'), true);
+  assert.equal(peer.sent.length, 1);
+  releaseInput.resolve();
+  await waitFor(() => inputs.length === 2);
+
+  assert.deepEqual(inputs, ['a', 'b'.repeat(65)]);
+  connection.shutdown();
+  await connection.closed;
+});
+
+test('keeps a message-count backstop for queued browser controls', async () => {
+  const peer = new FakePeer();
+  const releaseInput = deferred<void>();
+  const base = sessionFixture();
+  const opener: BrowserTerminalSessionOpener = async (options, signal) => {
+    const opened = await base.opener(options, signal);
+    opened.session.input = async () => releaseInput.promise;
+    return opened;
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: opener,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peer.sent.length === 1);
+  peer.completeSend(0);
+  await delay(0);
+
+  peer.message(Buffer.from('a'), true);
+  for (let index = 0; index < 65; index++) {
+    peer.message(JSON.stringify({ type: 'resize', cols: 80, rows: 24 }));
+  }
+  await waitFor(() => peer.sent.length === 2);
+  assert.deepEqual(JSON.parse(String(peer.sent[1]?.data)), {
+    type: 'error',
+    code: 'RATE_LIMITED',
+    message: 'Terminal input is arriving too quickly.',
+  });
+  peer.completeSend(1);
+  releaseInput.resolve();
+  await connection.closed;
+
+  assert.equal(peer.paused, false);
+  assert.ok(base.calls.includes('close'));
+});
+
+test('keeps a byte backstop for coalesced browser input', async () => {
   const peer = new FakePeer();
   const releaseInput = deferred<void>();
   const base = sessionFixture();
@@ -502,19 +725,14 @@ test('bounds queued browser input while one private operation is blocked', async
 
   peer.message(Buffer.from('a'), true);
   await waitFor(() => inputCalls === 1);
-  for (let index = 0; index < 65; index++) peer.message(Buffer.from('b'), true);
+  for (let index = 0; index < 4; index++) peer.message(Buffer.alloc(16 * 1024, index), true);
   await waitFor(() => peer.sent.length === 2);
-  assert.deepEqual(JSON.parse(String(peer.sent[1]?.data)), {
-    type: 'error',
-    code: 'RATE_LIMITED',
-    message: 'Terminal input is arriving too quickly.',
-  });
+  assert.equal(JSON.parse(String(peer.sent[1]?.data)).code, 'RATE_LIMITED');
   peer.completeSend(1);
   releaseInput.resolve();
   await connection.closed;
 
   assert.equal(inputCalls, 1);
-  assert.equal(peer.paused, false);
   assert.ok(base.calls.includes('close'));
 });
 

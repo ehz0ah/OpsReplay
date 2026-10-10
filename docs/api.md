@@ -289,11 +289,13 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    terminal server keeps one shell per session across reconnects. `replayTruncated` is
    true when output continuity became uncertain before this attachment. The client must
    show that warning to the learner.
-3. The client sends `resize` with columns and rows, and `heartbeat` every 20 seconds
-   (proposed), which is below the ALB's default 60-second idle timeout. At most every
-   30 seconds, the gateway updates the session's `lastSeenAt` through a write that is
-   conditional on the session still being active. A failed condition means the session
-   has an outcome, so the gateway sends `status` and closes.
+3. The client can send `resize` with columns and rows, and `heartbeat` as a liveness
+   signal. While no private operation is active, the gateway sends a terminal heartbeat
+   and a WebSocket Ping every 20 seconds. This keeps both relay legs active when browser
+   timers are throttled. At most every 30 seconds, the gateway will update the session's
+   `lastSeenAt` through a write that is conditional on the session still being active.
+   A failed condition means the session has an outcome, so the gateway sends `status`
+   and closes. The persistent `lastSeenAt` update is not implemented in this increment.
 4. The gateway sends `metrics` every five seconds (proposed) with the latest sample,
    cumulative request counters, and the aggregate recovery state. It sends `timeline`
    when a command completes or a monitor signal occurs, and `status` when the session
