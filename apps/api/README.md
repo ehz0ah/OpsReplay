@@ -60,6 +60,13 @@ transaction contention has bounded retries. Provisioning, terminal, ownership, a
 configuration failures fail without storing a ticket. Gateway admission remains
 responsible for consuming the ticket once and claiming the terminal input generation.
 
+Before this action is enabled, the deployment must configure the session table TTL on
+`ExpiresAt` and reserve that attribute for expiring items. The Lambda role's DynamoDB
+permissions must be limited to `dynamodb:GetItem`, `dynamodb:ConditionCheckItem`, and
+`dynamodb:PutItem` on `SESSION#*`. The API Gateway method must have explicit rate and
+burst limits and map a throttled request to the public `429 LIMIT_EXCEEDED` error without
+invoking the Lambda.
+
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
 releases the learner lock only after cleanup is confirmed. Known tasks that are stopping
@@ -72,7 +79,8 @@ The deployed handler has no development identity or local endpoint switch. A fut
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
 that route. Tests construct the authorizer context directly.
 
-The terminal-ticket action has no API Gateway route, Lambda definition, or IAM role yet.
+The terminal-ticket action has no API Gateway route, Lambda definition, IAM role, TTL
+configuration, or route throttle yet.
 This increment does not provide status/end routes, readiness, or browser terminal relay.
 The start and expiry Lambda definitions have zero reserved concurrency, and the start
 Lambda has no trigger. The recording-work action and gateway recording service are also

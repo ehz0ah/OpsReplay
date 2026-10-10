@@ -38,6 +38,24 @@ Retry only known transaction contention, with bounded attempts and delays. Defin
 and DynamoDB validation failures do not receive an application retry. Other failures
 return a generic bounded error and do not expose storage details or the raw ticket.
 
+## Deployment prerequisites
+
+The public API Gateway method must have explicit rate and burst limits before it is
+enabled. API Gateway owns the route's `429 LIMIT_EXCEEDED` response. Its GatewayResponse
+mapping must return the shared `code`, `message`, and `requestId` error shape without
+invoking this Lambda. The limits must be selected and checked against measured
+class-sized connection and reconnect traffic. This handler does not implement a second,
+independent rate counter.
+
+Enable DynamoDB TTL on the table-wide `ExpiresAt` attribute. Reserve that top-level name
+for records that are intended to expire. Ticket authorization still uses the ISO expiry
+inside the validated record and does not depend on asynchronous TTL deletion.
+
+For the session table, give this Lambda role only `dynamodb:GetItem`,
+`dynamodb:ConditionCheckItem`, and `dynamodb:PutItem`. Restrict
+`dynamodb:LeadingKeys` to `SESSION#*`. These actions cover the strong reads, transaction
+condition check, and ticket put used by this handler.
+
 ## Validation boundary
 
 DynamoDB Local tests cover successful hashed storage, ownership, all session states, an
@@ -45,5 +63,5 @@ outcome race, collision recovery, uncertain write recovery, bounded failure hand
 and validation before storage. A bundle test loads the independent Lambda output and
 verifies that unauthenticated input is rejected before AWS access.
 
-These checks do not create the Lambda, IAM role, API Gateway route, Cognito authorizer,
-Gateway URL, DynamoDB TTL setting, browser WebSocket relay, or AWS deployment.
+These checks do not create the Lambda, IAM role, API Gateway route or throttle, Cognito
+authorizer, Gateway URL, DynamoDB TTL setting, browser WebSocket relay, or AWS deployment.
