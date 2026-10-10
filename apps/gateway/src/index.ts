@@ -10,3 +10,5 @@ export * from './recording-service.js';
 export * from './recording-work-source.js';
 export * from './recording-runtime.js';
 export * from './terminal-client.js';
+export * from './terminal-admission-store.js';
+export * from './terminal-session.js';
