@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { isIP, Socket } from 'node:net';
+import { performance } from 'node:perf_hooks';
 
 const PROTOCOL_VERSION = 1;
 const DEFAULT_PORT = 7681;
@@ -112,6 +113,8 @@ interface PendingOperation {
   sent: boolean;
   resolve: (frame: ReadyFrame | AcceptedFrame) => void;
   reject: (error: TerminalClientError) => void;
+  pauseTimeout: () => void;
+  resumeTimeout: () => void;
   cleanup: () => void;
 }
 
@@ -276,6 +279,7 @@ export class TerminalClient {
   private operationTail: Promise<void> = Promise.resolve();
   private end?: TerminalClientEnd;
   private attached = false;
+  private deliveringOutput = false;
 
   private constructor(socket: Socket, options: TerminalClientOptions, operationTimeoutMs: number) {
     this.socket = socket;
@@ -421,21 +425,43 @@ export class TerminalClient {
     if (this.pending !== undefined) return Promise.reject(new TerminalClientError('invalid_response'));
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      let timeoutStartedAt = 0;
+      let timeoutRemainingMs = this.operationTimeoutMs;
+      let pending!: PendingOperation;
+      const expire = () => {
+        if (this.pending !== pending) return;
         const error = new TerminalClientError('operation_timeout');
         this.finish({ reason: 'error', error }, error);
-      }, this.operationTimeoutMs);
+      };
       const onAbort = () => {
         const error = new TerminalClientError('cancelled', { cause: signal?.reason });
         this.finish({ reason: 'error', error }, error);
       };
-      const cleanup = () => {
+      const pauseTimeout = () => {
+        if (timeout === undefined) return;
         clearTimeout(timeout);
+        timeout = undefined;
+        timeoutRemainingMs = Math.max(0, timeoutRemainingMs - (performance.now() - timeoutStartedAt));
+      };
+      const resumeTimeout = () => {
+        if (timeout !== undefined || this.pending !== pending) return;
+        if (timeoutRemainingMs <= 0) {
+          expire();
+          return;
+        }
+        timeoutStartedAt = performance.now();
+        timeout = setTimeout(expire, timeoutRemainingMs);
+      };
+      const cleanup = () => {
+        if (timeout !== undefined) clearTimeout(timeout);
+        timeout = undefined;
         signal?.removeEventListener('abort', onAbort);
       };
-      const pending: PendingOperation = { expected, kind, sent: false, resolve, reject, cleanup };
+      pending = { expected, kind, sent: false, resolve, reject, pauseTimeout, resumeTimeout, cleanup };
       this.pending = pending;
       signal?.addEventListener('abort', onAbort, { once: true });
+      if (!this.deliveringOutput) pending.resumeTimeout();
 
       const payload = encodeFrame(frame);
       pending.sent = true;
@@ -482,10 +508,15 @@ export class TerminalClient {
   private async dispatch(frame: ServerFrame): Promise<void> {
     if (frame.type === 'output') {
       if (!this.attached || frame.generation !== this.generation) throw new TerminalClientError('invalid_response');
+      this.deliveringOutput = true;
+      this.pending?.pauseTimeout();
       try {
         await this.onOutput(frame.data);
       } catch (cause) {
         throw new TerminalClientError('output_failed', { cause });
+      } finally {
+        this.deliveringOutput = false;
+        this.pending?.resumeTimeout();
       }
       return;
     }
