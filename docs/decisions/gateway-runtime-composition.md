@@ -38,12 +38,29 @@ the complete terminal configuration.
 When enabled, the HTTP server binds inside the container and serves only `GET /healthz`
 and the relay's `GET /v1/terminal` upgrade. Other HTTP requests return 404. The health
 route returns ready only while the listener accepts traffic. Request headers and HTTP
-timeouts are bounded.
+timeouts are bounded. The listener caps all accepted connections at the configured
+terminal connection limit plus a fixed allowance of 32 for health checks and ordinary
+HTTP requests.
 
 `SIGTERM` and `SIGINT` cancel recording work, stop accepting new connections, close
 browser and private terminal connections, and close the shared AWS clients. A listener
 or recording-supervisor failure stops the complete process. ECS can then replace it,
-and durable recording leases allow recording work to resume.
+and durable recording leases allow recording work to resume. Shutdown force-closes any
+incomplete plain HTTP requests so they cannot block process exit.
+
+## AWS activation prerequisites
+
+Before the terminal settings are added to the task definition, the public-route
+increment must:
+
+- grant the Gateway task role `dynamodb:DeleteItem` for `SESSION#*` keys;
+- allow the load balancer to reach `GATEWAY_PORT` and the Gateway to reach environment
+  tasks on `TERMINAL_PORT`;
+- add edge rate limiting for `/v1/terminal`;
+- deploy the terminal-ticket route with its throttle, DynamoDB TTL, and narrow role; and
+- configure the ECS or target-group health check to use `/healthz`.
+
+These are activation requirements. This increment does not make the AWS changes.
 
 ## Alternatives and consequences
 
@@ -56,7 +73,10 @@ require an unsafe wildcard. Explicit all-or-none terminal configuration avoids b
 
 The combined process means a fatal listener failure also restarts recording work. This
 is acceptable for the first Gateway service because recordings are durable and fenced.
-The runtime closes both paths before it exits.
+The runtime closes both paths before it exits. A server `error` after startup remains
+fatal because it does not prove that the listener can still accept learner connections.
+The outer connection cap reduces the risk of file-descriptor exhaustion before this
+fail-safe applies.
 
 ## Validation boundary
 
