@@ -30,7 +30,12 @@ connections, dimensions, and idle time.
 Keep the process stateless outside the container. A marker in the container's `/run`
 directory prevents the process from opening a second shell if the server or container
 restarts and loses its generation. The session lifecycle must later treat this condition
-as an environment error. A new task uses a new container and starts cleanly.
+as an environment error. Refuse a replacement shell after Bash exits too. A replacement
+would discard shell-local state and hide a discontinuity in the attempt. Bash ignores up
+to ten consecutive Ctrl-D inputs at an empty prompt to prevent a common accidental exit.
+A deliberate `exit` still ends the terminal. Detect Bash exit from the child process,
+not only from PTY end-of-file, because a background process can keep the PTY slave open.
+A new task uses a new container and starts cleanly.
 
 This endpoint trusts the private task network. The gateway remains responsible for user
 authentication, session authorization, tickets, and rate limits. This increment does not
@@ -56,7 +61,9 @@ recording stream remains required before end-to-end playback can be claimed.
 Image integration tests execute a real command, reconnect to the same shell, resize the
 PTY, replace an older generation, reject stale and malformed frames, enforce input and
 replay bounds, stop cleanly, keep terminal content out of logs, and reject a replacement
-shell after process or container restart. Existing service, repair, trap, persistence,
+shell after process or container restart. The shell-exit test leaves a background process
+holding the PTY and verifies prompt exit directly. A focused unit check covers a
+non-blocking PTY read that returns `EAGAIN`. Existing service, repair, trap, persistence,
 and isolation checks must continue to pass.
 
 These local tests do not prove gateway behavior, task security-group rules, Fargate

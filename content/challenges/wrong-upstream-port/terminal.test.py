@@ -1,16 +1,30 @@
 """Exercise the private terminal protocol from inside a Challenge container."""
 
 import base64
+import errno
+import importlib.machinery
+import importlib.util
 import json
 import select
 import socket
 import sys
 import time
+from unittest import mock
 
 
 PORT = 7681
 MAX_LINE_BYTES = 24 * 1024
 MAX_REPLAY_BYTES = 64 * 1024
+SERVER_PATH = "/usr/local/bin/opsreplay-terminal-server"
+
+
+def verify_nonblocking_read():
+    loader = importlib.machinery.SourceFileLoader("opsreplay_terminal_server", SERVER_PATH)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    with mock.patch.object(module.os, "read", side_effect=BlockingIOError(errno.EAGAIN, "try again")):
+        assert module.read_master(0) is None
 
 
 class TerminalClient:
@@ -133,7 +147,7 @@ def shell_exit():
         {
             "type": "input",
             "generation": 1,
-            "data": base64.b64encode(b"exit\n").decode("ascii"),
+            "data": base64.b64encode(b"sleep 300 & exit\n").decode("ascii"),
         }
     )
     exited = False
@@ -145,6 +159,7 @@ def shell_exit():
 
 
 def main():
+    verify_nonblocking_read()
     if sys.argv[1] == "shell-exit":
         shell_exit()
         return
@@ -259,6 +274,7 @@ def main():
     fifth.close()
 
     sixth, _ = attach(6)
+    send_input(sixth, 6, b"\x04", b'Use "exit" to leave the shell')
     sixth.send({"type": "heartbeat", "generation": 6})
     heartbeat = receive_matching(sixth, lambda frame: frame["type"] == "heartbeat")
     assert heartbeat == {"type": "heartbeat", "generation": 6}

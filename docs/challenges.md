@@ -94,7 +94,9 @@ written to process logs. The server does not restart inside the same container. 
 under `/run/opsreplay-terminal` prevents a process or container restart from silently
 opening a new shell after the in-memory generation fence is lost. The lifecycle must
 treat that loss as an environment error. A new task starts with a new container and a
-new marker.
+new marker. Bash ignores up to ten consecutive Ctrl-D inputs at an empty prompt. An
+explicit `exit` terminates the terminal. The server watches the Bash process directly,
+so a background process that keeps the PTY open cannot hide that exit.
 
 ## Lifecycle
 
