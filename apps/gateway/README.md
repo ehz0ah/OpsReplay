@@ -1,12 +1,12 @@
 # Gateway service boundary
 
 Status: the production monitor HTTPS client, private terminal TCP client, authenticated
-terminal admission core, browser terminal relay component, bounded recording controller,
-durable recording adapters, recording-session runner, DynamoDB work source, bounded
-service supervisor, and recording-only process image are implemented and tested locally.
-CDK defines its private Fargate service, role, bucket, and event source, but keeps the
-complete path disabled by default. No complete recording deployment has run. The relay
-is not connected to the Gateway process, a public route, or AWS.
+terminal admission core, browser terminal relay, bounded recording controller, durable
+recording adapters, recording-session runner, DynamoDB work source, bounded service
+supervisor, and composed process image are implemented and tested locally. CDK defines
+its private Fargate service, role, bucket, and event source, but keeps the complete path
+disabled by default. No complete recording deployment has run. The existing AWS
+definition does not enable the terminal listener or connect it to a public route.
 Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -41,7 +41,7 @@ does not count against an in-flight operation timeout. The caller must invoke
 The Challenge server continues this pressure through a queue of at most eight frames and
 64 KiB. A full queue stops PTY reads and can block the command. A socket send that cannot
 finish within one second detaches the client and makes output continuity uncertain. The
-next attach reports this through `replayTruncated`. The future browser relay must keep its
+next attach reports this through `replayTruncated`. The browser relay keeps its
 send path to one pending frame with an 8 KiB decoded payload, stop after a one-second
 delivery failure, and send this warning to the browser. A live connection replacement
 also sets the warning because output frames have no acknowledgement.
@@ -94,10 +94,10 @@ and private terminal. The next attachment receives the terminal server's
 `replayTruncated` warning. Public errors use fixed text and never include tickets,
 terminal data, task addresses, or internal errors.
 
-The relay is a component, not a new executable in this increment. The existing image
-still starts the recording-only process. Runtime composition, public routing, security
-groups, persistent learner heartbeat updates, dashboard traffic, proposals, recording,
-and AWS validation remain separate work.
+The runtime image now composes the relay with the recording supervisor when its complete
+terminal configuration is present. Public routing, security groups, persistent learner
+heartbeat updates, dashboard traffic, proposals, terminal recording, and AWS validation
+remain separate work.
 
 ## Monitor client
 
@@ -186,14 +186,30 @@ then cancels remaining runners and stops, so a replacement can resume durable wo
 DynamoDB recording store, and S3 chunk store with the same clients. The gateway AWS
 clients use two attempts and bounded connection and request times.
 
-## Recording process
+## Gateway process
 
-The recording image starts one Node.js process. It validates the table, bucket, monitor
-port, and concurrency settings before it creates AWS clients. It generates a unique
-recorder identity for that process, runs the supervisor, converts `SIGTERM` and `SIGINT`
-to cancellation, waits for active runners, and then closes the shared clients. Logs use
-only bounded event names, session IDs, status values, and error names or codes. They do
-not include monitor credentials or work records.
+The Gateway image starts one Node.js process. It always validates and starts the
+recording supervisor. It also starts the terminal HTTP/WebSocket listener when all five
+terminal settings are present. Partial terminal configuration fails startup.
+
+| Setting                                    | Purpose                                                 |
+| ------------------------------------------ | ------------------------------------------------------- |
+| `GATEWAY_PORT`                             | Browser HTTP and WebSocket listener port                |
+| `TERMINAL_ALLOWED_ORIGINS`                 | Comma-separated exact HTTP or HTTPS web origins         |
+| `MAXIMUM_TERMINAL_CONNECTIONS`             | Total browser terminal connection cap                   |
+| `MAXIMUM_PENDING_TERMINAL_AUTHENTICATIONS` | Unauthenticated connection cap, not above the total cap |
+| `TERMINAL_PORT`                            | Private Challenge terminal-server port                  |
+
+With no terminal setting, the current inactive AWS definition remains recording-only.
+When enabled, `GET /healthz` returns a fixed readiness response and all other ordinary
+HTTP paths return 404. `GET /v1/terminal` upgrades through the existing relay.
+
+The process generates one recorder identity, shares bounded AWS clients, converts
+`SIGTERM` and `SIGINT` to cancellation, closes the listener and terminal connections,
+waits for active recording runners, and then closes the clients. A fatal listener or
+recording failure stops the process so ECS can replace it. Logs use only bounded event
+names, session IDs, status values, and error names or codes. They do not include monitor
+credentials, tickets, terminal content, allowed origins, or work records.
 
 Run its local checks with:
 
@@ -214,10 +230,12 @@ bounded concurrency, duplicate suppression, and failure isolation. DynamoDB Loca
 tests the keys-only GSI and conditional work retirement. The image test runs the bundled
 runner against the monitor and Challenge containers in one task-like network namespace.
 The runtime image test starts the real process as a non-root, read-only container. It
-queries DynamoDB Local, isolates malformed work, and stops cleanly on `SIGTERM`. These
-checks do not prove Fargate networking, production certificate delivery, IAM, or managed
-DynamoDB and S3 behaviour.
+queries DynamoDB Local, isolates malformed work, serves its health route, consumes a
+terminal ticket through the browser WebSocket path, attempts the private terminal
+connection, and stops cleanly on `SIGTERM`. These checks do not prove Fargate networking,
+ALB upgrades, production certificate delivery, IAM, or managed DynamoDB and S3 behaviour.
 
-Next: compose the browser relay into the Gateway process and validate its runtime path
-before adding public routing. Terminal recording, outcome actions, and AWS validation
-remain separate increments.
+Next: add the bounded public ALB route and Gateway network configuration, then validate
+the complete browser-to-Challenge WebSocket path in the disposable AWS environment.
+Terminal recording, outcome actions, and broader AWS validation remain separate
+increments.

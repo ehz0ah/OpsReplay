@@ -1,5 +1,6 @@
 export * from './aws.js';
 export * from './browser-terminal-relay.js';
+export * from './gateway-runtime.js';
 export * from './monitor-client.js';
 export * from './monitor-chunk-store.js';
 export * from './monitor-recorder.js';
@@ -9,7 +10,6 @@ export * from './monitor-recording-store.js';
 export * from './monitor-recording-supervisor.js';
 export * from './recording-service.js';
 export * from './recording-work-source.js';
-export * from './recording-runtime.js';
 export * from './terminal-client.js';
 export * from './terminal-admission-store.js';
 export * from './terminal-session.js';
