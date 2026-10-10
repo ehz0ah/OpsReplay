@@ -8,11 +8,17 @@ import test from 'node:test';
 
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
+const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
 const containers = new Set();
 
-function run(command, args) {
-  return spawnSync(command, args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
+function run(command, args, options = {}) {
+  return spawnSync(command, args, {
+    encoding: 'utf8',
+    timeout: 30_000,
+    maxBuffer: 1024 * 1024,
+    ...options,
+  });
 }
 
 function success(result) {
@@ -22,6 +28,11 @@ function success(result) {
 
 const docker = (...args) => run('docker', args);
 const exec = (id, ...args) => docker('exec', id, ...args);
+const terminal = (id, ...args) =>
+  run('docker', ['exec', '--interactive', id, 'python3', '-', ...args], {
+    input: terminalTest,
+    timeout: 45_000,
+  });
 // Pin the built image for the entire run, even if another build changes the dev tag.
 const imageId = success(docker('image', 'inspect', imageTag, '--format', '{{.Id}}'));
 
@@ -196,6 +207,49 @@ test('startup checks are explicit and stopping a service does not end the contai
   success(exec(id, 'opsreplay-check-startup'));
 });
 
+test('private terminal preserves one shell, fences stale input, and fails closed', async (t) => {
+  const id = await fresh(t);
+  const secret = randomUUID();
+  success(terminal(id, secret));
+
+  const terminalLog = success(exec(id, 'cat', '/var/log/supervisor/terminal.log'));
+  const supervisorLog = success(exec(id, 'cat', '/var/log/supervisor/supervisord.log'));
+  const containerLog = docker('logs', id);
+  assert.ok(!terminalLog.includes(secret), 'Terminal content must not enter the terminal log');
+  assert.ok(!supervisorLog.includes(secret), 'Terminal content must not enter the Supervisor log');
+  assert.ok(!containerLog.stdout.includes(secret), 'Terminal content must not enter container stdout');
+  assert.ok(!containerLog.stderr.includes(secret), 'Terminal content must not enter container stderr');
+
+  success(exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'stop', 'terminal'));
+  await eventually(
+    () =>
+      exec(id, 'python3', '-c', 'import socket; socket.create_connection(("127.0.0.1", 7681), timeout=0.2)').status !==
+      0,
+    'Terminal listener remained open after shutdown',
+  );
+  assert.notEqual(
+    exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'start', 'terminal').status,
+    0,
+    'The same container must not open a new unfenced shell',
+  );
+  assert.match(success(exec(id, 'cat', '/var/log/supervisor/terminal.log')), /Refusing to open a new shell/);
+  assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
+});
+
+test('exiting the shell stops the terminal server without replacing the shell', async (t) => {
+  const id = await fresh(t);
+  success(terminal(id, 'shell-exit'));
+  await eventually(() => {
+    const status = exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'status', 'terminal');
+    return /FATAL|EXITED/.test(status.stdout);
+  }, 'Terminal server remained active after its shell exited');
+  assert.match(success(exec(id, 'cat', '/var/log/supervisor/terminal.log')), /Refusing to open a replacement shell/);
+  const startup = exec(id, 'opsreplay-check-startup');
+  assert.equal(startup.status, 1);
+  assert.match(startup.stderr, /7681/);
+  assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
+});
+
 test('moving the application to port 8081 is a valid repair', async (t) => {
   const id = await fresh(t);
   success(exec(id, 'sed', '-i', 's/127.0.0.1:8080/127.0.0.1:8081/', '/etc/shop/gunicorn.conf.py'));
@@ -239,6 +293,9 @@ test('reference fix stores orders, survives service/container restarts, and a fr
   success(docker('restart', '--time', '10', id));
   await eventually(() => http(id, '/api/orders/' + order.id).status === 200, 'Container did not restart');
   assert.deepEqual(JSON.parse(expectHttp(http(id, '/api/orders/' + order.id), 200)), order);
+  const startup = exec(id, 'opsreplay-check-startup');
+  assert.equal(startup.status, 1, 'A container restart must not open a new unfenced shell');
+  assert.match(startup.stderr, /7681/);
 
   const retry = await fresh(t);
   expectHttp(http(retry, '/'), 502);

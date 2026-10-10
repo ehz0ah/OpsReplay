@@ -1,0 +1,552 @@
+#!/usr/bin/python3
+"""Private terminal server for one OpsReplay Challenge task.
+
+The gateway owns authentication and session authorization. This process owns one root
+PTY and rejects input from stale gateway generations. Terminal input and output are
+never written to the process log.
+"""
+
+import base64
+import binascii
+import errno
+import fcntl
+import json
+import os
+import pty
+import select
+import signal
+import socket
+import socketserver
+import struct
+import termios
+import threading
+import time
+
+
+PROTOCOL_VERSION = 1
+DEFAULT_PORT = 7681
+MAX_CLIENTS = 8
+MAX_LINE_BYTES = 24 * 1024
+MAX_INPUT_BYTES = 16 * 1024
+MAX_OUTPUT_BYTES = 8 * 1024
+MAX_REPLAY_BYTES = 64 * 1024
+ATTACH_TIMEOUT_SECONDS = 5
+IDLE_TIMEOUT_SECONDS = 45
+SEND_TIMEOUT_SECONDS = 1
+INPUT_TIMEOUT_SECONDS = 1
+MAX_GENERATION = 2**53 - 1
+MAX_TERMINAL_DIMENSION = 500
+STATE_DIRECTORY = "/run/opsreplay-terminal"
+STARTED_MARKER = f"{STATE_DIRECTORY}/started"
+
+
+class ProtocolError(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
+def encoded_frame(frame):
+    payload = json.dumps(frame, separators=(",", ":"), sort_keys=True).encode("utf-8") + b"\n"
+    if len(payload) > MAX_LINE_BYTES:
+        raise ValueError("outgoing terminal frame exceeds the protocol limit")
+    return payload
+
+
+def exact_keys(frame, expected):
+    if set(frame) != expected:
+        raise ProtocolError("INVALID_FRAME")
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def integer(value, minimum, maximum):
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ProtocolError("INVALID_FRAME")
+    return value
+
+
+class Connection:
+    def __init__(self, sock):
+        self.sock = sock
+        self.sock.setblocking(False)
+        self.buffer = bytearray()
+        self.send_lock = threading.Lock()
+        self.closed = threading.Event()
+        self.generation = None
+
+    def receive(self, timeout_seconds):
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            newline = self.buffer.find(b"\n")
+            if newline >= 0:
+                if newline + 1 > MAX_LINE_BYTES:
+                    raise ProtocolError("FRAME_TOO_LARGE")
+                line = bytes(self.buffer[:newline])
+                del self.buffer[: newline + 1]
+                if not line:
+                    raise ProtocolError("INVALID_FRAME")
+                try:
+                    frame = json.loads(line.decode("utf-8"), object_pairs_hook=unique_object)
+                except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as error:
+                    raise ProtocolError("INVALID_FRAME") from error
+                if not isinstance(frame, dict):
+                    raise ProtocolError("INVALID_FRAME")
+                return frame
+            if len(self.buffer) > MAX_LINE_BYTES:
+                raise ProtocolError("FRAME_TOO_LARGE")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProtocolError("IDLE_TIMEOUT")
+            if self.closed.is_set():
+                raise EOFError
+            try:
+                readable, _, _ = select.select([self.sock], [], [], remaining)
+            except (OSError, ValueError) as error:
+                raise EOFError from error
+            if not readable:
+                raise ProtocolError("IDLE_TIMEOUT")
+            try:
+                chunk = self.sock.recv(min(4096, MAX_LINE_BYTES + 1 - len(self.buffer)))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                raise EOFError
+            self.buffer.extend(chunk)
+
+    def send(self, frame):
+        payload = encoded_frame(frame)
+        deadline = time.monotonic() + SEND_TIMEOUT_SECONDS
+        with self.send_lock:
+            if self.closed.is_set():
+                return False
+            offset = 0
+            while offset < len(payload):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                try:
+                    _, writable, _ = select.select([], [self.sock], [], remaining)
+                except (OSError, ValueError):
+                    return False
+                if not writable:
+                    return False
+                try:
+                    written = self.sock.send(payload[offset:])
+                except OSError:
+                    return False
+                if written <= 0:
+                    return False
+                offset += written
+        return True
+
+    def fail(self, code):
+        self.send({"type": "error", "code": code})
+
+    def close(self):
+        if self.closed.is_set():
+            return
+        self.closed.set()
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+class TerminalState:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.input_lock = threading.Lock()
+        self.stopping = threading.Event()
+        self.generation = 0
+        self.active = None
+        self.ever_attached = False
+        self.replay = bytearray()
+        self.replay_truncated = False
+        self.shell_exit_code = None
+        self.shell_exited = threading.Event()
+        self.child_pid, self.master_fd = self._start_shell()
+        os.set_blocking(self.master_fd, False)
+        self.reader = threading.Thread(target=self._read_output, name="terminal-output", daemon=True)
+        self.reader.start()
+
+    @staticmethod
+    def _start_shell():
+        child_pid, master_fd = pty.fork()
+        if child_pid == 0:
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "HOME": "/root",
+                    "SHELL": "/bin/bash",
+                    "TERM": "xterm-256color",
+                    "PS1": r"\u@\h:\w# ",
+                }
+            )
+            os.chdir("/root")
+            os.execve("/bin/bash", ["bash", "--noprofile", "--norc", "-i"], environment)
+        return child_pid, master_fd
+
+    def _append_replay(self, data):
+        if len(data) >= MAX_REPLAY_BYTES:
+            self.replay[:] = data[-MAX_REPLAY_BYTES:]
+            self.replay_truncated = True
+            return
+        overflow = len(self.replay) + len(data) - MAX_REPLAY_BYTES
+        if overflow > 0:
+            del self.replay[:overflow]
+            self.replay_truncated = True
+        self.replay.extend(data)
+
+    def _read_output(self):
+        while not self.stopping.is_set():
+            try:
+                readable, _, _ = select.select([self.master_fd], [], [], 0.5)
+                if not readable:
+                    continue
+                data = os.read(self.master_fd, MAX_OUTPUT_BYTES)
+                if not data:
+                    break
+            except OSError as error:
+                if error.errno == errno.EIO:
+                    break
+                if self.stopping.is_set() or error.errno == errno.EBADF:
+                    return
+                self._finish_shell(-1)
+                return
+
+            failed = None
+            with self.lock:
+                connection = self.active
+                if connection is None:
+                    self._append_replay(data)
+                    continue
+                frame = {
+                    "type": "output",
+                    "generation": self.generation,
+                    "data": base64.b64encode(data).decode("ascii"),
+                }
+                if not connection.send(frame):
+                    self._append_replay(data)
+                    self.active = None
+                    failed = connection
+            if failed is not None:
+                failed.close()
+
+        try:
+            _, status = os.waitpid(self.child_pid, 0)
+            exit_code = os.waitstatus_to_exitcode(status)
+        except ChildProcessError:
+            exit_code = -1
+        self._finish_shell(exit_code)
+
+    def _finish_shell(self, exit_code):
+        connection = None
+        with self.lock:
+            if self.shell_exit_code is not None:
+                return
+            self.shell_exit_code = exit_code
+            self.shell_exited.set()
+            connection = self.active
+            self.active = None
+            if connection is not None:
+                connection.send({"type": "exit", "code": exit_code})
+        if connection is not None:
+            connection.close()
+
+    @staticmethod
+    def _set_size(master_fd, columns, rows):
+        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+
+    def attach(self, connection, generation, columns, rows):
+        replaced = None
+        with self.input_lock:
+            with self.lock:
+                if self.shell_exit_code is not None:
+                    return "SHELL_EXITED"
+                if generation <= self.generation:
+                    return "STALE_GENERATION"
+                try:
+                    self._set_size(self.master_fd, columns, rows)
+                except OSError:
+                    return "SHELL_EXITED"
+                replaced = self.active
+                self.generation = generation
+                self.active = connection
+                connection.generation = generation
+                ready = {
+                    "type": "ready",
+                    "version": PROTOCOL_VERSION,
+                    "generation": generation,
+                    "resumed": self.ever_attached,
+                    "replayTruncated": self.replay_truncated,
+                }
+                sent = connection.send(ready)
+                if sent:
+                    self.ever_attached = True
+                if sent and self.replay:
+                    for offset in range(0, len(self.replay), MAX_OUTPUT_BYTES):
+                        sent = connection.send(
+                            {
+                                "type": "output",
+                                "generation": generation,
+                                "data": base64.b64encode(self.replay[offset : offset + MAX_OUTPUT_BYTES]).decode("ascii"),
+                            }
+                        )
+                        if not sent:
+                            break
+                if sent:
+                    self.replay.clear()
+                    self.replay_truncated = False
+                else:
+                    self.active = None
+        if replaced is not None:
+            replaced.fail("REPLACED")
+            replaced.close()
+        if not sent:
+            connection.close()
+            return "CONNECTION_FAILED"
+        return None
+
+    def _validate_owner(self, connection, generation):
+        if self.shell_exit_code is not None:
+            return "SHELL_EXITED"
+        if connection is not self.active or generation != self.generation:
+            return "STALE_GENERATION"
+        return None
+
+    def input(self, connection, generation, data):
+        with self.input_lock:
+            with self.lock:
+                invalid = self._validate_owner(connection, generation)
+                if invalid is not None:
+                    return invalid
+                master_fd = self.master_fd
+            deadline = time.monotonic() + INPUT_TIMEOUT_SECONDS
+            offset = 0
+            while offset < len(data):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return "INPUT_UNCERTAIN"
+                try:
+                    _, writable, _ = select.select([], [master_fd], [], remaining)
+                except (OSError, ValueError):
+                    return "INPUT_UNCERTAIN" if offset else "SHELL_EXITED"
+                if not writable:
+                    return "INPUT_UNCERTAIN"
+                try:
+                    written = os.write(master_fd, data[offset:])
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    return "INPUT_UNCERTAIN" if offset else "SHELL_EXITED"
+                if written <= 0:
+                    return "INPUT_UNCERTAIN"
+                offset += written
+        return None
+
+    def resize(self, connection, generation, columns, rows):
+        with self.input_lock:
+            with self.lock:
+                invalid = self._validate_owner(connection, generation)
+                if invalid is not None:
+                    return invalid
+                try:
+                    self._set_size(self.master_fd, columns, rows)
+                except OSError:
+                    return "SHELL_EXITED"
+        return None
+
+    def heartbeat(self, connection, generation):
+        with self.lock:
+            return self._validate_owner(connection, generation)
+
+    def detach(self, connection):
+        with self.lock:
+            if self.active is connection:
+                self.active = None
+
+    def close(self):
+        self.stopping.set()
+        connection = None
+        with self.lock:
+            connection = self.active
+            self.active = None
+        if connection is not None:
+            connection.close()
+        try:
+            os.killpg(self.child_pid, signal.SIGTERM)
+        except OSError:
+            pass
+        try:
+            os.close(self.master_fd)
+        except OSError:
+            pass
+        self.reader.join(timeout=2)
+        try:
+            os.killpg(self.child_pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+class TerminalHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        connection = Connection(self.request)
+        state = self.server.terminal_state
+        try:
+            attach = connection.receive(ATTACH_TIMEOUT_SECONDS)
+            exact_keys(attach, {"type", "version", "mode", "generation", "columns", "rows"})
+            version = integer(attach["version"], PROTOCOL_VERSION, PROTOCOL_VERSION)
+            if attach["type"] != "attach" or version != PROTOCOL_VERSION or attach["mode"] != "interactive":
+                raise ProtocolError("INVALID_FRAME")
+            generation = integer(attach["generation"], 1, MAX_GENERATION)
+            columns = integer(attach["columns"], 1, MAX_TERMINAL_DIMENSION)
+            rows = integer(attach["rows"], 1, MAX_TERMINAL_DIMENSION)
+            failure = state.attach(connection, generation, columns, rows)
+            if failure is not None:
+                connection.fail(failure)
+                return
+
+            while True:
+                frame = connection.receive(IDLE_TIMEOUT_SECONDS)
+                frame_type = frame.get("type")
+                if frame_type == "input":
+                    exact_keys(frame, {"type", "generation", "data"})
+                    frame_generation = integer(frame["generation"], 1, MAX_GENERATION)
+                    if not isinstance(frame["data"], str):
+                        raise ProtocolError("INVALID_FRAME")
+                    try:
+                        data = base64.b64decode(frame["data"], validate=True)
+                    except (binascii.Error, ValueError) as error:
+                        raise ProtocolError("INVALID_FRAME") from error
+                    if not data or len(data) > MAX_INPUT_BYTES:
+                        raise ProtocolError("INVALID_FRAME")
+                    failure = state.input(connection, frame_generation, data)
+                    if failure is not None:
+                        raise ProtocolError(failure)
+                    if not connection.send({"type": "input_accepted", "generation": frame_generation}):
+                        return
+                elif frame_type == "resize":
+                    exact_keys(frame, {"type", "generation", "columns", "rows"})
+                    frame_generation = integer(frame["generation"], 1, MAX_GENERATION)
+                    columns = integer(frame["columns"], 1, MAX_TERMINAL_DIMENSION)
+                    rows = integer(frame["rows"], 1, MAX_TERMINAL_DIMENSION)
+                    failure = state.resize(connection, frame_generation, columns, rows)
+                    if failure is not None:
+                        raise ProtocolError(failure)
+                    if not connection.send({"type": "resize_accepted", "generation": frame_generation}):
+                        return
+                elif frame_type == "heartbeat":
+                    exact_keys(frame, {"type", "generation"})
+                    frame_generation = integer(frame["generation"], 1, MAX_GENERATION)
+                    failure = state.heartbeat(connection, frame_generation)
+                    if failure is not None:
+                        raise ProtocolError(failure)
+                    if not connection.send({"type": "heartbeat", "generation": frame_generation}):
+                        return
+                else:
+                    raise ProtocolError("INVALID_FRAME")
+        except EOFError:
+            pass
+        except ProtocolError as error:
+            connection.fail(error.code)
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            state.detach(connection)
+            connection.close()
+
+
+class TerminalServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+    request_queue_size = MAX_CLIENTS
+
+    def __init__(self, address, terminal_state):
+        self.terminal_state = terminal_state
+        self.slots = threading.BoundedSemaphore(MAX_CLIENTS)
+        super().__init__(address, TerminalHandler)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
+def configured_port():
+    value = os.environ.get("OPSREPLAY_TERMINAL_PORT", str(DEFAULT_PORT))
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise SystemExit("OPSREPLAY_TERMINAL_PORT must be an integer") from error
+    if not 1 <= port <= 65535:
+        raise SystemExit("OPSREPLAY_TERMINAL_PORT must be between 1 and 65535")
+    return port
+
+
+def mark_first_start():
+    os.makedirs(STATE_DIRECTORY, mode=0o700, exist_ok=True)
+    try:
+        descriptor = os.open(STARTED_MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as error:
+        raise SystemExit("Terminal state already exists. Refusing to open a new shell.") from error
+    with os.fdopen(descriptor, "w", encoding="utf-8") as marker:
+        marker.write("started\n")
+
+
+def main():
+    port = configured_port()
+    mark_first_start()
+    state = TerminalState()
+    shell_failed = False
+    try:
+        with TerminalServer(("0.0.0.0", port), state) as server:
+            stopped = threading.Event()
+
+            def stop(_signal, _frame):
+                if stopped.is_set():
+                    return
+                stopped.set()
+                threading.Thread(target=server.shutdown, name="terminal-shutdown", daemon=True).start()
+
+            def stop_after_shell_exit():
+                state.shell_exited.wait()
+                if not stopped.is_set():
+                    server.shutdown()
+
+            signal.signal(signal.SIGTERM, stop)
+            signal.signal(signal.SIGINT, stop)
+            threading.Thread(target=stop_after_shell_exit, name="shell-exit-shutdown", daemon=True).start()
+            print(f"Terminal server listening on private port {port}.", flush=True)
+            server.serve_forever(poll_interval=0.25)
+            shell_failed = state.shell_exited.is_set() and not stopped.is_set()
+    finally:
+        state.close()
+    if shell_failed:
+        raise SystemExit("Terminal shell exited. Refusing to open a replacement shell.")
+
+
+if __name__ == "__main__":
+    main()
