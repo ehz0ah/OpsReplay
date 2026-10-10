@@ -18,6 +18,7 @@ import {
 const DEFAULT_PATH = '/v1/terminal';
 const DEFAULT_AUTH_TIMEOUT_MS = 5_000;
 const DEFAULT_SEND_TIMEOUT_MS = 1_000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
 const DEFAULT_COLUMNS = 80;
 const DEFAULT_ROWS = 24;
 const MAX_BROWSER_INPUT_BYTES = 16 * 1024;
@@ -75,6 +76,7 @@ export type BrowserTerminalSessionOpener = (
 export interface GatewayBrowserPeer {
   isOpen(): boolean;
   send(data: string | Buffer, binary: boolean, callback: (error?: Error | null) => void): void;
+  ping(callback: (error?: Error | null) => void): void;
   close(code: number, reason: string): void;
   terminate(): void;
   pause(): void;
@@ -88,13 +90,18 @@ export interface GatewayBrowserTerminalConnectionOptions {
   openSession: BrowserTerminalSessionOpener;
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
+  heartbeatIntervalMs?: number;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
 }
 
 type ConnectionState = 'awaiting_auth' | 'authenticating' | 'ready' | 'closing' | 'closed';
-type PendingBrowserMessage = { message: Exclude<GatewayClientMessage, { type: 'auth' }> | Buffer; bytes: number };
+type BrowserControlMessage = Exclude<GatewayClientMessage, { type: 'auth' }>;
+type PendingBrowserMessage =
+  | { kind: 'input'; chunks: Buffer[]; bytes: number }
+  | { kind: 'control'; message: BrowserControlMessage; bytes: number }
+  | { kind: 'keepalive'; bytes: 0 };
 
 class BrowserSendError extends Error {
   constructor() {
@@ -103,9 +110,9 @@ class BrowserSendError extends Error {
   }
 }
 
-function boundedMilliseconds(value: number | undefined, fallback: number, name: string): number {
+function boundedMilliseconds(value: number | undefined, fallback: number, name: string, maximum = 60_000): number {
   const result = value ?? fallback;
-  if (!Number.isSafeInteger(result) || result < 1 || result > 60_000) throw new TypeError(`${name} is invalid.`);
+  if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError(`${name} is invalid.`);
   return result;
 }
 
@@ -173,6 +180,7 @@ export class GatewayBrowserTerminalConnection {
 
   private readonly authTimeoutMs: number;
   private readonly sendTimeoutMs: number;
+  private readonly heartbeatIntervalMs: number;
   private readonly initialColumns: number;
   private readonly initialRows: number;
   private readonly lifetime = new AbortController();
@@ -182,6 +190,7 @@ export class GatewayBrowserTerminalConnection {
   private readonly outputGate: Promise<void>;
   private readonly releaseOutputGate: () => void;
   private authTimer: ReturnType<typeof setTimeout> | undefined;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   private closeTimer: ReturnType<typeof setTimeout> | undefined;
   private state: ConnectionState = 'awaiting_auth';
   private session: BrowserTerminalSession | undefined;
@@ -191,6 +200,8 @@ export class GatewayBrowserTerminalConnection {
   private sendTail: Promise<void> = Promise.resolve();
   private activeTasks = 0;
   private peerClosed = false;
+  private authenticated = false;
+  private heartbeatQueued = false;
 
   constructor(
     private readonly peer: GatewayBrowserPeer,
@@ -199,6 +210,12 @@ export class GatewayBrowserTerminalConnection {
     if (typeof options.openSession !== 'function') throw new TypeError('Terminal session opener is required.');
     this.authTimeoutMs = boundedMilliseconds(options.authTimeoutMs, DEFAULT_AUTH_TIMEOUT_MS, 'Auth timeout');
     this.sendTimeoutMs = boundedMilliseconds(options.sendTimeoutMs, DEFAULT_SEND_TIMEOUT_MS, 'Send timeout');
+    this.heartbeatIntervalMs = boundedMilliseconds(
+      options.heartbeatIntervalMs,
+      DEFAULT_HEARTBEAT_INTERVAL_MS,
+      'Heartbeat interval',
+      DEFAULT_HEARTBEAT_INTERVAL_MS,
+    );
     this.initialColumns = boundedDimension(options.initialColumns, DEFAULT_COLUMNS, 20, 500, 'Initial columns');
     this.initialRows = boundedDimension(options.initialRows, DEFAULT_ROWS, 5, 200, 'Initial rows');
     if (
@@ -230,6 +247,10 @@ export class GatewayBrowserTerminalConnection {
     this.terminate();
   }
 
+  isAuthenticated(): boolean {
+    return this.authenticated;
+  }
+
   private receive(data: Buffer, binary: boolean): void {
     if (this.state === 'awaiting_auth') {
       if (binary) {
@@ -251,34 +272,43 @@ export class GatewayBrowserTerminalConnection {
       return;
     }
 
-    let message: PendingBrowserMessage['message'];
     if (binary) {
       if (data.length === 0 || data.length > MAX_BROWSER_INPUT_BYTES) {
         this.closePolicyViolation();
         return;
       }
-      message = Buffer.from(data);
+      if (this.pendingBytes + data.length > MAX_PENDING_BROWSER_BYTES) {
+        this.fail('RATE_LIMITED', 1008);
+        return;
+      }
+      const tail = this.pendingMessages.at(-1);
+      if (tail?.kind === 'input' && tail.bytes + data.length <= MAX_BROWSER_INPUT_BYTES) {
+        tail.chunks.push(Buffer.from(data));
+        tail.bytes += data.length;
+      } else {
+        if (this.pendingMessages.length >= MAX_PENDING_BROWSER_MESSAGES) {
+          this.fail('RATE_LIMITED', 1008);
+          return;
+        }
+        this.pendingMessages.push({ kind: 'input', chunks: [Buffer.from(data)], bytes: data.length });
+      }
     } else {
       const parsed = parseClientMessage(data);
       if (parsed === undefined || parsed.type === 'auth') {
         this.closePolicyViolation();
         return;
       }
-      message = parsed;
+      if (
+        this.pendingMessages.length >= MAX_PENDING_BROWSER_MESSAGES ||
+        this.pendingBytes + data.length > MAX_PENDING_BROWSER_BYTES
+      ) {
+        this.fail('RATE_LIMITED', 1008);
+        return;
+      }
+      this.pendingMessages.push({ kind: 'control', message: parsed, bytes: data.length });
     }
-    if (
-      this.pendingMessages.length >= MAX_PENDING_BROWSER_MESSAGES ||
-      this.pendingBytes + data.length > MAX_PENDING_BROWSER_BYTES
-    ) {
-      this.fail('RATE_LIMITED', 1008);
-      return;
-    }
-    this.pendingMessages.push({ message, bytes: data.length });
     this.pendingBytes += data.length;
-    if (!this.processing) {
-      this.peer.pause();
-      this.startTask(this.processMessages());
-    }
+    this.startProcessing();
   }
 
   private async authenticate(message: Extract<GatewayClientMessage, { type: 'auth' }>): Promise<void> {
@@ -309,7 +339,9 @@ export class GatewayBrowserTerminalConnection {
       });
       if (this.state !== 'authenticating') return;
       this.state = 'ready';
+      this.authenticated = true;
       this.releaseOutputGate();
+      this.scheduleHeartbeat();
     } catch (error) {
       if (this.state !== 'authenticating') return;
       if (error instanceof TerminalAdmissionError) {
@@ -333,7 +365,7 @@ export class GatewayBrowserTerminalConnection {
         const pending = this.pendingMessages.shift();
         if (pending === undefined) break;
         try {
-          await this.dispatch(pending.message);
+          await this.dispatch(pending);
         } catch (error) {
           this.handleOperationError(error);
         } finally {
@@ -346,19 +378,30 @@ export class GatewayBrowserTerminalConnection {
     }
   }
 
-  private async dispatch(message: PendingBrowserMessage['message']): Promise<void> {
+  private async dispatch(pending: PendingBrowserMessage): Promise<void> {
     const session = this.session;
     if (session === undefined) throw new Error('Authenticated terminal session is missing.');
-    if (Buffer.isBuffer(message)) {
-      await session.input(message, this.lifetime.signal);
+    if (pending.kind === 'input') {
+      const data = pending.chunks.length === 1 ? pending.chunks[0] : Buffer.concat(pending.chunks, pending.bytes);
+      if (data === undefined) throw new Error('Queued terminal input is missing.');
+      await session.input(data, this.lifetime.signal);
+      this.scheduleHeartbeat();
       return;
     }
+    if (pending.kind === 'keepalive') {
+      this.heartbeatQueued = false;
+      await session.heartbeat(this.lifetime.signal);
+      await this.ping();
+      this.scheduleHeartbeat();
+      return;
+    }
+    const message = pending.message;
     switch (message.type) {
       case 'heartbeat':
-        await session.heartbeat(this.lifetime.signal);
         return;
       case 'resize':
         await session.resize(message.cols, message.rows, this.lifetime.signal);
+        this.scheduleHeartbeat();
         return;
       case 'run_proposal':
         await this.sendJson(publicError('PROPOSAL_UNAVAILABLE'));
@@ -421,6 +464,14 @@ export class GatewayBrowserTerminalConnection {
   }
 
   private send(data: string | Buffer, binary: boolean): Promise<void> {
+    return this.queueSend((finish) => this.peer.send(data, binary, finish));
+  }
+
+  private ping(): Promise<void> {
+    return this.queueSend((finish) => this.peer.ping(finish));
+  }
+
+  private queueSend(start: (finish: (error?: Error | null) => void) => void): Promise<void> {
     const operation = this.sendTail.then(
       () =>
         new Promise<void>((resolve, reject) => {
@@ -438,7 +489,7 @@ export class GatewayBrowserTerminalConnection {
             else reject(new BrowserSendError());
           };
           try {
-            this.peer.send(data, binary, finish);
+            start(finish);
           } catch (error) {
             finish(error instanceof Error ? error : new BrowserSendError());
           }
@@ -446,6 +497,25 @@ export class GatewayBrowserTerminalConnection {
     );
     this.sendTail = operation.catch(() => undefined);
     return operation;
+  }
+
+  private startProcessing(): void {
+    if (this.processing) return;
+    this.peer.pause();
+    this.startTask(this.processMessages());
+  }
+
+  private scheduleHeartbeat(): void {
+    this.clearHeartbeatTimer();
+    if (this.state !== 'ready' || this.heartbeatQueued) return;
+    this.heartbeatTimer = setTimeout(() => {
+      this.heartbeatTimer = undefined;
+      if (this.state !== 'ready' || this.heartbeatQueued) return;
+      this.heartbeatQueued = true;
+      this.pendingMessages.push({ kind: 'keepalive', bytes: 0 });
+      this.startProcessing();
+    }, this.heartbeatIntervalMs);
+    this.heartbeatTimer.unref();
   }
 
   private fail(code: GatewayErrorCode, closeCode: number): void {
@@ -465,11 +535,13 @@ export class GatewayBrowserTerminalConnection {
     if (this.state === 'closing' || this.state === 'closed') return false;
     this.state = 'closing';
     this.clearAuthTimer();
+    this.clearHeartbeatTimer();
     this.lifetime.abort(new Error('Browser terminal connection closed.'));
     this.session?.close();
     this.releaseOutputGate();
     this.pendingMessages.length = 0;
     this.pendingBytes = 0;
+    this.heartbeatQueued = false;
     try {
       this.peer.resume();
     } catch {
@@ -542,14 +614,22 @@ export class GatewayBrowserTerminalConnection {
     if (this.authTimer !== undefined) clearTimeout(this.authTimer);
     this.authTimer = undefined;
   }
+
+  private clearHeartbeatTimer(): void {
+    if (this.heartbeatTimer !== undefined) clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = undefined;
+  }
 }
 
 export interface GatewayBrowserTerminalRelayOptions {
   allowedOrigins: readonly string[];
   admissions: TerminalAdmissionStore;
+  maxConnections: number;
+  maxPendingAuthentications: number;
   path?: string;
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
+  heartbeatIntervalMs?: number;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
@@ -609,9 +689,22 @@ function requestPath(request: IncomingMessage): string | undefined {
   }
 }
 
-function rejectUpgrade(socket: Duplex, status: 400 | 403 | 404): void {
-  const reason = status === 403 ? 'Forbidden' : status === 404 ? 'Not Found' : 'Bad Request';
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} is invalid.`);
+  return value;
+}
+
+function rejectUpgrade(socket: Duplex, status: 400 | 403 | 404 | 503): void {
+  const reason =
+    status === 403
+      ? 'Forbidden'
+      : status === 404
+        ? 'Not Found'
+        : status === 503
+          ? 'Service Unavailable'
+          : 'Bad Request';
   if (socket.writable) {
+    socket.once('finish', () => socket.destroy());
     socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   } else {
     socket.destroy();
@@ -628,6 +721,7 @@ function adaptWebSocket(socket: WebSocket): GatewayBrowserPeer {
   return {
     isOpen: () => socket.readyState === WebSocket.OPEN,
     send: (data, binary, callback) => socket.send(data, { binary, compress: false }, callback),
+    ping: (callback) => socket.ping(undefined, false, callback),
     close: (code, reason) => socket.close(code, reason),
     terminate: () => socket.terminate(),
     pause: () => {
@@ -663,6 +757,8 @@ export class GatewayBrowserTerminalRelay {
   private readonly path: string;
   private readonly connections = new Set<GatewayBrowserTerminalConnection>();
   private readonly openSession: BrowserTerminalSessionOpener;
+  private readonly maxConnections: number;
+  private readonly maxPendingAuthentications: number;
   private readonly onUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
   private closing: Promise<void> | undefined;
 
@@ -676,6 +772,14 @@ export class GatewayBrowserTerminalRelay {
     this.path = options.path ?? DEFAULT_PATH;
     if (!this.path.startsWith('/') || this.path.includes('?') || this.path.includes('#')) {
       throw new TypeError('Terminal WebSocket path is invalid.');
+    }
+    this.maxConnections = positiveInteger(options.maxConnections, 'Maximum terminal connections');
+    this.maxPendingAuthentications = positiveInteger(
+      options.maxPendingAuthentications,
+      'Maximum pending terminal authentications',
+    );
+    if (this.maxPendingAuthentications > this.maxConnections) {
+      throw new TypeError('Maximum pending terminal authentications cannot exceed maximum terminal connections.');
     }
     this.openSession =
       dependencies.openSession ??
@@ -698,6 +802,7 @@ export class GatewayBrowserTerminalRelay {
   }
 
   private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    socket.on('error', () => socket.destroy());
     if (requestPath(request) !== this.path) {
       rejectUpgrade(socket, 404);
       return;
@@ -705,6 +810,14 @@ export class GatewayBrowserTerminalRelay {
     const origin = requestOrigin(request.headers.origin);
     if (origin === undefined || !this.origins.has(origin)) {
       rejectUpgrade(socket, 403);
+      return;
+    }
+    if (
+      this.connections.size >= this.maxConnections ||
+      [...this.connections].filter((connection) => !connection.isAuthenticated()).length >=
+        this.maxPendingAuthentications
+    ) {
+      rejectUpgrade(socket, 503);
       return;
     }
     try {
@@ -719,6 +832,9 @@ export class GatewayBrowserTerminalRelay {
       openSession: this.openSession,
       ...(this.options.authTimeoutMs === undefined ? {} : { authTimeoutMs: this.options.authTimeoutMs }),
       ...(this.options.sendTimeoutMs === undefined ? {} : { sendTimeoutMs: this.options.sendTimeoutMs }),
+      ...(this.options.heartbeatIntervalMs === undefined
+        ? {}
+        : { heartbeatIntervalMs: this.options.heartbeatIntervalMs }),
       ...(this.options.initialColumns === undefined ? {} : { initialColumns: this.options.initialColumns }),
       ...(this.options.initialRows === undefined ? {} : { initialRows: this.options.initialRows }),
       ...(this.options.terminalPort === undefined ? {} : { terminalPort: this.options.terminalPort }),

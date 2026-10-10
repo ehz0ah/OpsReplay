@@ -27,12 +27,26 @@ new input generation, selects the authoritative private task address, and attach
 existing terminal client. The browser receives `ready` only after private attachment.
 `ready.replayTruncated` preserves the Challenge server's continuity warning.
 
-Binary browser frames are raw terminal input. Valid `resize` and `heartbeat` text frames
-use the same session operation path. Operations remain ordered. The relay pauses socket
-reads while it processes them and keeps at most 64 queued messages or 64 KiB if more
-frames were already decoded from one network read. It returns `RATE_LIMITED` and closes
-when either bound is exceeded. `run_proposal` returns `PROPOSAL_UNAVAILABLE` without
-closing because proposal delivery is not part of this increment.
+Binary browser frames are raw terminal input. Valid `resize` text frames use the session
+operation path. Browser `heartbeat` frames are transport liveness signals and do not
+control the private terminal keep-alive. Operations remain ordered. The relay pauses
+socket reads while it processes them and keeps at most 64 queued browser messages or
+64 KiB if more frames were already decoded from one network read. Consecutive binary
+frames are coalesced into input operations of at most 16 KiB. This absorbs normal
+keystroke and mouse-event bursts without removing the byte or message backstop. The
+relay returns `RATE_LIMITED` and closes when either bound is exceeded. `run_proposal`
+returns `PROPOSAL_UNAVAILABLE` without closing because proposal delivery is not part of
+this increment.
+
+The gateway owns idle keep-alive. After 20 seconds without a private operation, it sends
+one authorized terminal heartbeat and one WebSocket Ping through the same ordered queues.
+This does not depend on browser timers, which can be throttled in a background tab.
+
+The caller must configure a total connection limit and a smaller or equal pending-
+authentication limit. The relay rejects a valid upgrade with HTTP 503 before admission
+when either limit is full. Rejected raw sockets have an error handler and are destroyed
+after the response is flushed. Edge rate limiting remains necessary to bound sequential
+failed admission attempts.
 
 Each terminal output frame is at most 8 KiB. The relay permits one such frame to await
 browser delivery. If its WebSocket send does not complete within one second, the relay
@@ -59,10 +73,11 @@ excessive client must reconnect with a new ticket.
 ## Validation boundary
 
 Local tests use a real HTTP server and WebSocket client. They cover origin and path
-rejection, the authentication deadline, public error mapping, direct input, resize,
-heartbeat, proposal rejection, binary output, replacement, uncertain input, and cleanup.
-Controlled peer tests cover output size and send deadlines plus the browser input queue
-bound.
+rejection, reset rejected sockets, total and pending-authentication caps, the
+authentication deadline, public error mapping, direct input, resize, heartbeat, proposal
+rejection, binary output, replacement, uncertain input, and cleanup. Controlled peer
+tests cover idle keep-alive, input coalescing, input queue bounds, output size, and send
+deadlines.
 
 This increment does not start a Gateway HTTP process, change the recording process,
 package a new runtime image, update security groups or load balancers, or deploy to AWS.

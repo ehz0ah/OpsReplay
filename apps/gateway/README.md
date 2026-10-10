@@ -78,7 +78,15 @@ selection, and per-operation authorization stay in one existing path.
 Browser binary frames carry raw terminal input. Text frames carry validated `resize`,
 `heartbeat`, and `run_proposal` messages. Proposal execution is not implemented and
 returns `PROPOSAL_UNAVAILABLE`. The relay serializes private operations, pauses browser
-reads during them, and bounds already-decoded input to 64 messages or 64 KiB.
+reads during them, coalesces consecutive input frames into operations of at most 16 KiB,
+and bounds already-decoded input to 64 messages or 64 KiB. A browser `heartbeat` is only
+a transport liveness signal. The relay sends its own private terminal heartbeat and
+WebSocket Ping after 20 seconds without another private operation, so browser timer
+throttling does not disconnect an idle learner.
+
+Callers must set total and pending-authentication connection limits. The relay returns
+HTTP 503 before admission when either limit is full. These limits bound local resource
+use. Deployment edge limits must also bound repeated failed admission attempts.
 
 Terminal output returns as binary frames. Only one output frame of at most 8 KiB can wait
 for browser delivery. A send that does not complete within one second closes the browser
