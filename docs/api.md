@@ -352,8 +352,9 @@ while a private operation is pending. If frames were already decoded, it keeps a
 It keeps at most one 8 KiB terminal output frame pending and closes both directions if
 browser delivery does not complete within one second. The relay is connected to the
 Gateway process when its complete terminal configuration is present. The same listener
-serves `GET /healthz`; other ordinary HTTP routes return 404. The existing AWS definition
-does not enable or route this listener.
+serves `GET /healthz`; other ordinary HTTP routes return 404. The conditional AWS
+definition routes only `/v1/terminal` through a TLS ALB and keeps Gateway tasks private.
+It has not been deployed or validated on AWS.
 
 ## Assistant turns
 

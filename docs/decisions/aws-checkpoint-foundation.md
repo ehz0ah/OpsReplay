@@ -1,8 +1,12 @@
 # AWS checkpoint foundation
 
-Status: implemented locally, AWS deployment pending
+Status: first checkpoint completed; network shape later extended by the terminal ingress decision
 Date: 8 October 2026
 Owner: Cloud contributors
+
+The [terminal ingress deployment](terminal-ingress-deployment.md) supersedes the
+one-Availability-Zone and no-internet-gateway parts of this initial checkpoint design.
+The private endpoint, image repository, execution-role, and cleanup decisions remain.
 
 ## Context
 

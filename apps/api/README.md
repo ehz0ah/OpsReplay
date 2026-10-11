@@ -2,7 +2,8 @@
 
 Status: session-start admission, ECS launch orchestration, provisioning-expiry cleanup,
 recording-work publication, and terminal-ticket issuance are implemented and tested
-locally. No public route or ECS event rule is connected, and no AWS deployment has run. Follow
+locally. CDK defines the disabled terminal-ticket route and ECS event rule. No AWS
+deployment has run. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -60,12 +61,13 @@ transaction contention has bounded retries. Provisioning, terminal, ownership, a
 configuration failures fail without storing a ticket. Gateway admission remains
 responsible for consuming the ticket once and claiming the terminal input generation.
 
-Before this action is enabled, the deployment must configure the session table TTL on
-`ExpiresAt` and reserve that attribute for expiring items. The Lambda role's DynamoDB
-permissions must be limited to `dynamodb:GetItem`, `dynamodb:ConditionCheckItem`, and
-`dynamodb:PutItem` on `SESSION#*`. The API Gateway method must have explicit rate and
-burst limits and map a throttled request to the public `429 LIMIT_EXCEEDED` error without
-invoking the Lambda.
+The CDK definition configures table TTL on `ExpiresAt` and reserves that attribute for
+expiring items. The action has its own Lambda, log group, and role. The role is limited
+to `dynamodb:GetItem`, `dynamodb:ConditionCheckItem`, and `dynamodb:PutItem` on
+`SESSION#*`. Its single API Gateway method requires an existing Cognito user pool, has a
+rate of 8 requests per second and burst of 16, and maps a throttled request to the public
+`429 LIMIT_EXCEEDED` error without invoking Lambda. The function has zero reserved
+concurrency and the route is absent while the Gateway path is disabled.
 
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and
@@ -79,12 +81,14 @@ The deployed handler has no development identity or local endpoint switch. A fut
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
 that route. Tests construct the authorizer context directly.
 
-The terminal-ticket action has no API Gateway route, Lambda definition, IAM role, TTL
-configuration, or route throttle yet.
-This increment does not provide status/end routes, readiness, or browser terminal relay.
+The terminal-ticket action has no deployed AWS route. The definition depends on an ACM
+certificate, public terminal URL, exact web origin, and existing Cognito user pool at
+activation. DNS, Cognito creation, and browser CORS remain separate work.
+This increment does not provide status/end routes or readiness.
 The start and expiry Lambda definitions have zero reserved concurrency, and the start
-Lambda has no trigger. The recording-work action and gateway recording service are also
-inactive by default. Do not enable the flow until its AWS integration checks pass.
+Lambda has no trigger. The recording-work action, terminal-ticket route, and combined
+Gateway service are also inactive by default. Do not enable the flow until its AWS
+integration checks pass.
 Do not seed the draft repository Challenge as published content.
 
 ## Local checks
@@ -122,6 +126,6 @@ CDK output goes to `cdk.out/`. These directories do not belong in Git.
 - Lambdas: 20 second timeout and 256 MiB memory, not yet performance-tuned.
 - Reuse only clients and validators, never learner state, across invocations.
 
-Next: validate the inactive recording deployment in the approved AWS account, then add
-the separate readiness and outcome actions. Local Docker remains a test tool, not a
-second platform runtime.
+Next: after review and merge, validate the disabled Gateway and ticket path in the
+approved AWS account, then add the separate readiness and outcome actions. Local Docker
+remains a test tool, not a second platform runtime.

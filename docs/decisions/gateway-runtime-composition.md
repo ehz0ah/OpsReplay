@@ -1,6 +1,6 @@
 # Gateway runtime composition increment
 
-Status: implemented and tested locally, public routing and AWS validation pending
+Status: implemented and tested locally; public-route definition added, AWS validation pending
 Date: 11 October 2026
 Owner: Gateway contributors
 
@@ -31,9 +31,8 @@ Terminal service is enabled only when all five settings are present:
 Partial or invalid configuration stops startup. Origins are a bounded comma-separated
 list of exact HTTP or HTTPS origins. Connection counts and ports have fixed ranges. The
 pending-authentication limit cannot exceed the total connection limit. When no terminal
-setting is present, the process keeps its existing recording-only behavior. This keeps
-the inactive AWS recording definition valid until the public-route increment supplies
-the complete terminal configuration.
+setting is present, the process keeps its existing recording-only behavior for local
+compatibility. The conditional AWS definition supplies all terminal settings together.
 
 When enabled, the HTTP server binds inside the container and serves only `GET /healthz`
 and the relay's `GET /v1/terminal` upgrade. Other HTTP requests return 404. The health
@@ -48,10 +47,10 @@ or recording-supervisor failure stops the complete process. ECS can then replace
 and durable recording leases allow recording work to resume. Shutdown force-closes any
 incomplete plain HTTP requests so they cannot block process exit.
 
-## AWS activation prerequisites
+## AWS activation
 
-Before the terminal settings are added to the task definition, the public-route
-increment must:
+The [terminal ingress deployment](terminal-ingress-deployment.md) adds the terminal
+settings only with the complete conditional Gateway path. Its disabled CDK definition:
 
 - grant the Gateway task role `dynamodb:DeleteItem` for `SESSION#*` keys;
 - allow the load balancer to reach `GATEWAY_PORT` and the Gateway to reach environment
@@ -60,7 +59,8 @@ increment must:
 - deploy the terminal-ticket route with its throttle, DynamoDB TTL, and narrow role; and
 - configure the ECS or target-group health check to use `/healthz`.
 
-These are activation requirements. This increment does not make the AWS changes.
+These controls are present in the local deployment definition. The path remains disabled
+and has not been validated on AWS.
 
 ## Alternatives and consequences
 
@@ -89,5 +89,5 @@ termination.
 
 The existing container integration separately proves the terminal client against the
 real Challenge PTY. These checks do not prove ALB WebSocket upgrades, security groups,
-Fargate networking, managed DynamoDB, IAM, or public origin configuration. Public
-routing and AWS validation remain separate work.
+Fargate networking, managed DynamoDB, IAM, or public origin configuration. The public
+route definition exists, but AWS validation remains separate work.

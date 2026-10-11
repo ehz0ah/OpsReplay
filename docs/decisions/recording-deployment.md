@@ -1,8 +1,13 @@
 # Recording deployment increment
 
-Status: implemented locally, AWS validation pending
+Status: implemented locally; deployment shape later extended by the terminal ingress decision
 Date: 8 October 2026
 Owner: Hao Zhe
+
+The [terminal ingress deployment](terminal-ingress-deployment.md) replaces the private
+recording-only service and `EnableRecordingPath` switch with one combined Gateway
+service and `EnableGatewayPath`. The recording storage, event, IAM, and lease decisions
+remain.
 
 ## Context
 
