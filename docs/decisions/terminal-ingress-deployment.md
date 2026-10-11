@@ -36,12 +36,25 @@ recording-work functions have zero reserved concurrency. When it is true, deploy
 also requires the pinned Gateway image digest, ACM certificate ARN, exact allowed web
 origins, public WSS URL, and existing Cognito user-pool ARN.
 
+This intentionally replaces the earlier recording-only stack switch. The deployable unit
+is now the one Gateway process and service that owns both internal modules. The runtime
+can still start without its terminal module for isolated tests, but this stack does not
+expose that as a separate deployment mode.
+
 Deploy terminal-ticket issuance as its own Lambda action. Enable DynamoDB TTL on its
 `ExpiresAt` attribute. Give the action only `GetItem`, `ConditionCheckItem`, and `PutItem`
 for `SESSION#*`. Expose only `POST /v1/sessions/{id}/terminal-tickets` through a Regional
 REST API with a Cognito authorizer. Limit the method to a burst of 16 and a sustained rate
 of 8 requests per second. API Gateway returns the fixed public `429 LIMIT_EXCEEDED`
 response before Lambda invocation when throttled.
+
+The WAF upgrade limit, ticket burst limit, and ticket rate limit are stack parameters.
+Their defaults target the first checkpoint with up to 50 concurrent learners, including
+a class behind one source IP. This is a test assumption, not a production capacity claim.
+The checkpoint must also test the 10-, 50-, and 100-session loads in the evaluation plan
+and a simultaneous reconnect of all active terminals. On `429`, the future browser client
+must use capped exponential backoff with full jitter before it requests another ticket.
+It must not retry in a tight loop.
 
 Certificate issuance, DNS records, Cognito creation, browser CORS policy, and the web
 application remain separate work. Deployment inputs reference those external resources

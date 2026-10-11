@@ -80,7 +80,10 @@ The ALB can reach only Gateway TCP 8080. Gateway can reach environment TCP 7681 
 terminal and TCP 9443 for Monitor control. Gateway has no public address or internet
 route. Environment tasks have no task role. WAF limits `/v1/terminal` upgrades to 300
 per source IP per minute. The ticket method uses Cognito, a burst limit of 16, a rate of
-8 requests per second, and a fixed pre-Lambda `429 LIMIT_EXCEEDED` response.
+8 requests per second, and fixed pre-Lambda public error responses. These three limits
+are stack parameters. Their defaults target the first 50-learner checkpoint and must be
+validated under shared-IP and mass-reconnect load. A browser that receives `429` must
+retry with capped exponential backoff and full jitter.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated

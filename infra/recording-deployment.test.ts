@@ -52,6 +52,32 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
     assert.equal(rendered.Parameters.GatewayDesiredCount?.Default, 1);
     assert.equal(rendered.Parameters.GatewayMaximumConcurrentRecordings?.Default, 16);
     assert.equal(rendered.Parameters.GatewayMaximumConcurrentRecordings?.MaxValue, 64);
+    assert.equal(rendered.Parameters.TerminalUpgradeRateLimitPerIp?.Default, 300);
+    assert.equal(rendered.Parameters.TerminalUpgradeRateLimitPerIp?.MinValue, 10);
+    assert.equal(rendered.Parameters.TerminalTicketBurstLimit?.Default, 16);
+    assert.equal(rendered.Parameters.TerminalTicketBurstLimit?.MaxValue, 256);
+    assert.equal(rendered.Parameters.TerminalTicketRateLimit?.Default, 8);
+    assert.equal(rendered.Parameters.TerminalTicketRateLimit?.MaxValue, 256);
+    const allowedOriginsPattern = rendered.Parameters.TerminalAllowedOrigins?.AllowedPattern;
+    assert.ok(typeof allowedOriginsPattern === 'string');
+    const allowedOrigins = new RegExp(allowedOriginsPattern);
+    for (const value of [
+      '',
+      'https://app.opsreplay.test',
+      'http://localhost:3000',
+      'https://app.opsreplay.test,http://localhost:3000',
+    ]) {
+      assert.match(value, allowedOrigins);
+    }
+    for (const value of [
+      'ftp://app.opsreplay.test',
+      'https://user@app.opsreplay.test',
+      'https://app.opsreplay.test/path',
+      'https://app.opsreplay.test:65536',
+      'https://app.opsreplay.test,',
+    ]) {
+      assert.doesNotMatch(value, allowedOrigins);
+    }
     assert.deepEqual(rendered.Rules.GatewayPathConfigurationRequiredWhenEnabled, {
       RuleCondition: { 'Fn::Equals': [{ Ref: 'EnableGatewayPath' }, 'true'] },
       Assertions: [
@@ -128,7 +154,7 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
             RateBasedStatement: Match.objectLike({
               AggregateKeyType: 'IP',
               EvaluationWindowSec: 60,
-              Limit: 300,
+              Limit: { Ref: 'TerminalUpgradeRateLimitPerIp' },
               ScopeDownStatement: {
                 ByteMatchStatement: Match.objectLike({
                   FieldToMatch: { UriPath: {} },
@@ -160,6 +186,50 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
       gatewayEgress.some((rule) => rule.CidrIp === '0.0.0.0/0'),
       false,
     );
+    assert.deepEqual(gatewayEgress, [
+      {
+        IpProtocol: 'tcp',
+        FromPort: 9443,
+        ToPort: 9443,
+        DestinationSecurityGroupId: { Ref: 'EnvironmentMonitorSecurityGroupId' },
+        Description: 'Authenticated monitor control',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationPrefixListId: { Ref: 'S3GatewayEndpointPrefixListId' },
+        Description: 'S3 gateway endpoint',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationPrefixListId: { Ref: 'DynamoDbGatewayEndpointPrefixListId' },
+        Description: 'DynamoDB gateway endpoint',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 443,
+        ToPort: 443,
+        DestinationSecurityGroupId: { Ref: 'AwsInterfaceEndpointSecurityGroupId' },
+        Description: 'ECR and CloudWatch Logs interface endpoints',
+      },
+      {
+        IpProtocol: 'tcp',
+        FromPort: 53,
+        ToPort: 53,
+        CidrIp: { 'Fn::Join': ['', [{ Ref: 'VpcDnsResolverIpv4' }, '/32']] },
+        Description: 'VPC DNS resolver',
+      },
+      {
+        IpProtocol: 'udp',
+        FromPort: 53,
+        ToPort: 53,
+        CidrIp: { 'Fn::Join': ['', [{ Ref: 'VpcDnsResolverIpv4' }, '/32']] },
+        Description: 'VPC DNS resolver',
+      },
+    ]);
     assert.deepEqual(loadBalancerGroup[1].Properties?.SecurityGroupIngress, [
       {
         IpProtocol: 'tcp',
@@ -267,7 +337,9 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
           TERMINAL_GATEWAY_URL: { Ref: 'TerminalGatewayUrl' },
         },
       },
-      ReservedConcurrentExecutions: { 'Fn::If': ['GatewayPathEnabled', 16, 0] },
+      ReservedConcurrentExecutions: {
+        'Fn::If': ['GatewayPathEnabled', { Ref: 'TerminalTicketBurstLimit' }, 0],
+      },
     });
     const policies = ofType(rendered.Resources, 'AWS::IAM::Policy');
     const statements = policies.flatMap(([, policy]) => {
@@ -299,9 +371,14 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     }
     const [deployment] = ofType(rendered.Resources, 'AWS::ApiGateway::Deployment');
     const [method] = ofType(rendered.Resources, 'AWS::ApiGateway::Method');
+    const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.ok([deployment[1].DependsOn].flat().includes(method[0]));
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV2');
+    assert.equal(gatewayResponses.length, 5);
+    const deploymentDependencies = [deployment[1].DependsOn].flat();
+    assert.ok(deploymentDependencies.includes(method[0]));
+    for (const [logicalId] of gatewayResponses) assert.ok(deploymentDependencies.includes(logicalId));
     template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
       Type: 'COGNITO_USER_POOLS',
       IdentitySource: 'method.request.header.Authorization',
@@ -323,19 +400,44 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
           CachingEnabled: false,
           DataTraceEnabled: false,
           MetricsEnabled: true,
-          ThrottlingBurstLimit: 16,
-          ThrottlingRateLimit: 8,
+          ThrottlingBurstLimit: { Ref: 'TerminalTicketBurstLimit' },
+          ThrottlingRateLimit: { Ref: 'TerminalTicketRateLimit' },
         },
       ],
     });
-    template.hasResourceProperties('AWS::ApiGateway::GatewayResponse', {
-      ResponseType: 'THROTTLED',
-      StatusCode: '429',
-      ResponseTemplates: {
-        'application/json':
-          '{"code":"LIMIT_EXCEEDED","message":"Too many terminal ticket requests. Try again.","requestId":"$context.requestId"}',
-      },
-    });
+    const expectedGatewayResponses = {
+      THROTTLED: [
+        '429',
+        '{"code":"LIMIT_EXCEEDED","message":"Too many terminal ticket requests. Try again.","requestId":"$context.requestId"}',
+      ],
+      UNAUTHORIZED: [
+        '401',
+        '{"code":"UNAUTHENTICATED","message":"Sign in before connecting to a terminal.","requestId":"$context.requestId"}',
+      ],
+      ACCESS_DENIED: [
+        '403',
+        '{"code":"ACCESS_DENIED","message":"Access to this terminal is denied.","requestId":"$context.requestId"}',
+      ],
+      DEFAULT_4XX: [
+        '400',
+        '{"code":"INVALID_REQUEST","message":"The terminal ticket request was rejected.","requestId":"$context.requestId"}',
+      ],
+      DEFAULT_5XX: [
+        '500',
+        '{"code":"INTERNAL_ERROR","message":"The terminal ticket could not be issued. Try again.","requestId":"$context.requestId"}',
+      ],
+    } as const;
+    for (const [, response] of gatewayResponses) {
+      const responseType = response.Properties?.ResponseType as keyof typeof expectedGatewayResponses;
+      const expected = expectedGatewayResponses[responseType];
+      assert.ok(expected, `Unexpected GatewayResponse ${String(responseType)}`);
+      assert.equal(response.Properties?.StatusCode, expected[0]);
+      assert.deepEqual(response.Properties?.ResponseParameters, {
+        'gatewayresponse.header.Cache-Control': "'no-store'",
+        'gatewayresponse.header.Content-Type': "'application/json'",
+      });
+      assert.deepEqual(response.Properties?.ResponseTemplates, { 'application/json': expected[1] });
+    }
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
@@ -373,6 +475,15 @@ test('recording remains durable and least-privilege inside the combined Gateway 
     assert.ok(recordingBucket);
     assert.equal(recordingBucket.DeletionPolicy, 'Retain');
     assert.equal(recordingBucket.UpdateReplacePolicy, 'Retain');
+    assert.deepEqual(recordingBucket.Properties?.PublicAccessBlockConfiguration, {
+      BlockPublicAcls: true,
+      BlockPublicPolicy: true,
+      IgnorePublicAcls: true,
+      RestrictPublicBuckets: true,
+    });
+    assert.deepEqual(recordingBucket.Properties?.BucketEncryption, {
+      ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }],
+    });
     assert.deepEqual(recordingBucket.Properties?.LifecycleConfiguration, {
       Rules: [
         {
@@ -422,8 +533,31 @@ test('recording remains durable and least-privilege inside the combined Gateway 
     assert.ok(
       statements.some(
         (statement) =>
+          statement.Action === 'dynamodb:Query' && JSON.stringify(statement.Resource).includes('unfinished-work'),
+      ),
+    );
+    assert.ok(
+      statements.some(
+        (statement) =>
           JSON.stringify(statement.Action) === JSON.stringify(['s3:PutObject', 's3:PutObjectTagging']) &&
-          JSON.stringify(statement.Resource).includes('/sessions/*'),
+          JSON.stringify(statement.Resource).includes('/sessions/*') &&
+          JSON.stringify(statement.Condition) ===
+            JSON.stringify({
+              StringEquals: {
+                's3:RequestObjectTag/opsreplay-retention': ['provisional', 'sealed'],
+              },
+              'ForAllValues:StringEquals': { 's3:RequestObjectTagKeys': ['opsreplay-retention'] },
+            }),
+      ),
+    );
+    assert.ok(
+      statements.some(
+        (statement) =>
+          statement.Effect === 'Deny' &&
+          statement.Action === 's3:PutObjectTagging' &&
+          JSON.stringify(statement.Resource).includes('/sessions/*') &&
+          JSON.stringify(statement.Condition) ===
+            JSON.stringify({ Null: { 's3:ExistingObjectTag/opsreplay-retention': 'false' } }),
       ),
     );
     assert.equal(

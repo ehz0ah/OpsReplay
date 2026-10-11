@@ -45,7 +45,13 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 1;
+const terminalTicketApiDeploymentVersion = 2;
+const terminalOriginHostPattern =
+  '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
+const terminalOriginPortPattern =
+  '(?::(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?';
+const terminalOriginPattern = `https?://${terminalOriginHostPattern}${terminalOriginPortPattern}`;
+const terminalAllowedOriginsPattern = `^(?:${terminalOriginPattern}(?:,${terminalOriginPattern}){0,15})?$`;
 
 export class SessionStartStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -106,6 +112,27 @@ export class SessionStartStack extends Stack {
       minValue: 1,
       maxValue: 64,
     });
+    const terminalUpgradeRateLimit = new CfnParameter(this, 'TerminalUpgradeRateLimitPerIp', {
+      type: 'Number',
+      default: 300,
+      minValue: 10,
+      maxValue: 2_000_000_000,
+      description: 'Maximum terminal WebSocket upgrade requests per source IP in each 60-second WAF window.',
+    });
+    const terminalTicketBurstLimit = new CfnParameter(this, 'TerminalTicketBurstLimit', {
+      type: 'Number',
+      default: 16,
+      minValue: 1,
+      maxValue: maximumTerminalConnections,
+      description: 'Shared terminal-ticket API burst and Lambda concurrency limit.',
+    });
+    const terminalTicketRateLimit = new CfnParameter(this, 'TerminalTicketRateLimit', {
+      type: 'Number',
+      default: 8,
+      minValue: 1,
+      maxValue: maximumTerminalConnections,
+      description: 'Shared sustained terminal-ticket requests per second.',
+    });
     const terminalCertificateArn = new CfnParameter(this, 'TerminalCertificateArn', {
       type: 'String',
       default: '',
@@ -115,6 +142,7 @@ export class SessionStartStack extends Stack {
       type: 'String',
       default: '',
       maxLength: 4096,
+      allowedPattern: terminalAllowedOriginsPattern,
       description: 'Comma-separated exact HTTP or HTTPS web origins accepted by the Gateway.',
     });
     const terminalGatewayUrl = new CfnParameter(this, 'TerminalGatewayUrl', {
@@ -551,7 +579,11 @@ export class SessionStartStack extends Stack {
       },
       memorySize: 256,
       timeout: Duration.seconds(10),
-      reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, 16, 0) as unknown as number,
+      reservedConcurrentExecutions: Fn.conditionIf(
+        gatewayEnabled.logicalId,
+        terminalTicketBurstLimit.valueAsNumber,
+        0,
+      ) as unknown as number,
     });
 
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
@@ -634,20 +666,65 @@ export class SessionStartStack extends Stack {
       ]),
     });
     terminalTicketPermission.cfnOptions.condition = gatewayEnabled;
-    const terminalTicketThrottled = new CfnGatewayResponse(this, 'TerminalTicketThrottled', {
-      restApiId: terminalApi.ref,
-      responseType: 'THROTTLED',
-      statusCode: '429',
-      responseParameters: {
-        'gatewayresponse.header.Cache-Control': "'no-store'",
-        'gatewayresponse.header.Content-Type': "'application/json'",
-      },
-      responseTemplates: {
-        'application/json':
-          '{"code":"LIMIT_EXCEEDED","message":"Too many terminal ticket requests. Try again.","requestId":"$context.requestId"}',
-      },
-    });
-    terminalTicketThrottled.cfnOptions.condition = gatewayEnabled;
+    const terminalTicketGatewayResponse = (
+      id: string,
+      responseType: string,
+      statusCode: string,
+      code: string,
+      message: string,
+    ) => {
+      const response = new CfnGatewayResponse(this, id, {
+        restApiId: terminalApi.ref,
+        responseType,
+        statusCode,
+        responseParameters: {
+          'gatewayresponse.header.Cache-Control': "'no-store'",
+          'gatewayresponse.header.Content-Type': "'application/json'",
+        },
+        responseTemplates: {
+          'application/json': JSON.stringify({ code, message, requestId: '$context.requestId' }),
+        },
+      });
+      response.cfnOptions.condition = gatewayEnabled;
+      return response;
+    };
+    const terminalTicketGatewayResponses = [
+      terminalTicketGatewayResponse(
+        'TerminalTicketThrottled',
+        'THROTTLED',
+        '429',
+        'LIMIT_EXCEEDED',
+        'Too many terminal ticket requests. Try again.',
+      ),
+      terminalTicketGatewayResponse(
+        'TerminalTicketUnauthorized',
+        'UNAUTHORIZED',
+        '401',
+        'UNAUTHENTICATED',
+        'Sign in before connecting to a terminal.',
+      ),
+      terminalTicketGatewayResponse(
+        'TerminalTicketAccessDenied',
+        'ACCESS_DENIED',
+        '403',
+        'ACCESS_DENIED',
+        'Access to this terminal is denied.',
+      ),
+      terminalTicketGatewayResponse(
+        'TerminalTicketDefault4xx',
+        'DEFAULT_4XX',
+        '400',
+        'INVALID_REQUEST',
+        'The terminal ticket request was rejected.',
+      ),
+      terminalTicketGatewayResponse(
+        'TerminalTicketDefault5xx',
+        'DEFAULT_5XX',
+        '500',
+        'INTERNAL_ERROR',
+        'The terminal ticket could not be issued. Try again.',
+      ),
+    ];
     // API Gateway deployments are immutable snapshots. Bump this version when the route model changes.
     const terminalTicketDeployment = new CfnDeployment(
       this,
@@ -659,6 +736,9 @@ export class SessionStartStack extends Stack {
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
+    for (const response of terminalTicketGatewayResponses) {
+      terminalTicketDeployment.addResourceDependency(response);
+    }
     const terminalTicketStage = new CfnStage(this, 'TerminalTicketApiStage', {
       restApiId: terminalApi.ref,
       deploymentId: terminalTicketDeployment.ref,
@@ -671,8 +751,8 @@ export class SessionStartStack extends Stack {
           cachingEnabled: false,
           dataTraceEnabled: false,
           metricsEnabled: true,
-          throttlingBurstLimit: 16,
-          throttlingRateLimit: 8,
+          throttlingBurstLimit: terminalTicketBurstLimit.valueAsNumber,
+          throttlingRateLimit: terminalTicketRateLimit.valueAsNumber,
         },
       ],
     });
@@ -894,7 +974,7 @@ export class SessionStartStack extends Stack {
             rateBasedStatement: {
               aggregateKeyType: 'IP',
               evaluationWindowSec: 60,
-              limit: 300,
+              limit: terminalUpgradeRateLimit.valueAsNumber,
               scopeDownStatement: {
                 byteMatchStatement: {
                   fieldToMatch: { uriPath: {} },
