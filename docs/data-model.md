@@ -154,9 +154,13 @@ null score. They never substitute zero for missing counters.
 
 The reference terminal source now keeps one process-generated UUID, contiguous event
 sequences, and a nondestructive cursor. Its temporary journal retains at most
-20,000,000 serialized event bytes and 100,000 events. `limit_exceeded` or `data_gap`
-freezes the retained prefix and exposes the first loss time without inventing more
-sequences. It contains raw input/output, dimensions, and exit, not command events.
+20,000,000 serialized event bytes and 100,000 events for the whole attempt, not the
+unread backlog. Reserve 128 bytes and one event inside those limits for final exit.
+`limit_exceeded` or `data_gap` freezes normal data and exposes the first loss time.
+Finalization still appends one exit with the next retained sequence and preserves loss.
+One large output can end normal recording for the remaining attempt, even with current
+readers. Relevant loss produces an incomplete combined recording with a null score.
+It contains raw input/output, dimensions, and exit, not command events.
 This is separate from durable recording storage and does not consume a recorder lease.
 See the [terminal source decision](decisions/terminal-recording-source.md).
 

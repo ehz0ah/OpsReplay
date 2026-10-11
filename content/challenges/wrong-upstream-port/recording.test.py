@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import pty
 import socket
 import subprocess
 import sys
@@ -82,29 +83,128 @@ def output_until(client, expected):
     return output
 
 
+def real_pty_tail_bound():
+    # Keep a real slave open with queued bytes, then prove the shared tail cap
+    # truncates observed data and still leaves one final exit after permanent loss.
+    master, slave = pty.openpty()
+    try:
+        os.set_blocking(master, False)
+        state = terminal.TerminalState.__new__(terminal.TerminalState)
+        state.lock = threading.RLock()
+        state.output_condition = threading.Condition(state.lock)
+        state.stopping = threading.Event()
+        state.pending_output = terminal.collections.deque()
+        state.pending_output_bytes = 0
+        state.child_exit_at = time.monotonic()
+        state.exit_tail_bytes = terminal.MAX_EXIT_TAIL_BYTES - 3
+        state.child_exit_detected = threading.Event()
+        state.child_exit_detected.set()
+        state.recording_finalized = threading.Event()
+        state.shell_exit_code = None
+        state.master_fd = master
+        state.recording = recording.RecordingJournal()
+        state.recording.append("dimensions", columns=80, rows=24)
+        assert os.write(slave, b"tail") == 4
+        assert terminal.select.select([master], [], [], 1)[0], "real PTY tail did not become readable"
+        state._drain_output()
+        state._finish_shell(7)
+        events = state.recording.page(state.recording.source, 0)["events"]
+        assert [event["type"] for event in events] == ["dimensions", "output", "exit"]
+        assert base64.b64decode(events[1]["data"]) == b"tai"
+        assert events[-1]["code"] == 7 and state.recording.shell_state == "exited"
+        assert state.recording.loss["reason"] == "data_gap"
+        assert events[-1]["recordedAt"] >= state.recording.loss["occurredAt"]
+        assert os.read(master, 1) == b"l", "tail loss must leave a real unobserved byte"
+        assert state.recording_finalized.is_set()
+        return state.recording
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
 def helpers():
+    real_pty_tail_bound()
+    # The exit reserve is inside both lifetime limits, including an exact byte fit.
     journal = recording.RecordingJournal()
-    journal.append("dimensions", columns=80, rows=24)
-    first_size = journal.byte_count
-    with mock.patch.object(recording, "MAX_JOURNAL_BYTES", first_size):
-        journal.append("output", data="YQ==")
-    assert len(journal.events) == 1 and journal.loss["reason"] == "limit_exceeded"
-    exact = recording.RecordingJournal()
-    with mock.patch.object(exact, "timestamp", return_value=exact.started_at):
-        boundary = len(recording.encode({"sequence": 1, "recordedAt": exact.started_at, "type": "dimensions", "columns": 80, "rows": 24}))
-        with mock.patch.object(recording, "MAX_JOURNAL_BYTES", boundary):
-            exact.append("dimensions", columns=80, rows=24)
-            assert exact.loss is None and exact.byte_count == boundary
-            exact.append("dimensions", columns=80, rows=24)
-            assert exact.loss["reason"] == "limit_exceeded"
-    loss = dict(journal.loss)
-    journal.append("exit", code=0)
-    assert journal.loss == loss and len(journal.events) == 1
+    with mock.patch.object(journal, "timestamp", return_value=journal.started_at):
+        boundary = len(recording.encode({"sequence": 1, "recordedAt": journal.started_at, "type": "dimensions", "columns": 80, "rows": 24}))
+        with mock.patch.object(recording, "MAX_JOURNAL_BYTES", boundary + recording.MAX_EXIT_EVENT_BYTES):
+            journal.append("dimensions", columns=80, rows=24)
+            assert journal.loss is None and journal.byte_count == boundary
+            journal.bytes_event("output", b"a")
+            assert journal.loss["reason"] == "limit_exceeded"
+            journal.finish(-255)
+            assert journal.byte_count <= recording.MAX_JOURNAL_BYTES
+    assert len(journal.events) == 2 and json.loads(journal.events[-1])["code"] == -255
+    too_small = recording.RecordingJournal()
+    with mock.patch.object(too_small, "timestamp", return_value=too_small.started_at), mock.patch.object(recording, "MAX_JOURNAL_BYTES", boundary + recording.MAX_EXIT_EVENT_BYTES - 1):
+        too_small.append("dimensions", columns=80, rows=24)
+        assert too_small.events == [] and too_small.loss["reason"] == "limit_exceeded"
+        too_small.finish(255)
+        assert too_small.byte_count <= recording.MAX_JOURNAL_BYTES
     journal = recording.RecordingJournal()
     with mock.patch.object(recording, "MAX_JOURNAL_EVENTS", 2):
-        for _ in range(3):
-            journal.append("dimensions", columns=80, rows=24)
-    assert len(journal.events) == 2 and journal.loss["reason"] == "limit_exceeded"
+        journal.append("dimensions", columns=80, rows=24)
+        journal.append("dimensions", columns=80, rows=24)
+        assert len(journal.events) == 1 and journal.loss["reason"] == "limit_exceeded"
+        journal.finish(7)
+        assert len(journal.events) == recording.MAX_JOURNAL_EVENTS
+    # Preserve the first loss and exact prefix. Finalization adds only one exit,
+    # with the next retained sequence, even after loss, and never resumes data.
+    for reason in (None, "limit_exceeded", "data_gap"):
+        journal = recording.RecordingJournal()
+        journal.append("dimensions", columns=80, rows=24)
+        if reason is not None:
+            journal.mark_loss(reason)
+            journal.mark_loss("data_gap")
+        loss = dict(journal.loss) if journal.loss else None
+        prefix = list(journal.events)
+        if reason is not None:
+            journal.bytes_event("input", b"ignored")
+            journal.bytes_event("output", b"ignored")
+            journal.append("dimensions", columns=90, rows=30)
+            assert journal.events == prefix
+        journal.finish(7)
+        ended = list(journal.events)
+        journal.finish(0)
+        journal.bytes_event("output", b"ignored")
+        journal.bytes_event("input", b"ignored")
+        journal.append("dimensions", columns=90, rows=30)
+        assert journal.events == ended and ended[:-1] == prefix
+        assert journal.loss == loss and journal.shell_state == "exited"
+        exit_event = json.loads(ended[-1])
+        assert exit_event["type"] == "exit" and exit_event["code"] == 7
+        assert exit_event["sequence"] == len(prefix) + 1
+        if loss:
+            assert exit_event["recordedAt"] >= loss["occurredAt"]
+        assert journal.byte_count == sum(len(event) for event in journal.events)
+    # Concurrent finalizers and a reader must never expose exited without exit.
+    journal = recording.RecordingJournal()
+    journal.append("dimensions", columns=80, rows=24)
+    journal.mark_loss("data_gap")
+    snapshots = []
+    start = threading.Barrier(5)
+
+    def finish_and_read():
+        start.wait(timeout=2)
+        journal.finish(7)
+        snapshots.append(journal.page(journal.source, 0))
+
+    threads = [threading.Thread(target=finish_and_read) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    start.wait(timeout=2)
+    for thread in threads:
+        thread.join(2)
+        assert not thread.is_alive()
+    assert len(snapshots) == 4
+    for snapshot in snapshots:
+        assert snapshot["shellState"] == "exited"
+        assert [event["type"] for event in snapshot["events"]] == ["dimensions", "exit"]
+        assert snapshot["latestSequence"] == snapshot["nextSequence"] == 2
+    # Maximum sequence and signed exit-code width fit the fixed reserve.
+    for code in (-255, -1, 0, 255):
+        assert len(recording.encode({"sequence": recording.MAX_JOURNAL_EVENTS, "recordedAt": "9999-12-31T23:59:59.999Z", "type": "exit", "code": code})) <= recording.MAX_EXIT_EVENT_BYTES
     journal = recording.RecordingJournal()
     journal.append("dimensions", columns=80, rows=24)
     for _ in range(102):
@@ -352,6 +452,17 @@ def run():
     output_until(interactive, b"usable-after-recording-limit")
     time.sleep(0.11)
     assert page(first, ready["source"], frozen)["latestSequence"] == frozen
+    input_frame(interactive, 3, b"exit 7\n")
+    while interactive.receive()["type"] != "exit":
+        pass
+    time.sleep(0.11)
+    final = page(first, ready["source"], frozen)
+    assert final["shellState"] == "exited" and final["loss"] == result["loss"]
+    assert final["latestSequence"] == frozen + 1
+    assert len(final["events"]) == 1
+    assert final["events"][0]["type"] == "exit" and final["events"][0]["code"] == 7
+    time.sleep(0.11)
+    assert page(first, ready["source"], frozen + 1)["events"] == []
     for client in (first, second, stalled, interactive):
         client.close()
     for path in ("/var/log/supervisor/terminal.log", "/var/log/supervisor/supervisord.log"):
@@ -360,12 +471,15 @@ def run():
     print("terminal recording checks passed")
 
 
-def exit_case(flood=False):
+def exit_case(mode="exit"):
+    flood = mode == "flood"
     client, ready = recorder()
     interactive = Client()
     interactive.send({"type": "attach", "version": 1, "mode": "interactive", "generation": 1, "columns": 80, "rows": 24})
     assert interactive.receive()["type"] == "ready"
     command = b"(trap '' HUP; while :; do printf flood; done) & disown; exit 7\n" if flood else b"printf 'recording-exit-tail\\n'; exit 7\n"
+    if mode == "quiet":
+        command = b"sleep 300 & printf 'recording-exit-tail\\n'; exit 7\n"
     started = time.monotonic()
     input_frame(interactive, 1, command)
     while True:
@@ -376,11 +490,17 @@ def exit_case(flood=False):
     assert time.monotonic() - started < 8
     events, result = history(client, ready["source"])
     assert result["shellState"] == "exited"
+    assert events[-1]["type"] == "exit" and events[-1]["code"] == 7
+    assert sum(event["type"] == "exit" for event in events) == 1
     if flood:
-        assert result["loss"]["reason"] == "data_gap"
+        # A writer can pause before the limit. Empty-read finalization is valid;
+        # the controlled real-PTY helper below proves actual bound loss.
+        if result["loss"] is not None:
+            assert result["loss"]["reason"] == "data_gap"
+            assert events[-1]["recordedAt"] >= result["loss"]["occurredAt"]
+            assert all(event["recordedAt"] <= result["loss"]["occurredAt"] for event in events[:-1])
     else:
         assert result["loss"] is None, result
-        assert events[-1]["type"] == "exit" and events[-1]["code"] == 7
         assert b"recording-exit-tail\r\n" in b"".join(base64.b64decode(event["data"]) for event in events if event["type"] == "output")
     client.close()
     client, resumed = recorder()
@@ -395,7 +515,7 @@ def exit_case(flood=False):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in ("exit", "flood"):
-        exit_case(sys.argv[1] == "flood")
+    if len(sys.argv) > 1 and sys.argv[1] in ("exit", "quiet", "flood"):
+        exit_case(sys.argv[1])
     else:
         run()

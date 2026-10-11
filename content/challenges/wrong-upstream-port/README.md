@@ -45,7 +45,10 @@ The source records original output, successfully written input bytes, dimensions
 and exit. It does not parse commands or prove that input executed. A stable source
 UUID and nondestructive `after` cursor support reconnects without duplicating replay.
 The journal retains a prefix bounded by 20,000,000 encoded event bytes and 100,000
-events. Overflow reports permanent `limit_exceeded` and leaves the shell usable.
+events for the whole attempt, including a reserved 128 bytes and one event for exit.
+Overflow permanently stops normal data recording, even with current readers, but leaves
+the shell usable. Final exit is retained with the next sequence and does not clear loss.
+Relevant loss makes the future recording incomplete with a null score under P09.
 Pages have at most 100 events and 24 KiB. This learner-controlled temporary memory
 is not durable storage or tamper-proof evidence. See the
 [source contract and bounds](../../../docs/challenges.md#bounded-terminal-source).
@@ -106,9 +109,10 @@ terminal unavailable so that a stale client cannot gain input access to a new sh
 The shell ignores up to ten consecutive Ctrl-D inputs at an empty prompt to reduce
 accidental exits. A deliberate `exit` immediately rejects new interactive operations,
 finalizes a bounded output tail, and allows read-only recording access for at most
-60 seconds. Startup checks fail during this grace period. A background process
-retaining or flooding the PTY produces an explicit `data_gap`. SIGTERM and SIGINT
-stop promptly. Create a fresh container for a fresh terminal attempt.
+60 seconds. Startup checks fail during this grace period. The first empty nonblocking
+read after Bash exit ends the recorded tail. A quiet background PTY holder is not a gap;
+later background output is outside the recording. Tail bounds and uncertain failures
+produce `data_gap` but cannot suppress final exit. SIGTERM and SIGINT stop promptly. Create a fresh container for a fresh terminal attempt.
 
 After leaving the shell, discard this local attempt and its edits:
 

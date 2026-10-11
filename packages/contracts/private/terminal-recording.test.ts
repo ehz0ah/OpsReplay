@@ -119,6 +119,57 @@ test('pages require matching source, contiguous prefix, ordered time, and truthf
     ),
   );
   assert.ok(
-    isTerminalRecordingPage({ ...page, shellState: 'exited', loss: { reason: 'data_gap', occurredAt: at } }, source, 0),
+    !isTerminalRecordingPage(
+      { ...page, shellState: 'exited', loss: { reason: 'data_gap', occurredAt: at } },
+      source,
+      0,
+    ),
   );
+});
+
+test('permanent loss preserves only a final exit after the frozen data prefix', () => {
+  const lostAt = '2026-10-11T12:00:01.000Z';
+  const exitedAt = '2026-10-11T12:00:02.000Z';
+  const output = { sequence: 2, recordedAt: lostAt, type: 'output', data: 'YQ==' };
+  const exit = { sequence: 3, recordedAt: exitedAt, type: 'exit', code: 7 };
+  for (const reason of ['limit_exceeded', 'data_gap']) {
+    const ended = {
+      ...page,
+      observedAt: exitedAt,
+      shellState: 'exited',
+      loss: { reason, occurredAt: lostAt },
+      latestSequence: 3,
+      events: [dimensions, output, exit],
+      nextSequence: 3,
+    };
+    assert.ok(isTerminalRecordingPage(ended, source, 0));
+    assert.ok(isTerminalRecordingPage({ ...ended, events: [exit] }, source, 2));
+    assert.ok(isTerminalRecordingPage({ ...ended, events: [], nextSequence: 3 }, source, 3));
+    assert.ok(isTerminalRecordingPage({ ...ended, events: [dimensions], nextSequence: 1 }, source, 0));
+    assert.ok(isTerminalRecordingPage({ ...ended, events: [dimensions, output], nextSequence: 2 }, source, 0));
+    assert.ok(
+      isTerminalRecordingPage(
+        { ...ended, events: [dimensions, { ...output, recordedAt: at }, { ...exit, recordedAt: lostAt }] },
+        source,
+        0,
+      ),
+    );
+    for (const change of [
+      { shellState: 'running' },
+      { shellState: 'exiting' },
+      { events: [dimensions, output], nextSequence: 2, latestSequence: 2 },
+      { events: [dimensions, output, { ...exit, recordedAt: at }] },
+      { events: [dimensions, { ...output, recordedAt: at }, { ...exit, recordedAt: at }] },
+      { events: [dimensions, output, { ...exit, recordedAt: '2026-10-11T12:00:03.000Z' }] },
+      { events: [dimensions, output, { ...exit, sequence: 4 }], nextSequence: 4, latestSequence: 4 },
+      { events: [dimensions, output, exit, { ...exit, sequence: 4 }], nextSequence: 4, latestSequence: 4 },
+    ])
+      assert.ok(!isTerminalRecordingPage({ ...ended, ...change }, source, 0));
+    for (const data of [
+      { ...output, recordedAt: exitedAt },
+      { sequence: 2, recordedAt: exitedAt, type: 'input', data: 'YQ==' },
+      { ...dimensions, sequence: 2, recordedAt: exitedAt },
+    ])
+      assert.ok(!isTerminalRecordingPage({ ...ended, events: [dimensions, data, exit] }, source, 0));
+  }
 });

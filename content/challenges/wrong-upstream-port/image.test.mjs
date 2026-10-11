@@ -244,7 +244,7 @@ test('terminal recording is independent, bounded, and leaves interactive input u
   assert.ok(!logs.stdout.includes('recording-away') && !logs.stderr.includes('recording-away'));
 });
 
-for (const mode of ['exit', 'flood']) {
+for (const mode of ['exit', 'quiet', 'flood']) {
   test(`terminal recording preserves bounded post-exit access (${mode})`, async (t) => {
     const id = await fresh(t);
     success(

@@ -111,8 +111,10 @@ After Bash exits, the active handler stops processing new operations while queue
 output and the final `exit` frame are delivered. New interactive attachments remain rejected.
 Read-only recording access remains available for at most 60 seconds after source
 finalization. Tail collection is bounded by one second after detected Bash exit and
-64 KiB. A retained or flooding background PTY causes `data_gap`, not an indefinite
-wait or a false complete tail. SIGTERM and SIGINT do not wait for this grace period.
+64 KiB. The first empty nonblocking read after Bash exit ends the source tail. A quiet
+background process retaining the PTY alone does not cause loss. Later background output
+is outside this recording. Reaching a tail bound or an uncertain read/queue failure
+reports `data_gap`; final exit is still recorded. SIGTERM and SIGINT do not wait for this grace period.
 The startup probe requests recording metadata and requires `shellState: running`.
 
 ## Lifecycle
@@ -319,11 +321,23 @@ eight-connection cap and existing attach, idle, and send deadlines. Metadata giv
 source/start, dimensions, latest sequence, observation time, `running`, `exiting`, or
 `exited` shell state, and permanent loss reason/time.
 
-The source retains an append-only prefix of at most 20,000,000 encoded event bytes and
-100,000 events in process memory. This is not S3 persistence or the export size bound.
-Exhaustion freezes the prefix with `limit_exceeded` at the first omitted observation.
-A missing exit tail reports `data_gap`. Neither silently evicts data nor stops the
-shell. Root can alter this source; the future Gateway must independently validate it.
+The source retains at most 20,000,000 encoded event bytes and 100,000 events for the
+whole attempt in process memory. Reserve 128 bytes and one event inside those caps for
+final exit. Exhaustion freezes normal data with `limit_exceeded` at the first omitted
+observation. One large output can therefore stop input/output/dimension recording for
+the remaining attempt, even while readers are current. Finalization appends exactly one
+exit with the next retained sequence after the frozen prefix; loss remains permanent.
+A truncated exit tail reports `data_gap` with the same final-exit rule. Neither silently
+evicts data nor stops the shell. A final nonempty page for `exited` must end with exit,
+including after loss. An empty end read alone does not prove that the reader previously
+validated exit. The future adapter must retain that validation across pages.
+
+This is not S3 persistence or the export size bound. The lifetime caps are resource
+bounds, not measured capacity for a four-hour session. Relevant loss makes the future
+combined recording incomplete with a null score under P09. See the
+[source decision](decisions/terminal-recording-source.md#lifetime-budget-and-consequence)
+for the budget and conditional durable-trimming requirements. Root can alter this
+source; the future Gateway must independently validate it.
 
 Lifecycle sealing is not added here. Future integration must apply the saved cutoff,
 advance a durable cursor only after commit, and wait for an observation strictly later
