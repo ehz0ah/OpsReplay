@@ -746,6 +746,87 @@ test('terminal loss keeps Monitor collection alive and publishes incomplete once
   assert.equal(reads, 1);
 });
 
+test('lifecycle readiness follows both durable initial pages and precedes terminal polling', async () => {
+  const terminal = terminalFixture();
+  const client = new FakeMonitorClient();
+  const store = new MemoryRecordingStore();
+  const gate = new GateWait();
+  const order: string[] = [];
+  const commit = terminal.options.recordings.commit;
+  terminal.options.recordings.commit = async (...args) => {
+    order.push('terminal');
+    return commit(...args);
+  };
+  const start = client.start.bind(client);
+  client.start = async () => {
+    order.push('start');
+    return start();
+  };
+  let release = () => {};
+  let readyStarted = false;
+  const running = new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    chunks: new MemoryChunkStore(),
+    recordings: store,
+    terminal: terminal.options,
+    lifecycle: {
+      ready: async (_lease, actualStartedAt, checkpoint) => {
+        order.push('ready');
+        assert.equal(actualStartedAt, startedAt);
+        assert.equal(checkpoint.cursor, 1);
+        assert.equal(store.appends, 1);
+        readyStarted = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      monitor: async () => {
+        order.push('monitor');
+      },
+    },
+    wait: gate.wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  await until(() => readyStarted, 'Readiness callback did not start');
+  assert.deepEqual(order, ['terminal', 'start', 'monitor', 'ready']);
+  store.enterDrain();
+  gate.release();
+  await until(() => store.renews === 1, 'Drain was not observed during readiness');
+  release();
+  assert.equal((await running).status, 'complete');
+  assert.equal(store.seals, 1);
+  assert.equal(terminal.seal()?.complete, true);
+});
+
+test('readiness failure closes both sources without publishing recording completion', async () => {
+  const terminal = terminalFixture();
+  const client = new FakeMonitorClient();
+  const store = new MemoryRecordingStore();
+  const running = new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    chunks: new MemoryChunkStore(),
+    recordings: store,
+    terminal: terminal.options,
+    lifecycle: {
+      ready: async () => {
+        throw new Error('Readiness write failed');
+      },
+      monitor: async () => {},
+    },
+    wait: new GateWait().wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  await assert.rejects(running, /Readiness write failed/);
+  assert.equal(terminal.checkpoint()?.cursor, 1);
+  assert.equal(store.appends, 1);
+  assert.equal(store.seals, 0);
+  assert.equal(client.closed, true);
+});
+
 test('terminal failure cancels monitor work and cannot publish combined completion', async () => {
   const terminal = terminalFixture();
   terminal.options.recordings.commit = async () => {

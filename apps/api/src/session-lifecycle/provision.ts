@@ -52,7 +52,11 @@ export function createProvisionSession({
     }
 
     const saved = await store.saveTask(sessionId, taskArn, abortSignal);
-    if (saved.view.status !== 'provisioning' || now().getTime() >= Date.parse(saved.provisioningDeadline)) {
+    if (
+      saved.view.status !== 'ready' &&
+      saved.view.recording.status !== 'draining' &&
+      (saved.view.status !== 'provisioning' || now().getTime() >= Date.parse(saved.provisioningDeadline))
+    ) {
       await environment.stop(saved.launchArguments.cluster, taskArn, 'OpsReplay provisioning expired', abortSignal);
     }
     return saved;

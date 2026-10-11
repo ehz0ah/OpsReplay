@@ -2,7 +2,11 @@
 
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, terminal-ticket
-issuance, session-status reads, and the combined Gateway path behind a public ALB. The first disposable
+issuance, session-status reads, owner end, session reconciliation, bounded sweep,
+and the combined Gateway path behind a public ALB. The three new lifecycle actions,
+stream mapping, minute sweep, and STOPPED event rule remain disabled. Ready-attempt
+lock release depends on the next debrief/finalisation PR. See the
+[lifecycle decision](../docs/decisions/session-lifecycle.md). The first disposable
 checkpoint verified GitHub OIDC image
 publication and the private gateway runtime in AWS. Its foundation, service, and image
 repositories were then removed. No OpsReplay runtime or image is currently deployed.

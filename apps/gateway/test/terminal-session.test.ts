@@ -79,6 +79,28 @@ function fixture() {
   };
 }
 
+test('manual input and browser heartbeat record liveness but private keepalive does not', async () => {
+  const f = fixture();
+  f.store.recordLearnerSeen = async () => {
+    f.calls.push('seen');
+  };
+  const { session } = await GatewayTerminalSession.open(options, f.dependencies);
+  await session.input(Buffer.from('pwd\n'));
+  await session.heartbeat();
+  await session.learnerHeartbeat();
+  assert.deepEqual(f.calls, ['seen', 'input:pwd\n', 'heartbeat', 'seen']);
+});
+
+test('a liveness failure occurs before PTY input and must not cause a resend', async () => {
+  const f = fixture();
+  f.store.recordLearnerSeen = async () => {
+    throw new TerminalAdmissionError('unavailable');
+  };
+  const { session } = await GatewayTerminalSession.open(options, f.dependencies);
+  await assert.rejects(session.input(Buffer.from('pwd\n')));
+  assert.deepEqual(f.calls, []);
+});
+
 test('admits before connecting and exposes readiness only after terminal attachment', async () => {
   const f = fixture();
   const opened = await GatewayTerminalSession.open(options, f.dependencies);

@@ -21,15 +21,15 @@ import {
   CfnRestApi,
   CfnStage,
 } from 'aws-cdk-lib/aws-apigateway';
-import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { CfnSecurityGroup, CfnSecurityGroupEgress, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
 import { CfnService, CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { CfnListener, CfnListenerRule, CfnLoadBalancer, CfnTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { CfnRule, Rule } from 'aws-cdk-lib/aws-events';
+import { CfnRule, Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { ArnPrincipal, Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
-import { CfnPermission, Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { CfnPermission, CfnEventSourceMapping, Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { SqsDestination } from 'aws-cdk-lib/aws-lambda-destinations';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { CfnScheduleGroup } from 'aws-cdk-lib/aws-scheduler';
@@ -45,7 +45,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 3;
+const terminalTicketApiDeploymentVersion = 4;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
 const terminalOriginPortPattern =
@@ -215,6 +215,7 @@ export class SessionStartStack extends Stack {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
+      stream: StreamViewType.KEYS_ONLY,
       timeToLiveAttribute: terminalTicketTtlAttribute,
       // Safe default. A disposable deployment must explicitly decide what data to remove.
       removalPolicy: RemovalPolicy.RETAIN,
@@ -495,6 +496,161 @@ export class SessionStartStack extends Stack {
       resourceName: Fn.join('/', [scheduleGroup.ref, 'session-*']),
       arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
     });
+    const lifecycleSchedulerRole = new Role(this, 'LifecycleSchedulerTargetRole', {
+      assumedBy: new ServicePrincipal('scheduler.amazonaws.com'),
+    });
+    const lifecycleRoles: Role[] = [];
+    const lifecycleFunction = (id: string, bundle: string, timeout: number) => {
+      const functionLogs = new LogGroup(this, `${id}Logs`, {
+        retention: RetentionDays.ONE_WEEK,
+        removalPolicy: RemovalPolicy.DESTROY,
+      });
+      const functionRole = new Role(this, `${id}Role`, { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
+      functionLogs.grantWrite(functionRole);
+      functionRole.addToPolicy(
+        new PolicyStatement({
+          actions: [
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:DeleteItem',
+            'dynamodb:ConditionCheckItem',
+          ],
+          resources: [table.tableArn],
+          conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*', 'USER#*'] } },
+        }),
+      );
+      functionRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['ecs:DescribeTasks', 'ecs:StopTask'],
+          resources: [taskArn],
+          conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+        }),
+      );
+      functionRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['ecs:ListTasks'],
+          resources: ['*'],
+          conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+        }),
+      );
+      functionRole.addToPolicy(
+        new PolicyStatement({
+          actions: [
+            'scheduler:GetSchedule',
+            'scheduler:CreateSchedule',
+            'scheduler:UpdateSchedule',
+            'scheduler:DeleteSchedule',
+          ],
+          resources: [scheduleArn],
+        }),
+      );
+      functionRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['iam:PassRole'],
+          resources: [lifecycleSchedulerRole.roleArn],
+          conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
+        }),
+      );
+      lifecycleRoles.push(functionRole);
+      return new Function(this, id, {
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'index.handler',
+        code: Code.fromAsset(fileURLToPath(new URL(`../dist/${bundle}/`, import.meta.url))),
+        role: functionRole,
+        logGroup: functionLogs,
+        environment: {
+          SESSION_TABLE_NAME: table.tableName,
+          SCHEDULER_GROUP_NAME: scheduleGroup.ref,
+          SCHEDULER_TARGET_ROLE_ARN: lifecycleSchedulerRole.roleArn,
+          AWS_PARTITION: Aws.PARTITION,
+          AWS_ACCOUNT_ID: Aws.ACCOUNT_ID,
+        },
+        memorySize: 256,
+        timeout: Duration.seconds(timeout),
+        reservedConcurrentExecutions: 0,
+      });
+    };
+    const reconcileSession = lifecycleFunction('ReconcileSession', 'reconcile-session', 30);
+    const sweepSessions = lifecycleFunction('SweepSessions', 'sweep-sessions', 60);
+    sweepSessions.addEnvironment('SESSION_RECONCILE_FUNCTION_ARN', reconcileSession.functionArn);
+    reconcileSession.grantInvoke(lifecycleSchedulerRole);
+    reconcileSession.configureAsyncInvoke({ retryAttempts: 2, maxEventAge: Duration.minutes(15) });
+    sweepSessions.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: Duration.minutes(2) });
+    const sweepRole = lifecycleRoles[1]!;
+    sweepRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:Query'],
+        resources: [`${table.tableArn}/index/${unfinishedWorkIndex.name}`],
+        conditions: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['LIFECYCLE'] } },
+      }),
+    );
+    sweepRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['LIFECYCLE_SWEEP'] } },
+      }),
+    );
+    lifecycleRoles[0]!.addToPolicy(
+      new PolicyStatement({
+        actions: [
+          'dynamodb:DescribeStream',
+          'dynamodb:GetRecords',
+          'dynamodb:GetShardIterator',
+          'dynamodb:ListStreams',
+        ],
+        resources: [table.tableStreamArn!],
+      }),
+    );
+    new CfnEventSourceMapping(this, 'LifecycleStream', {
+      functionName: reconcileSession.functionArn,
+      eventSourceArn: table.tableStreamArn!,
+      startingPosition: 'LATEST',
+      batchSize: 25,
+      bisectBatchOnFunctionError: true,
+      maximumRetryAttempts: 3,
+      maximumRecordAgeInSeconds: 3600,
+      enabled: false,
+      filterCriteria: {
+        filters: [
+          {
+            pattern: JSON.stringify({
+              eventName: ['INSERT', 'MODIFY'],
+              dynamodb: { Keys: { SK: { S: ['STATE', 'LIFECYCLE', 'RECORDING', 'MONITOR_OBSERVATION'] } } },
+            }),
+          },
+        ],
+      },
+    });
+    const lifecycleSweepRule = new Rule(this, 'LifecycleSweep', {
+      schedule: Schedule.rate(Duration.minutes(1)),
+      enabled: false,
+    });
+    lifecycleSweepRule.addTarget(
+      new LambdaFunction(sweepSessions, { retryAttempts: 0, maxEventAge: Duration.minutes(2) }),
+    );
+    const lifecycleStoppedRule = new Rule(this, 'LifecycleTaskStopped', {
+      enabled: false,
+      eventPattern: {
+        source: ['aws.ecs'],
+        detailType: ['ECS Task State Change'],
+        detail: { clusterArn: [clusterArn.valueAsString], lastStatus: ['STOPPED'] },
+      },
+    });
+    lifecycleStoppedRule.addTarget(
+      new LambdaFunction(reconcileSession, { retryAttempts: 2, maxEventAge: Duration.hours(1) }),
+    );
+    for (const fn of [reconcileSession, sweepSessions])
+      new Alarm(this, `${fn.node.id}Errors`, {
+        metric: fn.metricErrors({ statistic: 'Sum', period: Duration.minutes(1) }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+        alarmDescription:
+          'Inspect lifecycle failure logs and retry the affected session. The active lock remains held.',
+      });
+
     role.addToPolicy(
       new PolicyStatement({
         actions: ['scheduler:CreateSchedule', 'scheduler:GetSchedule'],
@@ -504,7 +660,7 @@ export class SessionStartStack extends Stack {
     role.addToPolicy(
       new PolicyStatement({
         actions: ['iam:PassRole'],
-        resources: [schedulerRole.roleArn],
+        resources: [lifecycleSchedulerRole.roleArn],
         conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
       }),
     );
@@ -542,6 +698,35 @@ export class SessionStartStack extends Stack {
         conditions: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } },
       }),
     );
+    for (const lifecycleRole of lifecycleRoles) {
+      lifecycleRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['ecs:RunTask'],
+          resources: [taskDefinitionArn],
+          conditions: { ArnEquals: { 'ecs:cluster': clusterArn.valueAsString } },
+        }),
+      );
+      lifecycleRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['ecs:TagResource'],
+          resources: [taskArn],
+          conditions: { StringEquals: { 'ecs:CreateAction': 'RunTask' } },
+        }),
+      );
+      lifecycleRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['iam:PassRole'],
+          resources: [executionRoleArn.valueAsString],
+          conditions: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } },
+        }),
+      );
+      lifecycleRole.addToPolicy(
+        new PolicyStatement({
+          actions: ['s3:GetObjectTagging', 's3:PutObject', 's3:PutObjectTagging'],
+          resources: [secretFiles.arnForObjects('sessions/*')],
+        }),
+      );
+    }
     new Function(this, 'StartSession', {
       runtime: Runtime.NODEJS_22_X,
       handler: 'index.handler',
@@ -557,8 +742,8 @@ export class SessionStartStack extends Stack {
         MONITOR_CONTAINER_NAME: 'monitor',
         MONITOR_SECRET_BUCKET_ARN: secretFiles.bucketArn,
         SCHEDULER_GROUP_NAME: scheduleGroup.ref,
-        PROVISIONING_EXPIRY_FUNCTION_ARN: expiry.functionArn,
-        SCHEDULER_TARGET_ROLE_ARN: schedulerRole.roleArn,
+        PROVISIONING_EXPIRY_FUNCTION_ARN: reconcileSession.functionArn,
+        SCHEDULER_TARGET_ROLE_ARN: lifecycleSchedulerRole.roleArn,
       },
       memorySize: 256,
       timeout: Duration.seconds(20),
@@ -629,6 +814,31 @@ export class SessionStartStack extends Stack {
         sessionStatusBurstLimit.valueAsNumber,
         0,
       ) as unknown as number,
+    });
+
+    const endLogs = new LogGroup(this, 'EndSessionLogs', {
+      retention: RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const endRole = new Role(this, 'EndSessionRole', { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
+    endLogs.grantWrite(endRole);
+    endRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:ConditionCheckItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+      }),
+    );
+    const endSession = new Function(this, 'EndSession', {
+      runtime: Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: Code.fromAsset(fileURLToPath(new URL('../dist/end-session/', import.meta.url))),
+      role: endRole,
+      logGroup: endLogs,
+      environment: { SESSION_TABLE_NAME: table.tableName },
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      reservedConcurrentExecutions: 0,
     });
 
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
@@ -705,6 +915,53 @@ export class SessionStartStack extends Stack {
       ]),
     });
     getSessionPermission.cfnOptions.condition = gatewayEnabled;
+    const endResource = new ApiGatewayResource(this, 'SessionEndResource', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApiSession.ref,
+      pathPart: 'end',
+    });
+    endResource.cfnOptions.condition = gatewayEnabled;
+    const endMethod = new CfnMethod(this, 'EndSessionMethod', {
+      restApiId: terminalApi.ref,
+      resourceId: endResource.ref,
+      httpMethod: 'POST',
+      authorizationType: 'COGNITO_USER_POOLS',
+      authorizerId: terminalAuthorizer.ref,
+      apiKeyRequired: false,
+      operationName: 'endSession',
+      integration: {
+        type: 'AWS_PROXY',
+        integrationHttpMethod: 'POST',
+        timeoutInMillis: 8000,
+        uri: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':apigateway:',
+          Aws.REGION,
+          ':lambda:path/2015-03-31/functions/',
+          endSession.functionArn,
+          '/invocations',
+        ]),
+      },
+    });
+    endMethod.cfnOptions.condition = gatewayEnabled;
+    const endPermission = new CfnPermission(this, 'EndSessionApiPermission', {
+      action: 'lambda:InvokeFunction',
+      functionName: endSession.functionArn,
+      principal: 'apigateway.amazonaws.com',
+      sourceArn: Fn.join('', [
+        'arn:',
+        Aws.PARTITION,
+        ':execute-api:',
+        Aws.REGION,
+        ':',
+        Aws.ACCOUNT_ID,
+        ':',
+        terminalApi.ref,
+        '/*/POST/v1/sessions/*/end',
+      ]),
+    });
+    endPermission.cfnOptions.condition = gatewayEnabled;
     const terminalApiTickets = new ApiGatewayResource(this, 'TerminalTicketApiTickets', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSession.ref,
@@ -823,6 +1080,7 @@ export class SessionStartStack extends Stack {
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
+    terminalTicketDeployment.addResourceDependency(endMethod);
     for (const response of terminalTicketGatewayResponses) {
       terminalTicketDeployment.addResourceDependency(response);
     }
@@ -831,6 +1089,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1sessions~1{id}~1end',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 8,
+          throttlingRateLimit: 4,
+        },
         {
           httpMethod: 'GET',
           resourcePath: '/~1v1~1sessions~1{id}',

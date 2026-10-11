@@ -13,6 +13,10 @@ import {
   validSessionRelations,
 } from './validation.js';
 import type { Admission, StartRequest } from './types.js';
+import {
+  initialSessionLifecycle,
+  lifecycleWorkItem,
+} from '../../../../packages/contracts/private/session-lifecycle.js';
 
 export const keys = {
   receipt: (owner: string, request: string) => ({ PK: `USER#${owner}`, SK: `START#${request}` }),
@@ -89,6 +93,13 @@ export class StartStore {
         put(keys.receipt(owner, request.requestId), receipt),
         put(keys.active(owner), { sessionId: session.view.id, requestId: request.requestId }),
         put(keys.session(session.view.id), session),
+        {
+          Put: {
+            TableName: this.table,
+            Item: lifecycleWorkItem(initialSessionLifecycle(session.view.id, session.view.createdAt)),
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
         unchanged(keys.content(request.challengeId, request.challengeVersion), snapshot.content),
         unchanged(keys.plan(owner), snapshot.plan),
         unchanged(keys.progress(owner, request.challengeId), snapshot.progress),

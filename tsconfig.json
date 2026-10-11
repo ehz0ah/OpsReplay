@@ -21,6 +21,7 @@
     "apps/gateway/**/*.ts",
     "apps/monitor/**/*.ts",
     "infra/**/*.ts",
-    "packages/contracts/private/**/*.ts"
+    "packages/contracts/private/**/*.ts",
+    "packages/session/**/*.ts"
   ]
 }

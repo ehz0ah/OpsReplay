@@ -56,6 +56,8 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 | 12 October 2026   | [Durable terminal page storage](gateway-terminal-persistence.md): upload byte-preserving private pages before atomic checkpoint and immutable reference commits under the existing recorder lease. Keep worker integration, terminal sealing, lifecycle, debrief, playback, and AWS separate                                                                     |
 | 12 October 2026   | [Combined recording worker](combined-recording-worker.md): collect terminal and monitor data under one lease, seal the exact terminal prefix with resumable immutable references, and publish completion only after both streams seal. Keep lifecycle, command evidence, debrief, playback, and AWS separate                                                     |
 
+| 12 October 2026 | [Session lifecycle](session-lifecycle.md): commit readiness from durable recorder evidence, replay atomic monitor observations, fence learner heartbeat, fix one outcome and drain, repair timers, and confirm cleanup. Keep ready-attempt lock release with debrief/finalisation in the next PR. All new actions and triggers remain disabled. |
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

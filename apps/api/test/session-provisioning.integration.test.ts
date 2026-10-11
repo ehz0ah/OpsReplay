@@ -330,6 +330,37 @@ test('a lost RunTask response reuses the client token and creates one task', asy
   assert.equal(environment.tasks.size, 1);
 });
 
+test('readiness or drain racing with the launch response does not stop an attached recorder', async () => {
+  for (const status of ['ready', 'ended'] as const) {
+    const f = await fixture();
+    const environment = new FakeEnvironment();
+    const provision = createProvisionSession({
+      store: {
+        session: f.store.session.bind(f.store),
+        saveMonitorCertificate: f.store.saveMonitorCertificate.bind(f.store),
+        failStartWithoutTask: f.store.failStartWithoutTask.bind(f.store),
+        saveTask: async (...args) => {
+          const saved = await f.store.saveTask(...args);
+          return {
+            ...saved,
+            view: {
+              ...saved.view,
+              status,
+              recording: { status: status === 'ready' ? 'recording' : 'draining', reason: null },
+            },
+          };
+        },
+      },
+      schedule: new FakeSchedule(),
+      bootstrap,
+      environment,
+      now: () => new Date('2026-10-06T02:00:10.000Z'),
+    });
+    await provision(f.record.view.id);
+    assert.equal(environment.stopCalls, 0);
+  }
+});
+
 test('a lost task-ARN write response does not launch again', async () => {
   const f = await fixture();
   const schedule = new FakeSchedule();

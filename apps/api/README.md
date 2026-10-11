@@ -1,9 +1,9 @@
 # API application boundary
 
-Status: session-start admission, ECS launch orchestration, provisioning-expiry cleanup,
-recording-work publication, session-status reads, and terminal-ticket issuance are implemented and tested
-locally. CDK defines the disabled session-status and terminal-ticket routes and ECS event rule. No AWS
-deployment has run. Follow
+Status: admission, launch, recording work, status, terminal tickets, owner end,
+readiness, outcomes, liveness, deadline repair, and confirmed cleanup are implemented
+and tested locally. CDK defines disabled routes and lifecycle triggers. Debrief and
+once-only finalisation follow in the next PR. No AWS deployment has run. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -19,7 +19,8 @@ deployed while sharing modules.
 
 The [start handler](src/start-session/index.ts) is one Lambda for `POST /v1/sessions`.
 It validates the API Gateway Cognito identity and request, reads an existing receipt
-first, checks access, and atomically saves the receipt, active-session lock, and session.
+first, checks access, and atomically saves the receipt, active-session lock, session,
+and separate indexed lifecycle item.
 It calls DynamoDB, never another Lambda. Shared code is bundled into the function.
 After a receipt miss, it reads the active lock alongside the content, plan, and progress
 snapshot. Published content needs a Pro limit greater than its Free limit and an
@@ -81,13 +82,20 @@ limits for the checkpoint. API Gateway maps throttling, authentication, access, 
 4xx, and 5xx failures to the public error shape without invoking Lambda. The function
 has zero reserved concurrency and the route is absent while the Gateway path is disabled.
 
-The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
-At the saved deadline it marks a session `error`, discovers and stops active tasks, and
-releases the learner lock only after cleanup is confirmed. Known tasks that are stopping
-use Lambda's short retries, normally starting about a minute later. Undiscovered tasks
-return `pending` until the separate recovery callback at eight minutes. The recovery
-callback also backs up the short retries. Alarms cover dropped events and failed delivery.
-The two Lambda actions share modules and do not invoke each other.
+The [reconciliation action](src/reconcile-session/index.ts) checks saved session state
+from timers, DynamoDB streams, and ECS STOPPED events. The separate
+[sweep action](src/sweep-sessions/index.ts) checks at most 25 lifecycle entries each
+minute and persists its pagination cursor. Both call the same in-process routine.
+They do not invoke another Lambda. Provisioning and ready timers target reconciliation;
+the earlier provisioning-expiry definition remains disabled for rollback compatibility.
+
+The [owner end action](src/end-session/index.ts) validates Cognito identity and a request
+ID. It saves one outcome and receipt, with a fixed recording cutoff and 30-second drain.
+Cleanup waits for recorder completion or incomplete state before task stop, then confirms
+STOPPED and deletes all timers. Ready-attempt locks remain held until the next PR commits
+debrief, progress, and finalisation together. Never-ready attempts have no debrief.
+See the [lifecycle decision](../../docs/decisions/session-lifecycle.md) for authority,
+recovery replay, heartbeat rules, failure handling, and activation limits.
 
 The deployed handler has no development identity or local endpoint switch. A future
 API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
@@ -96,7 +104,7 @@ that route. Tests construct the authorizer context directly.
 The terminal-ticket action has no deployed AWS route. The definition depends on an ACM
 certificate, public terminal URL, exact web origin, and existing Cognito user pool at
 activation. DNS, Cognito creation, and browser CORS remain separate work.
-This increment defines the disabled status route, but does not provide end or readiness actions.
+The owner end route and lifecycle actions are defined but remain disabled.
 The start and expiry Lambda definitions have zero reserved concurrency, and the start
 Lambda has no trigger. The recording-work action, session-status and terminal-ticket routes, and combined
 Gateway service are also inactive by default. Do not enable the flow until its AWS
@@ -123,7 +131,8 @@ responses, duplicate calls, deadline races, and cleanup. These checks do not pro
 IAM, Cognito verification, Scheduler delivery, cloud networking, or Fargate behaviour.
 
 The build creates separate `dist/start-session/`, `dist/get-session/`, `dist/create-terminal-ticket/`,
-`dist/expire-provisioning/`, and `dist/publish-recording-work/` bundles from the lockfile.
+`dist/expire-provisioning/`, `dist/publish-recording-work/`, `dist/end-session/`,
+`dist/reconcile-session/`, and `dist/sweep-sessions/` bundles from the lockfile.
 CDK output goes to `cdk.out/`. These directories do not belong in Git.
 
 ## Bounds
@@ -135,9 +144,12 @@ CDK output goes to `cdk.out/`. These directories do not belong in Git.
   seconds. ECS, Scheduler, and S3 requests stop after three seconds.
 - One second of the Lambda duration is reserved for a structured response and final log.
   The remaining-time signal cancels AWS requests and contention delays.
-- Lambdas: 20 second timeout and 256 MiB memory, not yet performance-tuned.
+- Lifecycle: 30-second reconciliation timeout, 60-second sweep timeout, and
+  10-second end timeout. Sweep concurrency is five sessions with eight seconds each,
+  at most 25 per invocation. New functions have zero reserved concurrency.
+- Memory: 256 MiB per API action, not yet performance-tuned.
 - Reuse only clients and validators, never learner state, across invocations.
 
-Next: after review and merge, validate the disabled Gateway and ticket path in the
-approved AWS account, then add the separate readiness and outcome actions. Local Docker
-remains a test tool, not a second platform runtime.
+Next: deterministic evidence/debrief and atomic once-only finalisation, then owner playback.
+Keep admission disabled until these dependencies and an approved AWS checkpoint are complete.
+Local Docker remains a test tool, not a second platform runtime.

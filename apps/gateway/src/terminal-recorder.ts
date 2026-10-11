@@ -62,6 +62,14 @@ export class TerminalRecorder {
       throw error;
     }
   }
+  /** Commit the first source page before exposing learner access. */
+  async prime(signal: AbortSignal): Promise<TerminalRecordingCheckpoint> {
+    if (!this.connection || !this.current) throw new TerminalRecorderError('invalid_state');
+    const page = await this.connection.client.read(this.current.cursor, signal);
+    this.current = await this.options.sink.append(this.current, page, signal);
+    if (this.current.cursor < 1) throw new TerminalRecorderError('invalid_state');
+    return this.checkpoint;
+  }
   async record(signal: AbortSignal, cutoff: () => string | null): Promise<TerminalRecordingCheckpoint> {
     if (!this.connection || !this.current) throw new TerminalRecorderError('invalid_state');
     while (!signal.aborted) {

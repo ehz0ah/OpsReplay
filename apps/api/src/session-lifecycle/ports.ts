@@ -32,6 +32,7 @@ export interface MonitorBootstrapPort {
 export interface EnvironmentTask {
   taskArn: string;
   lastStatus: string | undefined;
+  taskAddress?: string;
 }
 
 export interface EnvironmentPort {

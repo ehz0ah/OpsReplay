@@ -294,6 +294,37 @@ test('the Fargate adapter describes and stops the exact saved task', async () =>
   assert.deepEqual((commands[1] as StopTaskCommand).input, { cluster, task: taskArn, reason: 'expired' });
 });
 
+test('task discovery accepts only one IPv4 address from the saved task ENI', async () => {
+  for (const [addresses, expected] of [
+    [['10.0.1.42'], '10.0.1.42'],
+    [['10.0.1.42', '10.0.1.42'], '10.0.1.42'],
+    [['10.0.1.42', '10.0.1.43'], undefined],
+    [['not-an-ip'], undefined],
+    [['::1'], undefined],
+    [[], undefined],
+  ] as const) {
+    const environment = new FargateEnvironment({
+      send: async () => ({
+        tasks: [
+          {
+            taskArn,
+            lastStatus: 'RUNNING',
+            attachments: [
+              { type: 'Other', details: [{ name: 'privateIPv4Address', value: '10.0.1.99' }] },
+              {
+                type: 'ElasticNetworkInterface',
+                details: addresses.map((value) => ({ name: 'privateIPv4Address', value })),
+              },
+            ],
+          },
+        ],
+      }),
+    } as unknown as ECSClient);
+    const result = await environment.describe(cluster, taskArn);
+    assert.deepEqual(result, { taskArn, lastStatus: 'RUNNING', ...(expected ? { taskAddress: expected } : {}) });
+  }
+});
+
 test('runtime configuration rejects missing or malformed deployment values', () => {
   const environment = {
     ECS_CLUSTER_ARN: cluster,

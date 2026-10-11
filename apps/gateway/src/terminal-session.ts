@@ -103,6 +103,7 @@ export class GatewayTerminalSession {
 
   async input(data: Uint8Array, signal?: AbortSignal): Promise<void> {
     await this.authorize(signal);
+    await this.recordLearnerSeen(signal);
     await this.terminal.input(data, signal);
   }
 
@@ -114,6 +115,23 @@ export class GatewayTerminalSession {
   async heartbeat(signal?: AbortSignal): Promise<void> {
     await this.authorize(signal);
     await this.terminal.heartbeat(signal);
+  }
+
+  async learnerHeartbeat(signal?: AbortSignal): Promise<void> {
+    await this.authorize(signal);
+    await this.recordLearnerSeen(signal);
+  }
+
+  private async recordLearnerSeen(signal?: AbortSignal): Promise<void> {
+    await this.admissions.recordLearnerSeen?.(
+      {
+        sessionId: this.admission.sessionId,
+        connectionId: this.admission.connectionId,
+        generation: this.admission.generation,
+      },
+      new Date().toISOString(),
+      signal,
+    );
   }
 
   close(): void {

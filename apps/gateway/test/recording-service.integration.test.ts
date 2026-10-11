@@ -24,6 +24,9 @@ import { createGatewayRecordingSupervisor } from '../src/recording-service.js';
 import { DynamoMonitorRecordingStore } from '../src/monitor-recording-store.js';
 import { DynamoTerminalRecordingStore } from '../src/terminal-recording-store.js';
 import { DynamoTerminalSealingStore } from '../src/terminal-sealing-store.js';
+import { DynamoAttemptStore } from '../../../packages/session/src/attempt-store.js';
+import { sessionRecord } from '../../api/test/session-fixture.js';
+import { initialSessionLifecycle, lifecycleWorkItem } from '../../../packages/contracts/private/session-lifecycle.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -152,25 +155,19 @@ test(
       }),
     );
     const key = { PK: `SESSION#${sessionId}`, SK: 'STATE' };
-    const view = {
-      id: sessionId,
-      createdAt: startedAt,
-      status: 'provisioning',
-      recording: { status: 'pending', reason: null },
-    };
-    const item = {
-      ...key,
-      WorkPK: 'RECORDING',
-      WorkSK: recordingWorkOrder(startedAt, sessionId),
-      data: {
-        view,
-        provisioningDeadline: new Date(Date.now() + 60_000).toISOString(),
-        monitorSecret: secret,
-        monitorCertificate: tls.cert,
-        taskAddress: '127.0.0.1',
-      },
-    };
+    const savedSession = sessionRecord(sessionId);
+    savedSession.view.createdAt = startedAt;
+    savedSession.accessGrant.admittedAt = startedAt;
+    savedSession.provisioningDeadline = new Date(Date.now() + 60_000).toISOString();
+    savedSession.monitorSecret = secret;
+    savedSession.monitorCertificate = tls.cert;
+    savedSession.taskAddress = '127.0.0.1';
+    savedSession.taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/test/1234';
+    const item = { ...key, WorkPK: 'RECORDING', WorkSK: recordingWorkOrder(startedAt, sessionId), data: savedSession };
     await database.document.send(new PutCommand({ TableName: table, Item: item }));
+    await database.document.send(
+      new PutCommand({ TableName: table, Item: lifecycleWorkItem(initialSessionLifecycle(sessionId, startedAt)) }),
+    );
     const objects = new Map<string, { bytes: Buffer; tag: string }>();
     const s3 = {
       send: async (command: GetObjectCommand | PutObjectCommand) => {
@@ -219,32 +216,25 @@ test(
         ((await recordings.get(sessionId))?.cursor ?? 0) > 0 && (await terminals.get(sessionId))?.cursor === 2,
       'Both durable collectors must advance',
     );
-    const cutoffAt = new Date().toISOString();
-    const current = await recordings.get(sessionId);
-    assert.ok(current);
-    await database.document.send(
-      new PutCommand({
-        TableName: table,
-        Item: {
-          PK: key.PK,
-          SK: 'RECORDING',
-          data: {
-            ...current,
-            status: 'draining',
-            cutoffAt,
-            drainDeadlineAt: new Date(Date.now() + 10_000).toISOString(),
-          },
-        },
-      }),
+    const attempts = new DynamoAttemptStore(database.document, table);
+    await eventually(
+      async () => (await attempts.session(sessionId))?.view.status === 'ready',
+      'Ready requires both committed collectors',
     );
-    await database.document.send(
-      new PutCommand({
-        TableName: table,
-        Item: {
-          ...item,
-          data: { ...item.data, view: { ...view, status: 'ended', recording: { status: 'draining', reason: null } } },
-        },
-      }),
+    const ready = await attempts.session(sessionId);
+    assert.equal(ready?.view.readyAt, (await recordings.get(sessionId))?.startedAt);
+    assert.equal(ready?.view.recovery?.requiredSeconds, 60);
+    const cutoffAt = new Date().toISOString();
+    await attempts.outcome(
+      sessionId,
+      'ended',
+      'learner_ended',
+      cutoffAt,
+      undefined,
+      savedSession.ownerId,
+      undefined,
+      cutoffAt,
+      randomUUID(),
     );
     await eventually(
       async () => (await recordings.get(sessionId))?.status === 'complete',

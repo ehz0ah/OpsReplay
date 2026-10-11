@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import {
   DescribeTasksCommand,
   ECSClient,
@@ -78,7 +79,26 @@ export class FargateEnvironment implements EnvironmentPort {
       sendOptions(abortSignal),
     );
     const task = output.tasks?.find((candidate) => candidate.taskArn === taskArn);
-    return task?.taskArn ? { taskArn: task.taskArn, lastStatus: task.lastStatus } : undefined;
+    // STOPPED does not identify which container caused the task to stop. Do not
+    // infer learner fault from containers that ECS also stopped as a consequence.
+    const addresses = new Set(
+      task?.attachments
+        ?.filter((attachment) => attachment.type === 'ElasticNetworkInterface')
+        .flatMap(
+          (attachment) =>
+            attachment.details
+              ?.filter((item) => item.name === 'privateIPv4Address' && typeof item.value === 'string')
+              .map((item) => item.value!) ?? [],
+        ),
+    );
+    const address = addresses.size === 1 ? [...addresses][0] : undefined;
+    return task?.taskArn
+      ? {
+          taskArn: task.taskArn,
+          lastStatus: task.lastStatus,
+          ...(address && isIP(address) === 4 ? { taskAddress: address } : {}),
+        }
+      : undefined;
   }
 
   async stop(cluster: string, taskArn: string, reason: string, abortSignal?: AbortSignal): Promise<void> {

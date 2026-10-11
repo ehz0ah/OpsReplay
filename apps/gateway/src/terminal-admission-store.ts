@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AttemptStoreError, DynamoAttemptStore } from '../../../packages/session/src/attempt-store.js';
 import { isIP } from 'node:net';
 import {
   BatchGetCommand,
@@ -48,6 +49,7 @@ export interface TerminalInputAuthorization {
 export interface TerminalAdmissionStore {
   admit(request: TerminalAdmissionRequest, signal?: AbortSignal): Promise<TerminalAdmission>;
   authorizeInput(request: TerminalInputAuthorization, signal?: AbortSignal): Promise<void>;
+  recordLearnerSeen?(request: TerminalInputAuthorization, now: string, signal?: AbortSignal): Promise<void>;
 }
 
 export type TerminalAdmissionErrorCode =
@@ -213,6 +215,18 @@ function sameInput(left: TerminalInputRecord | undefined, right: TerminalInputRe
 }
 
 export class DynamoTerminalAdmissionStore implements TerminalAdmissionStore {
+  async recordLearnerSeen(request: TerminalInputAuthorization, now: string, signal?: AbortSignal): Promise<void> {
+    try {
+      await new DynamoAttemptStore(this.client, this.table).heartbeat(request, now, signal);
+    } catch (cause) {
+      if (cause instanceof AttemptStoreError && cause.code === 'conflict') await this.authorizeInput(request, signal);
+      if (cause instanceof AttemptStoreError && ['invalid_store', 'not_found'].includes(cause.code))
+        throw new TerminalAdmissionError('invalid_store', { cause });
+      const stopped = cancelled(signal, cause);
+      if (stopped) throw stopped;
+      throw new TerminalAdmissionError('unavailable', { cause });
+    }
+  }
   constructor(
     private readonly client: DynamoDBDocumentClient,
     private readonly table: string,
