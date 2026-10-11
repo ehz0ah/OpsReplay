@@ -1,6 +1,6 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client, private terminal TCP client, authenticated
+Status: the production monitor HTTPS client, private interactive and recording TCP clients, authenticated
 terminal admission core, browser terminal relay, bounded recording controller, durable
 recording adapters, recording-session runner, DynamoDB work source, bounded service
 supervisor, and composed process image are implemented and tested locally. CDK defines
@@ -143,12 +143,25 @@ port. It records the original PTY stream once, independent of browser attachment
 See the [private contract](../../packages/contracts/private/terminal-recording.ts) and
 [source decision](../../docs/decisions/terminal-recording-source.md).
 
-This Gateway still records only monitor measurements and monitor recovery/outage
-events. It does not yet read or persist the terminal source. The next integration must
-validate source identity, sequences, clocks, loss, and bounds; commit immutable data
-before advancing cursors; and apply the saved lifecycle cutoff under the existing
-recorder lease. Full recording completion must require terminal and monitor final
-cursors. No readiness or completion behaviour changes in the source-only increment.
+`TerminalRecordingClient.connect({ host, expectedSource? })` attaches in recording mode
+and returns `{ client, ready }`. `client.read(after, signal?)` reads one bounded page
+from an explicit caller-owned cursor. `close()` releases the connection; `ended` reports
+closure or a fixed error. The client checks actual wire bytes, duplicate JSON keys,
+exact source schemas, and metadata and event continuity. It does not acquire terminal
+input ownership, poll, reconnect, retry, or save a cursor. Overlapping reads reject
+`busy`. In-flight cancellation or timeout closes the connection. Optional settings are
+`port` (default 7681), `connectTimeoutMs` (3,000), and `requestTimeoutMs` (5,000).
+Timeouts must be from 1 to 60,000 milliseconds. The caller controls read rate and must
+read within the source's 45-second idle limit or reconnect explicitly. See the
+[client decision](../../docs/decisions/gateway-terminal-recording-client.md).
+
+The composed Gateway still records only monitor measurements and monitor recovery/outage
+events. This new module is not wired into that worker and does not persist terminal data.
+The next persistence increment must commit immutable data before advancing saved cursors
+and apply the saved lifecycle cutoff under the existing recorder lease. Full recording
+completion must require terminal and monitor final cursors. A returned page or source
+exit does not prove durable or combined completion. No readiness or completion behaviour
+changes here. Root controls the source; validation is not proof of authenticity.
 
 ## Monitor recording persistence
 

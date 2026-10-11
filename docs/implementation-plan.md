@@ -5,7 +5,7 @@ the team's task board before overlapping work. The team proves one complete Chal
 first, then a small Learn collection and Code Review set.
 
 The local wrong-upstream-port image now contains its service stack and private interactive
-terminal server. Shell markers and the separate recording stream remain open in I01.
+terminal server and bounded recording source. Shell markers remain open in I01.
 Later increments added session-start admission with a Lambda handler, a DynamoDB
 transaction, and disabled CDK definitions, followed by ECS launch and
 provisioning-timeout cleanup. The first monitor increment added real traffic,
@@ -14,7 +14,10 @@ reference image. A focused increment then added authenticated monitor network co
 The gateway monitor client, bounded recording controller, and durable recording adapters
 consume that control API locally. A separate private terminal client connects to the
 reference image and preserves the terminal server's generation and uncertain-input
-semantics. Browser relay, captures, and the complete running gateway follow separately.
+semantics. The browser relay and composed Gateway process are also tested locally.
+The read-only terminal recording client now validates the source, but terminal storage,
+recording-worker integration, captures, and playback remain open in I03. Complete public
+Gateway deployment remains unverified; issue #39 tracks its trusted endpoint blocker.
 Work packages are responsibility groups, not a requirement to complete one subsystem
 before integrating another.
 
