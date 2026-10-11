@@ -2,7 +2,7 @@
 
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, terminal-ticket
-issuance, and the combined Gateway path behind a public ALB. The first disposable
+issuance, session-status reads, and the combined Gateway path behind a public ALB. The first disposable
 checkpoint verified GitHub OIDC image
 publication and the private gateway runtime in AWS. Its foundation, service, and image
 repositories were then removed. No OpsReplay runtime or image is currently deployed.
@@ -48,7 +48,7 @@ per-session bootstrap file through the bucket policy.
 
 [SessionStartStack](session-start-stack.ts) defines an on-demand DynamoDB table with the
 keys-only `unfinished-work` index and ticket TTL, separate start, provisioning-expiry,
-recording-work, and terminal-ticket Lambdas, an EventBridge Scheduler group, a private S3
+recording-work, session-status, and terminal-ticket Lambdas, an EventBridge Scheduler group, a private S3
 secret-file bucket, a separate private recording bucket, failure alarms, and narrow
 roles.
 The start action can read and update session records, create its two named callbacks,
@@ -59,15 +59,16 @@ The Scheduler role can invoke the expiry action. Both functions stay outside the
 
 The stack also defines an ECS task-state rule, encrypted dead-letter queue, combined
 Gateway task and service, TLS ALB listener, WAF rate limit, target health check, and the
-authenticated terminal-ticket API route. It does not create the ECS cluster, VPC, VPC
+authenticated session-status and terminal-ticket API routes. It does not create the ECS cluster, VPC, VPC
 endpoints, ECR repositories, certificate, DNS record, Cognito user pool, or web app.
 
-`EnableGatewayPath` defaults to `false`. In this state the recording publisher and
-terminal-ticket action have zero reserved concurrency, the task-state rule is disabled,
-and the ALB, WAF, ticket API, Gateway task, and Gateway service are omitted. Start and
-expiry remain disabled independently. Enabling the path sets the publisher concurrency
-to four, ticket concurrency to sixteen, enables task-state publication, and creates one
-Gateway service with the configured desired count.
+`EnableGatewayPath` defaults to `false`. In this state the recording publisher,
+session-status action, and terminal-ticket action have zero reserved concurrency, the
+task-state rule is disabled, and the ALB, WAF, shared session API, Gateway task, and
+Gateway service are omitted. Start and expiry remain disabled independently. Enabling
+the path sets the publisher concurrency to four and each API action's concurrency to
+its configured burst limit, enables task-state publication, and creates one Gateway
+service with the configured desired count. Both API burst limits default to sixteen.
 
 Activation requires a pinned Gateway image digest, ACM certificate ARN, exact allowed
 web origins, WSS Gateway URL, and existing Cognito user-pool ARN. Deployment inputs also
@@ -84,6 +85,12 @@ per source IP per minute. The ticket method uses Cognito, a burst limit of 16, a
 are stack parameters. Their defaults target the first 50-learner checkpoint and must be
 validated under shared-IP and mass-reconnect load. A browser that receives `429` must
 retry with capped exponential backoff and full jitter.
+
+The session-status method shares the Cognito REST API and has independent burst and
+rate parameters, defaulting to 16 and 8 requests per second. Its Lambda has only
+`dynamodb:GetItem` for `SESSION#*` and scoped log-write permissions. It performs no
+state update. API response caching and data tracing are disabled for both methods.
+These are bounded checkpoint defaults, not measured polling capacity.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated

@@ -1,8 +1,8 @@
 # API application boundary
 
 Status: session-start admission, ECS launch orchestration, provisioning-expiry cleanup,
-recording-work publication, and terminal-ticket issuance are implemented and tested
-locally. CDK defines the disabled terminal-ticket route and ECS event rule. No AWS
+recording-work publication, session-status reads, and terminal-ticket issuance are implemented and tested
+locally. CDK defines the disabled session-status and terminal-ticket routes and ECS event rule. No AWS
 deployment has run. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
@@ -46,6 +46,17 @@ the handler increment. CDK now defines its Lambda, bounded retries, encrypted fa
 queue, alarm, and ECS task-state rule. One activation parameter keeps the rule and
 function disabled with the recording service until an approved AWS checkpoint.
 
+The [session-status handler](src/get-session/index.ts) is a separate action for
+`GET /v1/sessions/{id}`. It validates identity and request shape before one strongly
+consistent session read. Missing and foreign sessions return the same `404`. Owned
+records must validate against the saved session schema and access grant before the
+shared nested-field projection returns `SessionView`. Plan expiry and content withdrawal
+do not block a saved attempt. The action never changes state or learner activity.
+It has its own bundle, log group, read-only role, 10-second timeout, concurrency limit,
+and method throttling. The route shares the existing Cognito API and stays absent when
+`EnableGatewayPath=false`; reserved concurrency is then zero. Its SDK uses at most two
+attempts with a two-second request timeout, bounded by the invocation deadline.
+
 The [terminal-ticket handler](src/create-terminal-ticket/index.ts) is a separate action
 for `POST /v1/sessions/{id}/terminal-tickets`. It trusts only the Cognito identity from
 the API Gateway authorizer and accepts no request body. It strongly reads the private
@@ -85,9 +96,9 @@ that route. Tests construct the authorizer context directly.
 The terminal-ticket action has no deployed AWS route. The definition depends on an ACM
 certificate, public terminal URL, exact web origin, and existing Cognito user pool at
 activation. DNS, Cognito creation, and browser CORS remain separate work.
-This increment does not provide status/end routes or readiness.
+This increment defines the disabled status route, but does not provide end or readiness actions.
 The start and expiry Lambda definitions have zero reserved concurrency, and the start
-Lambda has no trigger. The recording-work action, terminal-ticket route, and combined
+Lambda has no trigger. The recording-work action, session-status and terminal-ticket routes, and combined
 Gateway service are also inactive by default. Do not enable the flow until its AWS
 integration checks pass.
 Do not seed the draft repository Challenge as published content.
@@ -111,7 +122,7 @@ Docker may pull the image on the first run. Fake ECS and Scheduler ports test lo
 responses, duplicate calls, deadline races, and cleanup. These checks do not prove AWS
 IAM, Cognito verification, Scheduler delivery, cloud networking, or Fargate behaviour.
 
-The build creates separate `dist/start-session/`, `dist/create-terminal-ticket/`,
+The build creates separate `dist/start-session/`, `dist/get-session/`, `dist/create-terminal-ticket/`,
 `dist/expire-provisioning/`, and `dist/publish-recording-work/` bundles from the lockfile.
 CDK output goes to `cdk.out/`. These directories do not belong in Git.
 

@@ -370,11 +370,12 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
       for (const [, resource] of resources) assert.equal(resource.Condition, 'GatewayPathEnabled');
     }
     const [deployment] = ofType(rendered.Resources, 'AWS::ApiGateway::Deployment');
-    const [method] = ofType(rendered.Resources, 'AWS::ApiGateway::Method');
+    const methods = ofType(rendered.Resources, 'AWS::ApiGateway::Method');
+    const method = methods.find(([, resource]) => resource.Properties?.HttpMethod === 'POST');
     const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV2');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV3');
     assert.equal(gatewayResponses.length, 5);
     const deploymentDependencies = [deployment[1].DependsOn].flat();
     assert.ok(deploymentDependencies.includes(method[0]));
@@ -395,6 +396,15 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
       StageName: 'checkpoint',
       MethodSettings: [
         {
+          HttpMethod: 'GET',
+          ResourcePath: '/~1v1~1sessions~1{id}',
+          CachingEnabled: false,
+          DataTraceEnabled: false,
+          MetricsEnabled: true,
+          ThrottlingBurstLimit: { Ref: 'SessionStatusBurstLimit' },
+          ThrottlingRateLimit: { Ref: 'SessionStatusRateLimit' },
+        },
+        {
           HttpMethod: 'POST',
           ResourcePath: '/~1v1~1sessions~1{id}~1terminal-tickets',
           CachingEnabled: false,
@@ -408,23 +418,23 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const expectedGatewayResponses = {
       THROTTLED: [
         '429',
-        '{"code":"LIMIT_EXCEEDED","message":"Too many terminal ticket requests. Try again.","requestId":"$context.requestId"}',
+        '{"code":"LIMIT_EXCEEDED","message":"Too many session requests. Try again.","requestId":"$context.requestId"}',
       ],
       UNAUTHORIZED: [
         '401',
-        '{"code":"UNAUTHENTICATED","message":"Sign in before connecting to a terminal.","requestId":"$context.requestId"}',
+        '{"code":"UNAUTHENTICATED","message":"Sign in before accessing a session.","requestId":"$context.requestId"}',
       ],
       ACCESS_DENIED: [
         '403',
-        '{"code":"ACCESS_DENIED","message":"Access to this terminal is denied.","requestId":"$context.requestId"}',
+        '{"code":"ACCESS_DENIED","message":"Access to this session is denied.","requestId":"$context.requestId"}',
       ],
       DEFAULT_4XX: [
         '400',
-        '{"code":"INVALID_REQUEST","message":"The terminal ticket request was rejected.","requestId":"$context.requestId"}',
+        '{"code":"INVALID_REQUEST","message":"The session request was rejected.","requestId":"$context.requestId"}',
       ],
       DEFAULT_5XX: [
         '500',
-        '{"code":"INTERNAL_ERROR","message":"The terminal ticket could not be issued. Try again.","requestId":"$context.requestId"}',
+        '{"code":"INTERNAL_ERROR","message":"The session request could not be completed. Try again.","requestId":"$context.requestId"}',
       ],
     } as const;
     for (const [, response] of gatewayResponses) {
@@ -441,12 +451,13 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(apiPermissions.length, 1);
-    assert.equal(apiPermissions[0]?.[1].Condition, 'GatewayPathEnabled');
-    assert.match(
-      JSON.stringify(apiPermissions[0]?.[1].Properties?.SourceArn),
-      /POST\/v1\/sessions\/\*\/terminal-tickets/,
+    assert.equal(apiPermissions.length, 2);
+    const ticketPermission = apiPermissions.find(([, resource]) =>
+      JSON.stringify(resource.Properties?.SourceArn).includes('POST/v1/sessions/*/terminal-tickets'),
     );
+    assert.ok(ticketPermission);
+    assert.equal(ticketPermission[1].Condition, 'GatewayPathEnabled');
+    assert.match(JSON.stringify(ticketPermission[1].Properties?.SourceArn), /POST\/v1\/sessions\/\*\/terminal-tickets/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

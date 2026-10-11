@@ -189,9 +189,30 @@ and retry delays before that margin.
 
 ### Readiness and status
 
-The client polls `GET /v1/sessions/{id}` with backoff until the status leaves
-`provisioning`. A session becomes `ready` when the task is running, the monitor
-container reports healthy, and a gateway has acknowledged recording ownership. The
+The separate `GET /v1/sessions/{id}` Lambda is implemented and tested locally. It
+validates the Cognito identity, GET route, empty body, and UUID before storage access.
+It strongly reads the session `STATE` item, hides missing or foreign sessions with the
+same `404`, validates the saved record and access grant, and returns only `SessionView`.
+The grant's time limit must match the view. Current plan expiry or content withdrawal
+cannot revoke this existing-session read. Private task addresses, secrets, launch
+arguments, validators, and unreleased hints never enter the response or logs.
+
+Status reads have no lifecycle effects: they do not launch tasks, mark readiness,
+release hints, claim leases, or update `lastSeenAt`. Polling returns the saved state, not
+a computed outcome. Responses use `Cache-Control: no-store`. Invalid requests return
+`400 INVALID_REQUEST`, and storage or record-validation failures return a generic `500`.
+The Lambda uses bounded DynamoDB requests and reserves one second for its response.
+Its CDK route shares the existing Cognito API, but has a separate read-only role,
+bundle, log group, timeout, and configurable concurrency and method-throttling limits.
+Both routes remain absent, and the function has zero reserved concurrency, while
+`EnableGatewayPath=false`. CORS, readiness writers, and AWS validation remain separate.
+
+The client polls `GET /v1/sessions/{id}` with capped backoff and jitter until the status
+leaves `provisioning`. After `429 LIMIT_EXCEEDED`, it retries with capped exponential
+backoff and full jitter. Polling is not a learner heartbeat.
+
+A session becomes `ready` when the task is running, the monitor container reports healthy,
+and a gateway has acknowledged recording ownership. The
 monitor passes its health check only after it confirms the planted fault is present:
 aggregate recovery fails and health probes pass. The lifecycle handler saves the task's private
 address for recorder attachment, then commits `readyAt` and moves the Scheduler
