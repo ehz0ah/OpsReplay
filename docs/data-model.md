@@ -34,31 +34,33 @@ concerns for reflection and never scores them.
 One table is sufficient initially. Normal requests read by key and never scan. Item
 names are a storage convention, not part of the HTTP contract.
 
-| PK             | SK                                       | Contents                                                              |
-| -------------- | ---------------------------------------- | --------------------------------------------------------------------- |
-| `USER#<id>`    | `PROFILE`                                | Minimal account preferences                                           |
-| `USER#<id>`    | `PLAN`                                   | Plan, source, expiry, cohort                                          |
-| `USER#<id>`    | `ACTIVE`                                 | Active-session lock holding the session ID                            |
-| `USER#<id>`    | `PROGRESS#<contentId>`                   | Learner progress                                                      |
-| `USER#<id>`    | `START#<requestId>`                      | Session start receipt                                                 |
-| `USER#<id>`    | `REVIEWREQ#<requestId>`                  | Review submission receipt                                             |
-| `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                    |
-| `SESSION#<id>` | `STATE`                                  | Private session record                                                |
-| `SESSION#<id>` | `RECORDING`                              | Lease, cursors, references, and nullable `retainUntil`                |
-| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional object reference and its sequence range     |
-| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                          |
-| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket owner, session, ISO expiry, and numeric `ExpiresAt`   |
-| `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease |
-| `SESSION#<id>` | `REQUEST#<requestId>`                    | End and hint receipts                                                 |
-| `SESSION#<id>` | `HINT#<hintId>`                          | Released hint and time                                                |
-| `SESSION#<id>` | `PROPOSAL#<proposalId>`                  | Assistant command proposal                                            |
-| `SESSION#<id>` | `TURN#<turnId>`                          | Challenge assistant turn                                              |
-| `SESSION#<id>` | `CONVERSATION`                           | Active turn ID and fixed expiry                                       |
-| `SESSION#<id>` | `FINALISED`                              | Marker that the finaliser has run                                     |
-| `SESSION#<id>` | `DEBRIEF`                                | Derived debrief and score components                                  |
-| `REVIEW#<id>`  | `STATE`                                  | Review submission and match result                                    |
-| `REVIEW#<id>`  | `TURN#<turnId>`                          | Code Review assistant turn                                            |
-| `REVIEW#<id>`  | `CONVERSATION`                           | Active turn ID and fixed expiry                                       |
+| PK             | SK                                       | Contents                                                                                  |
+| -------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `USER#<id>`    | `PROFILE`                                | Minimal account preferences                                                               |
+| `USER#<id>`    | `PLAN`                                   | Plan, source, expiry, cohort                                                              |
+| `USER#<id>`    | `ACTIVE`                                 | Active-session lock holding the session ID                                                |
+| `USER#<id>`    | `PROGRESS#<contentId>`                   | Learner progress                                                                          |
+| `USER#<id>`    | `START#<requestId>`                      | Session start receipt                                                                     |
+| `USER#<id>`    | `REVIEWREQ#<requestId>`                  | Review submission receipt                                                                 |
+| `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                                        |
+| `SESSION#<id>` | `STATE`                                  | Private session record                                                                    |
+| `SESSION#<id>` | `RECORDING`                              | Lease, cursors, references, and nullable `retainUntil`                                    |
+| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional monitor object reference and its sequence range                 |
+| `SESSION#<id>` | `TERMINAL_RECORDING`                     | Terminal source metadata, cursor, last committed event, and encoded event bytes; no lease |
+| `SESSION#<id>` | `TERMINAL_CHUNK#<source>#<sequence>`     | One immutable terminal page reference; identity does not change at takeover               |
+| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                                              |
+| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket owner, session, ISO expiry, and numeric `ExpiresAt`                       |
+| `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease                     |
+| `SESSION#<id>` | `REQUEST#<requestId>`                    | End and hint receipts                                                                     |
+| `SESSION#<id>` | `HINT#<hintId>`                          | Released hint and time                                                                    |
+| `SESSION#<id>` | `PROPOSAL#<proposalId>`                  | Assistant command proposal                                                                |
+| `SESSION#<id>` | `TURN#<turnId>`                          | Challenge assistant turn                                                                  |
+| `SESSION#<id>` | `CONVERSATION`                           | Active turn ID and fixed expiry                                                           |
+| `SESSION#<id>` | `FINALISED`                              | Marker that the finaliser has run                                                         |
+| `SESSION#<id>` | `DEBRIEF`                                | Derived debrief and score components                                                      |
+| `REVIEW#<id>`  | `STATE`                                  | Review submission and match result                                                        |
+| `REVIEW#<id>`  | `TURN#<turnId>`                          | Code Review assistant turn                                                                |
+| `REVIEW#<id>`  | `CONVERSATION`                           | Active turn ID and fixed expiry                                                           |
 
 Event sort keys use the event time, a stable source stream ID, and its sequence number.
 Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
@@ -78,14 +80,15 @@ because admission also recovers an expired turn through a conditional write.
 
 ## Private S3 layout
 
-| Key prefix                                    | Contents                    | Writer              |
-| --------------------------------------------- | --------------------------- | ------------------- |
-| `content/challenges/<id>/<version>/`          | Manifest and debrief assets | Content publication |
-| `content/reviews/<id>/<version>/`             | Review bundle               | Content publication |
-| `content/learn/<id>/<version>/`               | Rendered Pro Learn entry    | Learn build step    |
-| `sessions/<sessionId>/terminal/<generation>/` | asciicast v2 chunks         | Gateway             |
-| `sessions/<sessionId>/metrics/<generation>/`  | Metric series chunks        | Gateway             |
-| `sessions/<sessionId>/captures/<generation>/` | Per-command captures        | Gateway             |
+| Key prefix                                         | Contents                                           | Writer              |
+| -------------------------------------------------- | -------------------------------------------------- | ------------------- |
+| `content/challenges/<id>/<version>/`               | Manifest and debrief assets                        | Content publication |
+| `content/reviews/<id>/<version>/`                  | Review bundle                                      | Content publication |
+| `content/learn/<id>/<version>/`                    | Rendered Pro Learn entry                           | Learn build step    |
+| `sessions/<sessionId>/terminal/<generation>/live/` | Byte-preserving private JSON source pages          | Gateway             |
+| `sessions/<sessionId>/terminal/<generation>/`      | Derived asciicast v2 playback, not yet implemented | Gateway             |
+| `sessions/<sessionId>/metrics/<generation>/`       | Metric series chunks                               | Gateway             |
+| `sessions/<sessionId>/captures/<generation>/`      | Per-command captures                               | Gateway             |
 
 Published content keys are immutable, with a hash in the catalogue manifest. The
 frontend bucket holds only the static application and free Learn pages. Browsers read
@@ -142,8 +145,16 @@ timed-out drain as incomplete and resumes cleanup. Late recorder completions can
 overwrite a sealed recording or its debrief. Terminal sessions remain in the work index
 until all cleanup finishes, including sessions that never became ready.
 
-Provisional recording chunks use the recorder generation and source sequence in their
-keys. The canonical sealed monitor object is referenced directly by `RECORDING`, so a
+Provisional S3 recording objects use the recorder generation and source sequence in
+their keys. Terminal DynamoDB references omit generation: the source and ending sequence
+identify an accepted page across takeovers. The terminal checkpoint and immutable
+reference commit in one transaction that checks the existing `RECORDING` lease and the
+exact previous checkpoint. Empty reads save metadata without an object. These terminal
+adapters are implemented locally but not connected to the active worker. Terminal sealing
+must create sealed-retention copies before complete references are published. See the
+[storage decision](decisions/gateway-terminal-persistence.md).
+
+The canonical sealed monitor object is referenced directly by `RECORDING`, so a
 final sequence that matches the last provisional page cannot collide with that page.
 Recording JSON carries an application `schemaVersion`; this does not require S3 bucket
 versioning. Event

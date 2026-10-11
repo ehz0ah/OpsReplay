@@ -32,7 +32,8 @@ an inactive owned-session status route with a separate read-only Lambda. The che
 verified all three images and ran the private gateway service from its exact digest. The
 complete Gateway path remains disabled and has not run in AWS. The terminal source is
 process-local. Its read-only Gateway client is tested locally but is not wired into the
-recording worker; terminal persistence and playback are not implemented. Captures, remaining API,
+recording worker. Durable private terminal page adapters are tested locally but not wired into
+that worker; terminal sealing and playback are not implemented. Captures, remaining API,
 web application, and lifecycle completion are not implemented. No checkpoint image is
 currently published in AWS, and no public route is deployed.
 

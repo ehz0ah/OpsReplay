@@ -158,12 +158,31 @@ allowlisted idle error ends with `server_rejected` and its `serverCode`, includi
 [client decision](../../docs/decisions/gateway-terminal-recording-client.md).
 
 The composed Gateway still records only monitor measurements and monitor recovery/outage
-events. This new module is not wired into that worker and does not persist terminal data.
-The next persistence increment must commit immutable data before advancing saved cursors
-and apply the saved lifecycle cutoff under the existing recorder lease. Full recording
-completion must require terminal and monitor final cursors. A returned page or source
-exit does not prove durable or combined completion. No readiness or completion behaviour
-changes here. Root controls the source; validation is not proof of authenticity.
+events. The client and the storage adapters below are not wired into that worker. Full
+recording completion must require terminal and monitor final cursors at the fixed
+lifecycle cutoff. A returned page or source exit does not prove durable or combined
+completion. Root controls the source; validation is not proof of authenticity.
+
+## Terminal page persistence
+
+`S3TerminalChunkStore` uploads canonical, byte-preserving private JSON pages with
+content-addressed keys, conditional puts, encryption, checksums, and provisional
+retention. `DynamoTerminalRecordingStore` atomically writes an immutable page reference
+and the exact next terminal checkpoint under the existing `RECORDING` lease. The separate
+`TERMINAL_RECORDING` item saves source metadata, cursor, last committed event, and encoded
+event bytes. It does not own another lease. Terminal reference keys omit generation so
+a takeover cannot republish an accepted sequence range.
+
+`DurableTerminalRecordingSink` validates and snapshots a page, uploads it, then commits
+its reference and checkpoint. Empty reads commit metadata only. Cursor advancement
+requires the commit. Duplicate requests and uncertain responses use the exact committed
+reference; conflicting bytes cannot replace it. Failed commits can leave unreferenced
+objects that expire under the provisional policy.
+
+These adapters do not change the composed worker, input generations, monitor schema,
+readiness, public recording status, scores, or AWS resources. Worker integration must
+reconcile the fixed cutoff and write sealed-retention terminal copies before combined
+completion. See the [storage decision](../../docs/decisions/gateway-terminal-persistence.md).
 
 ## Monitor recording persistence
 
