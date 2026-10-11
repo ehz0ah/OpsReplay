@@ -12,6 +12,10 @@ the pre-implementation simulated-engine contracts.
   response envelopes, boundary rules, and remote errors.
 - [Terminal access contract](private/terminal-access.ts) defines private ticket and
   terminal input-owner records shared by the API and gateway.
+- [Terminal source contract](private/terminal-recording.ts) defines bounded private source
+  metadata, events, and cursor pages.
+- [Terminal persistence contract](private/terminal-persistence.ts) defines private canonical
+  page references, checkpoint validation, and cross-page advancement under a recorder lease.
 - [Examples](examples/README.md) provide synthetic payload fixtures.
 
 Schemas cannot enforce ownership, conditional writes, isolation, or prompt boundaries by
