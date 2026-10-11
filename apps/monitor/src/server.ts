@@ -1,4 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import {
+  captureLimits,
+  isCaptureRequest,
+  type CaptureBaseline,
+  type FileCapture,
+} from '../../../packages/contracts/private/file-capture.js';
 import { createServer } from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Server } from 'node:https';
@@ -34,9 +40,14 @@ class ControlRequestError extends Error {
   }
 }
 
-function send(response: ServerResponse, status: number, value: MonitorControlResponse<PublicFrame, MetricFrame>): void {
+function send(
+  response: ServerResponse,
+  status: number,
+  value: MonitorControlResponse<PublicFrame, MetricFrame> | CaptureBaseline | FileCapture,
+  maximumBytes: number = monitorControlSchema.maximumResponseBytes,
+): void {
   const body = Buffer.from(JSON.stringify(value));
-  if (body.byteLength > monitorControlSchema.maximumResponseBytes) throw new ControlRequestError('INTERNAL_ERROR');
+  if (body.byteLength > maximumBytes) throw new ControlRequestError('INTERNAL_ERROR');
   response.writeHead(status, {
     'Content-Type': 'application/json',
     'Content-Length': String(body.byteLength),
@@ -152,7 +163,14 @@ export function createControlServer(control: MonitorControl, options: ControlSer
           });
           return;
         }
-        if (request.method === routes.start.method && url.pathname === routes.start.path && url.search === '') {
+        if (request.method === 'POST' && url.pathname === captureLimits.baselinePath && url.search === '') {
+          requireEmptyBody(request);
+          send(response, 200, await control.baseline());
+        } else if (request.method === 'POST' && url.pathname === captureLimits.capturePath && url.search === '') {
+          const requestBody = await body(request);
+          if (!isCaptureRequest(requestBody)) throw new ControlRequestError('INVALID_REQUEST');
+          send(response, 200, await control.capture(requestBody), captureLimits.maximumBytes);
+        } else if (request.method === routes.start.method && url.pathname === routes.start.path && url.search === '') {
           requireEmptyBody(request);
           send(response, routes.start.successStatus, control.start());
         } else if (request.method === routes.frames.method && url.pathname === routes.frames.path) {

@@ -99,8 +99,9 @@ terminal data, task addresses, or internal errors.
 
 The runtime image now composes the relay with the recording supervisor when its complete
 terminal configuration is present. CDK now defines its public ALB and private security
-group path. Persistent learner heartbeat updates, dashboard traffic, proposals, command
-evidence, and AWS validation remain separate work.
+group path. Learner heartbeat, command evidence, and interval captures are implemented
+locally. Dashboard traffic, proposals, playback exports/read APIs, and AWS validation
+remain separate work.
 
 ## Monitor client
 
@@ -308,5 +309,10 @@ ALB upgrades, production certificate delivery, IAM, or managed DynamoDB and S3 b
 
 Next: after review and merge, deploy the disposable AWS checkpoint and validate the
 complete authenticated WebSocket path through ALB, Gateway, and the Challenge terminal.
-Outcome actions, command evidence and captures, debrief, playback, browser integration,
-and broader AWS validation remain separate increments.
+Outcome actions, command evidence, safe interval captures, and deterministic debrief
+finalisation are implemented locally. The recorder derives sealed commands from the
+exact terminal prefix, drains captures through the cutoff-open command, and conditions
+all evidence snapshots before completion. See
+[the evidence/debrief decision](../../docs/decisions/evidence-debrief.md).
+Playback exports/read APIs, frontend integration, content/task publication, and broader
+AWS validation remain separate increments. AWS work requires explicit approval.

@@ -11,7 +11,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY packages/contracts/schemas/ packages/contracts/schemas/
 COPY packages/contracts/private/ packages/contracts/private/
 COPY apps/monitor/src/ apps/monitor/src/
-COPY apps/monitor/test/control-client.ts apps/monitor/test/control-client.ts
+COPY apps/monitor/test/control-client.ts apps/monitor/test/capture-image-check.ts apps/monitor/test/
 COPY scripts/build-monitor.mjs scripts/build-monitor.mjs
 RUN node scripts/build-monitor.mjs
 
@@ -27,6 +27,7 @@ CMD ["/app/challenge.json"]
 # Local integration image. Test-only files never enter the runtime target.
 FROM runtime-base AS test
 COPY --from=build /build/dist/monitor/client.cjs /app/client.cjs
+COPY --from=build /build/dist/monitor/capture-check.cjs /app/capture-check.cjs
 COPY content/challenges/wrong-upstream-port/challenge.json /app/challenge.json
 
 FROM runtime-base AS runtime

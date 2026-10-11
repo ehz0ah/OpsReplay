@@ -112,7 +112,8 @@ learner liveness, deadline repair, bounded drain, and confirmed cleanup. It is t
 locally through DynamoDB Local and fake ECS and Scheduler ports. New lifecycle actions
 and triggers remain disabled. No public route is deployed. Shared lifecycle routines
 are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
-still requires the next debrief/finalisation PR and an approved AWS checkpoint.
+now has local debrief/finalisation code. Playback read routes and an approved AWS
+checkpoint remain separate prerequisites.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -121,7 +122,9 @@ still requires the next debrief/finalisation PR and an approved AWS checkpoint.
    (`422 VERSION_UNAVAILABLE` otherwise), that the plan includes the Challenge, and
    that new-operation limits permit admission. A published Challenge must have an
    explicit Pro time limit greater than its Free limit and an `opsreplay-` task-definition
-   family, or it is unavailable to both plans.
+   family, or it is unavailable to both plans. Its private admission pins also require
+   the canonical manifest SHA-256. Publication must first save the matching immutable
+   private manifest item. It is never returned to the browser.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
    lock, the session record in `provisioning`, including its access grant and limits,
    and a separate indexed lifecycle item. The receipt and lock are conditional

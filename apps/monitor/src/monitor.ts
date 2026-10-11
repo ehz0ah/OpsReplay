@@ -265,7 +265,7 @@ export class Monitor {
     await Promise.all(this.pending);
   }
 
-  snapshot(at = this.now()): MetricFrame {
+  snapshot(at = this.cutoff === undefined ? this.now() : Math.min(this.cutoff, this.now())): MetricFrame {
     if (
       !this.measurements ||
       !Number.isFinite(at) ||

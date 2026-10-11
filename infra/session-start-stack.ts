@@ -567,13 +567,37 @@ export class SessionStartStack extends Stack {
           AWS_PARTITION: Aws.PARTITION,
           AWS_ACCOUNT_ID: Aws.ACCOUNT_ID,
         },
-        memorySize: 256,
+        // Sweep can finalise five bounded evidence sets concurrently.
+        memorySize: id === 'SweepSessions' ? 1024 : 512,
         timeout: Duration.seconds(timeout),
         reservedConcurrentExecutions: 0,
       });
     };
     const reconcileSession = lifecycleFunction('ReconcileSession', 'reconcile-session', 30);
     const sweepSessions = lifecycleFunction('SweepSessions', 'sweep-sessions', 60);
+    for (const action of [reconcileSession, sweepSessions]) {
+      action.addEnvironment('RECORDING_BUCKET_NAME', recordings.bucketName);
+      action.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['dynamodb:Query'],
+          resources: [table.tableArn],
+          conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+        }),
+      );
+      action.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['dynamodb:GetItem'],
+          resources: [table.tableArn],
+          conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#challenge#*'] } },
+        }),
+      );
+      action.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['s3:GetObject'],
+          resources: [recordings.arnForObjects('sessions/*/metrics/*/sealed/*')],
+        }),
+      );
+    }
     sweepSessions.addEnvironment('SESSION_RECONCILE_FUNCTION_ARN', reconcileSession.functionArn);
     reconcileSession.grantInvoke(lifecycleSchedulerRole);
     reconcileSession.configureAsyncInvoke({ retryAttempts: 2, maxEventAge: Duration.minutes(15) });

@@ -1,4 +1,5 @@
 import Ajv2020 from 'ajv/dist/2020.js';
+import { captureLimits, isWatchedPath } from '../../../packages/contracts/private/file-capture.js';
 import addFormats from 'ajv-formats';
 import schema from '../../../packages/contracts/schemas/challenge.schema.json';
 import { MonitorError, limits } from './types.js';
@@ -10,6 +11,7 @@ interface Manifest {
   traffic: { journeys: Journey[] };
   validators: Validator[];
   healthProbes: Probe[];
+  environment: { services: { configFiles: string[]; logFiles: string[] }[] };
 }
 const validate = ajv.compile<Manifest>(schema);
 const invalid = (): never => {
@@ -88,5 +90,12 @@ export function parseConfig(text: string): MonitorConfig {
   )
     invalid();
   // Project only execution configuration. The monitor retains no root cause or hints.
-  return structuredClone({ journeys, validators: raw.validators, probes: raw.healthProbes });
+  const watched = {
+    configs: raw.environment.services.flatMap((service) => service.configFiles),
+    logs: raw.environment.services.flatMap((service) => service.logFiles),
+  };
+  const paths = [...watched.configs, ...watched.logs];
+  unique(paths);
+  if (paths.length > captureLimits.maximumPaths || !paths.every(isWatchedPath)) invalid();
+  return structuredClone({ journeys, validators: raw.validators, probes: raw.healthProbes, watched });
 }

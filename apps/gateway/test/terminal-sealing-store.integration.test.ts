@@ -1,3 +1,5 @@
+import { expandCommandRow } from '../../../packages/session/src/command-reader.js';
+import { initialCommandParser } from '../../../packages/contracts/private/command-evidence.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, after, test } from 'node:test';
@@ -21,6 +23,7 @@ import { startLocalDatabase } from '../../api/test/local-dynamodb.js';
 import { DynamoMonitorRecordingStore } from '../src/monitor-recording-store.js';
 import { DynamoTerminalRecordingStore, TerminalRecordingStoreError } from '../src/terminal-recording-store.js';
 import { DynamoTerminalSealingStore } from '../src/terminal-sealing-store.js';
+import { isCommandParserCheckpoint } from '../../../packages/contracts/private/command-evidence.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -115,6 +118,24 @@ async function coverageFixture() {
     sha256,
     objectKey: `sessions/${f.sessionId}/metrics/000000001/sealed/empty/000000-000000-${sha256}.json`,
   };
+  const parser = { ...initialCommandParser(f.checkpoint.metadata.source), cursor: f.checkpoint.cursor };
+  const captures = {
+    schemaVersion: 1,
+    baseline: { baselineAt: at(0), incomplete: false },
+    cursor: 0,
+    sequence: 0,
+    retainedBytes: 0,
+    incomplete: false,
+  };
+  await f.put('COMMAND_PARSER', parser);
+  await f.put('CAPTURE_STATE', captures);
+  await f.put('CAPTURE_COVERAGE', {
+    schemaVersion: 1,
+    cutoffAt: at(1),
+    terminal: f.checkpoint,
+    parser: { ...parser, cursor: 2 },
+    captures,
+  });
   return { ...f, value, monitor };
 }
 
@@ -149,7 +170,7 @@ test('coverage permits task-independent sealing after the short drain and fences
   const replacement = (await f.leases.claim({ sessionId: f.sessionId, recorderId: 'gateway-2', now: at(20) })).lease;
   await assert.rejects(f.leases.finishCovered(f.lease, coverage, at(21)));
   const initial = await f.seals.begin(replacement, f.checkpoint, at(1), at(21));
-  const partial = await f.seals.append(replacement, initial, f.sealed, f.eventBytes, at(21));
+  const partial = await f.seals.append(replacement, initial, f.sealed, f.eventBytes, at(21), f.page.events.slice(0, 2));
   await f.seals.finish(replacement, partial, { reference: f.reference, page: f.page }, at(21));
   await f.leases.finishCovered(replacement, coverage, at(21));
   const complete = await f.leases.get(f.sessionId);
@@ -214,7 +235,7 @@ test('covered completion requires the exact frozen terminal checkpoint', async (
   const f = await coverageFixture();
   const coverage = await f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(4));
-  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(4));
+  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(4), f.page.events.slice(0, 2));
   await f.seals.finish(f.lease, partial, { reference: f.reference, page: f.page }, at(4));
   const altered = { ...f.checkpoint, recordedBytes: f.checkpoint.recordedBytes + 1 };
   await f.put('TERMINAL_RECORDING', altered);
@@ -225,12 +246,37 @@ test('covered completion requires the exact frozen terminal checkpoint', async (
   assert.equal((await f.leases.get(f.sessionId))?.status, 'complete');
 });
 
+test('covered completion rejects a changed capture state or cutoff parser', async () => {
+  for (const SK of ['CAPTURE_STATE', 'SEALED_COMMAND_PARSER']) {
+    const f = await coverageFixture();
+    const coverage = await f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));
+    const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(4));
+    const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(4), f.page.events.slice(0, 2));
+    await f.seals.finish(f.lease, partial, { reference: f.reference, page: f.page }, at(4));
+    const get = async () =>
+      (await database.document.send(new GetCommand({ TableName: f.table, Key: f.key(SK), ConsistentRead: true }))).Item!
+        .data;
+    const previous = await get();
+    await f.put(
+      SK,
+      SK === 'CAPTURE_STATE'
+        ? { ...previous, baseline: { ...previous.baseline, baselineAt: at(2) } }
+        : { ...previous, input: 'different' },
+    );
+    await assert.rejects(f.leases.finishCovered(f.lease, coverage, at(4)));
+    assert.equal((await f.leases.get(f.sessionId))?.status, 'draining');
+    await f.put(SK, previous);
+    await f.leases.finishCovered(f.lease, coverage, at(4));
+    assert.equal((await f.leases.get(f.sessionId))?.status, 'complete');
+  }
+});
+
 test('sealing publishes a durable prefix and only completes with cutoff exclusion', async () => {
   const f = await fixture();
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));
   assert.equal(initial.cursor, 0);
   assert.deepEqual(await f.seals.nextPage(f.sessionId, f.page.source, 0), f.reference);
-  const next = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3));
+  const next = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), f.page.events.slice(0, 2));
   assert.equal(next.cursor, 2);
   assert.equal(next.complete, false);
   await assert.rejects(
@@ -262,7 +308,9 @@ test('concurrent duplicates and lost responses do not create two sealed page ref
     f.table,
   );
   const results = await Promise.all(
-    starts.map((initial) => uncertain.append(f.lease, initial, f.sealed, f.eventBytes, at(3))),
+    starts.map((initial) =>
+      uncertain.append(f.lease, initial, f.sealed, f.eventBytes, at(3), f.page.events.slice(0, 2)),
+    ),
   );
   assert.deepEqual(results[0], results[1]);
   const complete = await uncertain.finish(f.lease, results[0]!, { reference: f.reference, page: f.page }, at(3));
@@ -276,13 +324,12 @@ test('conflicting sealed bytes cannot be acknowledged as an exact duplicate', as
   const output = terminalOutput();
   assert.equal(output.type, 'output');
   assert.ok(output.type === 'output');
-  const changed = encodeSealedTerminalPage(f.sessionId, 1, f.page.source, 0, [
-    f.page.events[0]!,
-    { ...output, data: Buffer.from('different bytes').toString('base64') },
-  ]).reference;
+  const changedEvents = [f.page.events[0]!, { ...output, data: Buffer.from('different bytes').toString('base64') }];
+  const changed = encodeSealedTerminalPage(f.sessionId, 1, f.page.source, 0, changedEvents).reference;
+  const changedBytes = changedEvents.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
   const results = await Promise.allSettled([
-    f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3)),
-    f.seals.append(f.lease, initial, changed, f.eventBytes, at(3)),
+    f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), f.page.events.slice(0, 2)),
+    f.seals.append(f.lease, initial, changed, changedBytes, at(3), changedEvents),
   ]);
   assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
   const failed = results.find((result) => result.status === 'rejected');
@@ -294,7 +341,7 @@ test('conflicting sealed bytes cannot be acknowledged as an exact duplicate', as
 test('cutoff exclusion must match the next event in an immutable committed page', async () => {
   const f = await fixture();
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));
-  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3));
+  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), f.page.events.slice(0, 2));
   const forgedPage = { ...f.page, events: [f.page.events[0]!, f.page.events[1]!, terminalOutput(3, at(1.5))] };
   await assert.rejects(
     f.seals.finish(f.lease, partial, { reference: f.reference, page: forgedPage }, at(3)),
@@ -315,7 +362,7 @@ test('cutoff exclusion must match the next event in an immutable committed page'
 test('takeover resumes a partly copied final source page and fences the old generation', async () => {
   const f = await fixture();
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));
-  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3));
+  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), f.page.events.slice(0, 2));
   const replacement = await f.leases
     .claim({ sessionId: f.sessionId, recorderId: 'gateway-2', now: at(15), leaseDurationMs: 5_000 })
     .catch(() => undefined);
@@ -344,7 +391,7 @@ test('does not begin from a forged checkpoint or finish at the drain deadline', 
   assert.equal(await f.seals.get(f.sessionId), undefined);
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));
   await assert.rejects(
-    f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(10)),
+    f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(10), f.page.events.slice(0, 2)),
     (error) => error instanceof TerminalRecordingStoreError && error.code === 'stale_lease',
   );
   assert.equal((await f.rows()).length, 0);
@@ -352,4 +399,73 @@ test('does not begin from a forged checkpoint or finish at the drain deadline', 
     new GetCommand({ TableName: f.table, Key: f.key('TERMINAL_SEAL'), ConsistentRead: true }),
   );
   assert.deepEqual(stored.Item?.data, initial);
+});
+
+test('sealed parser and command receipts advance atomically and reject different duplicate bytes', async () => {
+  const f = await fixture();
+  const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));
+  const events = f.page.events.slice(0, 2);
+  const next = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), events);
+  const parser = (
+    await database.document.send(
+      new GetCommand({ TableName: f.table, Key: f.key('SEALED_COMMAND_PARSER'), ConsistentRead: true }),
+    )
+  ).Item?.data;
+  assert.ok(isCommandParserCheckpoint(parser));
+  assert.equal(parser.cursor, next.cursor);
+  assert.deepEqual(await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(3), events), next);
+  const different = [events[0]!, terminalOutput(2, events[1]!.recordedAt, Buffer.from('different'))];
+  const changed = encodeSealedTerminalPage(f.sessionId, 1, f.page.source, 0, different).reference;
+  await assert.rejects(f.seals.append(f.lease, initial, changed, f.eventBytes, at(3), different));
+  assert.equal((await f.rows()).length, 1);
+});
+
+test('sealed overflow batches remain unpublished after interruption and replay the exact prefix', async () => {
+  const f = await fixture();
+  const marker = `\x1b]133;C;${Buffer.from(':').toString('base64')}\x07\x1b]133;D;0\x07`;
+  const page = terminalPage([
+    terminalPage().events[0]!,
+    terminalOutput(2, at(1), Buffer.from(marker.repeat(45))),
+    terminalOutput(3, at(2)),
+  ]);
+  const reference = encodeTerminalPage(f.sessionId, 1, 0, page).reference;
+  await f.put('TERMINAL_RECORDING', {
+    ...f.checkpoint,
+    recordedBytes: page.events.reduce((n, event) => n + Buffer.byteLength(JSON.stringify(event)), 0),
+  });
+  await f.put(`TERMINAL_CHUNK#${page.source}#000003`, reference);
+  const checkpoint = (await f.recordings.get(f.sessionId))!;
+  const initial = await f.seals.begin(f.lease, checkpoint, at(1), at(3));
+  const events = page.events.slice(0, 2);
+  const sealed = encodeSealedTerminalPage(f.sessionId, 1, page.source, 0, events).reference;
+  const bytes = events.reduce((n, event) => n + Buffer.byteLength(JSON.stringify(event)), 0);
+  let writes = 0;
+  const interrupted = new DynamoTerminalSealingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand && ++writes === 2) throw new Error('sealed staging interrupted');
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await assert.rejects(
+    interrupted.append(f.lease, initial, sealed, bytes, at(3), events),
+    /sealed staging interrupted/,
+  );
+  assert.equal((await f.seals.get(f.sessionId))?.cursor, 0);
+  const get = async (SK: string) =>
+    (await database.document.send(new GetCommand({ TableName: f.table, Key: f.key(SK), ConsistentRead: true }))).Item
+      ?.data;
+  assert.equal(await get('SEALED_COMMAND#000001'), undefined);
+  const next = await f.seals.append(f.lease, initial, sealed, bytes, at(3), events);
+  assert.equal(next.cursor, 2);
+  assert.equal((await get('SEALED_COMMAND_PARSER')).lossAt, null);
+  const publication = await get('SEALED_COMMAND#000001');
+  const commands = await expandCommandRow(database.document, f.table, f.sessionId, 'SEALED_COMMAND', {
+    SK: 'SEALED_COMMAND#000001',
+    data: publication,
+  });
+  assert.equal(commands.length, 45);
+  assert.deepEqual(await f.seals.append(f.lease, initial, sealed, bytes, at(3), events), next);
 });

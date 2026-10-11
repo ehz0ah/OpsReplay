@@ -10,6 +10,7 @@ const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
 const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
 const recordingTest = readFileSync(new URL('./recording.test.py', import.meta.url), 'utf8');
+const shellIntegrationTest = readFileSync(new URL('./shell-integration.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
 const containers = new Set();
 
@@ -235,6 +236,11 @@ test('private terminal preserves one shell, fences stale input, and fails closed
   );
   assert.match(success(exec(id, 'cat', '/var/log/supervisor/terminal.log')), /Refusing to open a new shell/);
   assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
+});
+
+test('shell integration emits bounded top-level markers and preserves command status', async (t) => {
+  const id = await fresh(t);
+  success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: shellIntegrationTest }));
 });
 
 test('terminal recording is independent, bounded, and leaves interactive input usable', async (t) => {

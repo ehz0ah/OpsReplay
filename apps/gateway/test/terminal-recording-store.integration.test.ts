@@ -1,3 +1,4 @@
+import { expandCommandRow } from '../../../packages/session/src/command-reader.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
@@ -307,6 +308,51 @@ test('rejects forged references, missing prefixes, invalid checkpoints, and stal
   assert.equal((await f.chunks()).length, 0);
 });
 
+test('command checkpoint and events commit with terminal pages and replay once across takeover', async () => {
+  const f = await fixture();
+  const initial = await f.store.begin(f.lease, terminalReady(), now);
+  let checkpoint = await f.store.commit(f.lease, initial, f.page, f.reference, at(1));
+  const marker = `\x1b]133;C;${Buffer.from('cat config').toString('base64')}\x07`;
+  const first = terminalPage([terminalOutput(2, at(1), Buffer.from(marker + 'proxy_'))]);
+  checkpoint = await f.store.commit(
+    f.lease,
+    checkpoint,
+    first,
+    encodeTerminalPage(f.sessionId, 1, 1, first).reference,
+    at(2),
+  );
+  assert.equal((await f.get('COMMAND_PARSER')).active.event.outputExcerpt, 'proxy_');
+  assert.equal(await f.get('COMMAND#000001'), undefined);
+  const replacement = (
+    await f.leases.claim({ sessionId: f.sessionId, recorderId: 'gateway-2', now: at(5), leaseDurationMs: 5_000 })
+  ).lease;
+  const last = terminalPage([terminalOutput(3, at(5), Buffer.from('pass\x1b]133;D;1\x07'))], { observedAt: at(5) });
+  const reference = encodeTerminalPage(f.sessionId, 2, 2, last).reference;
+  const next = await f.store.commit(replacement, checkpoint, last, reference, at(6));
+  assert.equal((await f.get('COMMAND#000001')).command, 'cat config');
+  assert.equal((await f.get('COMMAND#000001')).outputExcerpt, 'proxy_pass');
+  assert.equal((await f.get('COMMAND#000001')).exitStatus, 1);
+  assert.equal((await f.get('COMMAND_PARSER')).cursor, 3);
+  assert.deepEqual(await f.store.commit(replacement, checkpoint, last, reference, at(6)), next);
+});
+
+test('rejected terminal commits cannot advance command evidence', async () => {
+  const f = await fixture();
+  const initial = await f.store.begin(f.lease, terminalReady(), now);
+  const checkpoint = await f.store.commit(f.lease, initial, f.page, f.reference, at(1));
+  const marker = `\x1b]133;C;${Buffer.from('true').toString('base64')}\x07\x1b]133;D;0\x07`;
+  const page = terminalPage([terminalOutput(2, at(1), Buffer.from(marker))]);
+  const failed = wrappedStore(f, async (command, options) => {
+    if (command instanceof TransactWriteCommand) throw new Error('before commit');
+    return send(command, options);
+  });
+  await assert.rejects(
+    failed.commit(f.lease, checkpoint, page, encodeTerminalPage(f.sessionId, 1, 1, page).reference, at(2)),
+  );
+  assert.equal((await f.get('COMMAND_PARSER')).cursor, 1);
+  assert.equal(await f.get('COMMAND#000001'), undefined);
+});
+
 test('rejects corrupt saved state and snapshots lease and metadata before async I/O', async () => {
   const f = await fixture();
   let mutate = true;
@@ -325,4 +371,101 @@ test('rejects corrupt saved state and snapshots lease and metadata before async 
   await f.put('TERMINAL_RECORDING', { ...initial, cursor: 1 });
   await assert.rejects(f.store.get(f.sessionId), storeError('invalid_store'));
   await assert.rejects(f.store.get('invalid'), storeError('invalid_input'));
+});
+
+const markerCommand = (command: string) => `\x1b]133;C;${Buffer.from(command).toString('base64')}\x07\x1b]133;D;0\x07`;
+const manyPage = (command = ':') =>
+  terminalPage([terminalPage().events[0]!, terminalOutput(2, now, Buffer.from(markerCommand(command).repeat(45)))]);
+
+test('45 commands in one source page publish bounded batches without parser loss', async () => {
+  const f = await fixture();
+  const initial = await f.store.begin(f.lease, terminalReady(), now);
+  const page = manyPage();
+  await f.store.commit(f.lease, initial, page, encodeTerminalPage(f.sessionId, 1, 0, page).reference, at(1));
+  const parser = await f.get('COMMAND_PARSER');
+  assert.equal(parser.count, 45);
+  assert.equal(parser.lossAt, null);
+  const publication = await f.get('COMMAND#000001');
+  assert.deepEqual(
+    publication.batches.map((batch: { first: number; last: number }) => batch.last - batch.first + 1),
+    [20, 20, 5],
+  );
+  const commands = await expandCommandRow(database.document, f.table, f.sessionId, 'COMMAND', {
+    SK: 'COMMAND#000001',
+    data: publication,
+  });
+  assert.equal(commands.length, 45);
+  assert.deepEqual(
+    commands.map((command) => command.seq),
+    Array.from({ length: 45 }, (_, index) => index + 1),
+  );
+});
+
+test('interrupted large-page staging stays invisible and cannot reserve a competing command range', async () => {
+  const f = await fixture();
+  const initial = await f.store.begin(f.lease, terminalReady(), now);
+  const page = manyPage('first');
+  let stages = 0;
+  const interrupted = wrappedStore(f, async (command, options) => {
+    if (command instanceof TransactWriteCommand && ++stages === 2) throw new Error('staging interrupted');
+    return send(command, options);
+  });
+  await assert.rejects(
+    interrupted.commit(f.lease, initial, page, encodeTerminalPage(f.sessionId, 1, 0, page).reference, at(1)),
+    /staging interrupted/,
+  );
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 0);
+  assert.equal(await f.get('COMMAND#000001'), undefined);
+  assert.equal(await f.get('COMMAND_PARSER'), undefined);
+  const competing = manyPage('second');
+  await f.store.commit(f.lease, initial, competing, encodeTerminalPage(f.sessionId, 1, 0, competing).reference, at(1));
+  const commands = await expandCommandRow(database.document, f.table, f.sessionId, 'COMMAND', {
+    SK: 'COMMAND#000001',
+    data: await f.get('COMMAND#000001'),
+  });
+  assert.equal(commands.length, 45);
+  assert.ok(commands.every((command) => command.command === 'second'));
+  await assert.rejects(
+    f.store.commit(f.lease, initial, page, encodeTerminalPage(f.sessionId, 1, 0, page).reference, at(1)),
+    storeError('conflict'),
+  );
+});
+
+test('cutoff projection reads only the boundary S3 page from saved parser checkpoints', async () => {
+  const f = await fixture();
+  let checkpoint = await f.store.begin(f.lease, terminalReady(), now);
+  const pages = new Map<string, ReturnType<typeof terminalPage>>();
+  checkpoint = await f.store.commit(f.lease, checkpoint, f.page, f.reference, now);
+  const texts = [
+    markerCommand('before'),
+    `\x1b]133;C;${Buffer.from('open').toString('base64')}\x07partial`,
+    markerCommand('after'),
+  ];
+  for (let index = 0; index < texts.length; index++) {
+    const page = terminalPage([terminalOutput(index + 2, at(index), Buffer.from(texts[index]!))], {
+      observedAt: at(index),
+    });
+    const reference = encodeTerminalPage(f.sessionId, 1, index + 1, page).reference;
+    pages.set(reference.objectKey, page);
+    checkpoint = await f.store.commit(f.lease, checkpoint, page, reference, at(index));
+  }
+  let reads = 0;
+  const parser = await f.store.cutoffParser(
+    f.sessionId,
+    checkpoint,
+    at(1),
+    {
+      readLive: async (_id, reference) => {
+        reads++;
+        return pages.get(reference.objectKey)!;
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.equal(reads, 1);
+  assert.equal(parser.cursor, 3);
+  assert.equal(parser.count, 2);
+  assert.equal(parser.active?.event.command, 'open');
+  assert.equal(parser.active?.event.outputExcerpt, 'partial');
+  assert.equal(parser.lossAt, null);
 });

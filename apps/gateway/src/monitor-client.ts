@@ -1,4 +1,13 @@
 import { X509Certificate, timingSafeEqual } from 'node:crypto';
+import {
+  captureLimits,
+  isCaptureRequest,
+  isCaptureBaseline,
+  isFileCapture,
+  type CaptureRequest,
+  type CaptureBaseline,
+  type FileCapture,
+} from '../../../packages/contracts/private/file-capture.js';
 import { Agent, request } from 'node:https';
 import type { IncomingMessage, RequestOptions } from 'node:http';
 import { isIP } from 'node:net';
@@ -148,7 +157,7 @@ function mapError(error: unknown, signal?: AbortSignal): MonitorClientError {
   return new MonitorClientError('transport_failed');
 }
 
-async function readResponse(response: IncomingMessage): Promise<unknown> {
+async function readResponse(response: IncomingMessage, maximumBytes: number): Promise<unknown> {
   try {
     const contentType = response.headers['content-type'];
     if (typeof contentType !== 'string') throw new MonitorClientError('invalid_response');
@@ -162,10 +171,7 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
     if (mediaType.essence !== 'application/json' || (charset !== null && charset.toLowerCase() !== 'utf-8'))
       throw new MonitorClientError('invalid_response');
     const length = response.headers['content-length'];
-    if (
-      length !== undefined &&
-      (!/^[0-9]+$/.test(length) || Number(length) > monitorControlSchema.maximumResponseBytes)
-    ) {
+    if (length !== undefined && (!/^[0-9]+$/.test(length) || Number(length) > maximumBytes)) {
       throw new MonitorClientError('invalid_response');
     }
     const chunks: Buffer[] = [];
@@ -173,7 +179,7 @@ async function readResponse(response: IncomingMessage): Promise<unknown> {
     for await (const value of response) {
       const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
       bytes += chunk.byteLength;
-      if (bytes > monitorControlSchema.maximumResponseBytes) throw new MonitorClientError('invalid_response');
+      if (bytes > maximumBytes) throw new MonitorClientError('invalid_response');
       chunks.push(chunk);
     }
     if (bytes === 0) throw new MonitorClientError('invalid_response');
@@ -300,6 +306,32 @@ export class MonitorClient {
     return response.value;
   }
 
+  async baseline(signal?: AbortSignal): Promise<CaptureBaseline> {
+    const response = await this.call(captureLimits.baselinePath, 'POST', undefined, signal);
+    if (response.status !== 200) throw remoteError(response.status, response.value);
+    if (!isCaptureBaseline(response.value)) throw new MonitorClientError('invalid_response');
+    return response.value;
+  }
+
+  async capture(value: CaptureRequest, signal?: AbortSignal): Promise<FileCapture> {
+    if (!isCaptureRequest(value)) throw new MonitorClientError('invalid_config');
+    const response = await this.call(
+      captureLimits.capturePath,
+      'POST',
+      Buffer.from(JSON.stringify(value)),
+      signal,
+      captureLimits.maximumBytes,
+    );
+    if (response.status !== 200) throw remoteError(response.status, response.value);
+    if (
+      !isFileCapture(response.value) ||
+      response.value.commandId !== value.commandId ||
+      response.value.commandSeq !== value.commandSeq
+    )
+      throw new MonitorClientError('invalid_response');
+    return response.value;
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
@@ -312,13 +344,14 @@ export class MonitorClient {
     method: 'GET' | 'POST',
     body: Buffer | undefined,
     signal?: AbortSignal,
+    maximumBytes: number = monitorControlSchema.maximumResponseBytes,
   ): Promise<ResponseValue> {
     if (this.closed) throw new MonitorClientError('closed');
     if (signal?.aborted) throw new MonitorClientError('cancelled');
     let failure: MonitorClientError | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return await this.attempt(path, method, body, signal);
+        return await this.attempt(path, method, body, signal, maximumBytes);
       } catch (error) {
         failure = mapError(error, signal);
         if (this.closed) throw new MonitorClientError('closed');
@@ -333,6 +366,7 @@ export class MonitorClient {
     method: 'GET' | 'POST',
     body: Buffer | undefined,
     signal?: AbortSignal,
+    maximumBytes: number = monitorControlSchema.maximumResponseBytes,
   ): Promise<ResponseValue> {
     return new Promise((resolve, reject) => {
       let finished = false;
@@ -380,7 +414,7 @@ export class MonitorClient {
       let outgoing;
       try {
         outgoing = request(options, (response) => {
-          void readResponse(response).then(
+          void readResponse(response, maximumBytes).then(
             (value) =>
               finish(undefined, {
                 status: response.statusCode ?? 0,

@@ -52,7 +52,18 @@ export class DurableMonitorRecordingSink implements MonitorRecordingSink {
             recovery: metric.payload.recovery,
           }
         : undefined;
-    await this.recordings.append(this.lease, value.startedAt, reference, this.now(), signal, observation);
+    const evidence = {
+      schemaVersion: 1 as const,
+      source: value.source,
+      after: value.after,
+      nextSequence: value.nextSequence,
+      events: value.frames.flatMap((frame) =>
+        frame.payload.type === 'timeline'
+          ? [{ sequence: frame.sequence, recordedAt: frame.recordedAt, event: frame.payload.event }]
+          : [],
+      ),
+    };
+    await this.recordings.append(this.lease, value.startedAt, reference, this.now(), signal, observation, evidence);
   }
 
   async seal(value: SealedMonitorRecording, signal?: AbortSignal): Promise<void> {

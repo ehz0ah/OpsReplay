@@ -33,6 +33,7 @@ import {
 import { terminalPage, terminalReady } from '../../../packages/contracts/private/test-support/terminal-fixture.js';
 import type { TerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
 import { monitorObservationKey } from '../../../packages/contracts/private/monitor-persistence.js';
+import { initialCommandParser } from '../../../packages/contracts/private/command-evidence.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -54,6 +55,22 @@ interface Fixture {
   get(key: { PK: string; SK: string }): Promise<Record<string, unknown> | undefined>;
   put(key: { PK: string; SK: string }, data: unknown): Promise<unknown>;
   rows(): Promise<Record<string, unknown>[]>;
+}
+
+async function seedCommandEvidence(f: Fixture, terminalSource: string, cursor: number) {
+  for (const SK of ['COMMAND_PARSER', 'SEALED_COMMAND_PARSER'])
+    await f.put({ PK: `SESSION#${f.sessionId}`, SK }, { ...initialCommandParser(terminalSource), cursor });
+  await f.put(
+    { PK: `SESSION#${f.sessionId}`, SK: 'CAPTURE_STATE' },
+    {
+      schemaVersion: 1,
+      baseline: { baselineAt: now, incomplete: false },
+      cursor: 0,
+      sequence: 0,
+      retainedBytes: 0,
+      incomplete: false,
+    },
+  );
 }
 
 async function fixture(): Promise<Fixture> {
@@ -267,6 +284,72 @@ test('fenced incomplete publication rejects an old recorder after takeover', asy
     storeError('stale_lease'),
   );
   assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
+});
+
+test('Monitor event projection and cursor commit atomically and replay only the exact receipt', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, startedAt);
+  const page = reference(f.sessionId, 1, 'live');
+  const evidence = {
+    schemaVersion: 1 as const,
+    source,
+    after: 0,
+    nextSequence: 1,
+    events: [
+      {
+        sequence: 1,
+        recordedAt: startedAt,
+        event: {
+          id: `${source}:1`,
+          at: startedAt,
+          kind: 'monitor' as const,
+          signal: 'outage_started' as const,
+          label: 'Proxy',
+        },
+      },
+    ],
+  };
+  let lost = false;
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand && !lost) {
+          lost = true;
+          throw new Error('Response lost');
+        }
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await uncertain.append(claimed.lease, startedAt, page, startedAt, undefined, undefined, evidence);
+  assert.deepEqual(await f.get({ PK: `SESSION#${f.sessionId}`, SK: 'MONITOR_EVENTS#000001' }), evidence);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+  await f.store.append(claimed.lease, startedAt, page, startedAt, undefined, undefined, structuredClone(evidence));
+  await assert.rejects(
+    f.store.append(claimed.lease, startedAt, page, startedAt, undefined, undefined, {
+      ...evidence,
+      events: [],
+    }),
+    storeError('invalid_state'),
+  );
+  const next = { ...evidence, after: 1, nextSequence: 2, events: [] };
+  await assert.rejects(
+    f.store.append(
+      claimed.lease,
+      startedAt,
+      reference(f.sessionId, 1, 'live', 1, 2),
+      '2026-10-07T00:00:05.000Z',
+      undefined,
+      undefined,
+      next,
+    ),
+    storeError('stale_lease'),
+  );
+  assert.equal(await f.get({ PK: `SESSION#${f.sessionId}`, SK: 'MONITOR_EVENTS#000002' }), undefined);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
 });
 
 test('allows only one concurrent recorder claim', async () => {
@@ -632,6 +715,7 @@ test('monitor completion requires a valid terminal seal when terminal state exis
     storeError('invalid_state'),
   );
   await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' }, { ...terminal, complete: true });
+  await seedCommandEvidence(f, checkpoint.metadata.source, checkpoint.cursor);
   await f.store.seal(claimed.lease, sealed, canonical, '2026-10-07T00:00:04.000Z');
   assert.equal((await f.store.get(f.sessionId))?.status, 'complete');
 });
@@ -699,6 +783,7 @@ test('a terminal seal changed after validation prevents combined publication', a
   };
   const terminalKey = { PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' };
   await f.put(terminalKey, terminal);
+  await seedCommandEvidence(f, checkpoint.metadata.source, checkpoint.cursor);
   let raced = false;
   const racing = new DynamoMonitorRecordingStore(
     {
@@ -723,6 +808,95 @@ test('a terminal seal changed after validation prevents combined publication', a
   assert.equal(raced, true);
   assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
   assert.deepEqual(await publicRecording(f), { status: 'draining', reason: null });
+});
+
+async function combinedFixture() {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  await setDraining(f, claimed.lease, cutoffAt);
+  const checkpoint = advanceTerminalCheckpoint(
+    initialTerminalCheckpoint(terminalReady({ startedAt: now, observedAt: now })),
+    terminalPage(undefined, {
+      startedAt: now,
+      observedAt: '2026-10-07T00:00:04.000Z',
+      events: [{ type: 'dimensions', sequence: 1, recordedAt: now, columns: 80, rows: 24 }],
+    }),
+  );
+  await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_RECORDING' }, checkpoint);
+  await f.put(
+    { PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' },
+    {
+      schemaVersion: 1,
+      cutoffAt,
+      checkpoint,
+      cursor: 1,
+      pageCount: 1,
+      recordedBytes: checkpoint.recordedBytes,
+      lastAt: now,
+      excludedAt: null,
+      complete: true,
+    },
+  );
+  await seedCommandEvidence(f, checkpoint.metadata.source, checkpoint.cursor);
+  const seal = (store = f.store) =>
+    store.seal(
+      claimed.lease,
+      { startedAt, cutoffAt, source: null, cursor: 0, frames: [], final: metric(cutoffAt) },
+      reference(f.sessionId, 1, 'sealed', 0, 0),
+      '2026-10-07T00:00:04.000Z',
+    );
+  return { ...f, cutoffAt, seal };
+}
+test('parser loss, missing sealed parser, capture loss and cutoff-open backlog prevent completion', async () => {
+  for (const [SK, change] of [
+    ['COMMAND_PARSER', { lossAt: '2026-10-07T00:00:02.000Z' }],
+    ['SEALED_COMMAND_PARSER', { lossAt: '2026-10-07T00:00:02.000Z' }],
+    ['SEALED_COMMAND_PARSER', { source: randomUUID() }],
+    ['SEALED_COMMAND_PARSER', { mode: 'osc', control: '133;C;' }],
+    ['SEALED_COMMAND_PARSER', { utf8Tail: '8A==' }],
+    ['CAPTURE_STATE', { incomplete: true }],
+    ['SEALED_COMMAND_PARSER', { count: 1 }],
+  ] as const) {
+    const f = await combinedFixture();
+    const key = { PK: `SESSION#${f.sessionId}`, SK };
+    await f.put(key, { ...(await f.get(key)), ...change });
+    await assert.rejects(f.seal(), storeError('invalid_state'));
+    assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
+  }
+});
+test('loss strictly after cutoff is not a gap in the sealed prefix', async () => {
+  const f = await combinedFixture();
+  const key = { PK: `SESSION#${f.sessionId}`, SK: 'COMMAND_PARSER' };
+  await f.put(key, { ...(await f.get(key)), lossAt: '2026-10-07T00:00:03.001Z' });
+  await f.seal();
+  assert.equal((await f.store.get(f.sessionId))?.status, 'complete');
+});
+test('capture and sealed parser changes between read and commit fence combined completion', async () => {
+  for (const SK of ['CAPTURE_STATE', 'SEALED_COMMAND_PARSER']) {
+    const f = await combinedFixture();
+    let raced = false;
+    const racing = new DynamoMonitorRecordingStore(
+      {
+        send: async (command: unknown, options: unknown) => {
+          if (command instanceof TransactWriteCommand && !raced) {
+            raced = true;
+            const key = { PK: `SESSION#${f.sessionId}`, SK };
+            await f.put(key, {
+              ...(await f.get(key)),
+              ...(SK === 'CAPTURE_STATE' ? { incomplete: true } : { lossAt: now }),
+            });
+          }
+          return database.document.send(command as TransactWriteCommand, options as never);
+        },
+      } as unknown as DynamoDBDocumentClient,
+      f.table,
+    );
+    await assert.rejects(f.seal(racing));
+    assert.equal(raced, true);
+    assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
+  }
 });
 
 test('marks a claimed recording incomplete after session start fails', async () => {

@@ -36,9 +36,11 @@ under one lease. It copies the exact terminal prefix into sealed retention and r
 both streams before publishing recording completion. These paths are tested locally,
 not deployed. The lifecycle adds committed readiness, owner end, saved outcomes, learner
 liveness, deadline repair, bounded task coverage, task-independent sealing, and confirmed task cleanup. Its three separate
-Lambda actions and triggers remain disabled. Ready-attempt locks still require atomic
-debrief finalisation. Playback, command evidence, captures, remaining API, and the web
-application are not implemented. No checkpoint image is currently published in AWS,
+Lambda actions and triggers remain disabled. Command receipts, safe interval captures, pinned private manifests, and deterministic
+debrief finalisation are now implemented locally. Finalisation commits the result,
+progress, and matching ready-attempt lock release together after confirmed cleanup.
+Playback exports/read APIs, content publication, environment task definitions,
+remaining API, and the web application are not implemented. No checkpoint image is currently published in AWS,
 and no public route is deployed.
 
 ## Start here

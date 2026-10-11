@@ -32,6 +32,17 @@ import {
   isTerminalRecordingCheckpoint,
   type TerminalRecordingCheckpoint,
 } from '../../../packages/contracts/private/terminal-persistence.js';
+import {
+  initialCommandParser,
+  isCommandParserCheckpoint,
+} from '../../../packages/contracts/private/command-evidence.js';
+import { isCaptureCoverage } from '../../../packages/contracts/private/capture-coverage.js';
+import { isCaptureState } from '../../../packages/contracts/private/capture-persistence.js';
+import {
+  isMonitorEvidencePage,
+  type MonitorEvidencePage,
+} from '../../../packages/contracts/private/monitor-evidence.js';
+import { canonicalJson } from '../../../packages/session/src/canonical.js';
 
 export const monitorRecorderLease = Object.freeze({
   defaultDurationMs: 15_000,
@@ -66,6 +77,7 @@ export interface MonitorRecordingStateStore {
     now: string,
     signal?: AbortSignal,
     observation?: MonitorLifecycleObservation,
+    evidence?: MonitorEvidencePage,
   ): Promise<void>;
   seal(
     lease: MonitorRecorderLease,
@@ -296,9 +308,43 @@ export class DynamoMonitorRecordingStore
       final: structuredClone(value.final),
     };
     if (!isRecordingCoverage(coverage, lease.sessionId)) throw new MonitorRecordingStoreError('invalid_input');
+    const captureCoverage = (
+      await this.client.send(
+        new GetCommand({
+          TableName: this.table,
+          Key: { PK: `SESSION#${lease.sessionId}`, SK: 'CAPTURE_COVERAGE' },
+          ConsistentRead: true,
+        }),
+        sendOptions(signal),
+      )
+    ).Item?.data;
+    if (
+      !isCaptureCoverage(captureCoverage) ||
+      captureCoverage.cutoffAt !== value.cutoffAt ||
+      !isDeepStrictEqual(captureCoverage.terminal, terminal)
+    )
+      throw new MonitorRecordingStoreError('invalid_state');
     const command = new TransactWriteCommand({
       ClientRequestToken: randomUUID(),
       TransactItems: [
+        {
+          ConditionCheck: {
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK: 'CAPTURE_STATE' },
+            ConditionExpression: '#data = :captures',
+            ExpressionAttributeNames: { '#data': 'data' },
+            ExpressionAttributeValues: { ':captures': captureCoverage.captures },
+          },
+        },
+        {
+          ConditionCheck: {
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK: 'CAPTURE_COVERAGE' },
+            ConditionExpression: '#data = :captures',
+            ExpressionAttributeNames: { '#data': 'data' },
+            ExpressionAttributeValues: { ':captures': captureCoverage },
+          },
+        },
         {
           ConditionCheck: {
             TableName: this.table,
@@ -671,6 +717,7 @@ export class DynamoMonitorRecordingStore
     now: string,
     signal?: AbortSignal,
     observation?: MonitorLifecycleObservation,
+    evidence?: MonitorEvidencePage,
   ): Promise<void> {
     if (
       !validLease(lease) ||
@@ -687,6 +734,15 @@ export class DynamoMonitorRecordingStore
         observation.startedAt !== startedAt ||
         observation.source !== reference.source ||
         observation.cursor !== reference.nextSequence)
+    )
+      throw new MonitorRecordingStoreError('invalid_input');
+    if (
+      evidence !== undefined &&
+      (!isMonitorEvidencePage(evidence) ||
+        evidence.source !== reference.source ||
+        evidence.after !== reference.after ||
+        evidence.nextSequence !== reference.nextSequence ||
+        evidence.events.some((item) => item.recordedAt < startedAt || item.recordedAt > now))
     )
       throw new MonitorRecordingStoreError('invalid_input');
     const previousObservation = observation
@@ -718,7 +774,7 @@ export class DynamoMonitorRecordingStore
         previousObservation.at > observation.at ||
         previousObservation.recovery.requiredSeconds !== observation.recovery.requiredSeconds)
     ) {
-      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal)) return;
+      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence)) return;
       throw new MonitorRecordingStoreError('invalid_input');
     }
     const chunk = {
@@ -774,6 +830,21 @@ export class DynamoMonitorRecordingStore
         ...(observation?.recovery.state === 'met' && !keepRecovery
           ? [{ Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'recovery_met', now) } }]
           : []),
+        ...(evidence
+          ? [
+              {
+                Put: {
+                  TableName: this.table,
+                  Item: {
+                    PK: `SESSION#${lease.sessionId}`,
+                    SK: `MONITOR_EVENTS#${String(reference.nextSequence).padStart(6, '0')}`,
+                    data: structuredClone(evidence),
+                  },
+                  ConditionExpression: 'attribute_not_exists(PK)',
+                },
+              },
+            ]
+          : []),
         ...(observation
           ? [
               keepRecovery
@@ -808,7 +879,7 @@ export class DynamoMonitorRecordingStore
       await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
-      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal)) return;
+      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence)) return;
       if (conditionalFailure(error)) {
         const saved = await this.get(lease.sessionId, signal);
         if (
@@ -925,6 +996,61 @@ export class DynamoMonitorRecordingStore
         !isDeepStrictEqual(terminalSeal?.Item?.data?.checkpoint, coverage.terminal))
     )
       throw new MonitorRecordingStoreError('invalid_state');
+    const evidenceItems = terminal.Item
+      ? await Promise.all(
+          ['COMMAND_PARSER', 'CAPTURE_STATE', 'SEALED_COMMAND_PARSER', 'CAPTURE_COVERAGE'].map(async (SK) => {
+            const result = await this.client.send(
+              new GetCommand({
+                TableName: this.table,
+                Key: { PK: `SESSION#${lease.sessionId}`, SK },
+                ConsistentRead: true,
+              }),
+              sendOptions(signal),
+            );
+            return { SK, data: result.Item?.data as unknown };
+          }),
+        )
+      : [];
+    if (terminal.Item) {
+      const parser = evidenceItems[0]?.data;
+      const captures = evidenceItems[1]?.data;
+      const sealedParser = evidenceItems[2]?.data;
+      const sealCursor = terminalSeal?.Item?.data?.cursor as number;
+      const captureCoverage = evidenceItems[3]?.data;
+      if (
+        coverage &&
+        (!isCaptureCoverage(captureCoverage) ||
+          captureCoverage.cutoffAt !== coverage.cutoffAt ||
+          !isDeepStrictEqual(captureCoverage.captures, captures) ||
+          !isDeepStrictEqual(captureCoverage.terminal, coverage.terminal) ||
+          !isDeepStrictEqual(
+            captureCoverage.parser,
+            sealedParser ?? initialCommandParser(coverage.terminal.metadata.source),
+          ))
+      )
+        throw new MonitorRecordingStoreError('invalid_state');
+      if (
+        (sealedParser === undefined
+          ? sealCursor !== 0
+          : !isCommandParserCheckpoint(sealedParser) ||
+            sealedParser.cursor !== sealCursor ||
+            sealedParser.source !== terminal.Item.data.metadata.source ||
+            sealedParser.lossAt !== null ||
+            sealedParser.mode !== 'text' ||
+            sealedParser.utf8Tail !== '' ||
+            (sealCursor === 0 && sealedParser.count !== 0)) ||
+        !isCommandParserCheckpoint(parser) ||
+        parser.source !== terminal.Item.data.metadata.source ||
+        parser.cursor !== terminal.Item.data.cursor ||
+        (parser.lossAt !== null && parser.lossAt <= value.cutoffAt) ||
+        !isCaptureState(captures) ||
+        captures.incomplete ||
+        captures.baseline.incomplete ||
+        captures.sequence !== captures.cursor ||
+        captures.cursor < (isCommandParserCheckpoint(sealedParser) ? sealedParser.count : 0)
+      )
+        throw new MonitorRecordingStoreError('invalid_state');
+    }
     const terminalConditions = [
       {
         ConditionCheck: {
@@ -971,6 +1097,19 @@ export class DynamoMonitorRecordingStore
             ]
           : []),
         { Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'complete', now) } },
+        ...evidenceItems.map(({ SK, data }) => ({
+          ConditionCheck: {
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK },
+            ...(data === undefined
+              ? { ConditionExpression: 'attribute_not_exists(PK)' }
+              : {
+                  ConditionExpression: '#data = :expected',
+                  ExpressionAttributeNames: { '#data': 'data' },
+                  ExpressionAttributeValues: { ':expected': data },
+                }),
+          },
+        })),
         {
           Update: {
             TableName: this.table,
@@ -1220,6 +1359,7 @@ export class DynamoMonitorRecordingStore
     generation: number,
     reference: StoredMonitorChunk,
     signal?: AbortSignal,
+    evidence?: MonitorEvidencePage,
   ): Promise<boolean> {
     const [state, chunk] = await Promise.all([
       this.get(sessionId, signal),
@@ -1233,6 +1373,17 @@ export class DynamoMonitorRecordingStore
       ),
     ]);
     const data = chunk.Item?.data;
+    if (evidence) {
+      const saved = await this.client.send(
+        new GetCommand({
+          TableName: this.table,
+          Key: { PK: `SESSION#${sessionId}`, SK: `MONITOR_EVENTS#${String(reference.nextSequence).padStart(6, '0')}` },
+          ConsistentRead: true,
+        }),
+        sendOptions(signal),
+      );
+      if (canonicalJson(saved.Item?.data) !== canonicalJson(evidence)) return false;
+    }
     return (
       state !== undefined &&
       state.generation === generation &&

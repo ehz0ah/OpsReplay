@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
-import { GetCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  initialCommandParser,
+  isCommandParserCheckpoint,
+  type CommandParserCheckpoint,
+} from '../../../packages/contracts/private/command-evidence.js';
+import { parseCommandEvents } from './command-parser.js';
+import { stageCommandEvidence } from './command-publication.js';
+import type { TerminalPageArchive } from './terminal-page-archive.js';
+import { GetCommand, QueryCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   advanceTerminalCheckpoint,
   initialTerminalCheckpoint,
@@ -179,6 +187,110 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
     }
   }
 
+  private async parser(sessionId: string, signal?: AbortSignal): Promise<CommandParserCheckpoint | undefined> {
+    const result = await this.client.send(
+      new GetCommand({
+        TableName: this.table,
+        Key: { PK: `SESSION#${sessionId}`, SK: 'COMMAND_PARSER' },
+        ConsistentRead: true,
+      }),
+      sendOptions(signal),
+    );
+    if (!result.Item) return undefined;
+    if (!isCommandParserCheckpoint(result.Item.data)) throw new TerminalRecordingStoreError('invalid_store');
+    return structuredClone(result.Item.data);
+  }
+
+  /** Find the boundary page using metadata, then parse only that page from its
+   * previous published checkpoint. Do not re-read thousands of S3 pages in drain. */
+  async cutoffParser(
+    sessionId: string,
+    checkpoint: TerminalRecordingCheckpoint,
+    cutoffAt: string,
+    pages: Pick<TerminalPageArchive, 'readLive'>,
+    signal: AbortSignal,
+  ): Promise<CommandParserCheckpoint> {
+    if (
+      !isMonitorRecordingIdentity(sessionId, 1) ||
+      !isTerminalRecordingCheckpoint(checkpoint) ||
+      !isMonitorControlTimestamp(cutoffAt)
+    )
+      throw new TerminalRecordingStoreError('invalid_input');
+    checkpoint = structuredClone(checkpoint);
+    const live = await this.parser(sessionId, signal);
+    if (!live || live.cursor !== checkpoint.cursor || live.source !== checkpoint.metadata.source)
+      throw new TerminalRecordingStoreError('invalid_store');
+    if (!checkpoint.frontier || checkpoint.frontier.recordedAt <= cutoffAt) return live;
+    let cursor: Record<string, unknown> | undefined;
+    let inspected = 0;
+    const prefix = `TERMINAL_CHUNK#${checkpoint.metadata.source}#`;
+    do {
+      const result = await this.client.send(
+        new QueryCommand({
+          TableName: this.table,
+          ConsistentRead: true,
+          ScanIndexForward: false,
+          Limit: 100,
+          KeyConditionExpression: 'PK = :pk AND SK BETWEEN :low AND :high',
+          ExpressionAttributeValues: {
+            ':pk': `SESSION#${sessionId}`,
+            ':low': `${prefix}000001`,
+            ':high': `${prefix}${String(checkpoint.cursor).padStart(6, '0')}`,
+          },
+          ...(cursor ? { ExclusiveStartKey: cursor } : {}),
+        }),
+        { abortSignal: signal },
+      );
+      inspected += result.Items?.length ?? 0;
+      if (
+        inspected > 100000 ||
+        (result.LastEvaluatedKey &&
+          (result.LastEvaluatedKey.PK !== `SESSION#${sessionId}` ||
+            typeof result.LastEvaluatedKey.SK !== 'string' ||
+            !result.LastEvaluatedKey.SK.startsWith(prefix) ||
+            (cursor && result.LastEvaluatedKey.SK >= (cursor.SK as string))))
+      )
+        throw new TerminalRecordingStoreError('invalid_store');
+      for (const row of result.Items ?? []) {
+        const reference = row.data as StoredTerminalPage;
+        if (!reference || typeof reference.objectKey !== 'string')
+          throw new TerminalRecordingStoreError('invalid_store');
+        if (!isStoredTerminalPage(reference, sessionId, Number(reference.objectKey.split('/')[3])))
+          throw new TerminalRecordingStoreError('invalid_store');
+        if (reference.firstAt > cutoffAt && reference.after !== 0) continue;
+        const saved =
+          reference.after === 0
+            ? initialCommandParser(checkpoint.metadata.source)
+            : (
+                await this.client.send(
+                  new GetCommand({
+                    TableName: this.table,
+                    Key: {
+                      PK: `SESSION#${sessionId}`,
+                      SK: `COMMAND_CHECKPOINT#${String(reference.after).padStart(6, '0')}`,
+                    },
+                    ConsistentRead: true,
+                  }),
+                  { abortSignal: signal },
+                )
+              ).Item?.data;
+        if (
+          !isCommandParserCheckpoint(saved) ||
+          saved.cursor !== reference.after ||
+          saved.source !== checkpoint.metadata.source
+        )
+          throw new TerminalRecordingStoreError('invalid_store');
+        const page = await pages.readLive(sessionId, reference, signal);
+        return parseCommandEvents(
+          saved,
+          page.events.filter((event) => event.recordedAt <= cutoffAt),
+        ).checkpoint;
+      }
+      cursor = result.LastEvaluatedKey;
+    } while (cursor);
+    throw new TerminalRecordingStoreError('invalid_store');
+  }
+
   async commit(
     lease: MonitorRecorderLease,
     previous: TerminalRecordingCheckpoint,
@@ -207,6 +319,30 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
     }
     const savedReference = reference === null ? null : structuredClone(reference);
     const snapshot = structuredClone(previous);
+    const savedParser = await this.parser(lease.sessionId, signal);
+    // A retry can arrive after its atomic page/parser commit. Recover only the
+    // exact immutable page receipt, never skip a new page with an advanced parser.
+    if (savedParser && savedParser.cursor !== previous.cursor) {
+      if (savedReference) {
+        const receipt = await this.client.send(
+          new GetCommand({
+            TableName: this.table,
+            Key: chunkKey(lease.sessionId, savedReference),
+            ConsistentRead: true,
+          }),
+          sendOptions(signal),
+        );
+        if (canonical(receipt.Item?.data) === canonical(savedReference)) return next;
+      }
+      throw new TerminalRecordingStoreError('conflict');
+    }
+    const parser = savedParser ?? {
+      ...initialCommandParser(previous.metadata.source),
+      cursor: previous.cursor,
+      lossAt: previous.cursor === 0 ? null : previous.metadata.startedAt,
+    };
+    if (parser.source !== previous.metadata.source) throw new TerminalRecordingStoreError('invalid_store');
+    const derived = parseCommandEvents(parser, page.events);
     const items = [
       this.leaseCheck(lease, now),
       {
@@ -226,24 +362,100 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
         },
       },
     ];
-    const command = new TransactWriteCommand({
-      ClientRequestToken: randomUUID(),
-      TransactItems: [
-        ...items,
-        ...(savedReference === null
-          ? []
-          : [
-              {
+    try {
+      const publication = await stageCommandEvidence(
+        this.client,
+        this.table,
+        lease.sessionId,
+        'COMMAND',
+        derived.commands,
+        [
+          this.leaseCheck(lease, now),
+          {
+            ConditionCheck: {
+              TableName: this.table,
+              Key: { PK: `SESSION#${lease.sessionId}`, SK: 'RECORDING_COVERAGE' },
+              ConditionExpression: 'attribute_not_exists(PK)',
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: this.table,
+              Key: key(lease.sessionId),
+              ConditionExpression: '#data = :previous',
+              ExpressionAttributeNames: { '#data': 'data' },
+              ExpressionAttributeValues: { ':previous': snapshot },
+            },
+          },
+        ],
+        signal,
+      );
+      const command = new TransactWriteCommand({
+        ClientRequestToken: randomUUID(),
+        TransactItems: [
+          ...items,
+          {
+            Put: {
+              TableName: this.table,
+              Item: { PK: `SESSION#${lease.sessionId}`, SK: 'COMMAND_PARSER', data: derived.checkpoint },
+              ConditionExpression: savedParser ? '#data = :previous' : 'attribute_not_exists(PK)',
+              ...(savedParser
+                ? {
+                    ExpressionAttributeNames: { '#data': 'data' },
+                    ExpressionAttributeValues: { ':previous': savedParser },
+                  }
+                : {}),
+            },
+          },
+          ...(publication
+            ? [
+                {
+                  Put: {
+                    TableName: this.table,
+                    Item: {
+                      PK: `SESSION#${lease.sessionId}`,
+                      SK: `COMMAND#${String(publication.first).padStart(6, '0')}`,
+                      data: publication,
+                    },
+                    ConditionExpression: 'attribute_not_exists(PK)',
+                  },
+                },
+              ]
+            : derived.commands.map((data) => ({
                 Put: {
                   TableName: this.table,
-                  Item: { ...chunkKey(lease.sessionId, savedReference), data: savedReference },
+                  Item: { PK: `SESSION#${lease.sessionId}`, SK: `COMMAND#${String(data.seq).padStart(6, '0')}`, data },
                   ConditionExpression: 'attribute_not_exists(PK)',
                 },
-              },
-            ]),
-      ],
-    });
-    try {
+              }))),
+          ...(savedReference
+            ? [
+                {
+                  Put: {
+                    TableName: this.table,
+                    Item: {
+                      PK: `SESSION#${lease.sessionId}`,
+                      SK: `COMMAND_CHECKPOINT#${String(next.cursor).padStart(6, '0')}`,
+                      data: derived.checkpoint,
+                    },
+                    ConditionExpression: 'attribute_not_exists(PK)',
+                  },
+                },
+              ]
+            : []),
+          ...(savedReference === null
+            ? []
+            : [
+                {
+                  Put: {
+                    TableName: this.table,
+                    Item: { ...chunkKey(lease.sessionId, savedReference), data: savedReference },
+                    ConditionExpression: 'attribute_not_exists(PK)',
+                  },
+                },
+              ]),
+        ],
+      });
       await sendDynamoWrite(this.client, command, sendOptions(signal));
       return structuredClone(next);
     } catch (error) {

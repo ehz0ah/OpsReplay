@@ -10,6 +10,7 @@ import {
 import {
   isSealedTerminalPage,
   isTerminalSealState,
+  encodeSealedTerminalPage,
   type SealedTerminalPage,
   type TerminalSealState,
 } from '../../../packages/contracts/private/terminal-sealing.js';
@@ -18,6 +19,13 @@ import type { TerminalRecordingPage } from '../../../packages/contracts/private/
 import { terminalCoversCutoff } from './terminal-recorder.js';
 import { DynamoMonitorRecordingStore, type MonitorRecorderLease } from './monitor-recording-store.js';
 import { TerminalRecordingStoreError } from './terminal-recording-store.js';
+import {
+  initialCommandParser,
+  isCommandParserCheckpoint,
+} from '../../../packages/contracts/private/command-evidence.js';
+import { parseCommandEvents } from './command-parser.js';
+import { stageCommandEvidence } from './command-publication.js';
+import type { TerminalRecordingEvent } from '../../../packages/contracts/private/terminal-recording.js';
 
 /** A bounded, integrity-checked live page that contains the first excluded event. */
 export interface TerminalCutoffProof {
@@ -46,6 +54,7 @@ export interface TerminalSealingStore {
     reference: SealedTerminalPage,
     eventBytes: number,
     now: string,
+    events: readonly TerminalRecordingEvent[],
     signal?: AbortSignal,
   ): Promise<TerminalSealState>;
   finish(
@@ -249,6 +258,7 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
     reference: SealedTerminalPage,
     eventBytes: number,
     now: string,
+    events: readonly TerminalRecordingEvent[],
     signal?: AbortSignal,
   ): Promise<TerminalSealState> {
     if (
@@ -260,7 +270,8 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
       reference.lastAt > previous.cutoffAt ||
       reference.firstAt < (previous.lastAt ?? previous.checkpoint.metadata.startedAt) ||
       !Number.isSafeInteger(eventBytes) ||
-      eventBytes < 1
+      eventBytes < 1 ||
+      eventBytes !== events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0)
     )
       throw new TerminalRecordingStoreError('invalid_input');
     const next = {
@@ -271,7 +282,7 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
       lastAt: reference.lastAt,
     };
     if (!isTerminalSealState(next)) throw new TerminalRecordingStoreError('invalid_stream');
-    return this.commit({ ...lease }, previous, next, reference, now, signal);
+    return this.commit({ ...lease }, previous, next, reference, now, signal, undefined, events);
   }
   async finish(
     lease: MonitorRecorderLease,
@@ -324,7 +335,60 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
     now: string,
     signal?: AbortSignal,
     cutoffReference?: StoredTerminalPage,
+    events?: readonly TerminalRecordingEvent[],
   ): Promise<TerminalSealState> {
+    if (reference && !events) throw new TerminalRecordingStoreError('invalid_input');
+    if (
+      events &&
+      (!reference ||
+        canonical(
+          encodeSealedTerminalPage(
+            lease.sessionId,
+            Number(reference.objectKey.split('/')[3]),
+            reference.source,
+            reference.after,
+            events,
+          ).reference,
+        ) !== canonical(reference))
+    )
+      throw new TerminalRecordingStoreError('invalid_input');
+    const parserKey = { PK: `SESSION#${lease.sessionId}`, SK: 'SEALED_COMMAND_PARSER' };
+    const savedParser = events
+      ? (
+          await this.client.send(
+            new GetCommand({ TableName: this.table, Key: parserKey, ConsistentRead: true }),
+            options(signal),
+          )
+        ).Item?.data
+      : undefined;
+    if (events && savedParser !== undefined && !isCommandParserCheckpoint(savedParser))
+      throw new TerminalRecordingStoreError('invalid_store');
+    const parser = events ? (savedParser ?? initialCommandParser(previous.checkpoint.metadata.source)) : undefined;
+    if (parser && parser.cursor !== previous.cursor) {
+      const saved = await this.get(lease.sessionId, signal);
+      if (
+        reference &&
+        saved &&
+        saved.cursor >= next.cursor &&
+        canonical(saved.checkpoint) === canonical(next.checkpoint) &&
+        saved.cutoffAt === next.cutoffAt
+      ) {
+        const receipt = await this.client.send(
+          new GetCommand({
+            TableName: this.table,
+            Key: {
+              PK: `SESSION#${lease.sessionId}`,
+              SK: `TERMINAL_SEALED_CHUNK#${reference.source}#${String(reference.nextSequence).padStart(6, '0')}`,
+            },
+            ConsistentRead: true,
+          }),
+          options(signal),
+        );
+        if (canonical(receipt.Item?.data) === canonical(reference)) return next;
+      }
+      throw new TerminalRecordingStoreError('conflict');
+    }
+    const derived = parser && events ? parseCommandEvents(parser, events) : undefined;
     const snapshot = structuredClone(previous);
     reference = reference === null ? null : structuredClone(reference);
     await this.check(lease, next.cutoffAt, now, signal);
@@ -336,12 +400,76 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
             SK: `TERMINAL_SEALED_CHUNK#${reference.source}#${String(reference.nextSequence).padStart(6, '0')}`,
           };
     try {
+      const publication = derived
+        ? await stageCommandEvidence(
+            this.client,
+            this.table,
+            lease.sessionId,
+            'SEALED_COMMAND',
+            derived.commands,
+            [
+              this.leaseCheck(lease, next.cutoffAt, now),
+              {
+                ConditionCheck: {
+                  TableName: this.table,
+                  Key: key(lease.sessionId),
+                  ConditionExpression: '#data = :previous',
+                  ExpressionAttributeNames: { '#data': 'data' },
+                  ExpressionAttributeValues: { ':previous': snapshot },
+                },
+              },
+            ],
+            signal,
+          )
+        : undefined;
       await sendDynamoWrite(
         this.client,
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [
             this.leaseCheck(lease, next.cutoffAt, now),
+            ...(derived
+              ? [
+                  {
+                    Put: {
+                      TableName: this.table,
+                      Item: { ...parserKey, data: derived.checkpoint },
+                      ConditionExpression: savedParser ? '#data = :expected' : 'attribute_not_exists(PK)',
+                      ...(savedParser
+                        ? {
+                            ExpressionAttributeNames: { '#data': 'data' },
+                            ExpressionAttributeValues: { ':expected': savedParser },
+                          }
+                        : {}),
+                    },
+                  },
+                  ...(publication
+                    ? [
+                        {
+                          Put: {
+                            TableName: this.table,
+                            Item: {
+                              PK: `SESSION#${lease.sessionId}`,
+                              SK: `SEALED_COMMAND#${String(publication.first).padStart(6, '0')}`,
+                              data: publication,
+                            },
+                            ConditionExpression: 'attribute_not_exists(PK)',
+                          },
+                        },
+                      ]
+                    : derived.commands.map((data) => ({
+                        Put: {
+                          TableName: this.table,
+                          Item: {
+                            PK: `SESSION#${lease.sessionId}`,
+                            SK: `SEALED_COMMAND#${String(data.seq).padStart(6, '0')}`,
+                            data,
+                          },
+                          ConditionExpression: 'attribute_not_exists(PK)',
+                        },
+                      }))),
+                ]
+              : []),
             ...(cutoffReference
               ? [
                   {

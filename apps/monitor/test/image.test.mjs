@@ -13,6 +13,7 @@ const challengePath = new URL('../../../content/challenges/wrong-upstream-port/'
 const manifest = JSON.parse(readFileSync(new URL('challenge.json', challengePath)));
 const containers = new Set();
 const followers = new Set();
+const watchedVolumes = new Map();
 
 function run(command, args) {
   return spawnSync(command, args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 2 * 1024 * 1024, cwd: root });
@@ -100,6 +101,7 @@ function temporaryTls() {
 process.once('exit', () => {
   for (const child of followers) child.kill();
   for (const id of containers) docker('rm', '--force', id);
+  for (const volume of watchedVolumes.values()) docker('volume', 'rm', volume);
 });
 process.once('SIGINT', () => process.exit(130));
 process.once('SIGTERM', () => process.exit(143));
@@ -131,18 +133,65 @@ test('the Monitor runtime image includes the available Debian Perl security upda
   assert.notEqual(version, '');
 });
 
-async function fresh(t) {
-  const id = success(
-    run('sh', [
-      fileURLToPath(new URL('run-local.sh', challengePath)),
-      'opsreplay-monitor-shop-' + randomUUID(),
-      challengeImage,
-    ]),
+test('Linux capture reader rejects links, directories, and FIFOs with bounded reads', () => {
+  success(
+    docker(
+      'run',
+      '--rm',
+      '--network',
+      'none',
+      '--read-only',
+      '--cap-drop',
+      'ALL',
+      '--tmpfs',
+      '/tmp:rw,noexec,nosuid,size=8m',
+      '--entrypoint',
+      'node',
+      monitorImage,
+      '/app/capture-check.cjs',
+    ),
   );
+});
+
+async function fresh(t) {
+  const volume = 'opsreplay-watched-' + randomUUID();
+  success(docker('volume', 'create', volume));
+  const id = success(
+    docker(
+      'run',
+      '--detach',
+      '--name',
+      'opsreplay-monitor-shop-' + randomUUID(),
+      '--hostname',
+      'storefront',
+      '--network',
+      'none',
+      '--cpus',
+      '1',
+      '--memory',
+      '2g',
+      '--memory-swap',
+      '2g',
+      '--pids-limit',
+      '128',
+      '--security-opt',
+      'no-new-privileges=true',
+      '--cap-drop',
+      'NET_RAW',
+      '--mount',
+      `type=volume,src=${volume},dst=/opsreplay/watched`,
+      '--env',
+      'OPSREPLAY_WATCHED_FILES=1',
+      challengeImage,
+    ),
+  );
+  watchedVolumes.set(id, volume);
   containers.add(id);
   t.after(() => {
     success(docker('rm', '--force', id));
     containers.delete(id);
+    // Other after-hooks can still own Monitor mounts. Remove the volume only
+    // after all containers in this test process have been removed.
   });
   await eventually(() => exec(id, 'opsreplay-check-startup').status === 0, 'Shop listeners did not start', 30_000);
   return id;
@@ -166,6 +215,8 @@ function startMonitor(t, challenge, startTimeoutMs = 30_000) {
       'opsreplay.test=monitor',
       '--network',
       'container:' + challenge,
+      '--mount',
+      `type=volume,src=${watchedVolumes.get(challenge)},dst=/opsreplay/watched,readonly`,
       '--read-only',
       '--cap-drop',
       'ALL',
@@ -206,6 +257,8 @@ function startMonitor(t, challenge, startTimeoutMs = 30_000) {
       'opsreplay.test=monitor',
       '--network',
       'container:' + challenge,
+      '--mount',
+      `type=volume,src=${watchedVolumes.get(challenge)},dst=/opsreplay/watched,readonly`,
       '--read-only',
       '--cap-drop',
       'ALL',
@@ -298,6 +351,13 @@ async function stopMonitor(monitor) {
   if (clientExit !== '0')
     assert.fail(`Monitor client exited ${clientExit}:\n${success(docker('logs', monitor.clientId))}`);
   await eventually(() => monitor.all().some((r) => r.type === 'monitor_sealed'), 'No sealed measurement output');
+  const captures = monitor
+    .all()
+    .filter((r) => r.type === 'capture_verified')
+    .map((r) => r.capture);
+  assert.ok(captures.length > 0);
+  assert.equal(captures.at(-1).incomplete, false);
+  assert.equal(captures.at(-1).metrics.at, monitor.all().find((r) => r.type === 'monitor_sealed').final.sample.at);
   success(docker('kill', '--signal', 'TERM', monitor.id));
   const monitorExit = success(docker('wait', monitor.id));
   if (monitorExit !== '0') assert.fail(`Monitor exited ${monitorExit}:\n${success(docker('logs', monitor.id))}`);
@@ -424,10 +484,16 @@ test(
       frames.map((r) => r.sequence),
       Array.from({ length: frames.length }, (_, i) => i + 1),
     );
-    const output = JSON.stringify(monitor.all());
+    const output = JSON.stringify(monitor.all().filter((r) => r.type !== 'capture_verified'));
     for (const hidden of ['plantedFault', 'referenceFix', 'validators', 'proxy_pass', 'MONITOR_SECRET']) {
-      assert.ok(!output.includes(hidden), `Monitor output included ${hidden}`);
+      assert.ok(!output.includes(hidden), `Monitor public frames included ${hidden}`);
     }
+    // Captures intentionally contain learner-visible config, including proxy_pass.
+    // They must never contain private manifest metadata or Monitor credentials.
+    const captures = JSON.stringify(monitor.all().filter((r) => r.type === 'capture_verified'));
+    for (const hidden of ['plantedFault', 'referenceFix', 'validators', 'MONITOR_SECRET'])
+      assert.ok(!captures.includes(hidden));
+    assert.ok(captures.includes('proxy_pass'), 'Changed allowlisted config was not captured');
     await stopMonitor(monitor);
 
     const alreadyHealthy = startMonitor(t, shop, 5_000);

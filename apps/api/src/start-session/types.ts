@@ -71,7 +71,7 @@ export interface ContentVersion {
   dashboard: Metric[];
   hintCount: number;
   timeLimits: { free: number; pro: number | null };
-  pins: { taskDefinitionArn: string; challengeImageDigest: string; monitorImageDigest: string };
+  pins: { taskDefinitionArn: string; challengeImageDigest: string; monitorImageDigest: string; manifestSha256: string };
 }
 export interface Plan {
   plan: PlanName;

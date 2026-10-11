@@ -19,13 +19,23 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
       assert.equal(fn[1].Properties.ReservedConcurrentExecutions, 0);
       assert.equal(fn[1].Properties.Runtime, 'nodejs22.x');
       assert.equal(fn[1].Properties.VpcConfig, undefined);
+      assert.equal(
+        fn[1].Properties.MemorySize,
+        name === 'SweepSessions' ? 1024 : name === 'ReconcileSession' ? 512 : 256,
+      );
       const role = fn[1].Properties.Role['Fn::GetAtt'][0];
       const statements = Object.values(resources)
         .filter((value) => value.Type === 'AWS::IAM::Policy' && JSON.stringify(value.Properties.Roles).includes(role))
         .flatMap((value) => value.Properties.PolicyDocument.Statement);
       const actions = statements.flatMap((statement) => [statement.Action].flat());
       assert.equal(actions.includes('lambda:InvokeFunction'), false);
-      assert.equal(actions.includes('s3:GetObject'), false);
+      assert.equal(actions.includes('s3:GetObject'), name !== 'EndSession');
+      if (name !== 'EndSession') {
+        const reads = statements.filter((statement) => [statement.Action].flat().includes('s3:GetObject'));
+        assert.equal(reads.length, 1);
+        assert.ok(JSON.stringify(reads[0].Resource).includes('/metrics/*/sealed/*'));
+        assert.ok(fn[1].Properties.Environment.Variables.RECORDING_BUCKET_NAME);
+      }
       assert.equal(actions.includes('s3:DeleteObject'), false);
       if (name !== 'EndSession') {
         assert.equal(actions.includes('ecs:RunTask'), true);

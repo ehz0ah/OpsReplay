@@ -597,7 +597,8 @@ test('recording remains durable and least-privilege inside the combined Gateway 
             (action) => typeof action === 'string' && ['s3:ListBucket', 's3:DeleteObject'].includes(action),
           ) ||
             (actions.includes('s3:GetObject') &&
-              !JSON.stringify(statement.Resource).includes('/sessions/*/terminal/*/live/*')))
+              !JSON.stringify(statement.Resource).includes('/sessions/*/terminal/*/live/*') &&
+              !JSON.stringify(statement.Resource).includes('/sessions/*/metrics/*/sealed/*')))
         );
       }),
       false,
