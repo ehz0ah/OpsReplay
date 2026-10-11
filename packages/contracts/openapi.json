@@ -282,6 +282,7 @@
       "get": {
         "operationId": "getSession",
         "summary": "Current session status, alert, recovery state, hints, and limits",
+        "description": "Reads the owned session with its saved access grant, including after plan expiry. Does not advance lifecycle state or update learner activity. Responses are not cached. Retry throttled polling with capped exponential backoff and full jitter.",
         "parameters": [
           {
             "name": "id",
@@ -305,10 +306,16 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           },
           "500": {

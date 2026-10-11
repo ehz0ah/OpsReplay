@@ -45,7 +45,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 2;
+const terminalTicketApiDeploymentVersion = 3;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
 const terminalOriginPortPattern =
@@ -132,6 +132,20 @@ export class SessionStartStack extends Stack {
       minValue: 1,
       maxValue: maximumTerminalConnections,
       description: 'Shared sustained terminal-ticket requests per second.',
+    });
+    const sessionStatusBurstLimit = new CfnParameter(this, 'SessionStatusBurstLimit', {
+      type: 'Number',
+      default: 16,
+      minValue: 1,
+      maxValue: 256,
+      description: 'Session-status API burst and separate Lambda concurrency limit.',
+    });
+    const sessionStatusRateLimit = new CfnParameter(this, 'SessionStatusRateLimit', {
+      type: 'Number',
+      default: 8,
+      minValue: 1,
+      maxValue: 256,
+      description: 'Sustained session-status requests per second.',
     });
     const terminalCertificateArn = new CfnParameter(this, 'TerminalCertificateArn', {
       type: 'String',
@@ -586,9 +600,40 @@ export class SessionStartStack extends Stack {
       ) as unknown as number,
     });
 
+    const sessionStatusLogs = new LogGroup(this, 'SessionStatusLogs', {
+      retention: RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const sessionStatusRole = new Role(this, 'SessionStatusRole', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+    });
+    sessionStatusLogs.grantWrite(sessionStatusRole);
+    sessionStatusRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+      }),
+    );
+    const getSession = new Function(this, 'GetSession', {
+      runtime: Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: Code.fromAsset(fileURLToPath(new URL('../dist/get-session/', import.meta.url))),
+      role: sessionStatusRole,
+      logGroup: sessionStatusLogs,
+      environment: { SESSION_TABLE_NAME: table.tableName },
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      reservedConcurrentExecutions: Fn.conditionIf(
+        gatewayEnabled.logicalId,
+        sessionStatusBurstLimit.valueAsNumber,
+        0,
+      ) as unknown as number,
+    });
+
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
       name: 'opsreplay-terminal-ticket',
-      description: 'Authenticated terminal-ticket action for the bounded Gateway path.',
+      description: 'Authenticated session-status and terminal-ticket actions for the bounded Gateway path.',
       endpointConfiguration: { types: ['REGIONAL'] },
     });
     terminalApi.cfnOptions.condition = gatewayEnabled;
@@ -619,6 +664,47 @@ export class SessionStartStack extends Stack {
       pathPart: '{id}',
     });
     terminalApiSession.cfnOptions.condition = gatewayEnabled;
+    const getSessionMethod = new CfnMethod(this, 'GetSessionMethod', {
+      restApiId: terminalApi.ref,
+      resourceId: terminalApiSession.ref,
+      httpMethod: 'GET',
+      authorizationType: 'COGNITO_USER_POOLS',
+      authorizerId: terminalAuthorizer.ref,
+      apiKeyRequired: false,
+      operationName: 'getSession',
+      integration: {
+        type: 'AWS_PROXY',
+        integrationHttpMethod: 'POST',
+        timeoutInMillis: 8_000,
+        uri: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':apigateway:',
+          Aws.REGION,
+          ':lambda:path/2015-03-31/functions/',
+          getSession.functionArn,
+          '/invocations',
+        ]),
+      },
+    });
+    getSessionMethod.cfnOptions.condition = gatewayEnabled;
+    const getSessionPermission = new CfnPermission(this, 'SessionStatusApiPermission', {
+      action: 'lambda:InvokeFunction',
+      functionName: getSession.functionArn,
+      principal: 'apigateway.amazonaws.com',
+      sourceArn: Fn.join('', [
+        'arn:',
+        Aws.PARTITION,
+        ':execute-api:',
+        Aws.REGION,
+        ':',
+        Aws.ACCOUNT_ID,
+        ':',
+        terminalApi.ref,
+        '/*/GET/v1/sessions/*',
+      ]),
+    });
+    getSessionPermission.cfnOptions.condition = gatewayEnabled;
     const terminalApiTickets = new ApiGatewayResource(this, 'TerminalTicketApiTickets', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSession.ref,
@@ -694,35 +780,35 @@ export class SessionStartStack extends Stack {
         'THROTTLED',
         '429',
         'LIMIT_EXCEEDED',
-        'Too many terminal ticket requests. Try again.',
+        'Too many session requests. Try again.',
       ),
       terminalTicketGatewayResponse(
         'TerminalTicketUnauthorized',
         'UNAUTHORIZED',
         '401',
         'UNAUTHENTICATED',
-        'Sign in before connecting to a terminal.',
+        'Sign in before accessing a session.',
       ),
       terminalTicketGatewayResponse(
         'TerminalTicketAccessDenied',
         'ACCESS_DENIED',
         '403',
         'ACCESS_DENIED',
-        'Access to this terminal is denied.',
+        'Access to this session is denied.',
       ),
       terminalTicketGatewayResponse(
         'TerminalTicketDefault4xx',
         'DEFAULT_4XX',
         '400',
         'INVALID_REQUEST',
-        'The terminal ticket request was rejected.',
+        'The session request was rejected.',
       ),
       terminalTicketGatewayResponse(
         'TerminalTicketDefault5xx',
         'DEFAULT_5XX',
         '500',
         'INTERNAL_ERROR',
-        'The terminal ticket could not be issued. Try again.',
+        'The session request could not be completed. Try again.',
       ),
     ];
     // API Gateway deployments are immutable snapshots. Bump this version when the route model changes.
@@ -731,11 +817,12 @@ export class SessionStartStack extends Stack {
       `TerminalTicketApiDeploymentV${terminalTicketApiDeploymentVersion}`,
       {
         restApiId: terminalApi.ref,
-        description: `Terminal ticket route version ${terminalTicketApiDeploymentVersion}.`,
+        description: `Session-status and terminal-ticket routes version ${terminalTicketApiDeploymentVersion}.`,
       },
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
+    terminalTicketDeployment.addResourceDependency(getSessionMethod);
     for (const response of terminalTicketGatewayResponses) {
       terminalTicketDeployment.addResourceDependency(response);
     }
@@ -744,6 +831,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'GET',
+          resourcePath: '/~1v1~1sessions~1{id}',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: sessionStatusBurstLimit.valueAsNumber,
+          throttlingRateLimit: sessionStatusRateLimit.valueAsNumber,
+        },
         {
           httpMethod: 'POST',
           // API Gateway method settings use JSON Pointer escaping for path separators.

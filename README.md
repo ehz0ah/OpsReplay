@@ -27,7 +27,8 @@ recording adapters, a work source, and a composed Gateway process. These parts a
 tested locally, including as a hardened container against DynamoDB Local and
 against the real monitor and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
 event action, combined private Gateway service, public ALB, terminal-ticket route, and
-the checkpoint network, endpoints, cluster, and image repositories. The checkpoint published and
+the checkpoint network, endpoints, cluster, and image repositories. The API also defines
+an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
 complete Gateway path remains disabled and has not run in AWS. Captures, remaining API,
 web application, and lifecycle completion are not implemented. No checkpoint image is

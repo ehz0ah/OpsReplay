@@ -7,13 +7,13 @@ import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
-test('the stack preserves separate disabled lifecycle and terminal-ticket actions', () => {
+test('the stack preserves separate disabled lifecycle, session-status, and terminal-ticket actions', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-cdk-'));
   try {
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 4);
+    template.resourceCountIs('AWS::Lambda::Function', 5);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
