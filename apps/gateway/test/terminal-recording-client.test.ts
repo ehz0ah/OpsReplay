@@ -332,6 +332,68 @@ test('rejects unsolicited partial bytes and partial response EOF', async (t) => 
     });
 });
 
+test('classifies complete unsolicited source errors without hiding malformed idle traffic', async (t) => {
+  for (const code of [
+    'FRAME_TOO_LARGE',
+    'IDLE_TIMEOUT',
+    'INVALID_FRAME',
+    'SOURCE_MISMATCH',
+    'INVALID_CURSOR',
+    'RATE_LIMITED',
+  ])
+    await t.test(code, async (t) => {
+      const { client, peer } = await connected(t);
+      peer.socket.end(JSON.stringify({ type: 'error', code }) + '\n');
+      const end = await client.ended;
+      assert.equal(end.reason, 'error');
+      if (end.reason !== 'error') assert.fail('source rejection must end the client');
+      assert.equal(end.error.code, 'server_rejected');
+      assert.equal(end.error.serverCode, code);
+      assert.equal(end.error.message, 'Terminal recording source rejected the request.');
+      assert.equal(end.error.cause, undefined);
+      await peer.closed;
+      client.close();
+      assert.strictEqual(await client.ended, end);
+      await assert.rejects(client.read(0), (error: unknown) => error === end.error);
+      assert.equal(peer.waiting, 0);
+    });
+
+  const errorFrame = '{"type":"error","code":"IDLE_TIMEOUT"}';
+  for (const [name, bytes] of [
+    ['unsolicited ready', JSON.stringify(ready()) + '\n'],
+    ['unsolicited page', JSON.stringify(page([dimensions()])) + '\n'],
+    ['partial error', errorFrame.slice(0, -1)],
+    ['missing newline', errorFrame],
+    ['extra frame', errorFrame + '\n' + errorFrame + '\n'],
+    ['extra partial frame', errorFrame + '\n{'],
+    ['extra whitespace', errorFrame + '\n '],
+    ['unknown error code', '{"type":"error","code":"private payload"}\n'],
+    ['extra error field', '{"type":"error","code":"IDLE_TIMEOUT","message":"private payload"}\n'],
+    ['missing error code', '{"type":"error"}\n'],
+    ['wrong code type', '{"type":"error","code":1}\n'],
+    ['duplicate error code', '{"type":"error","code":"private payload","code":"IDLE_TIMEOUT"}\n'],
+    ['escaped duplicate error code', '{"type":"error","\\u0063ode":"private payload","code":"IDLE_TIMEOUT"}\n'],
+    ['empty frame', '\n'],
+    ['malformed JSON', '{\n'],
+    ['excessive nesting', '['.repeat(9) + '0' + ']'.repeat(9) + '\n'],
+    ['byte overflow', errorFrame + ' '.repeat(terminalRecordingSchema.maximumResponseBytes - errorFrame.length) + '\n'],
+    ['invalid UTF-8', Buffer.from([0xc3, 0x28, 10])],
+  ] as const)
+    await t.test(name, async (t) => {
+      const { client, peer } = await connected(t);
+      peer.socket.write(bytes);
+      const end = await client.ended;
+      assert.equal(end.reason, 'error');
+      if (end.reason !== 'error') assert.fail('invalid idle traffic must end the client');
+      assert.equal(end.error.code, 'invalid_response');
+      assert.equal(end.error.serverCode, undefined);
+      assert.equal(end.error.cause, undefined);
+      assert.ok(!JSON.stringify(end.error).includes('private payload'));
+      await peer.closed;
+      await assert.rejects(client.read(0), (error: unknown) => error === end.error);
+    });
+});
+
 test('reuses private validators for exact page schemas, canonical bytes, cursors, and final exit', async (t) => {
   const invalid: Array<[string, unknown]> = [
     ['wrong source', page([dimensions()], { source: otherSource })],
@@ -565,6 +627,38 @@ test('maps only allowlisted server errors and never retains remote error text', 
       );
       await rejection;
       await peer.closed;
+    });
+});
+
+test('still accepts fragmented source errors for pending attach and read operations', async (t) => {
+  for (const mode of ['attach', 'read'])
+    await t.test(mode, async (t) => {
+      const setup = await opening(t);
+      let waiting: Promise<unknown> = setup.connecting;
+      let client: TerminalRecordingClient | undefined;
+      if (mode === 'read') {
+        setup.peer.send(ready());
+        ({ client } = await setup.connecting);
+        waiting = client.read(0);
+        await setup.peer.receive();
+      }
+      const rejection = assert.rejects(
+        waiting,
+        (error: unknown) =>
+          error instanceof TerminalRecordingClientError &&
+          error.code === 'server_rejected' &&
+          error.serverCode === 'IDLE_TIMEOUT',
+      );
+      setup.peer.socket.write('{"type":"error",');
+      await delay(10);
+      setup.peer.socket.end('"code":"IDLE_TIMEOUT"}\n');
+      await rejection;
+      await setup.peer.closed;
+      if (client) {
+        const end = await client.ended;
+        assert.equal(end.reason, 'error');
+        if (end.reason === 'error') assert.equal(end.error.serverCode, 'IDLE_TIMEOUT');
+      }
     });
 });
 

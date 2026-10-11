@@ -305,8 +305,10 @@ export class TerminalRecordingClient {
   private receive(chunk: Buffer): void {
     if (this.end !== undefined) return;
     try {
-      if (!this.pending) throw new TerminalRecordingClientError('invalid_response');
       const newline = chunk.indexOf(0x0a);
+      // Idle source errors are terminal controls, not responses to a later read.
+      // Require the whole frame now; never buffer unsolicited partial bytes.
+      if (!this.pending && newline < 0) throw new TerminalRecordingClientError('invalid_response');
       const size = newline < 0 ? chunk.length : newline;
       // The cap includes newline, including when newline arrives in a later chunk.
       if (this.used + size + 1 > this.line.length) throw new TerminalRecordingClientError('invalid_response');
@@ -329,10 +331,10 @@ export class TerminalRecordingClient {
   }
 
   private dispatch(value: unknown): void {
-    const pending = this.pending;
-    if (!pending) throw new TerminalRecordingClientError('invalid_response');
     const rejected = remoteError(value);
     if (rejected) throw rejected;
+    const pending = this.pending;
+    if (!pending) throw new TerminalRecordingClientError('invalid_response');
     if (pending.type === 'recording_ready') {
       if (
         !isTerminalRecordingReady(value) ||

@@ -10,7 +10,7 @@ const {
   TerminalClientError,
 } = require('/test/client.cjs');
 const mode = process.argv[2];
-assert.ok(mode === 'normal' || mode === 'loss');
+assert.ok(mode === 'normal' || mode === 'loss' || mode === 'idle');
 const options = { host: '127.0.0.1', requestTimeoutMs: 5_000 };
 
 async function interactive(generation, output) {
@@ -103,6 +103,31 @@ async function main() {
       columns: 80,
       rows: 24,
     });
+    if (mode === 'idle') {
+      // Do not read, send heartbeat traffic, or shorten the real 45-second source limit.
+      const end = await recorder.ended;
+      assert.equal(end.reason, 'error');
+      assert.ok(end.error instanceof TerminalRecordingClientError);
+      assert.equal(end.error.code, 'server_rejected');
+      assert.equal(end.error.serverCode, 'IDLE_TIMEOUT');
+      await assert.rejects(recorder.read(prefixCursor), (error) => error === end.error);
+      recorder.close();
+      assert.strictEqual(await recorder.ended, end);
+      const resumed = await TerminalRecordingClient.connect({ ...options, expectedSource: source });
+      recorder = resumed.client;
+      assert.equal(resumed.ready.shellState, 'running');
+      assert.deepEqual((await recorder.read(0)).events.slice(0, prefix.length), prefix);
+      process.stdout.write(
+        JSON.stringify({
+          mode,
+          sourceStable: true,
+          code: end.error.code,
+          serverCode: end.error.serverCode,
+          reconnected: true,
+        }) + '\n',
+      );
+      return;
+    }
     terminal = (await interactive(1)).client;
     secondReader = (await TerminalRecordingClient.connect({ ...options, expectedSource: source })).client;
     await terminal.heartbeat();
