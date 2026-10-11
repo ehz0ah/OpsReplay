@@ -64,6 +64,7 @@ const validateClientMessage = compiledClientMessage;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 export interface BrowserTerminalSession extends TerminalConnection {
+  learnerHeartbeat?(signal?: AbortSignal): Promise<void>;
   readonly sessionId: string;
   readonly generation: number;
 }
@@ -398,6 +399,7 @@ export class GatewayBrowserTerminalConnection {
     const message = pending.message;
     switch (message.type) {
       case 'heartbeat':
+        await session.learnerHeartbeat?.(this.lifetime.signal);
         return;
       case 'resize':
         await session.resize(message.cols, message.rows, this.lifetime.signal);

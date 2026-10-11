@@ -11,15 +11,8 @@ import { isMonitorMetricFrame, isMonitorPayload } from './monitor-client.js';
 import { isMonitorRecordingIdentity } from './monitor-recording-identity.js';
 import { monitorRecordingLimits, type MonitorRecordingBatch, type SealedMonitorRecording } from './monitor-recorder.js';
 
-export interface StoredMonitorChunk {
-  phase: 'live' | 'sealed';
-  objectKey: string;
-  sha256: string;
-  source: string | null;
-  after: number;
-  nextSequence: number;
-  frameCount: number;
-}
+import type { StoredMonitorChunk } from '../../../packages/contracts/private/monitor-persistence.js';
+export type { StoredMonitorChunk };
 
 export interface MonitorChunkStore {
   putLive(

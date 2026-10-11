@@ -107,11 +107,12 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 
 ### Start
 
-The current implementation covers admission, expiry scheduling, ECS launch, task-ARN
-persistence, and provisioning-timeout cleanup. It is tested locally through DynamoDB
-Local and fake ECS and Scheduler ports. Both Lambda actions remain disabled, no public
-route exists, and no AWS deployment has run. Shared lifecycle routines are ordinary
-code, not one Lambda invoking another Lambda.
+The current implementation covers admission, launch, committed readiness, outcomes,
+learner liveness, deadline repair, bounded drain, and confirmed cleanup. It is tested
+locally through DynamoDB Local and fake ECS and Scheduler ports. New lifecycle actions
+and triggers remain disabled. No public route is deployed. Shared lifecycle routines
+are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
+still requires the next debrief/finalisation PR and an approved AWS checkpoint.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -122,8 +123,8 @@ code, not one Lambda invoking another Lambda.
    explicit Pro time limit greater than its Free limit and an `opsreplay-` task-definition
    family, or it is unavailable to both plans.
 2. Commits one DynamoDB transaction: the start receipt, the learner's active-session
-   lock, and the session record in `provisioning`, including its access grant and limits.
-   The receipt and lock are conditional
+   lock, the session record in `provisioning`, including its access grant and limits,
+   and a separate indexed lifecycle item. The receipt and lock are conditional
    on absence. An existing lock returns `409 ACTIVE_SESSION_EXISTS` with `activeSessionId`.
 3. Invokes the shared lifecycle routine, which first creates the recovery callback at
    `launchRecoveryDeadline`, then the timeout callback at `provisioningDeadline`.
@@ -148,8 +149,9 @@ A repeated request returns the saved session and invokes the same provisioning r
 It repairs both callbacks even when the ARN is already saved. If the ARN is missing, it
 repeats `RunTask` with exactly the same arguments and token, only before the provisioning
 deadline. The expiry action discovers a late active task by its saved `startedBy` value.
-Automatic resume without a client retry still requires the planned session stream or
-reconciliation sweep.
+The disabled session stream and minute sweep invoke the same saved-argument
+provisioner without a client retry. They also repair missed recording-work publication
+from the saved task's ENI address. The sweep uses a persistent bounded pagination cursor.
 
 The deadline is persisted in the start transaction, proposed at three minutes after
 creation and within ECS's client-token validity window. After it, no handler launches
@@ -163,15 +165,14 @@ launch. After a capacity rejection, wait `retryAfterSeconds` and use a new reque
 A confirmed configuration rejection advises a later new request. Unknown outcomes still
 advise retrying the same ID. These failures do not consume the learner's first attempt.
 
-Scheduler invokes Lambda asynchronously. Its delivery retries do not retry function
-errors. At the three-minute timeout, a task that is still stopping triggers Lambda's
-short retries. The first retry is normally about a minute later and releases the lock
-if the task is confirmed `STOPPED`. When a task is not yet discoverable, cleanup returns
-`pending` and waits for the separate callback at eight minutes. That callback also
-backs up the short retries. Both callbacks delete themselves
-after delivery. CDK sets a 15-minute async event age and alarms on Lambda events or
-Scheduler deliveries that are dropped. These are operational alarms, not an automatic
-reconciliation service. Readiness makes both provisioning callbacks harmless.
+Scheduler invokes reconciliation asynchronously. Its delivery retries do not retry
+function errors. Provisioning callbacks check the saved deadline, and ready attempts
+use a separate timer. Reconciliation discovers uncertain launches by `startedBy` and
+waits for the saved launch-recovery window if no task is known. A missing known task
+is not STOPPED confirmation. The minute sweep backs up missed callbacks and failed
+cleanup. Never-ready lock release follows confirmed stop and timer deletion; ready
+locks remain held for debrief finalisation. CDK defines async retries and operational
+alarms, with the new triggers disabled. These paths still need AWS validation.
 
 The attempt label is `first` when the learner has no earlier attempt of that Challenge
 ID with an outcome other than `error`. Otherwise it is `retry` with the next number.
@@ -204,8 +205,9 @@ a computed outcome. Responses use `Cache-Control: no-store`. Invalid requests re
 The Lambda uses bounded DynamoDB requests and reserves one second for its response.
 Its CDK route shares the existing Cognito API, but has a separate read-only role,
 bundle, log group, timeout, and configurable concurrency and method-throttling limits.
-Both routes remain absent, and the function has zero reserved concurrency, while
-`EnableGatewayPath=false`. CORS, readiness writers, and AWS validation remain separate.
+The routes remain absent, and the function has zero reserved concurrency, while
+`EnableGatewayPath=false`. Readiness writers are locally implemented. CORS and AWS
+validation remain separate.
 
 The client polls `GET /v1/sessions/{id}` with capped backoff and jitter until the status
 leaves `provisioning`. After `429 LIMIT_EXCEEDED`, it retries with capped exponential
@@ -215,9 +217,10 @@ A session becomes `ready` when the task is running, the monitor container report
 and a gateway has acknowledged recording ownership. The
 monitor passes its health check only after it confirms the planted fault is present:
 aggregate recovery fails and health probes pass. The lifecycle handler saves the task's private
-address for recorder attachment, then commits `readyAt` and moves the Scheduler
-job to `readyAt` plus the time limit. The lifecycle routine repairs a missed schedule
-update from the saved session. Every timer callback reads the current deadline before
+address for recorder attachment. The Gateway commits the initial terminal and monitor
+pages, then commits the measurement origin as `readyAt`. Reconciliation creates a separate
+ready deadline timer at `readyAt` plus the saved time limit. It repairs a missing or stale
+timer from the saved session. Every timer callback reads the current deadline before
 acting, so a stale provisioning timer cannot end a ready session early. The sweep also
 checks deadlines if a schedule is missing. If the provisioning deadline passes first,
 the session ends as `error` with `start_failed`.
@@ -255,10 +258,13 @@ because it cannot know whether Gateway consumed the previous ticket.
 
 ### End
 
-`POST /v1/sessions/{id}/end` moves an active session to `ended` with `learner_ended`
-through a conditional write and a receipt. Ending a session that already has an outcome
-returns that outcome. The gateway drains recording before the finaliser stops the task,
-with a fixed deadline. See [the lifecycle](challenges.md#lifecycle).
+The separate, disabled `POST /v1/sessions/{id}/end` action accepts only `requestId`.
+It checks Cognito ownership and saves `ended/learner_ended` with an atomic receipt and
+fixed recording cutoff. A request at or after the saved time limit returns
+`failed/time_limit` at that deadline. Ending an attempt that already has an outcome
+returns it and saves the receipt. Retries cannot change the outcome. The Gateway drains
+before lifecycle cleanup stops the task, with a fixed deadline. Fixed errors expose no
+private state. See [the lifecycle](challenges.md#lifecycle).
 
 ### Hints
 
@@ -318,7 +324,9 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    timers are throttled. At most every 30 seconds, the gateway will update the session's
    `lastSeenAt` through a write that is conditional on the session still being active.
    A failed condition means the session has an outcome, so the gateway sends `status`
-   and closes. The persistent `lastSeenAt` update is not implemented in this increment.
+   and closes. Browser heartbeat and manual input now update `lastSeenAt` under the
+   current input generation, with a 15-second write interval. Private keepalive and
+   recorder renewal do not update learner liveness.
 4. The gateway sends `metrics` every five seconds (proposed) with the latest sample,
    cumulative request counters, and the aggregate recovery state. It sends `timeline`
    when a command completes or a monitor signal occurs, and `status` when the session

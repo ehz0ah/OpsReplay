@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { monitorRecordingLimits } from '../../../packages/contracts/private/monitor-persistence.js';
 import {
   isMonitorControlSource,
   isMonitorControlTimestamp,
@@ -59,7 +60,7 @@ export interface MonitorRecorderOptions {
   maximumFrames?: number;
 }
 
-export const monitorRecordingLimits = Object.freeze({ maximumFrames: 10_000 });
+export { monitorRecordingLimits } from '../../../packages/contracts/private/monitor-persistence.js';
 export const monitorRecordingPolling = Object.freeze({
   defaultIntervalMs: 500,
   minimumIntervalMs: 50,
@@ -247,6 +248,19 @@ export class MonitorRecorder {
     await this.sink.append(batch, signal);
     this.current = { startedAt, source, cursor: page.nextSequence };
     return page.frames.length === monitorControlSchema.maximumFramesPerPage;
+  }
+
+  /** Commit one bounded initial page before readiness. */
+  async prime(signal: AbortSignal): Promise<MonitorRecordingCheckpoint> {
+    if (this.current.startedAt === null || this.beginning || this.running || this.sealing || this.sealed)
+      throw new MonitorRecorderError('invalid_state');
+    this.running = true;
+    try {
+      await this.pull(signal);
+      return this.checkpoint;
+    } finally {
+      this.running = false;
+    }
   }
 
   private async readSealed(

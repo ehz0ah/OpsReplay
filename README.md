@@ -34,9 +34,12 @@ complete Gateway path remains disabled and has not run in AWS. The terminal sour
 process-local. The composed recorder now collects terminal pages and monitor measurements
 under one lease. It copies the exact terminal prefix into sealed retention and requires
 both streams before publishing recording completion. These paths are tested locally,
-not deployed. Playback is not implemented. Captures, remaining API,
-web application, and lifecycle completion are not implemented. No checkpoint image is
-currently published in AWS, and no public route is deployed.
+not deployed. The lifecycle adds committed readiness, owner end, saved outcomes, learner
+liveness, deadline repair, bounded drain, and confirmed task cleanup. Its three separate
+Lambda actions and triggers remain disabled. Ready-attempt locks still require atomic
+debrief finalisation. Playback, command evidence, captures, remaining API, and the web
+application are not implemented. No checkpoint image is currently published in AWS,
+and no public route is deployed.
 
 ## Start here
 

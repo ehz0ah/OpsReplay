@@ -371,11 +371,11 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     }
     const [deployment] = ofType(rendered.Resources, 'AWS::ApiGateway::Deployment');
     const methods = ofType(rendered.Resources, 'AWS::ApiGateway::Method');
-    const method = methods.find(([, resource]) => resource.Properties?.HttpMethod === 'POST');
+    const method = methods.find(([, resource]) => resource.Properties?.OperationName === 'createTerminalTicket');
     const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV3');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV4');
     assert.equal(gatewayResponses.length, 5);
     const deploymentDependencies = [deployment[1].DependsOn].flat();
     assert.ok(deploymentDependencies.includes(method[0]));
@@ -395,6 +395,15 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     template.hasResourceProperties('AWS::ApiGateway::Stage', {
       StageName: 'checkpoint',
       MethodSettings: [
+        {
+          HttpMethod: 'POST',
+          ResourcePath: '/~1v1~1sessions~1{id}~1end',
+          CachingEnabled: false,
+          DataTraceEnabled: false,
+          MetricsEnabled: true,
+          ThrottlingBurstLimit: 8,
+          ThrottlingRateLimit: 4,
+        },
         {
           HttpMethod: 'GET',
           ResourcePath: '/~1v1~1sessions~1{id}',
@@ -451,7 +460,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(apiPermissions.length, 2);
+    assert.equal(apiPermissions.length, 3);
     const ticketPermission = apiPermissions.find(([, resource]) =>
       JSON.stringify(resource.Properties?.SourceArn).includes('POST/v1/sessions/*/terminal-tickets'),
     );

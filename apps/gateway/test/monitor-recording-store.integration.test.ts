@@ -32,6 +32,7 @@ import {
 } from '../../../packages/contracts/private/terminal-persistence.js';
 import { terminalPage, terminalReady } from '../../../packages/contracts/private/test-support/terminal-fixture.js';
 import type { TerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
+import { monitorObservationKey } from '../../../packages/contracts/private/monitor-persistence.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -255,6 +256,92 @@ test('allows only one concurrent recorder claim', async () => {
   assert.equal(rejected.length, 1);
   assert.ok(storeError('lease_unavailable')((rejected[0] as PromiseRejectedResult).reason));
   assert.equal((await f.store.get(f.sessionId))?.generation, 1);
+});
+
+test('monitor observations commit with the cursor and survive response loss', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, startedAt);
+  const observation = {
+    schemaVersion: 1 as const,
+    sessionId: f.sessionId,
+    startedAt,
+    source,
+    cursor: 1,
+    sequence: 1,
+    at: startedAt,
+    recovery: { state: 'failing' as const, sustainedSeconds: 0, requiredSeconds: 1 },
+  };
+  let lost = false;
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand && !lost) {
+          lost = true;
+          throw new Error('Response lost');
+        }
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await uncertain.append(
+    claimed.lease,
+    startedAt,
+    reference(f.sessionId, 1, 'live'),
+    startedAt,
+    undefined,
+    observation,
+  );
+  assert.deepEqual(await f.get(monitorObservationKey(f.sessionId)), observation);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+  await uncertain.append(
+    claimed.lease,
+    startedAt,
+    reference(f.sessionId, 1, 'live'),
+    startedAt,
+    undefined,
+    observation,
+  );
+  const met = {
+    ...observation,
+    cursor: 2,
+    sequence: 2,
+    at: '2026-10-07T00:00:02.000Z',
+    recovery: { state: 'met' as const, sustainedSeconds: 1, requiredSeconds: 1 },
+  };
+  await f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live', 1, 2), met.at, undefined, met);
+  const later = { ...observation, cursor: 3, sequence: 3, at: '2026-10-07T00:00:03.000Z' };
+  await f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live', 2, 3), later.at, undefined, later);
+  assert.deepEqual(
+    await f.get(monitorObservationKey(f.sessionId)),
+    met,
+    'First sustained recovery must remain replayable',
+  );
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 3);
+});
+
+test('invalid monitor observations cannot publish a page cursor', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, startedAt);
+  const value = {
+    schemaVersion: 1 as const,
+    sessionId: f.sessionId,
+    startedAt,
+    source,
+    cursor: 1,
+    sequence: 1,
+    at: startedAt,
+    recovery: { state: 'met' as const, sustainedSeconds: 60, requiredSeconds: 60 },
+  };
+  await assert.rejects(
+    f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live'), startedAt, undefined, value),
+    storeError('invalid_input'),
+  );
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 0);
+  assert.equal(await f.get(monitorObservationKey(f.sessionId)), undefined);
 });
 
 test('recovers a recorder claim whose transaction response was lost', async () => {

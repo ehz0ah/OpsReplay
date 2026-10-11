@@ -13,7 +13,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 5);
+    template.resourceCountIs('AWS::Lambda::Function', 8);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -28,12 +28,12 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       UpdateReplacePolicy: 'Retain',
       Properties: { BillingMode: 'PAY_PER_REQUEST', TimeToLiveSpecification: { AttributeName: 'ExpiresAt' } },
     });
-    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 2);
+    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 4);
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
       MaximumRetryAttempts: 2,
       MaximumEventAgeInSeconds: 900,
     });
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 4);
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 6);
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
       Namespace: 'AWS/Lambda',
       MetricName: 'AsyncEventsDropped',
@@ -79,6 +79,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
     }[];
     const allowed = new Set([
       'AWS::Lambda::Function',
+      'AWS::Lambda::EventSourceMapping',
       'AWS::ApiGateway::Authorizer',
       'AWS::ApiGateway::Deployment',
       'AWS::ApiGateway::GatewayResponse',
@@ -129,7 +130,11 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       'dynamodb:BatchGetItem',
       'dynamodb:ConditionCheckItem',
       'dynamodb:DeleteItem',
+      'dynamodb:DescribeStream',
       'dynamodb:GetItem',
+      'dynamodb:GetRecords',
+      'dynamodb:GetShardIterator',
+      'dynamodb:ListStreams',
       'dynamodb:PutItem',
       'dynamodb:Query',
       'dynamodb:UpdateItem',
@@ -151,7 +156,9 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       's3:PutObject',
       's3:PutObjectTagging',
       'scheduler:CreateSchedule',
+      'scheduler:DeleteSchedule',
       'scheduler:GetSchedule',
+      'scheduler:UpdateSchedule',
       'sqs:GetQueueAttributes',
       'sqs:GetQueueUrl',
       'sqs:SendMessage',
@@ -164,7 +171,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       resources.filter(
         (item) => item.Type === 'AWS::Lambda::Function' && item.Properties?.ReservedConcurrentExecutions === 0,
       ).length,
-      2,
+      5,
     );
     for (const role of resources.filter((item) => item.Type === 'AWS::IAM::Role')) {
       assert.equal(role.Properties?.ManagedPolicyArns, undefined);

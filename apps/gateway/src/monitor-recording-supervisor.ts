@@ -8,6 +8,7 @@ import { MonitorRecordingStoreError } from './monitor-recording-store.js';
 import { TerminalRecordingClientError } from './terminal-recording-client.js';
 import { TerminalRecordingStoreError } from './terminal-recording-store.js';
 import { TerminalRecorderError } from './terminal-recorder.js';
+import { AttemptStoreError } from '../../../packages/session/src/attempt-store.js';
 import { RecordingWorkSourceError, type RecordingWork, type RecordingWorkSource } from './recording-work-source.js';
 
 export interface RecordingSessionRunner {
@@ -120,6 +121,7 @@ function transientAwsFailure(error: unknown): boolean {
 }
 
 function operationalFailure(error: unknown): boolean {
+  if (error instanceof AttemptStoreError) return !['invalid_config', 'invalid_input'].includes(error.code);
   if (error instanceof TerminalRecordingClientError)
     return !['invalid_config', 'invalid_request', 'busy'].includes(error.code);
   if (error instanceof TerminalRecordingStoreError) return !['invalid_config', 'invalid_input'].includes(error.code);

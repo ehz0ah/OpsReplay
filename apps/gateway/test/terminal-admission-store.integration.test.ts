@@ -22,6 +22,8 @@ import {
 } from '../../../packages/contracts/private/terminal-access.js';
 import { startLocalDatabase } from '../../api/test/local-dynamodb.js';
 import { DynamoTerminalAdmissionStore, TerminalAdmissionError } from '../src/terminal-admission-store.js';
+import { initialSessionLifecycle, lifecycleKey } from '../../../packages/contracts/private/session-lifecycle.js';
+import { sessionRecord } from '../../api/test/session-fixture.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -126,6 +128,63 @@ test('atomically consumes a ticket and claims the first input generation', async
     claimedAt: now,
   });
   await f.store.authorizeInput({ sessionId: f.sessionId, connectionId: 'gateway-connection-1', generation: 1 });
+});
+
+test('production admission liveness checks generation and translates terminal sessions before input', async () => {
+  const f = await fixture();
+  await f.putTicket(ticketA);
+  const admission = await f.store.admit(request(f.sessionId));
+  const lifecycle = {
+    ...initialSessionLifecycle(f.sessionId, now),
+    readyAt: now,
+    terminalSource: randomUUID(),
+    lastSeenAt: now,
+    lastMonitorAt: now,
+    recovery: { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+  };
+  await database.document.send(
+    new PutCommand({ TableName: f.table, Item: { ...lifecycleKey(f.sessionId), data: lifecycle } }),
+  );
+  const session = sessionRecord(f.sessionId);
+  session.ownerId = ownerId;
+  session.view.createdAt = now;
+  session.accessGrant.admittedAt = now;
+  session.provisioningDeadline = '2026-10-10T08:03:00.000Z';
+  session.view.status = 'ready';
+  session.view.readyAt = now;
+  session.view.endsAt = '2026-10-10T08:20:00.000Z';
+  session.view.recording.status = 'recording';
+  session.view.recovery = lifecycle.recovery as typeof session.view.recovery;
+  session.taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/test/1234';
+  session.taskAddress = '10.0.1.42';
+  await database.document.send(
+    new PutCommand({ TableName: f.table, Item: { ...terminalSessionKey(f.sessionId), data: session } }),
+  );
+  await f.store.recordLearnerSeen(admission, later);
+  const saved = await database.document.send(
+    new GetCommand({ TableName: f.table, Key: lifecycleKey(f.sessionId), ConsistentRead: true }),
+  );
+  assert.equal(saved.Item?.data.lastSeenAt, later);
+  await assert.rejects(f.store.recordLearnerSeen({ ...admission, generation: 2 }, later), admissionError('replaced'));
+  await database.document.send(
+    new UpdateCommand({
+      TableName: f.table,
+      Key: terminalSessionKey(f.sessionId),
+      UpdateExpression: 'SET #data.#view.#status = :ended, #data.#view.#reason = :reason, #data.#view.#endedAt = :at',
+      ExpressionAttributeNames: {
+        '#data': 'data',
+        '#view': 'view',
+        '#status': 'status',
+        '#reason': 'statusReason',
+        '#endedAt': 'endedAt',
+      },
+      ExpressionAttributeValues: { ':ended': 'ended', ':reason': 'learner_ended', ':at': later },
+    }),
+  );
+  await assert.rejects(
+    f.store.recordLearnerSeen(admission, '2026-10-10T08:02:00.000Z'),
+    admissionError('session_terminal'),
+  );
 });
 
 test('allows exactly one concurrent use of a single-use ticket', async () => {

@@ -47,6 +47,19 @@ export interface MonitorRecordingRunnerOptions {
     seals: TerminalSealingStore;
     pollIntervalMs?: number;
   };
+  lifecycle?: {
+    ready(
+      lease: import('./monitor-recording-store.js').MonitorRecorderLease,
+      startedAt: string,
+      terminal: TerminalRecordingCheckpoint,
+      signal: AbortSignal,
+    ): Promise<void>;
+    monitor(
+      lease: import('./monitor-recording-store.js').MonitorRecorderLease,
+      value: import('./monitor-recorder.js').MonitorRecordingBatch,
+      signal?: AbortSignal,
+    ): Promise<void>;
+  };
   leaseDurationMs?: number;
   renewalIntervalMs?: number;
   pollIntervalMs?: number;
@@ -100,6 +113,7 @@ export class MonitorRecordingRunner {
   private readonly renewalIntervalMs: number;
   private readonly pollIntervalMs: number | undefined;
   private readonly terminal: MonitorRecordingRunnerOptions['terminal'];
+  private readonly lifecycle: MonitorRecordingRunnerOptions['lifecycle'];
   private readonly now: () => string;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private running = false;
@@ -131,6 +145,7 @@ export class MonitorRecordingRunner {
     this.renewalIntervalMs = renewalIntervalMs;
     this.pollIntervalMs = options.pollIntervalMs;
     this.terminal = options.terminal;
+    this.lifecycle = options.lifecycle;
     this.now = options.now ?? (() => new Date().toISOString());
     this.wait = options.wait ?? defaultWait;
   }
@@ -152,10 +167,18 @@ export class MonitorRecordingRunner {
     let stopRenewal: AbortController | undefined;
     let renewal: Promise<void> | undefined;
     let terminalRecorder: TerminalRecorder | undefined;
+    let terminalOpened = false;
     let terminalTask: Promise<void> | undefined;
     let terminalFailure: unknown;
     let terminalSealer: TerminalSealer | undefined;
     let savedTerminal: TerminalRecordingCheckpoint | undefined;
+    const holdTerminalFailure = (error: unknown) => {
+      terminalFailure = error;
+      if (!(error instanceof TerminalRecorderError && ['data_gap', 'limit_exceeded'].includes(error.code))) {
+        lifetime.abort(error);
+        polling.abort(error);
+      }
+    };
 
     try {
       if (lifetime.signal.aborted) return { status: 'cancelled', generation };
@@ -228,18 +251,13 @@ export class MonitorRecordingRunner {
             (savedTerminal.metadata.loss !== null && savedTerminal.metadata.loss.occurredAt <= drain.cutoffAt))
         )) {
           await terminalRecorder.begin(lifetime.signal);
-          terminalTask = terminalRecorder
-            .record(lifetime.signal, () => drain?.cutoffAt ?? null)
-            .then(
-              () => {},
-              (error: unknown) => {
-                terminalFailure = error;
-                if (!(error instanceof TerminalRecorderError && ['data_gap', 'limit_exceeded'].includes(error.code))) {
-                  lifetime.abort(error);
-                  polling.abort(error);
-                }
-              },
-            );
+          terminalOpened = true;
+          if (this.lifecycle) await terminalRecorder.prime(lifetime.signal);
+          if (!this.lifecycle) {
+            terminalTask = terminalRecorder
+              .record(lifetime.signal, () => drain?.cutoffAt ?? null)
+              .then(() => {}, holdTerminalFailure);
+          }
         }
       }
 
@@ -248,6 +266,7 @@ export class MonitorRecordingRunner {
         chunks: this.chunks,
         recordings: this.recordings,
         now: this.now,
+        recordLifecycle: this.lifecycle !== undefined,
       });
       let sealedMonitor: { value: SealedMonitorRecording; reference: StoredMonitorChunk } | undefined;
       const recorder = new MonitorRecorder({
@@ -255,7 +274,10 @@ export class MonitorRecordingRunner {
         sink: this.terminal
           ? {
               begin: (value, operationSignal) => sink.begin(value, operationSignal),
-              append: (value, operationSignal) => sink.append(value, operationSignal),
+              append: async (value, operationSignal) => {
+                await sink.append(value, operationSignal);
+                await this.lifecycle?.monitor(claimed.lease, value, operationSignal);
+              },
               seal: async (value, operationSignal) => {
                 const reference = await this.chunks.putSealed(
                   this.sessionId,
@@ -271,7 +293,17 @@ export class MonitorRecordingRunner {
         ...(this.pollIntervalMs === undefined ? {} : { pollIntervalMs: this.pollIntervalMs }),
       });
 
-      await recorder.begin(lifetime.signal);
+      const started = await recorder.begin(lifetime.signal);
+      if (this.lifecycle && drain === null) {
+        if (!terminalRecorder) throw new MonitorRecordingRunnerError('invalid_state');
+        if (recorder.checkpoint.cursor === 0) await recorder.prime(lifetime.signal);
+        await this.lifecycle.ready(claimed.lease, started.startedAt, terminalRecorder.checkpoint, lifetime.signal);
+      }
+      if (this.lifecycle && terminalOpened && terminalRecorder) {
+        terminalTask = terminalRecorder
+          .record(lifetime.signal, () => drain?.cutoffAt ?? null)
+          .then(() => {}, holdTerminalFailure);
+      }
       if (drain === null) {
         const recordSignal = AbortSignal.any([lifetime.signal, polling.signal]);
         try {

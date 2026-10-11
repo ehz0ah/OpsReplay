@@ -1,17 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
 import { GetCommand, TransactWriteCommand, UpdateCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import {
-  isMonitorControlSource,
-  isMonitorControlTimestamp,
-  monitorControlSchema,
-} from '../../../packages/contracts/private/monitor-control.js';
+import { isMonitorControlTimestamp } from '../../../packages/contracts/private/monitor-control.js';
 import { recordingRetainUntil } from '../../../packages/contracts/private/recording-retention.js';
+import type { SealedMonitorRecording } from './monitor-recorder.js';
 import {
-  monitorRecordingLimits,
-  type MonitorRecordingCheckpoint,
-  type SealedMonitorRecording,
-} from './monitor-recorder.js';
+  isMonitorRecordingState,
+  isStoredMonitorChunkReference as validReference,
+  isMonitorLifecycleObservation,
+  monitorObservationKey,
+  monitorRecordingIncompleteReasons,
+  type MonitorRecordingIncompleteReason,
+  type MonitorRecordingStatus,
+  type MonitorRecordingState,
+  type MonitorLifecycleObservation,
+} from '../../../packages/contracts/private/monitor-persistence.js';
+export { isMonitorRecordingState, monitorRecordingIncompleteReasons };
+export type { MonitorRecordingIncompleteReason, MonitorRecordingStatus, MonitorRecordingState };
 import { isMonitorRecordingGeneration, isMonitorRecordingSessionId } from './monitor-recording-identity.js';
 import type { StoredMonitorChunk } from './monitor-chunk-store.js';
 import { isTerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
@@ -22,32 +27,6 @@ export const monitorRecorderLease = Object.freeze({
   minimumDurationMs: 5_000,
   maximumDurationMs: 60_000,
 });
-
-export type MonitorRecordingStatus = 'recording' | 'draining' | 'complete' | 'incomplete';
-
-export const monitorRecordingIncompleteReasons = [
-  'task_lost',
-  'recorder_lost',
-  'drain_timeout',
-  'limit_exceeded',
-  'data_gap',
-] as const;
-export type MonitorRecordingIncompleteReason = (typeof monitorRecordingIncompleteReasons)[number];
-
-export interface MonitorRecordingState extends MonitorRecordingCheckpoint {
-  schemaVersion: 1;
-  status: MonitorRecordingStatus;
-  recorderId: string | null;
-  generation: number;
-  leaseExpiresAt: string | null;
-  cutoffAt: string | null;
-  drainDeadlineAt: string | null;
-  sealed: StoredMonitorChunk | null;
-  retainUntil: string | null;
-  reason: string | null;
-  updatedAt: string;
-  completedAt: string | null;
-}
 
 export interface MonitorRecorderLease {
   sessionId: string;
@@ -75,6 +54,7 @@ export interface MonitorRecordingStateStore {
     reference: StoredMonitorChunk,
     now: string,
     signal?: AbortSignal,
+    observation?: MonitorLifecycleObservation,
   ): Promise<void>;
   seal(
     lease: MonitorRecorderLease,
@@ -134,7 +114,6 @@ export class MonitorRecordingStoreError extends Error {
 
 const recorderIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const tableNamePattern = /^[A-Za-z0-9_.-]{3,255}$/;
-const sha256Pattern = /^[a-f0-9]{64}$/;
 
 const recordingKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'RECORDING' });
 const sessionKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'STATE' });
@@ -147,12 +126,6 @@ function chunkKey(sessionId: string, generation: number, reference: StoredMonito
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
 }
 
 function validSessionId(value: string): boolean {
@@ -171,15 +144,6 @@ function validGeneration(value: number): boolean {
   return isMonitorRecordingGeneration(value);
 }
 
-function validCursor(value: number): boolean {
-  return (
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= monitorRecordingLimits.maximumFrames &&
-    value <= monitorControlSchema.maximumCursor
-  );
-}
-
 function validLeaseDuration(value: number): boolean {
   return (
     Number.isInteger(value) &&
@@ -190,174 +154,6 @@ function validLeaseDuration(value: number): boolean {
 
 function expiresAt(now: string, durationMs: number): string {
   return new Date(Date.parse(now) + durationMs).toISOString();
-}
-
-function referenceGeneration(objectKey: string): number {
-  const match = /^sessions\/[0-9a-f-]+\/metrics\/([0-9]{9})\//.exec(objectKey);
-  return match ? Number(match[1]) : Number.NaN;
-}
-
-function validReference(
-  value: unknown,
-  sessionId: string,
-  generation: number,
-  phase: StoredMonitorChunk['phase'],
-): value is StoredMonitorChunk {
-  if (
-    !isRecord(value) ||
-    !exactKeys(value, ['phase', 'objectKey', 'sha256', 'source', 'after', 'nextSequence', 'frameCount'])
-  ) {
-    return false;
-  }
-  if (
-    value.phase !== phase ||
-    typeof value.objectKey !== 'string' ||
-    typeof value.sha256 !== 'string' ||
-    !sha256Pattern.test(value.sha256) ||
-    !validCursor(value.after as number) ||
-    !validCursor(value.nextSequence as number) ||
-    !Number.isInteger(value.frameCount) ||
-    (value.frameCount as number) < 0 ||
-    (value.frameCount as number) > monitorRecordingLimits.maximumFrames
-  ) {
-    return false;
-  }
-  const source = value.source;
-  if (source !== null && !isMonitorControlSource(source)) return false;
-  const after = value.after as number;
-  const nextSequence = value.nextSequence as number;
-  const frameCount = value.frameCount as number;
-  const firstSequence = frameCount === 0 ? 0 : after + 1;
-  const expectedKey =
-    `sessions/${sessionId}/metrics/${String(generation).padStart(9, '0')}/${phase}/${source ?? 'empty'}/` +
-    `${String(firstSequence).padStart(6, '0')}-${String(nextSequence).padStart(6, '0')}-${value.sha256}.json`;
-  if (referenceGeneration(value.objectKey) !== generation || value.objectKey !== expectedKey) {
-    return false;
-  }
-  if (phase === 'live') {
-    return (
-      source !== null &&
-      frameCount >= 1 &&
-      frameCount <= monitorControlSchema.maximumFramesPerPage &&
-      nextSequence > after &&
-      nextSequence - after === frameCount
-    );
-  }
-  return after === 0 && nextSequence === frameCount && (frameCount === 0 ? source === null : source !== null);
-}
-
-function validCheckpoint(state: MonitorRecordingState): boolean {
-  return (
-    validCursor(state.cursor) &&
-    (state.startedAt === null || isMonitorControlTimestamp(state.startedAt)) &&
-    (state.source === null || isMonitorControlSource(state.source)) &&
-    (state.startedAt === null
-      ? state.source === null && state.cursor === 0
-      : state.cursor === 0
-        ? state.source === null
-        : state.source !== null)
-  );
-}
-
-export function isMonitorRecordingState(value: unknown, sessionId: string): value is MonitorRecordingState {
-  if (
-    !isRecord(value) ||
-    !exactKeys(value, [
-      'schemaVersion',
-      'status',
-      'recorderId',
-      'generation',
-      'leaseExpiresAt',
-      'startedAt',
-      'source',
-      'cursor',
-      'cutoffAt',
-      'drainDeadlineAt',
-      'sealed',
-      'retainUntil',
-      'reason',
-      'updatedAt',
-      'completedAt',
-    ]) ||
-    value.schemaVersion !== 1 ||
-    !['recording', 'draining', 'complete', 'incomplete'].includes(value.status as string) ||
-    !validGeneration(value.generation as number) ||
-    !isMonitorControlTimestamp(value.updatedAt)
-  ) {
-    return false;
-  }
-  const state = value as unknown as MonitorRecordingState;
-  if (!validCheckpoint(state)) return false;
-  if (
-    (state.cutoffAt !== null && !isMonitorControlTimestamp(state.cutoffAt)) ||
-    (state.drainDeadlineAt !== null && !isMonitorControlTimestamp(state.drainDeadlineAt)) ||
-    (state.completedAt !== null && !isMonitorControlTimestamp(state.completedAt)) ||
-    (state.reason !== null && !validIncompleteReason(state.reason))
-  ) {
-    return false;
-  }
-  if (state.status === 'recording') {
-    return (
-      state.recorderId !== null &&
-      validRecorderId(state.recorderId) &&
-      state.leaseExpiresAt !== null &&
-      isMonitorControlTimestamp(state.leaseExpiresAt) &&
-      state.cutoffAt === null &&
-      state.drainDeadlineAt === null &&
-      state.sealed === null &&
-      state.retainUntil === null &&
-      state.reason === null &&
-      state.completedAt === null
-    );
-  }
-  if (state.status === 'draining') {
-    return (
-      state.recorderId !== null &&
-      validRecorderId(state.recorderId) &&
-      state.leaseExpiresAt !== null &&
-      isMonitorControlTimestamp(state.leaseExpiresAt) &&
-      state.cutoffAt !== null &&
-      state.drainDeadlineAt !== null &&
-      Date.parse(state.drainDeadlineAt) >= Date.parse(state.cutoffAt) &&
-      state.sealed === null &&
-      state.retainUntil === null &&
-      state.reason === null &&
-      state.completedAt === null
-    );
-  }
-  if (
-    state.recorderId !== null ||
-    state.leaseExpiresAt !== null ||
-    state.cutoffAt === null ||
-    state.drainDeadlineAt === null ||
-    state.completedAt === null ||
-    state.retainUntil === null ||
-    !isMonitorControlTimestamp(state.retainUntil)
-  ) {
-    return false;
-  }
-  if (
-    Date.parse(state.drainDeadlineAt) < Date.parse(state.cutoffAt) ||
-    Date.parse(state.completedAt) < Date.parse(state.cutoffAt)
-  ) {
-    return false;
-  }
-  if (state.status === 'complete') {
-    return (
-      state.reason === null &&
-      Date.parse(state.completedAt) < Date.parse(state.drainDeadlineAt) &&
-      state.retainUntil === recordingRetainUntil(state.cutoffAt, 'sealed') &&
-      validReference(state.sealed, sessionId, state.generation, 'sealed') &&
-      state.sealed.source === state.source &&
-      state.sealed.nextSequence === state.cursor &&
-      state.sealed.frameCount === state.cursor
-    );
-  }
-  return (
-    state.sealed === null &&
-    validIncompleteReason(state.reason) &&
-    state.retainUntil === recordingRetainUntil(state.startedAt ?? state.completedAt, 'provisional')
-  );
 }
 
 function validLease(value: MonitorRecorderLease): boolean {
@@ -697,6 +493,7 @@ export class DynamoMonitorRecordingStore
     reference: StoredMonitorChunk,
     now: string,
     signal?: AbortSignal,
+    observation?: MonitorLifecycleObservation,
   ): Promise<void> {
     if (
       !validLease(lease) ||
@@ -704,6 +501,47 @@ export class DynamoMonitorRecordingStore
       !isMonitorControlTimestamp(now) ||
       !validReference(reference, lease.sessionId, lease.generation, 'live')
     ) {
+      throw new MonitorRecordingStoreError('invalid_input');
+    }
+    if (
+      observation !== undefined &&
+      (!isMonitorLifecycleObservation(observation, lease.sessionId) ||
+        observation.startedAt !== startedAt ||
+        observation.source !== reference.source ||
+        observation.cursor !== reference.nextSequence ||
+        observation.at > now)
+    )
+      throw new MonitorRecordingStoreError('invalid_input');
+    const previousObservation = observation
+      ? (
+          await this.client.send(
+            new GetCommand({
+              TableName: this.table,
+              Key: monitorObservationKey(lease.sessionId),
+              ConsistentRead: true,
+            }),
+            sendOptions(signal),
+          )
+        ).Item?.data
+      : undefined;
+    if (previousObservation !== undefined && !isMonitorLifecycleObservation(previousObservation, lease.sessionId))
+      throw new MonitorRecordingStoreError('invalid_store');
+    // Keep the first sustained recovery until the lifecycle fixes its outcome. A
+    // lost callback must not let a later failing sample erase success evidence.
+    const keepRecovery =
+      isMonitorLifecycleObservation(previousObservation, lease.sessionId) &&
+      previousObservation.recovery.state === 'met';
+    if (
+      observation &&
+      isMonitorLifecycleObservation(previousObservation, lease.sessionId) &&
+      !keepRecovery &&
+      (previousObservation.source !== observation.source ||
+        previousObservation.startedAt !== observation.startedAt ||
+        previousObservation.cursor >= observation.cursor ||
+        previousObservation.at > observation.at ||
+        previousObservation.recovery.requiredSeconds !== observation.recovery.requiredSeconds)
+    ) {
+      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal)) return;
       throw new MonitorRecordingStoreError('invalid_input');
     }
     const chunk = {
@@ -756,6 +594,34 @@ export class DynamoMonitorRecordingStore
             ConditionExpression: 'attribute_not_exists(PK)',
           },
         },
+        ...(observation
+          ? [
+              keepRecovery
+                ? {
+                    ConditionCheck: {
+                      TableName: this.table,
+                      Key: monitorObservationKey(lease.sessionId),
+                      ConditionExpression: '#data = :expected',
+                      ExpressionAttributeNames: { '#data': 'data' },
+                      ExpressionAttributeValues: { ':expected': previousObservation },
+                    },
+                  }
+                : {
+                    Put: {
+                      TableName: this.table,
+                      Item: { ...monitorObservationKey(lease.sessionId), data: observation },
+                      ConditionExpression:
+                        previousObservation === undefined ? 'attribute_not_exists(PK)' : '#data = :expected',
+                      ...(previousObservation === undefined
+                        ? {}
+                        : {
+                            ExpressionAttributeNames: { '#data': 'data' },
+                            ExpressionAttributeValues: { ':expected': previousObservation },
+                          }),
+                    },
+                  },
+            ]
+          : []),
       ],
     });
     try {
