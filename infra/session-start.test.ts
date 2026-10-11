@@ -7,13 +7,13 @@ import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
-test('the stack preserves separate disabled start and expiry actions', () => {
+test('the stack preserves separate disabled lifecycle and terminal-ticket actions', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-cdk-'));
   try {
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -26,7 +26,7 @@ test('the stack preserves separate disabled start and expiry actions', () => {
     template.hasResource('AWS::DynamoDB::Table', {
       DeletionPolicy: 'Retain',
       UpdateReplacePolicy: 'Retain',
-      Properties: { BillingMode: 'PAY_PER_REQUEST' },
+      Properties: { BillingMode: 'PAY_PER_REQUEST', TimeToLiveSpecification: { AttributeName: 'ExpiresAt' } },
     });
     template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 2);
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
@@ -79,6 +79,13 @@ test('the stack preserves separate disabled start and expiry actions', () => {
     }[];
     const allowed = new Set([
       'AWS::Lambda::Function',
+      'AWS::ApiGateway::Authorizer',
+      'AWS::ApiGateway::Deployment',
+      'AWS::ApiGateway::GatewayResponse',
+      'AWS::ApiGateway::Method',
+      'AWS::ApiGateway::Resource',
+      'AWS::ApiGateway::RestApi',
+      'AWS::ApiGateway::Stage',
       'AWS::DynamoDB::Table',
       'AWS::IAM::Role',
       'AWS::IAM::Policy',
@@ -89,6 +96,7 @@ test('the stack preserves separate disabled start and expiry actions', () => {
       'AWS::S3::Bucket',
       'AWS::S3::BucketPolicy',
       'AWS::EC2::SecurityGroup',
+      'AWS::EC2::SecurityGroupEgress',
       'AWS::EC2::SecurityGroupIngress',
       'AWS::SQS::Queue',
       'AWS::SQS::QueuePolicy',
@@ -96,6 +104,12 @@ test('the stack preserves separate disabled start and expiry actions', () => {
       'AWS::Lambda::Permission',
       'AWS::ECS::TaskDefinition',
       'AWS::ECS::Service',
+      'AWS::ElasticLoadBalancingV2::Listener',
+      'AWS::ElasticLoadBalancingV2::ListenerRule',
+      'AWS::ElasticLoadBalancingV2::LoadBalancer',
+      'AWS::ElasticLoadBalancingV2::TargetGroup',
+      'AWS::WAFv2::WebACL',
+      'AWS::WAFv2::WebACLAssociation',
     ]);
     for (const resource of resources) assert.ok(allowed.has(resource.Type), `Unexpected resource: ${resource.Type}`);
     const actions = new Set<string>();
