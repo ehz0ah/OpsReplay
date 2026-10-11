@@ -13,6 +13,8 @@ import {
 } from './monitor-recorder.js';
 import { isMonitorRecordingGeneration, isMonitorRecordingSessionId } from './monitor-recording-identity.js';
 import type { StoredMonitorChunk } from './monitor-chunk-store.js';
+import { isTerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
+import { isTerminalRecordingCheckpoint } from '../../../packages/contracts/private/terminal-persistence.js';
 
 export const monitorRecorderLease = Object.freeze({
   defaultDurationMs: 15_000,
@@ -794,9 +796,66 @@ export class DynamoMonitorRecordingStore
     ) {
       throw new MonitorRecordingStoreError('invalid_input');
     }
+    const terminal = await this.client.send(
+      new GetCommand({
+        TableName: this.table,
+        Key: { PK: `SESSION#${lease.sessionId}`, SK: 'TERMINAL_RECORDING' },
+        ConsistentRead: true,
+      }),
+      sendOptions(signal),
+    );
+    const terminalSeal = terminal.Item
+      ? await this.client.send(
+          new GetCommand({
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK: 'TERMINAL_SEAL' },
+            ConsistentRead: true,
+          }),
+          sendOptions(signal),
+        )
+      : undefined;
+    if (
+      terminal.Item &&
+      (!isTerminalRecordingCheckpoint(terminal.Item.data) ||
+        !isTerminalSealState(terminalSeal?.Item?.data) ||
+        !terminalSeal.Item.data.complete ||
+        terminalSeal.Item.data.cutoffAt !== value.cutoffAt ||
+        terminalSeal.Item.data.checkpoint.metadata.source !== terminal.Item.data.metadata.source ||
+        terminalSeal.Item.data.checkpoint.cursor > terminal.Item.data.cursor)
+    )
+      throw new MonitorRecordingStoreError('invalid_state');
+    const terminalConditions = [
+      {
+        ConditionCheck: {
+          TableName: this.table,
+          Key: { PK: `SESSION#${lease.sessionId}`, SK: 'TERMINAL_RECORDING' },
+          ...(terminal.Item
+            ? {
+                ConditionExpression: '#data = :terminal',
+                ExpressionAttributeNames: { '#data': 'data' },
+                ExpressionAttributeValues: { ':terminal': terminal.Item.data },
+              }
+            : { ConditionExpression: 'attribute_not_exists(PK)' }),
+        },
+      },
+      ...(terminalSeal?.Item
+        ? [
+            {
+              ConditionCheck: {
+                TableName: this.table,
+                Key: { PK: `SESSION#${lease.sessionId}`, SK: 'TERMINAL_SEAL' },
+                ConditionExpression: '#data = :seal',
+                ExpressionAttributeNames: { '#data': 'data' },
+                ExpressionAttributeValues: { ':seal': terminalSeal.Item.data },
+              },
+            },
+          ]
+        : []),
+    ];
     const command = new TransactWriteCommand({
       ClientRequestToken: randomUUID(),
       TransactItems: [
+        ...terminalConditions,
         {
           Update: {
             TableName: this.table,

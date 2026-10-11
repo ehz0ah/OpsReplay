@@ -4,6 +4,9 @@ import { MonitorClientError } from './monitor-client.js';
 import { MonitorRecorderError } from './monitor-recorder.js';
 import { MonitorRecordingRunnerError, type MonitorRecordingRunResult } from './monitor-recording-runner.js';
 import { MonitorRecordingStoreError } from './monitor-recording-store.js';
+import { TerminalRecordingClientError } from './terminal-recording-client.js';
+import { TerminalRecordingStoreError } from './terminal-recording-store.js';
+import { TerminalRecorderError } from './terminal-recorder.js';
 import { RecordingWorkSourceError, type RecordingWork, type RecordingWorkSource } from './recording-work-source.js';
 
 export interface RecordingSessionRunner {
@@ -115,6 +118,10 @@ function transientAwsFailure(error: unknown): boolean {
 }
 
 function operationalFailure(error: unknown): boolean {
+  if (error instanceof TerminalRecordingClientError)
+    return !['invalid_config', 'invalid_request', 'busy'].includes(error.code);
+  if (error instanceof TerminalRecordingStoreError) return !['invalid_config', 'invalid_input'].includes(error.code);
+  if (error instanceof TerminalRecorderError) return ['data_gap', 'limit_exceeded'].includes(error.code);
   if (error instanceof MonitorClientError) return error.code !== 'invalid_config';
   if (error instanceof MonitorRecordingStoreError) {
     return !['invalid_config', 'invalid_input'].includes(error.code);

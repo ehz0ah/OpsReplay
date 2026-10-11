@@ -353,6 +353,7 @@ test('bundled gateway recorder resumes and seals the real monitor stream', { tim
     assert.deepEqual(runGateway(challenge, secret, wrongTls.cert, true), { error: 'tls_failed' });
     const result = runGateway(challenge, secret, tls.cert);
     assert.equal(result.health, 'ready');
+    assert.ok(result.terminalCursor > 1);
     assert.match(result.startedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(result.beginCount, 1);
     assert.ok(result.resumedFrom > 0);

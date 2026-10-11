@@ -146,6 +146,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       'lambda:InvokeFunction',
       'logs:CreateLogStream',
       'logs:PutLogEvents',
+      's3:GetObject',
       's3:GetObjectTagging',
       's3:PutObject',
       's3:PutObjectTagging',

@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { MonitorClientError } from '../src/monitor-client.js';
 import { MonitorRecorderError } from '../src/monitor-recorder.js';
+import { TerminalRecordingClientError } from '../src/terminal-recording-client.js';
+import { TerminalRecorderError } from '../src/terminal-recorder.js';
+import { TerminalRecordingStoreError } from '../src/terminal-recording-store.js';
 import {
   MonitorRecordingSupervisor,
   MonitorRecordingSupervisorError,
@@ -186,6 +189,27 @@ test('isolates an invalid monitor stream without stopping unrelated recording', 
   controller.abort();
   await running;
 });
+
+for (const error of [
+  new TerminalRecordingClientError('transport_failed'),
+  new TerminalRecorderError('limit_exceeded'),
+  new TerminalRecordingStoreError('invalid_store'),
+]) {
+  test(`isolates terminal operational failure ${error.name}:${error.code}`, async () => {
+    const items = [work(), work()];
+    const source = new MemoryWorkSource(items);
+    const runners = new Map<string, ControlledRunner[]>();
+    const events: MonitorRecordingSupervisorEvent[] = [];
+    const controller = new AbortController();
+    const running = supervisor(source, runners, { events }).run(controller.signal);
+    await until(() => runners.size === 2, 'Both recording slots did not start');
+    runners.get(items[0]!.sessionId)![0]!.fail(error);
+    await until(() => events.some((event) => event.type === 'runner_failed'), 'Terminal failure was not reported');
+    assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, false);
+    controller.abort();
+    await running;
+  });
+}
 
 test('reports invalid work entries without blocking valid work from the same discovery', async () => {
   const item = work();

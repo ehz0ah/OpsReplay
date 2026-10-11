@@ -10,6 +10,19 @@ import {
 } from '../src/monitor-recording-runner.js';
 import type { MonitorRecordingBatch, SealedMonitorRecording } from '../src/monitor-recorder.js';
 import {
+  advanceTerminalCheckpoint,
+  encodeTerminalPage,
+  initialTerminalCheckpoint,
+  type TerminalRecordingCheckpoint,
+} from '../../../packages/contracts/private/terminal-persistence.js';
+import {
+  encodeSealedTerminalPage,
+  type TerminalSealState,
+} from '../../../packages/contracts/private/terminal-sealing.js';
+import { terminalPage, terminalReady } from '../../../packages/contracts/private/test-support/terminal-fixture.js';
+import { TerminalRecordingStoreError } from '../src/terminal-recording-store.js';
+import type { MonitorRecordingRunnerOptions } from '../src/monitor-recording-runner.js';
+import {
   MonitorRecordingStoreError,
   type ClaimedMonitorRecording,
   type ClaimMonitorRecording,
@@ -497,6 +510,190 @@ test('cancels pending monitor work and closes the client during shutdown', async
   controller.abort();
 
   assert.deepEqual(await running, { status: 'cancelled', generation: 1 });
+  assert.equal(store.seals, 0);
+  assert.equal(client.closed, true);
+});
+
+function terminalFixture(): {
+  options: NonNullable<MonitorRecordingRunnerOptions['terminal']>;
+  checkpoint: () => TerminalRecordingCheckpoint | undefined;
+  seal: () => TerminalSealState | undefined;
+  connections: () => number;
+} {
+  const ready = terminalReady({ startedAt, observedAt: startedAt });
+  const page = terminalPage(undefined, {
+    startedAt,
+    observedAt: '2026-10-08T00:00:11.000Z',
+    events: [{ type: 'dimensions', sequence: 1, recordedAt: startedAt, columns: 80, rows: 24 }],
+  });
+  let checkpoint: TerminalRecordingCheckpoint | undefined;
+  let sealed: TerminalSealState | undefined;
+  let connections = 0;
+  const options: NonNullable<MonitorRecordingRunnerOptions['terminal']> = {
+    connect: async () => {
+      connections++;
+      return { ready, client: { read: async () => page, close: () => {} } };
+    },
+    chunks: {
+      putPage: async (id, generation, after, value) => encodeTerminalPage(id, generation, after, value).reference,
+    },
+    recordings: {
+      get: async () => checkpoint,
+      begin: async () => {
+        checkpoint ??= initialTerminalCheckpoint(ready);
+        return checkpoint;
+      },
+      commit: async (_lease, previous, value) => {
+        checkpoint = advanceTerminalCheckpoint(previous, value);
+        return checkpoint;
+      },
+    },
+    pages: {
+      readLive: async () => page,
+      putSealed: async (id, generation, source, after, events) =>
+        encodeSealedTerminalPage(id, generation, source, after, events).reference,
+    },
+    seals: {
+      get: async () => sealed,
+      begin: async (_lease, value, cutoffAt) => {
+        sealed ??= {
+          schemaVersion: 1,
+          cutoffAt,
+          checkpoint: value,
+          cursor: 0,
+          pageCount: 0,
+          recordedBytes: 0,
+          lastAt: null,
+          excludedAt: null,
+          complete: false,
+        };
+        return sealed;
+      },
+      nextPage: async () => encodeTerminalPage(sessionId, 1, 0, page).reference,
+      append: async (_lease, previous, reference, bytes) => {
+        sealed = {
+          ...previous,
+          cursor: reference.nextSequence,
+          pageCount: previous.pageCount + 1,
+          recordedBytes: previous.recordedBytes + bytes,
+          lastAt: reference.lastAt,
+        };
+        return sealed;
+      },
+      finish: async (_lease, previous, proof) => {
+        const excludedAt =
+          proof?.page.events.find((event) => event.sequence === previous.cursor + 1)?.recordedAt ?? null;
+        sealed = { ...previous, excludedAt, complete: true };
+        return sealed;
+      },
+    },
+  };
+  return { options, checkpoint: () => checkpoint, seal: () => sealed, connections: () => connections };
+}
+
+test('combined runner continues lease renewal while terminal seal waits and only then publishes completion', async () => {
+  const terminal = terminalFixture();
+  const client = new FakeMonitorClient({ liveFrames: [], sealedFrames: [] });
+  const store = new MemoryRecordingStore();
+  const gate = new GateWait();
+  let markFinish = () => {};
+  const finishStarted = new Promise<void>((resolve) => {
+    markFinish = resolve;
+  });
+  let release = () => {};
+  const finish = terminal.options.seals.finish;
+  terminal.options.seals.finish = async (...args) => {
+    markFinish();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return finish(...args);
+  };
+  const running = new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    recordings: store,
+    chunks: new MemoryChunkStore(),
+    terminal: terminal.options,
+    leaseDurationMs: 5000,
+    renewalIntervalMs: 1000,
+    wait: gate.wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  await until(
+    () => terminal.checkpoint()?.cursor === 1 && client.reads.length > 0 && gate.count === 1,
+    'Both collectors did not start',
+  );
+  store.enterDrain();
+  gate.release();
+  await finishStarted;
+  assert.equal(client.sealedAt, cutoffAt);
+  assert.equal(store.seals, 0);
+  const renews = store.renews;
+  gate.release();
+  await until(() => store.renews > renews, 'Renewal stopped during terminal seal');
+  release();
+  assert.equal((await running).status, 'complete');
+  assert.equal(terminal.seal()?.complete, true);
+  assert.equal(store.seals, 1);
+});
+
+test('combined runner resumes an already durable drain without reconnecting terminal source', async () => {
+  const terminal = terminalFixture();
+  await terminal.options.recordings.begin(
+    { sessionId, recorderId: 'gateway-a', generation: 1 },
+    terminalReady(),
+    startedAt,
+  );
+  const page = terminalPage(undefined, {
+    startedAt,
+    observedAt: '2026-10-08T00:00:11.000Z',
+    events: [{ type: 'dimensions', sequence: 1, recordedAt: startedAt, columns: 80, rows: 24 }],
+  });
+  await terminal.options.recordings.commit(
+    { sessionId, recorderId: 'gateway-a', generation: 1 },
+    terminal.checkpoint()!,
+    page,
+    encodeTerminalPage(sessionId, 1, 0, page).reference,
+    cutoffAt,
+  );
+  terminal.options.connect = async () => {
+    throw new Error('Source must not be reopened');
+  };
+  const store = new MemoryRecordingStore(recordingState({ status: 'draining', startedAt, cutoffAt, drainDeadlineAt }));
+  const result = await new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client: new FakeMonitorClient({ liveFrames: [], sealedFrames: [] }),
+    chunks: new MemoryChunkStore(),
+    recordings: store,
+    terminal: terminal.options,
+    wait: new GateWait().wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  assert.equal(result.status, 'complete');
+  assert.equal(terminal.connections(), 0);
+  assert.equal(terminal.seal()?.complete, true);
+});
+
+test('terminal failure cancels monitor work and cannot publish combined completion', async () => {
+  const terminal = terminalFixture();
+  terminal.options.recordings.commit = async () => {
+    throw new TerminalRecordingStoreError('stale_lease');
+  };
+  const store = new MemoryRecordingStore();
+  const client = new FakeMonitorClient({ liveFrames: [] });
+  const result = await new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    chunks: new MemoryChunkStore(),
+    recordings: store,
+    terminal: terminal.options,
+    wait: new GateWait().wait,
+  }).run(new AbortController().signal);
+  assert.equal(result.status, 'ownership_lost');
   assert.equal(store.seals, 0);
   assert.equal(client.closed, true);
 });

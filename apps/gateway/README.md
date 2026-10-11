@@ -96,8 +96,8 @@ terminal data, task addresses, or internal errors.
 
 The runtime image now composes the relay with the recording supervisor when its complete
 terminal configuration is present. CDK now defines its public ALB and private security
-group path. Persistent learner heartbeat updates, dashboard traffic, proposals, terminal
-recording, and AWS validation remain separate work.
+group path. Persistent learner heartbeat updates, dashboard traffic, proposals, command
+evidence, and AWS validation remain separate work.
 
 ## Monitor client
 
@@ -157,10 +157,9 @@ allowlisted idle error ends with `server_rejected` and its `serverCode`, includi
 `IDLE_TIMEOUT`. Unsolicited partial frames, data, and extra bytes remain invalid. See the
 [client decision](../../docs/decisions/gateway-terminal-recording-client.md).
 
-The composed Gateway still records only monitor measurements and monitor recovery/outage
-events. The client and the storage adapters below are not wired into that worker. Full
-recording completion must require terminal and monitor final cursors at the fixed
-lifecycle cutoff. A returned page or source exit does not prove durable or combined
+The composed Gateway collects this source with monitor measurements and monitor
+recovery/outage events. Combined recording completion requires sealed terminal and monitor
+cursors at the fixed lifecycle cutoff. A returned page or source exit does not prove durable or combined
 completion. Root controls the source; validation is not proof of authenticity.
 
 ## Terminal page persistence
@@ -179,10 +178,20 @@ requires the commit. Duplicate requests and uncertain responses use the exact co
 reference; conflicting bytes cannot replace it. Failed commits can leave unreferenced
 objects that expire under the provisional policy.
 
-These adapters do not change the composed worker, input generations, monitor schema,
-readiness, public recording status, scores, or AWS resources. Worker integration must
-reconcile the fixed cutoff and write sealed-retention terminal copies before combined
-completion. See the [storage decision](../../docs/decisions/gateway-terminal-persistence.md).
+`TerminalRecorder` polls only from the committed cursor. Source loss at or before the
+cutoff prevents completion. A strictly later event or observation, or a fully consumed
+exit, proves cutoff coverage. Events at the same millisecond as the cutoff remain included.
+A fully exited source closes its socket and waits for lifecycle without exceeding the
+source's post-exit lifetime.
+
+`TerminalSealer` reads one committed live page at a time, verifies its size, hash, and
+canonical reference, and writes immutable sealed-retention copies. `TERMINAL_SEAL` freezes
+the source checkpoint and advances only with each committed sealed page. A replacement
+resumes the next range, including a partly copied final source page. Exclusion proof
+must identify the next event in an exact committed live-page reference. Input generations,
+monitor wire schemas, readiness, outcomes, and scores do not change. See the
+[storage decision](../../docs/decisions/gateway-terminal-persistence.md) and
+[combined-worker decision](../../docs/decisions/combined-recording-worker.md).
 
 ## Monitor recording persistence
 
@@ -213,8 +222,12 @@ the separate recording policy and deletion ownership.
 `MonitorRecordingRunner` owns one claimed recording generation. It starts lease renewal
 before monitor attachment, resumes the saved checkpoint, stops polling when renewal or
 an append observes `draining`, and keeps renewing while the monitor seals at the saved
-cutoff. Shutdown and lease loss cancel pending monitor work and close the client. The
-runner does not choose an outcome, cutoff, incomplete reason, or score.
+cutoff. Production composition also starts the terminal collector under this lease.
+Monitor sealing stops measurement at the saved cutoff, but publication waits for terminal
+sealing. The final transaction checks both terminal snapshots so concurrent changes cannot
+bypass combined completion. A durable covered drain resumes without reopening the terminal
+source. Shutdown and lease loss cancel both collectors and close their clients. The runner
+does not choose an outcome, cutoff, incomplete reason, or score.
 
 `DynamoRecordingWorkSource` queries the sparse recording-work index as an eventually
 consistent hint. It uses bounded, strongly consistent batch reads to confirm base
@@ -230,8 +243,8 @@ work discovery, and cancels every runner during shutdown. Monitor, storage, and 
 failures are isolated and reported per session. Configuration and programming errors
 stop new launches and give healthy recordings up to 30 seconds to finish. The supervisor
 then cancels remaining runners and stops, so a replacement can resume durable work.
-`createGatewayRecordingSupervisor` composes the work source, monitor client, runner,
-DynamoDB recording store, and S3 chunk store with the same clients. The gateway AWS
+`createGatewayRecordingSupervisor` composes the work source, monitor and terminal clients,
+runner, DynamoDB checkpoints and seal store, and S3 page adapters with the same clients. The gateway AWS
 clients use two attempts and bounded connection and request times.
 
 ## Gateway process
@@ -289,5 +302,5 @@ ALB upgrades, production certificate delivery, IAM, or managed DynamoDB and S3 b
 
 Next: after review and merge, deploy the disposable AWS checkpoint and validate the
 complete authenticated WebSocket path through ALB, Gateway, and the Challenge terminal.
-Terminal recording, outcome actions, browser integration, and broader AWS validation
-remain separate increments.
+Outcome actions, command evidence and captures, debrief, playback, browser integration,
+and broader AWS validation remain separate increments.

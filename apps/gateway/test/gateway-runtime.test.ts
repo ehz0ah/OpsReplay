@@ -241,6 +241,7 @@ test('runs the recording supervisor and terminal listener in one process', async
   });
   assert.equal(f.supervisorOptions()?.recorderId, 'gateway-test');
   assert.equal(f.supervisorOptions()?.maximumConcurrentRecordings, 16);
+  assert.equal(f.supervisorOptions()?.terminalPort, 7681);
   assert.equal(f.server()?.maxConnections, 288);
 
   controller.abort();

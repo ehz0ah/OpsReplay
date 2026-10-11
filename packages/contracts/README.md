@@ -16,6 +16,8 @@ the pre-implementation simulated-engine contracts.
   metadata, events, and cursor pages.
 - [Terminal persistence contract](private/terminal-persistence.ts) defines private canonical
   page references, checkpoint validation, and cross-page advancement under a recorder lease.
+- [Terminal sealing contract](private/terminal-sealing.ts) defines bounded sealed-page
+  references, exact cutoff coverage, and resumable seal checkpoints.
 - [Examples](examples/README.md) provide synthetic payload fixtures.
 
 Schemas cannot enforce ownership, conditional writes, isolation, or prompt boundaries by
