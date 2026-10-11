@@ -28,8 +28,12 @@ The client checks the actual 24 KiB NDJSON limit including newline, fatal UTF-8,
 JSON syntax, duplicate decoded keys, and a nesting limit of eight. It uses the
 existing private schema validators for exact frames, canonical byte payloads,
 page size, clocks, source identity, contiguous sequences, and exit/loss rules.
-Extra or unsolicited bytes fail closed. Diagnostics contain only fixed messages
-and allowlisted source codes, not remote payloads, addresses, or arbitrary causes.
+Extra bytes and unsolicited data fail closed. While idle, exactly one complete,
+valid error frame ends with `server_rejected` and its allowlisted `serverCode`.
+This preserves the source's normal `IDLE_TIMEOUT` instead of reporting corruption.
+Unsolicited partial frames remain invalid and are never buffered for a later read.
+Diagnostics contain only fixed messages and allowlisted source codes, not remote
+payloads, addresses, or arbitrary causes.
 
 Within one connection, source identity and start time are stable. Observation time,
 latest sequence, and shell phase cannot move backwards. Newly observed events or
@@ -62,7 +66,8 @@ JSON, clock and metadata continuity, cancellation, deadlines, concurrency, trans
 failure, and fixed errors. Separate restricted Node containers test the bundled
 client against the real Python source and Bash PTY. They cover two readers,
 interactive generation replacement, disconnected output, same-source reconnect,
-quiet post-exit tail, overflow, frozen data, and preserved exit code 7.
+quiet post-exit tail, overflow, frozen data, preserved exit code 7, and the real
+45-second idle timeout with explicit same-source reconnect.
 Existing Challenge, monitor, Gateway, and runtime-image regressions remain required.
 Local checks do not prove Fargate, public transport, managed storage, or capacity.
 

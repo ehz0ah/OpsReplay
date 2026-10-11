@@ -255,7 +255,7 @@ test('bundled gateway client controls the real Challenge terminal safely', { tim
   }
 });
 
-for (const mode of ['normal', 'loss']) {
+for (const mode of ['normal', 'loss', 'idle']) {
   test(`bundled terminal recording client reads the real PTY: ${mode}`, { timeout: 90_000 }, async () => {
     const challenge = 'opsreplay-gateway-recording-shop-' + randomUUID();
     try {
@@ -268,6 +268,12 @@ for (const mode of ['normal', 'loss']) {
       const result = runTerminalClient(challenge, mode);
       assert.equal(result.mode, mode);
       assert.equal(result.sourceStable, true);
+      if (mode === 'idle') {
+        assert.equal(result.code, 'server_rejected');
+        assert.equal(result.serverCode, 'IDLE_TIMEOUT');
+        assert.equal(result.reconnected, true);
+        return;
+      }
       assert.equal(result.exitCode, 7);
       assert.ok(result.events > 1);
       if (mode === 'normal') {

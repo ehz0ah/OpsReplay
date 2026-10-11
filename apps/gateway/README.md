@@ -152,7 +152,9 @@ input ownership, poll, reconnect, retry, or save a cursor. Overlapping reads rej
 `busy`. In-flight cancellation or timeout closes the connection. Optional settings are
 `port` (default 7681), `connectTimeoutMs` (3,000), and `requestTimeoutMs` (5,000).
 Timeouts must be from 1 to 60,000 milliseconds. The caller controls read rate and must
-read within the source's 45-second idle limit or reconnect explicitly. See the
+read within the source's 45-second idle limit or reconnect explicitly. A complete
+allowlisted idle error ends with `server_rejected` and its `serverCode`, including
+`IDLE_TIMEOUT`. Unsolicited partial frames, data, and extra bytes remain invalid. See the
 [client decision](../../docs/decisions/gateway-terminal-recording-client.md).
 
 The composed Gateway still records only monitor measurements and monitor recovery/outage
