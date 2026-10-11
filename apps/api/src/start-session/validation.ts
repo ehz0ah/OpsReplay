@@ -49,6 +49,7 @@ const pins = object({
   },
   challengeImageDigest: digest,
   monitorImageDigest: digest,
+  manifestSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
 });
 
 export const validRequest = ajv.compile<StartRequest>(ref('StartSessionRequest'));

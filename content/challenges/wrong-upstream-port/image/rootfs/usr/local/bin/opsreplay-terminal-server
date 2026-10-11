@@ -251,7 +251,11 @@ class TerminalState:
                 }
             )
             os.chdir("/root")
-            os.execve("/bin/bash", ["bash", "--noprofile", "--norc", "-i"], environment)
+            os.execve(
+                "/bin/bash",
+                ["bash", "--noprofile", "--rcfile", "/usr/local/share/opsreplay/shell-integration.bash", "-i"],
+                environment,
+            )
         return child_pid, master_fd
 
     def _append_replay(self, data):

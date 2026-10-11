@@ -15,6 +15,7 @@ export interface DurableTerminalRecordingSinkOptions {
   chunks: TerminalChunkStore;
   recordings: TerminalRecordingStateStore;
   now?: () => string;
+  afterCommit?: (signal?: AbortSignal) => Promise<void>;
 }
 
 /** No in-memory cursor advancement: the caller receives a checkpoint only after commit. */
@@ -52,6 +53,8 @@ export class DurableTerminalRecordingSink {
             signal,
           );
     signal?.throwIfAborted();
-    return this.options.recordings.commit(this.lease, checkpoint, page, reference, this.now(), signal);
+    const committed = await this.options.recordings.commit(this.lease, checkpoint, page, reference, this.now(), signal);
+    await this.options.afterCommit?.(signal);
+    return committed;
   }
 }

@@ -445,6 +445,37 @@ function reconcileFixture(
   return { reconcile, calls };
 }
 
+test('cleanup calls the shared finaliser only after recording and task cleanup are committed', async () => {
+  const f = await fixture();
+  await f.ready();
+  await f.store.outcome(f.id, 'ended', 'learner_ended', at(3));
+  let calls = 0;
+  const reconcile = createReconcileSession({
+    sessions: { session: async () => (await f.get('STATE')) as typeof f.session, saveTask: async () => f.session },
+    attempts: f.store,
+    environment: {
+      findActive: async () => [],
+      describe: async () => ({ taskArn: f.session.taskArn!, lastStatus: 'STOPPED' }),
+      stop: async () => {
+        throw new Error('Stopped task must not restart');
+      },
+    },
+    schedules: { ensure: async () => {}, delete: async () => {} },
+    now: () => new Date(at(4)),
+    finalise: async (session) => {
+      assert.equal(session.view.recording.status, 'incomplete');
+      const state = await f.store.lifecycle(f.id);
+      assert.ok(state?.taskStoppedAt);
+      assert.equal(state?.schedulesDeleted, true);
+      calls++;
+      if (calls === 1) throw new Error('temporary finaliser failure');
+    },
+  });
+  await assert.rejects(reconcile(f.id), /temporary finaliser failure/);
+  assert.equal(await reconcile(f.id), 'cleaned');
+  assert.equal(calls, 2);
+});
+
 test('reconciliation repairs provisioning and missed recording discovery from the saved task address', async () => {
   const f = await fixture();
   const calls: string[] = [];

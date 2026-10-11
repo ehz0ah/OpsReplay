@@ -1,6 +1,7 @@
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { MonitorClient } from './monitor-client.js';
+import { CaptureRecorder } from './capture-recorder.js';
 import { S3MonitorChunkStore } from './monitor-chunk-store.js';
 import { MonitorRecordingRunner } from './monitor-recording-runner.js';
 import { MonitorRecordingSupervisor, type MonitorRecordingSupervisorEvent } from './monitor-recording-supervisor.js';
@@ -73,6 +74,13 @@ export function createGatewayRecordingSupervisor(
         certificate: work.monitorCertificate,
         secret: work.monitorSecret,
       });
+      const captures = new CaptureRecorder(
+        clients.dynamo,
+        options.sessionTableName,
+        clients.s3,
+        options.recordingBucketName,
+        monitor,
+      );
       return new MonitorRecordingRunner({
         sessionId: work.sessionId,
         recorderId: options.recorderId,
@@ -83,6 +91,18 @@ export function createGatewayRecordingSupervisor(
           get: (id, signal) => recordings.coverage(id, signal),
           commit: (...args) => recordings.cover(...args),
           finish: (...args) => recordings.finishCovered(...args),
+        },
+        captures: {
+          baseline: (lease, signal) => captures.baseline(lease, signal),
+          collect: (lease, signal) => captures.collect(lease, signal),
+          finish: async (lease, checkpoint, cutoffAt, signal) =>
+            captures.finish(
+              lease,
+              checkpoint,
+              cutoffAt,
+              signal,
+              await terminalRecordings.cutoffParser(work.sessionId, checkpoint, cutoffAt, terminalPages, signal),
+            ),
         },
         terminal: {
           connect: async (signal) => {

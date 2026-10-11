@@ -15,6 +15,7 @@ export function createReconcileSession({
   schedules,
   provision,
   publish,
+  finalise,
   now = () => new Date(),
 }: {
   sessions: Pick<LifecycleStorePort, 'session' | 'saveTask'>;
@@ -38,6 +39,7 @@ export function createReconcileSession({
     observation: import('./publish-recording-work.js').RecordableTaskObservation,
     signal?: AbortSignal,
   ): Promise<'published' | 'ignored'>;
+  finalise?(session: SessionRecord, signal?: AbortSignal): Promise<void>;
   now?: () => Date;
 }) {
   return async (id: string, signal?: AbortSignal): Promise<ReconcileResult> => {
@@ -198,6 +200,8 @@ export function createReconcileSession({
     await schedules.delete(session, signal);
     await attempts.cleanup(id, at, true, signal);
     if (session.view.readyAt === null) await attempts.completeNeverReady(id, at, signal);
-    return session.view.recording.status === 'draining' ? 'draining' : 'cleaned';
+    if (session.view.recording.status === 'draining') return 'draining';
+    if (session.view.readyAt !== null && finalise) await finalise(session, signal);
+    return 'cleaned';
   };
 }

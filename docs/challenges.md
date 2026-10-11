@@ -9,8 +9,10 @@ and authenticated HTTPS control. A gateway controller can record, resume, and se
 monitor stream through an injected sink. The reference image has a private interactive
 terminal and a bounded read-only recording source. The gateway has a locally tested
 interactive and recording clients, admission, browser relay, composed process, and monitor storage
-adapters. Terminal persistence, captures, lifecycle completion, and the public AWS path
-remain unimplemented or unvalidated. Numbers
+adapters. Durable terminal pages, combined cutoff sealing, lifecycle cleanup,
+bounded command evidence, interval captures, and atomic debrief finalisation are
+implemented and tested locally. Playback exports/read APIs, environment task
+publication, and the complete public AWS path remain unimplemented or unvalidated. Numbers
 marked proposed are starting values to measure, not results. The full task and publication
 requirements below remain unproven.
 
@@ -35,7 +37,12 @@ Starting a Challenge runs one Fargate task with two containers:
 
 The containers share the task's network namespace, so the monitor reaches services over
 localhost. Watched configuration and log paths are shared with the monitor read-only
-through a task volume. Prove the volume layout when integrating the first monitor. A separate
+through a task-local ephemeral volume at `/opsreplay/watched`. The
+[publication helper](../infra/environment-watched-volume.ts) defines the Challenge
+writable mount, Monitor read-only mount, and Challenge-only initialisation option.
+Local Docker tests use this layout. No environment task definition is deployed or
+created by the current application stack. Its publication and Fargate isolation
+check remain prerequisites for activation. No Monitor secret enters the volume. A separate
 container protects the monitor's files and processes only when its storage and PID
 namespace are private. Shared networking still needs the controls below. Learners can
 alter the service responses and files being measured, but not the saved recording.
@@ -234,8 +241,9 @@ symptom without revealing the cause.
 
 **Captures.** After each command the recorder asks the monitor for a capture using a
 stable command event ID. The monitor assigns a sequence on first receipt and replays it
-for duplicate requests. It records changed watched files as bounded diffs, new log
-lines, and a metric sample. Each capture includes `baselineAt` (the prior capture's start,
+for duplicate requests. It records changed watched files as bounded before/after
+blocks, new log lines, and a timestamped metric sample. A renderer can display the
+blocks as a diff. After measurement seal, the sample uses the fixed cutoff. Each capture includes `baselineAt` (the prior capture's start,
 or the initial baseline's start), `startedAt`, and `completedAt`. These times and
 `commandSeq` appear in the saved object and playback manifest. The gateway stores the
 object in S3.
@@ -246,7 +254,11 @@ cause of every change. Show the interval and do not label a diff as changes made
 command. The interval begins at the prior read start because files can change while a
 capture is in progress. Serialize captures, not shell input. Establish the initial
 watched-file baseline before readiness. Truncated or missing captures carry the recording's
-missing-data notice.
+missing-data notice. Log rotation/truncation also marks an interval incomplete.
+Final drain paginates the sealed commands and requests one capture for a command
+still open at cutoff. Captures can complete after cutoff and retain their full
+interval. They are not atomic or exact-cutoff snapshots and do not decide scores
+or observed evidence. A missing required capture prevents complete recording.
 
 **Control port.** Because the learner's shell shares the network namespace, it can reach
 the monitor's port. Use TLS with the monitor's task identity verified by the gateway and
@@ -293,9 +305,10 @@ keeps reading the terminal and monitor after the browser disconnects. Gateway wo
 discover unclaimed or expired leases through the session work index. A replacement
 increments the recorder generation and resumes from saved cursors. The reference
 terminal now exposes the independent source described below. A read-only Gateway client
-validates and reads it locally. Terminal persistence, worker integration, cutoff
-reconciliation, and combined terminal/monitor completion remain future integration. The current monitor-only completion is not proof of full playback.
-Only the future recorder creates command events and requests captures. A browser may
+validates and reads it locally. Durable pages and the combined worker apply the
+saved cutoff and condition both streams before completion. Live and sealed command
+parsers commit with their terminal pages under the same recorder lease. The recorder
+creates command events and requests captures. A browser may
 connect through another gateway copy, which proxies input and output without recording
 replay again.
 
@@ -340,9 +353,9 @@ for the budget and conditional durable-trimming requirements. Root can alter thi
 source; the [Gateway client](decisions/gateway-terminal-recording-client.md) validates
 wire data and continuity but cannot prove authenticity or complete capture.
 
-Lifecycle sealing is not added here. Future integration must apply the saved cutoff,
-advance a durable cursor only after commit, and wait for an observation strictly later
-than a millisecond cutoff before excluding more equal-timestamp records. Loss after a
+Lifecycle sealing applies the saved cutoff, advances a durable cursor only after
+commit, and waits for an observation strictly later than a millisecond cutoff before
+excluding more equal-timestamp records. Loss after a
 cutoff must not automatically invalidate a complete prefix before it.
 
 Chunks have immutable keys that include the recorder generation and sequence range.
@@ -351,8 +364,7 @@ conditional on its current lease and recording still being open. Stale writers c
 publish objects or complete a drain. Finalisation fixes the accepted references so late
 uploads cannot change playback or scores. Unreferenced objects expire under retention.
 
-The future shell configuration must emit prompt and command markers, such as the OSC 133
-sequences terminals use for shell integration. They mark prompt start, command start with
+The reference Bash configuration emits OSC 133 prompt and command markers. They mark prompt start, command start with
 the command line, and command end with the exit status. The gateway removes them from the
 forwarded stream and uses them to form command events. Without markers, it falls back to
 input lines submitted at an idle prompt. Markers come from inside the learner's container
@@ -419,7 +431,19 @@ with the [example debrief](../packages/contracts/examples/debrief.json).
 An incomplete recording still permits a debrief of the saved data, with a visible
 `recording.status: incomplete` and reason. Its `score` is null. Missing measurements
 must not become zero, and missing records must not be described as learner mistakes.
-Progress saves the outcome and the missing-score status without a numeric ranking.
+The immutable debrief saves the outcome and missing-score status. Current progress
+stores only `completedAttempts`; errors do not increment it. Richer progress views
+remain separate work. Finalisation uses ordinary shared code in reconcile and sweep,
+not another Lambda call. It atomically writes the result, progress, and matching
+lock release after recording completion and confirmed task/schedule cleanup.
+
+Admission pins the canonical private manifest SHA-256. Publication must store and
+retain the immutable private manifest item before publishing its admission snapshot.
+See [the evidence/debrief decision](decisions/evidence-debrief.md). Complete results
+use sealed command receipts and Monitor data. Incomplete results retain safe saved
+command and Monitor event projections without inventing final counters. The response
+shows at most the first 50 outage and possible-harm details; complete raw components
+still count all saved outages. Playback supplies the full retained timeline.
 
 ## Playback and retry
 

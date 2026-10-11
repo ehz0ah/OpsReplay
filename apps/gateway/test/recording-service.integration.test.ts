@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { RecordedEvidenceReader } from '../../../packages/session/src/recorded-evidence.js';
+import { readManifest, manifestHash, manifestKey } from '../../../packages/session/src/manifest.js';
+import { createFinaliseSession } from '../../../packages/session/src/finalise.js';
+import { DynamoFinaliseStore } from '../../../packages/session/src/finalise-store.js';
 import { once } from 'node:events';
 import { createServer, type Socket } from 'node:net';
 import { Readable } from 'node:stream';
@@ -18,6 +23,7 @@ import {
 import { startLocalDatabase } from '../../api/test/local-dynamodb.js';
 import { Monitor } from '../../monitor/src/monitor.js';
 import { MonitorControl } from '../../monitor/src/control.js';
+import { FileCaptures } from '../../monitor/src/captures.js';
 import { createControlServer } from '../../monitor/src/server.js';
 import type { MonitorConfig } from '../../monitor/src/types.js';
 import { createGatewayRecordingSupervisor } from '../src/recording-service.js';
@@ -79,7 +85,16 @@ test(
       probes: [],
     };
     const monitor = new Monitor(config, { http: async () => ({ status: 502, body: '' }), tcp: async () => true });
-    const control = new MonitorControl(monitor);
+    const control = new MonitorControl(
+      monitor,
+      undefined,
+      new FileCaptures(
+        { configs: [], logs: [] },
+        undefined,
+        () => new Date(monitor.now()).toISOString(),
+        () => monitor.snapshot().sample,
+      ),
+    );
     await control.initialise();
     const secret = 's'.repeat(43);
     const https = createControlServer(control, { key: tls.private, cert: tls.cert, secret });
@@ -279,5 +294,47 @@ test(
     );
     assert.deepEqual(failures, []);
     assert.ok(await recordings.coverage(sessionId));
+    const content = JSON.parse(
+      readFileSync(new URL('../../../content/challenges/wrong-upstream-port/challenge.json', import.meta.url), 'utf8'),
+    ) as unknown;
+    const finalSession = (
+      await database.document.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))
+    ).Item!.data as typeof savedSession;
+    finalSession.pins.manifestSha256 = manifestHash(content);
+    await database.document.send(new PutCommand({ TableName: table, Item: { ...key, data: finalSession } }));
+    await database.document.send(
+      new PutCommand({
+        TableName: table,
+        Item: {
+          ...manifestKey(
+            finalSession.view.challenge.id,
+            finalSession.view.challenge.version,
+            finalSession.pins.manifestSha256,
+          ),
+          data: content,
+        },
+      }),
+    );
+    const evidenceReader = new RecordedEvidenceReader(database.document, table, s3, 'opsreplay-recordings-test');
+    const evidence = await evidenceReader.read(finalSession);
+    assert.equal(evidence.commands.length, 0);
+    assert.ok(evidence.counters);
+    await attempts.cleanup(sessionId, new Date().toISOString(), true);
+    const store = new DynamoFinaliseStore(database.document, table);
+    const finalise = createFinaliseSession({
+      store,
+      manifest: (session, signal) => readManifest(database.document, table, session, signal),
+      evidence: (session, signal) => evidenceReader.read(session, signal),
+    });
+    await finalise(finalSession);
+    const debrief = await store.saved(sessionId);
+    assert.equal(debrief?.outcome, 'ended');
+    assert.equal(debrief?.score?.commandCount, 0);
+    assert.equal(debrief?.score?.failedRequests, evidence.counters?.failedRequests);
+    assert.deepEqual(
+      debrief?.keyEvidence.map((v) => v.status),
+      ['not_observed', 'not_observed', 'not_observed'],
+    );
+    await finalise(finalSession);
   },
 );

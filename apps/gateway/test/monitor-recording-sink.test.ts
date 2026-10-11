@@ -59,9 +59,10 @@ test('uploads each object before it advances durable recording state', async () 
       assert.equal(actualNow, now);
       order.push('commit-begin');
     },
-    append: async (_actualLease, _actualStartedAt, actualReference, actualNow) => {
+    append: async (_actualLease, _actualStartedAt, actualReference, actualNow, _signal, _observation, evidence) => {
       assert.deepEqual(actualReference, reference('live'));
       assert.equal(actualNow, now);
+      assert.deepEqual(evidence, { schemaVersion: 1, source, after: 0, nextSequence: 1, events: [] });
       order.push('commit-live');
     },
     seal: async (_actualLease, _value, actualReference, actualNow) => {
@@ -86,6 +87,44 @@ test('uploads each object before it advances durable recording state', async () 
   await sink.seal(sealed);
 
   assert.deepEqual(order, ['commit-begin', 'upload-live', 'commit-live', 'upload-sealed', 'commit-sealed']);
+});
+
+test('projects only timeline frames with their source sequence and recording time', async () => {
+  const event = {
+    id: `${source}:2`,
+    at: '2026-10-07T00:00:02.000Z',
+    kind: 'monitor' as const,
+    signal: 'outage_started' as const,
+    label: 'Proxy',
+  };
+  const frames: MonitorFrame[] = [
+    frame(),
+    { source, sequence: 2, recordedAt: event.at, payload: { type: 'timeline', event } },
+  ];
+  const sink = new DurableMonitorRecordingSink({
+    lease,
+    now: () => now,
+    chunks: {
+      putLive: async () => ({ ...reference('live'), nextSequence: 2, frameCount: 2 }),
+      putSealed: async () => {
+        throw new Error('Unexpected seal');
+      },
+    },
+    recordings: {
+      begin: async () => {},
+      seal: async () => {},
+      append: async (_lease, _start, _reference, _now, _signal, _observation, evidence) => {
+        assert.deepEqual(evidence, {
+          schemaVersion: 1,
+          source,
+          after: 0,
+          nextSequence: 2,
+          events: [{ sequence: 2, recordedAt: event.at, event }],
+        });
+      },
+    },
+  });
+  await sink.append({ startedAt, source, after: 0, nextSequence: 2, frames });
 });
 
 test('does not advance state when an object upload fails', async () => {

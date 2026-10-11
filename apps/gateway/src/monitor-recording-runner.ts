@@ -65,6 +65,16 @@ export interface MonitorRecordingRunnerOptions {
       signal?: AbortSignal,
     ): Promise<void>;
   };
+  captures?: {
+    baseline(lease: import('./monitor-recording-store.js').MonitorRecorderLease, signal: AbortSignal): Promise<void>;
+    collect(lease: import('./monitor-recording-store.js').MonitorRecorderLease, signal: AbortSignal): Promise<void>;
+    finish(
+      lease: import('./monitor-recording-store.js').MonitorRecorderLease,
+      checkpoint: TerminalRecordingCheckpoint,
+      cutoffAt: string,
+      signal: AbortSignal,
+    ): Promise<void>;
+  };
   lifecycle?: {
     ready(
       lease: import('./monitor-recording-store.js').MonitorRecorderLease,
@@ -133,6 +143,7 @@ export class MonitorRecordingRunner {
   private readonly terminal: MonitorRecordingRunnerOptions['terminal'];
   private readonly lifecycle: MonitorRecordingRunnerOptions['lifecycle'];
   private readonly optionsCoverage: MonitorRecordingRunnerOptions['coverage'];
+  private readonly captures: MonitorRecordingRunnerOptions['captures'];
   private readonly now: () => string;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private running = false;
@@ -166,6 +177,7 @@ export class MonitorRecordingRunner {
     this.terminal = options.terminal;
     this.lifecycle = options.lifecycle;
     this.optionsCoverage = options.coverage;
+    this.captures = options.captures;
     this.now = options.now ?? (() => new Date().toISOString());
     this.wait = options.wait ?? defaultWait;
   }
@@ -267,6 +279,7 @@ export class MonitorRecordingRunner {
         return { status: 'complete', generation };
       }
 
+      await this.captures?.baseline(claimed.lease, lifetime.signal);
       if (this.terminal) {
         terminalRecorder = new TerminalRecorder({
           connect: this.terminal.connect,
@@ -275,6 +288,12 @@ export class MonitorRecordingRunner {
             chunks: this.terminal.chunks,
             recordings: this.terminal.recordings,
             now: this.now,
+            ...(this.captures
+              ? {
+                  afterCommit: (signal?: AbortSignal) =>
+                    this.captures!.collect(claimed.lease, signal ?? lifetime.signal),
+                }
+              : {}),
           }),
           ...(this.terminal.pollIntervalMs === undefined ? {} : { pollIntervalMs: this.terminal.pollIntervalMs }),
         });
@@ -380,6 +399,7 @@ export class MonitorRecordingRunner {
         }
         if (terminalFailure !== undefined) throw terminalFailure;
         if (lifetime.signal.aborted) throw lifetime.signal.reason;
+        await this.captures?.finish(claimed.lease, checkpoint, drain.cutoffAt, lifetime.signal);
         if (!sealedMonitor) throw new MonitorRecordingRunnerError('invalid_state');
         const committedCoverage = await this.optionsCoverage?.commit(
           claimed.lease,

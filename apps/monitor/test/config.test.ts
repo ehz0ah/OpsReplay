@@ -9,7 +9,7 @@ test('manifest validation projects only execution configuration', () => {
   const config = parseConfig(JSON.stringify(manifest));
   assert.equal(config.journeys[0]!.ratePerSecond, 2);
   assert.equal(config.validators[0]!.sustainSeconds, 60);
-  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'validators']);
+  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'validators', 'watched']);
   assert.ok(!JSON.stringify(config).includes(manifest.plantedFault.summary));
 });
 
@@ -63,6 +63,10 @@ test('admission covers the public session maximum and recording headroom', () =>
     journeys: copy.traffic.journeys,
     validators: copy.validators,
     probes: copy.healthProbes,
+    watched: {
+      configs: copy.environment.services.flatMap((service) => service.configFiles),
+      logs: copy.environment.services.flatMap((service) => service.logFiles),
+    },
   });
 
   copy.traffic.journeys[0]!.ratePerSecond = 6;

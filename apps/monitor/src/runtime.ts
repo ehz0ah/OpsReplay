@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { once } from 'node:events';
 import { MonitorControl } from './control.js';
+import { FileCaptures } from './captures.js';
 import { parseConfig } from './config.js';
 import { Monitor } from './monitor.js';
 import { waitForRuntimeStop } from './runtime-lifecycle.js';
@@ -61,8 +62,18 @@ async function main(): Promise<number> {
     const [path = '/app/challenge.json'] = process.argv.slice(2);
     const secret = process.env.OPSREPLAY_MONITOR_SECRET;
     if (!secret) throw new MonitorError('invalid_config');
-    const monitor = new Monitor(parseConfig(await readManifest(path)), transport);
-    control = new MonitorControl(monitor);
+    const config = parseConfig(await readManifest(path));
+    const monitor = new Monitor(config, transport);
+    control = new MonitorControl(
+      monitor,
+      undefined,
+      new FileCaptures(
+        config.watched!,
+        undefined,
+        () => new Date(monitor.now()).toISOString(),
+        () => monitor.snapshot().sample,
+      ),
+    );
     server = createControlServer(control, {
       key: credential('OPSREPLAY_MONITOR_TLS_KEY_B64', 16_384),
       cert: credential('OPSREPLAY_MONITOR_TLS_CERT_B64', 16_384),

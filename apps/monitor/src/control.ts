@@ -1,4 +1,6 @@
 import type { MetricFrame, PublicFrame } from './types.js';
+import type { FileCaptures } from './captures.js';
+import type { CaptureBaseline, CaptureRequest, FileCapture } from '../../../packages/contracts/private/file-capture.js';
 import { MonitorError, limits } from './types.js';
 import type { Frame } from './monitor.js';
 import type {
@@ -60,7 +62,18 @@ export class MonitorControl {
   constructor(
     private readonly monitor: ControlledMonitor,
     private readonly ticks: ControlScheduler = scheduler,
+    private readonly captures?: Pick<FileCaptures, 'baseline' | 'capture'>,
   ) {}
+
+  baseline(): Promise<CaptureBaseline> {
+    if (!this.captures || this.health() !== 'ready') throw new MonitorError('invalid_boundary');
+    return this.captures.baseline();
+  }
+
+  capture(request: CaptureRequest): Promise<FileCapture> {
+    if (!this.captures || this.startedAt === undefined) throw new MonitorError('invalid_boundary');
+    return this.captures.capture(request);
+  }
 
   health(): ControlHealth {
     return this.monitor.failure ? 'failed' : this.healthState;

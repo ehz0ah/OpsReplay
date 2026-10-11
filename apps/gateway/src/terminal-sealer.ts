@@ -58,6 +58,7 @@ export class TerminalSealer {
           sealed,
           events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0),
           this.now(),
+          events,
           signal,
         );
       }

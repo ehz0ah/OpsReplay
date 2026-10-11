@@ -10,6 +10,10 @@ import { LifecycleStore } from './store.js';
 import { SessionDeadline, loadDeadlineConfiguration } from './session-deadline.js';
 import { createReconcileSession } from './reconcile.js';
 import { createAwsTransport } from '../shared/aws.js';
+import { DynamoFinaliseStore } from '../../../../packages/session/src/finalise-store.js';
+import { createFinaliseSession } from '../../../../packages/session/src/finalise.js';
+import { readManifest } from '../../../../packages/session/src/manifest.js';
+import { RecordedEvidenceReader } from '../../../../packages/session/src/recorded-evidence.js';
 
 export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.env) {
   const table = environment.SESSION_TABLE_NAME;
@@ -17,7 +21,16 @@ export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.
   const dynamo = DynamoDBDocumentClient.from(
     new DynamoDBClient({ maxAttempts: 2, requestHandler: createAwsTransport(2000) }),
   );
+  const recordingBucket = environment.RECORDING_BUCKET_NAME;
+  if (!recordingBucket || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(recordingBucket))
+    throw new Error('RECORDING_BUCKET_NAME is invalid.');
   const sessions = new LifecycleStore(dynamo, table);
+  const evidence = new RecordedEvidenceReader(dynamo, table, createS3Client(), recordingBucket);
+  const finalise = createFinaliseSession({
+    store: new DynamoFinaliseStore(dynamo, table),
+    manifest: (session, signal) => readManifest(dynamo, table, session, signal),
+    evidence: (session, signal) => evidence.read(session, signal),
+  });
   const tasks = new FargateEnvironment(createEcsClient());
   const scheduler = createSchedulerClient();
   const configuration = loadDeadlineConfiguration(environment);
@@ -38,6 +51,7 @@ export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.
     schedules: new SessionDeadline(scheduler, configuration),
     provision,
     publish: createPublishRecordingWork({ store: sessions }),
+    finalise,
   });
   return { table, dynamo, sessions, reconcile };
 }

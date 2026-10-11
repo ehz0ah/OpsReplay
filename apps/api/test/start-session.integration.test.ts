@@ -101,6 +101,7 @@ function content(): ContentVersion {
       taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
       challengeImageDigest: `sha256:${'a'.repeat(64)}`,
       monitorImageDigest: `sha256:${'b'.repeat(64)}`,
+      manifestSha256: 'c'.repeat(64),
     },
   };
 }

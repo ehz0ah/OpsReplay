@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { FileCaptures } from '../../monitor/src/captures.js';
 import type { ServerResponse } from 'node:http';
 import { createServer } from 'node:https';
 import type { Server } from 'node:https';
@@ -421,6 +423,33 @@ test('the client rejects malformed, oversized, and discontinuous responses', asy
   await assert.rejects(client.health(), errorCode('invalid_response'));
   mode = 'sequence';
   await assert.rejects(client.read(0), errorCode('invalid_response'));
+});
+
+test('capture control uses the pinned authenticated client and replays one request identity', async (t) => {
+  const tls = testTls();
+  const monitor = new Monitor(config, transport, { now: () => epoch });
+  const control = new MonitorControl(
+    monitor,
+    { every: () => ({ close() {} }) },
+    new FileCaptures({ configs: [], logs: [] }, undefined, () => new Date(epoch).toISOString()),
+  );
+  await control.initialise();
+  const server = createControlServer(control, { key: tls.key, cert: tls.cert, secret });
+  const port = await listen(server);
+  const client = new MonitorClient({ host: '127.0.0.1', port, certificate: tls.cert, secret });
+  t.after(async () => {
+    client.close();
+    await control.close();
+    await close(server);
+    tls.close();
+  });
+  await assert.rejects(client.capture({ commandId: randomUUID(), commandSeq: 1 }), errorCode('invalid_state'));
+  assert.equal((await client.baseline()).incomplete, false);
+  await client.start();
+  const request = { commandId: randomUUID(), commandSeq: 1 };
+  const capture = await client.capture(request);
+  assert.deepEqual(await client.capture(request), capture);
+  await assert.rejects(client.capture({ ...request, commandSeq: 2 }), errorCode('invalid_state'));
 });
 
 test('configuration and operation inputs fail before network access', async () => {

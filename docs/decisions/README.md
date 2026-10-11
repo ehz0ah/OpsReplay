@@ -58,6 +58,8 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 | 12 October 2026 | [Session lifecycle](session-lifecycle.md): commit readiness from durable recorder evidence, replay atomic monitor observations, fence learner heartbeat, fix one outcome and drain, repair timers, and confirm cleanup. Keep ready-attempt lock release with debrief/finalisation in the next PR. All new actions and triggers remain disabled. |
 
+| 12 October 2026 | [Command evidence and debrief](evidence-debrief.md): derive bounded command receipts during live and cutoff sealing, collect safe interval captures, read pinned private manifests, and finalise after confirmed cleanup in one transaction. Reuse lifecycle actions, keep score components deterministic and incomplete scores null, and leave playback APIs and AWS activation separate. |
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

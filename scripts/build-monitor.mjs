@@ -9,6 +9,7 @@ await build({
   entryPoints: {
     core: 'apps/monitor/src/index.ts',
     client: 'apps/monitor/test/control-client.ts',
+    'capture-check': 'apps/monitor/test/capture-image-check.ts',
     runtime: 'apps/monitor/src/runtime.ts',
   },
   outdir: 'dist/monitor',

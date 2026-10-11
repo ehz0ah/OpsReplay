@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { ShellMarkerFilter } from './shell-marker-filter.js';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { TextDecoder } from 'node:util';
@@ -198,6 +199,7 @@ export class GatewayBrowserTerminalConnection {
   private pendingBytes = 0;
   private processing = false;
   private outputPending = false;
+  private readonly markerFilter = new ShellMarkerFilter();
   private sendTail: Promise<void> = Promise.resolve();
   private activeTasks = 0;
   private peerClosed = false;
@@ -437,7 +439,8 @@ export class GatewayBrowserTerminalConnection {
     }
     this.outputPending = true;
     try {
-      await this.send(data, true);
+      const filtered = this.markerFilter.write(data);
+      if (filtered.length) await this.send(filtered, true);
     } catch {
       this.terminate();
       throw new BrowserSendError();

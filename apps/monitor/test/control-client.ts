@@ -10,6 +10,8 @@ import type {
   MonitorControlStartResponse,
 } from '../../../packages/contracts/private/monitor-control.js';
 import { monitorControlSchema } from '../../../packages/contracts/private/monitor-control.js';
+import { isFileCapture, type FileCapture } from '../../../packages/contracts/private/file-capture.js';
+import { randomUUID } from 'node:crypto';
 
 const endpoint = 'https://127.0.0.1:9443';
 
@@ -91,11 +93,15 @@ async function main(): Promise<number> {
     const timeout = Number(process.env.OPSREPLAY_MONITOR_CLIENT_START_TIMEOUT_MS ?? '30000');
     if (!Number.isInteger(timeout) || timeout < 100 || timeout > 30_000) throw new MonitorError('invalid_config');
     await waitUntilReady(timeout);
+    const baseline = await call<{ baselineAt: string; incomplete: boolean }>('/v1/captures/baseline', 'POST');
+    if (baseline.status !== 200 || baseline.value.incomplete) throw new MonitorError('initial_state_failed');
     const startRoute = monitorControlSchema.routes.start;
     const started = await call<MonitorControlStartResponse>(startRoute.path, startRoute.method);
     if (started.status !== startRoute.successStatus) throw new MonitorError('monitor_failed');
     await writeJson(process.stdout, { type: 'monitor_started', at: started.value.startedAt });
     let cursor = 0;
+    let captureSeq = 0;
+    let lastCaptureAt = Date.now();
     const framesRoute = monitorControlSchema.routes.frames;
     while (!stop) {
       const page = await call<MonitorControlFramePage<unknown>>(
@@ -111,6 +117,16 @@ async function main(): Promise<number> {
       }
       for (const frame of page.value.frames) await writeJson(process.stdout, frame);
       cursor = page.value.nextSequence;
+      if (Date.now() - lastCaptureAt >= 5000) {
+        const capture = await call<FileCapture>('/v1/captures', 'POST', {
+          commandId: randomUUID(),
+          commandSeq: ++captureSeq,
+        });
+        if (capture.status !== 200 || !isFileCapture(capture.value) || capture.value.incomplete)
+          throw new MonitorError('monitor_failed');
+        await writeJson(process.stdout, { type: 'capture_verified', capture: capture.value });
+        lastCaptureAt = Date.now();
+      }
       await delay(100);
     }
     const cutoffAt = new Date().toISOString();
@@ -129,6 +145,19 @@ async function main(): Promise<number> {
       cursor = page.value.nextSequence;
       if (page.value.frames.length === 0) break;
     }
+    const captureRequest = { commandId: randomUUID(), commandSeq: ++captureSeq };
+    const capture = await call<FileCapture>('/v1/captures', 'POST', captureRequest);
+    if (
+      capture.status !== 200 ||
+      !isFileCapture(capture.value) ||
+      capture.value.incomplete ||
+      capture.value.metrics?.at !== cutoffAt
+    )
+      throw new MonitorError('monitor_failed');
+    const duplicate = await call<FileCapture>('/v1/captures', 'POST', captureRequest);
+    if (duplicate.status !== 200 || JSON.stringify(duplicate.value) !== JSON.stringify(capture.value))
+      throw new MonitorError('monitor_failed');
+    await writeJson(process.stdout, { type: 'capture_verified', capture: capture.value });
     await writeJson(process.stdout, { type: 'monitor_sealed', final: sealed.value.final });
     return 0;
   } catch (error) {

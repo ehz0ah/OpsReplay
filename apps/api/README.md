@@ -2,8 +2,9 @@
 
 Status: admission, launch, recording work, status, terminal tickets, owner end,
 readiness, outcomes, liveness, deadline repair, and confirmed cleanup are implemented
-and tested locally. CDK defines disabled routes and lifecycle triggers. Debrief and
-once-only finalisation follow in the next PR. No AWS deployment has run. Follow
+and tested locally. Deterministic debrief and atomic once-only finalisation now run
+as shared code in reconcile/sweep after confirmed cleanup. CDK defines disabled
+routes and lifecycle triggers. Owner debrief/timeline/playback reads remain separate. No AWS deployment has run. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -149,9 +150,14 @@ CDK output goes to `cdk.out/`. These directories do not belong in Git.
 - Lifecycle: 30-second reconciliation timeout, 60-second sweep timeout, and
   10-second end timeout. Sweep concurrency is five sessions with eight seconds each,
   at most 25 per invocation. New functions have zero reserved concurrency.
-- Memory: 256 MiB per API action, not yet performance-tuned.
+- Memory: 512 MiB for reconcile, 1,024 MiB for sweep, 256 MiB for other current
+  actions. Sweep can hold five bounded evidence sets. These are checkpoint defaults,
+  not performance-tuned values.
 - Reuse only clients and validators, never learner state, across invocations.
 
-Next: deterministic evidence/debrief and atomic once-only finalisation, then owner playback.
+Next: bounded playback exports and owner-authorised debrief/timeline/playback reads.
+Publication must supply the immutable private manifest and mandatory SHA-256 pin.
+The finaliser reads accepted sealed evidence, not private manifests in a browser or
+assistant prompt. Incomplete results retain safe saved events and have a null score.
 Keep admission disabled until these dependencies and an approved AWS checkpoint are complete.
 Local Docker remains a test tool, not a second platform runtime.

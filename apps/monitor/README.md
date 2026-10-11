@@ -3,8 +3,11 @@
 Status: traffic, HTTP measurements, recovery validation, and TCP outage detection are
 implemented for the reference Challenge and exercised locally. A bounded authenticated
 HTTPS endpoint now controls the local monitor and serves sequenced public frames. The
-CPU/memory adapter, file captures, gateway, and AWS integration remain unimplemented.
-This increment does not publish a Challenge or mark a session ready.
+Monitor now supports bounded allowlisted file captures with duplicate-safe intervals,
+config before/after blocks, new log lines, and metric samples. Linux image tests use
+a read-only watched volume and reject links and non-regular files. Gateway recording
+and readiness are integrated locally. CPU/memory and full AWS integration remain
+unimplemented or unvalidated. This increment does not publish a Challenge.
 
 The TypeScript core uses Node 22 and measures real HTTP results independently of the
 learner's services. It aggregates its bounded request records directly because this

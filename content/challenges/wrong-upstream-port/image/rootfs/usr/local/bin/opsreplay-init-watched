@@ -1,0 +1,50 @@
+#!/usr/bin/python3
+"""Prepare the optional per-task watched volume before services start.
+
+Only authored config/log directories enter this volume. The Monitor mounts the
+same volume read-only at /opsreplay/watched. No Monitor credential goes here.
+"""
+import os
+import shutil
+import pwd
+from pathlib import Path
+
+if os.environ.get("OPSREPLAY_WATCHED_FILES") != "1":
+    raise SystemExit(0)
+
+root = Path("/opsreplay/watched")
+if not root.is_mount():
+    raise SystemExit("Watched files require the per-task volume mount.")
+
+paths = ["/etc/nginx", "/etc/shop", "/etc/postgresql", "/var/log/nginx", "/var/log/shop", "/var/log/postgresql"]
+for path in paths:
+    original = Path(path)
+    target = root / path.lstrip("/")
+    if original.is_symlink():
+        if os.readlink(original) != str(target):
+            raise SystemExit("Watched directory has an unexpected link.")
+        continue
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(original, target, copy_function=shutil.copy2)
+    shutil.copystat(original, target)
+    stat = original.stat()
+    os.chown(target, stat.st_uid, stat.st_gid)
+    os.chmod(target, 0o755)
+    # These are synthetic service artefacts, not credentials. Monitor uid 1000
+    # can read them without root or filesystem capabilities.
+    for file in target.rglob("*"):
+        if file.is_file() and not file.is_symlink():
+            os.chmod(file, 0o644)
+    shutil.rmtree(original)
+    original.symlink_to(target, target_is_directory=True)
+
+for path in ["/var/log/nginx/access.log", "/var/log/nginx/error.log", "/var/log/shop/app.log", "/var/log/postgresql/postgresql.log"]:
+    file = Path(path)
+    file.touch(exist_ok=True)
+    os.chmod(file, 0o644)
+    if path.startswith('/var/log/postgresql/'):
+        owner = pwd.getpwnam('postgres')
+        os.chown(file, owner.pw_uid, owner.pw_gid)
+    elif path.startswith('/var/log/shop/'):
+        owner = pwd.getpwnam('shop')
+        os.chown(file, owner.pw_uid, owner.pw_gid)

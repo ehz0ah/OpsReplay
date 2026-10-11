@@ -740,6 +740,17 @@ test('covered takeover seals from storage without calling either stopped task so
     chunks: new MemoryChunkStore(),
     recordings: store,
     terminal: terminal.options,
+    captures: {
+      baseline: async () => {
+        throw new Error('Stopped capture baseline must not be contacted');
+      },
+      collect: async () => {
+        throw new Error('Stopped capture collection must not be contacted');
+      },
+      finish: async () => {
+        throw new Error('Stopped final capture must not be contacted');
+      },
+    },
     coverage: {
       get: async () => coverage,
       commit: async () => {

@@ -96,6 +96,20 @@ rate parameters, defaulting to 16 and 8 requests per second. Its Lambda has only
 state update. API response caching and data tracing are disabled for both methods.
 These are bounded checkpoint defaults, not measured polling capacity.
 
+Reconcile and sweep reuse deterministic debrief/finalisation code after confirmed
+cleanup. Their roles add private manifest `GetItem`, session `Query`, and `GetObject`
+only for `sessions/*/metrics/*/sealed/*`. They cannot list or delete recording objects,
+read captures/raw PTY pages, or invoke another Lambda. Both remain disabled.
+
+The stack does not create an environment task definition. Content publication must
+apply [the watched-volume helper](environment-watched-volume.ts) to each published
+revision: one ephemeral per-task volume, Challenge writable, Monitor read-only,
+Challenge-only `OPSREPLAY_WATCHED_FILES=1`, and no secrets in that volume. The reference
+image refuses the option without a mount. The helper is synthesised in a local test,
+not attached to an assumed resource. Image/volume safety is tested locally; Fargate
+volume layout, private content/bootstrap delivery, and activation need the approved
+AWS checkpoint.
+
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated
 resources, permissions, networking, and disabled activation state. The gateway runtime
