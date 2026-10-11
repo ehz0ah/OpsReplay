@@ -26,14 +26,12 @@ admission core, a browser terminal relay, a bounded recording controller, durabl
 recording adapters, a work source, and a composed Gateway process. These parts are
 tested locally, including as a hardened container against DynamoDB Local and
 against the real monitor and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
-event action, private recording service, and the isolated network, endpoints, cluster,
-and image repositories for a temporary AWS checkpoint. The checkpoint published and
+event action, combined private Gateway service, public ALB, terminal-ticket route, and
+the checkpoint network, endpoints, cluster, and image repositories. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
-complete recording path remains disabled and has not run in AWS. The browser relay is
-connected to the local Gateway process when explicitly configured, but the existing AWS
-definition does not enable or route it. Captures, remaining API, web application, and
-lifecycle completion are not implemented. No checkpoint image is currently published
-in AWS, and no public route is enabled.
+complete Gateway path remains disabled and has not run in AWS. Captures, remaining API,
+web application, and lifecycle completion are not implemented. No checkpoint image is
+currently published in AWS, and no public route is deployed.
 
 ## Start here
 
@@ -92,8 +90,8 @@ integration tests exercise the real PTY, repair, and traps against the container
 Run `npm run monitor:test`, `npm run monitor:image:build`, and
 `npm run monitor:image:test` for the monitor core and the three-process control and
 measurement tests. Run `npm run gateway:runtime:image:build` and
-`npm run gateway:runtime:image:test` for the recording worker image and its DynamoDB
-discovery and shutdown path. The monitor image tests require the built Challenge image
+`npm run gateway:runtime:image:test` for the combined Gateway image and its DynamoDB,
+health, admission, private-connection, and shutdown paths. The monitor image tests require the built Challenge image
 and wait the full 60-second recovery window.
 
 ## Repository map

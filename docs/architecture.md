@@ -6,10 +6,11 @@ locally. Session admission, ECS launch orchestration, and provisioning-expiry cl
 have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
 authenticated HTTPS control run locally. The gateway monitor client, bounded recording
 controller, durable recording adapters, work source, supervisor, browser terminal relay,
-and composed process are implemented and tested locally. CDK defines the inactive
-recording-only AWS deployment and the disposable private foundation used for its first
-checkpoint. The temporary resources were removed. Captures, the remaining lifecycle
-handlers, terminal recording, and the public cloud entry points are not implemented.
+and composed process are implemented and tested locally. CDK defines an inactive Gateway
+path with a public ALB, private network edges, and terminal-ticket route, plus the
+disposable foundation used for its checkpoint. The temporary resources were removed.
+Captures, the remaining lifecycle handlers, terminal recording, DNS, browser CORS, and
+the web application are not implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
@@ -23,15 +24,21 @@ All three modes share one web application, account system, and progress store.
 ```mermaid
 flowchart LR
   UI[Browser: app, terminal, dashboard, chat] -->|REST| API[API Lambda handlers]
-  UI -->|WebSocket| GW[Gateway service]
+  UI -->|WebSocket| RELAY
   API --> DB[(DynamoDB)]
   API --> S3[(Private S3)]
   API --> ECS[ECS RunTask and StopTask]
   API --> SCH[EventBridge Scheduler]
   API --> LLM[External LLM provider]
-  GW --> DB
-  GW --> S3
-  GW --> ENV
+  subgraph GW[Gateway ECS service: one task and process]
+    RELAY[Terminal relay and admission]
+    REC[Recording supervisor]
+  end
+  RELAY --> DB
+  RELAY --> ENV
+  REC --> DB
+  REC --> S3
+  REC --> ENV
   subgraph ENV[Environment task per attempt]
     CH[challenge container]
     MON[monitor container]
@@ -74,14 +81,19 @@ flowchart TB
   Lambda --> Private[Private S3: content and recordings]
   Lambda --> Provider[External LLM API]
   Browser -->|Terminal WebSocket| ALB[Application Load Balancer, HTTPS]
-  ALB --> Gateway[Gateway service on ECS]
+  ALB --> Relay
   subgraph Cluster[ECS cluster on Fargate]
-    Gateway
+    subgraph Gateway[Gateway service: one task and process]
+      Relay[Terminal relay and admission]
+      Recorder[Recording supervisor]
+    end
     Tasks[Fargate environment tasks]
   end
-  Gateway -->|WebSocket proxy| Tasks
+  Relay -->|Terminal proxy| Tasks
+  Recorder -->|Monitor recording| Tasks
   Lambda -. telemetry .-> CW[CloudWatch]
-  Gateway -. telemetry .-> CW
+  Relay -. telemetry .-> CW
+  Recorder -. telemetry .-> CW
 ```
 
 These figures show component relationships, not every request and response. Route 53
@@ -121,12 +133,14 @@ role. `RunTask` contains only the file ARN. See the
 [provisioning review decision](decisions/provisioning-review.md).
 
 **Gateway service.** Terminal and dashboard traffic uses WebSockets. The gateway is our
-own small WebSocket proxy, run as an ECS service in the same Fargate cluster as the
-environment tasks. It validates a short-lived ticket, looks up the learner's task
-address, proxies the terminal, relays the monitor's dashboard stream, and records the
-stream outside the learner's reach. The ALB only terminates HTTPS and spreads connections
-across gateway copies. It does not balance environment tasks. The ALB idle timeout stays
-above the heartbeat interval. See the [gateway protocol](api.md#terminal-gateway-protocol).
+own small WebSocket proxy, run as one ECS service in the same Fargate cluster as the
+environment tasks. One process contains the terminal relay and recording supervisor.
+These are internal modules, not separate ECS services. The relay validates a short-lived
+ticket, looks up the learner's task address, and proxies the terminal. The recording
+supervisor saves monitor data outside the learner's reach. Dashboard relay and terminal
+recording remain planned. The ALB only terminates HTTPS and spreads connections across
+gateway copies. It does not balance environment tasks. The ALB idle timeout stays above
+the heartbeat interval. See the [gateway protocol](api.md#terminal-gateway-protocol).
 
 **Warm pool.** A small pool of started, unassigned tasks can hide start-up time before a
 scheduled class. A session claims a pooled task through a conditional write. Scores and

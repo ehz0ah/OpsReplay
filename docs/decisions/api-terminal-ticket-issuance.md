@@ -1,6 +1,6 @@
 # API terminal-ticket issuance increment
 
-Status: implemented locally, public route and AWS validation pending
+Status: handler and disabled deployment definition implemented locally, AWS validation pending
 Date: 10 October 2026
 Owner: API contributors
 
@@ -63,5 +63,7 @@ outcome race, collision recovery, uncertain write recovery, bounded failure hand
 and validation before storage. A bundle test loads the independent Lambda output and
 verifies that unauthenticated input is rejected before AWS access.
 
-These checks do not create the Lambda, IAM role, API Gateway route or throttle, Cognito
-authorizer, Gateway URL, DynamoDB TTL setting, browser WebSocket relay, or AWS deployment.
+CDK template tests cover the separate Lambda, narrow IAM role, Cognito-authorized API
+Gateway route, method throttle, fixed 429 response, Gateway URL configuration, and
+DynamoDB TTL. They do not prove managed DynamoDB, API Gateway, Cognito, IAM, the public
+Gateway URL, browser CORS, or AWS deployment.

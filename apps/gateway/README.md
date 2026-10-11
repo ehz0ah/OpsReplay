@@ -4,9 +4,9 @@ Status: the production monitor HTTPS client, private terminal TCP client, authen
 terminal admission core, browser terminal relay, bounded recording controller, durable
 recording adapters, recording-session runner, DynamoDB work source, bounded service
 supervisor, and composed process image are implemented and tested locally. CDK defines
-its private Fargate service, role, bucket, and event source, but keeps the complete path
-disabled by default. No complete recording deployment has run. The existing AWS
-definition does not enable the terminal listener or connect it to a public route.
+one private Fargate Gateway service, terminal and recording modules, TLS ALB, WAF,
+network edges, roles, bucket, and event source, but keeps the complete path disabled by
+default. No complete Gateway deployment has run.
 Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -95,9 +95,9 @@ and private terminal. The next attachment receives the terminal server's
 terminal data, task addresses, or internal errors.
 
 The runtime image now composes the relay with the recording supervisor when its complete
-terminal configuration is present. Public routing, security groups, persistent learner
-heartbeat updates, dashboard traffic, proposals, terminal recording, and AWS validation
-remain separate work.
+terminal configuration is present. CDK now defines its public ALB and private security
+group path. Persistent learner heartbeat updates, dashboard traffic, proposals, terminal
+recording, and AWS validation remain separate work.
 
 ## Monitor client
 
@@ -200,9 +200,10 @@ terminal settings are present. Partial terminal configuration fails startup.
 | `MAXIMUM_PENDING_TERMINAL_AUTHENTICATIONS` | Unauthenticated connection cap, not above the total cap |
 | `TERMINAL_PORT`                            | Private Challenge terminal-server port                  |
 
-With no terminal setting, the current inactive AWS definition remains recording-only.
-When enabled, `GET /healthz` returns a fixed readiness response and all other ordinary
-HTTP paths return 404. `GET /v1/terminal` upgrades through the existing relay.
+With no terminal setting, the process remains recording-only for local compatibility.
+The AWS Gateway task is created only with the complete terminal configuration. When
+enabled, `GET /healthz` returns a fixed readiness response and all other ordinary HTTP
+paths return 404. `GET /v1/terminal` upgrades through the existing relay.
 The HTTP server limits all accepted connections to the configured terminal cap plus a
 fixed allowance of 32 for health checks and ordinary HTTP requests. Shutdown
 force-closes incomplete HTTP requests after it stops accepting new connections.
@@ -238,7 +239,7 @@ terminal ticket through the browser WebSocket path, attempts the private termina
 connection, and stops cleanly on `SIGTERM`. These checks do not prove Fargate networking,
 ALB upgrades, production certificate delivery, IAM, or managed DynamoDB and S3 behaviour.
 
-Next: add the bounded public ALB route and Gateway network configuration, then validate
-the complete browser-to-Challenge WebSocket path in the disposable AWS environment.
-Terminal recording, outcome actions, and broader AWS validation remain separate
-increments.
+Next: after review and merge, deploy the disposable AWS checkpoint and validate the
+complete authenticated WebSocket path through ALB, Gateway, and the Challenge terminal.
+Terminal recording, outcome actions, browser integration, and broader AWS validation
+remain separate increments.
