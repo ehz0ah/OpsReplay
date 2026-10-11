@@ -12,22 +12,40 @@ import {
   Stack,
 } from 'aws-cdk-lib';
 import type { StackProps } from 'aws-cdk-lib';
+import {
+  CfnAuthorizer,
+  CfnDeployment,
+  CfnGatewayResponse,
+  CfnMethod,
+  CfnResource as ApiGatewayResource,
+  CfnRestApi,
+  CfnStage,
+} from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
-import { CfnSecurityGroup, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
+import { CfnSecurityGroup, CfnSecurityGroupEgress, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
 import { CfnService, CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
+import { CfnListener, CfnListenerRule, CfnLoadBalancer, CfnTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { CfnRule, Rule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { ArnPrincipal, Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
-import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { CfnPermission, Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { SqsDestination } from 'aws-cdk-lib/aws-lambda-destinations';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { CfnScheduleGroup } from 'aws-cdk-lib/aws-scheduler';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
+import { CfnWebACL, CfnWebACLAssociation } from 'aws-cdk-lib/aws-wafv2';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
 import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
+import { terminalTicketTtlAttribute } from '../packages/contracts/private/terminal-access.js';
+
+const gatewayPort = 8080;
+const terminalPort = 7681;
+const maximumTerminalConnections = 256;
+const maximumPendingTerminalAuthentications = 64;
+const terminalTicketApiDeploymentVersion = 1;
 
 export class SessionStartStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -37,6 +55,9 @@ export class SessionStartStack extends Stack {
       allowedPattern: 'arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9_-]+',
     });
     const subnetIds = new CfnParameter(this, 'EnvironmentSubnetIds', {
+      type: 'List<AWS::EC2::Subnet::Id>',
+    });
+    const publicIngressSubnetIds = new CfnParameter(this, 'PublicIngressSubnetIds', {
       type: 'List<AWS::EC2::Subnet::Id>',
     });
     const securityGroupIds = new CfnParameter(this, 'EnvironmentSecurityGroupIds', {
@@ -85,13 +106,35 @@ export class SessionStartStack extends Stack {
       minValue: 1,
       maxValue: 64,
     });
-    const recordingPathEnabled = new CfnParameter(this, 'EnableRecordingPath', {
+    const terminalCertificateArn = new CfnParameter(this, 'TerminalCertificateArn', {
+      type: 'String',
+      default: '',
+      allowedPattern: '(|arn:aws[a-z-]*:acm:[a-z0-9-]+:[0-9]{12}:certificate/[A-Za-z0-9-]+)',
+    });
+    const terminalAllowedOrigins = new CfnParameter(this, 'TerminalAllowedOrigins', {
+      type: 'String',
+      default: '',
+      maxLength: 4096,
+      description: 'Comma-separated exact HTTP or HTTPS web origins accepted by the Gateway.',
+    });
+    const terminalGatewayUrl = new CfnParameter(this, 'TerminalGatewayUrl', {
+      type: 'String',
+      default: '',
+      maxLength: 500,
+      allowedPattern: '(|wss://[^/?#]+/v1/terminal)',
+    });
+    const cognitoUserPoolArn = new CfnParameter(this, 'CognitoUserPoolArn', {
+      type: 'String',
+      default: '',
+      allowedPattern: '(|arn:aws[a-z-]*:cognito-idp:[a-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+)',
+    });
+    const gatewayPathEnabled = new CfnParameter(this, 'EnableGatewayPath', {
       type: 'String',
       default: 'false',
       allowedValues: ['false', 'true'],
     });
-    const recordingEnabled = new CfnCondition(this, 'RecordingPathEnabled', {
-      expression: Fn.conditionEquals(recordingPathEnabled.valueAsString, 'true'),
+    const gatewayEnabled = new CfnCondition(this, 'GatewayPathEnabled', {
+      expression: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
     });
     new CloudFormationRule(this, 'EnvironmentSecurityGroupsIncludeMonitor', {
       assertions: [
@@ -101,12 +144,28 @@ export class SessionStartStack extends Stack {
         },
       ],
     });
-    new CloudFormationRule(this, 'GatewayImageRequiredWhenRecordingEnabled', {
-      ruleCondition: Fn.conditionEquals(recordingPathEnabled.valueAsString, 'true'),
+    new CloudFormationRule(this, 'GatewayPathConfigurationRequiredWhenEnabled', {
+      ruleCondition: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
       assertions: [
         {
           assert: Fn.conditionNot(Fn.conditionEquals(gatewayImageDigest.valueAsString, '')),
-          assertDescription: 'GatewayImageDigest is required when EnableRecordingPath is true.',
+          assertDescription: 'GatewayImageDigest is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(terminalCertificateArn.valueAsString, '')),
+          assertDescription: 'TerminalCertificateArn is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(terminalAllowedOrigins.valueAsString, '')),
+          assertDescription: 'TerminalAllowedOrigins is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(terminalGatewayUrl.valueAsString, '')),
+          assertDescription: 'TerminalGatewayUrl is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolArn.valueAsString, '')),
+          assertDescription: 'CognitoUserPoolArn is required when EnableGatewayPath is true.',
         },
       ],
     });
@@ -114,6 +173,7 @@ export class SessionStartStack extends Stack {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: terminalTicketTtlAttribute,
       // Safe default. A disposable deployment must explicitly decide what data to remove.
       removalPolicy: RemovalPolicy.RETAIN,
     });
@@ -153,7 +213,7 @@ export class SessionStartStack extends Stack {
     });
 
     const gatewaySecurityGroup = new CfnSecurityGroup(this, 'GatewaySecurityGroup', {
-      groupDescription: 'OpsReplay gateway recording tasks. No inbound listener in this increment.',
+      groupDescription: 'Private OpsReplay Gateway tasks.',
       vpcId: vpcId.valueAsString,
       securityGroupEgress: [
         {
@@ -200,6 +260,56 @@ export class SessionStartStack extends Stack {
         },
       ],
     });
+    const loadBalancerSecurityGroup = new CfnSecurityGroup(this, 'TerminalLoadBalancerSecurityGroup', {
+      groupDescription: 'Public HTTPS ingress for the OpsReplay terminal Gateway.',
+      vpcId: vpcId.valueAsString,
+      securityGroupIngress: [
+        {
+          ipProtocol: 'tcp',
+          fromPort: 443,
+          toPort: 443,
+          cidrIp: '0.0.0.0/0',
+          description: 'Public terminal HTTPS and WebSocket traffic',
+        },
+      ],
+      securityGroupEgress: [
+        {
+          ipProtocol: 'tcp',
+          fromPort: gatewayPort,
+          toPort: gatewayPort,
+          destinationSecurityGroupId: gatewaySecurityGroup.attrGroupId,
+          description: 'Terminal Gateway targets',
+        },
+      ],
+    });
+    loadBalancerSecurityGroup.cfnOptions.condition = gatewayEnabled;
+    const gatewayListenerIngress = new CfnSecurityGroupIngress(this, 'GatewayListenerIngress', {
+      groupId: gatewaySecurityGroup.attrGroupId,
+      sourceSecurityGroupId: loadBalancerSecurityGroup.attrGroupId,
+      ipProtocol: 'tcp',
+      fromPort: gatewayPort,
+      toPort: gatewayPort,
+      description: 'Terminal load balancer health and WebSocket traffic',
+    });
+    gatewayListenerIngress.cfnOptions.condition = gatewayEnabled;
+    const gatewayTerminalEgress = new CfnSecurityGroupEgress(this, 'GatewayTerminalEgress', {
+      groupId: gatewaySecurityGroup.attrGroupId,
+      destinationSecurityGroupId: environmentMonitorSecurityGroupId.valueAsString,
+      ipProtocol: 'tcp',
+      fromPort: terminalPort,
+      toPort: terminalPort,
+      description: 'Private Challenge terminal server',
+    });
+    gatewayTerminalEgress.cfnOptions.condition = gatewayEnabled;
+    const terminalIngress = new CfnSecurityGroupIngress(this, 'TerminalIngress', {
+      groupId: environmentMonitorSecurityGroupId.valueAsString,
+      sourceSecurityGroupId: gatewaySecurityGroup.attrGroupId,
+      ipProtocol: 'tcp',
+      fromPort: terminalPort,
+      toPort: terminalPort,
+      description: 'Gateway to private Challenge terminal server',
+    });
+    terminalIngress.cfnOptions.condition = gatewayEnabled;
     const monitorIngress = new CfnSecurityGroupIngress(this, 'MonitorIngress', {
       groupId: environmentMonitorSecurityGroupId.valueAsString,
       sourceSecurityGroupId: gatewaySecurityGroup.attrGroupId,
@@ -414,6 +524,160 @@ export class SessionStartStack extends Stack {
       reservedConcurrentExecutions: 0,
     });
 
+    const terminalTicketLogs = new LogGroup(this, 'TerminalTicketLogs', {
+      retention: RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const terminalTicketRole = new Role(this, 'TerminalTicketRole', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+    });
+    terminalTicketLogs.grantWrite(terminalTicketRole);
+    terminalTicketRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem', 'dynamodb:PutItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+      }),
+    );
+    const terminalTicket = new Function(this, 'CreateTerminalTicket', {
+      runtime: Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: Code.fromAsset(fileURLToPath(new URL('../dist/create-terminal-ticket/', import.meta.url))),
+      role: terminalTicketRole,
+      logGroup: terminalTicketLogs,
+      environment: {
+        SESSION_TABLE_NAME: table.tableName,
+        TERMINAL_GATEWAY_URL: terminalGatewayUrl.valueAsString,
+      },
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, 16, 0) as unknown as number,
+    });
+
+    const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
+      name: 'opsreplay-terminal-ticket',
+      description: 'Authenticated terminal-ticket action for the bounded Gateway path.',
+      endpointConfiguration: { types: ['REGIONAL'] },
+    });
+    terminalApi.cfnOptions.condition = gatewayEnabled;
+    const terminalAuthorizer = new CfnAuthorizer(this, 'TerminalTicketAuthorizer', {
+      name: 'opsreplay-terminal-ticket-cognito',
+      restApiId: terminalApi.ref,
+      type: 'COGNITO_USER_POOLS',
+      identitySource: 'method.request.header.Authorization',
+      providerArns: [cognitoUserPoolArn.valueAsString],
+      authorizerResultTtlInSeconds: 300,
+    });
+    terminalAuthorizer.cfnOptions.condition = gatewayEnabled;
+    const terminalApiV1 = new ApiGatewayResource(this, 'TerminalTicketApiV1', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApi.attrRootResourceId,
+      pathPart: 'v1',
+    });
+    terminalApiV1.cfnOptions.condition = gatewayEnabled;
+    const terminalApiSessions = new ApiGatewayResource(this, 'TerminalTicketApiSessions', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApiV1.ref,
+      pathPart: 'sessions',
+    });
+    terminalApiSessions.cfnOptions.condition = gatewayEnabled;
+    const terminalApiSession = new ApiGatewayResource(this, 'TerminalTicketApiSession', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApiSessions.ref,
+      pathPart: '{id}',
+    });
+    terminalApiSession.cfnOptions.condition = gatewayEnabled;
+    const terminalApiTickets = new ApiGatewayResource(this, 'TerminalTicketApiTickets', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApiSession.ref,
+      pathPart: 'terminal-tickets',
+    });
+    terminalApiTickets.cfnOptions.condition = gatewayEnabled;
+    const terminalTicketMethod = new CfnMethod(this, 'CreateTerminalTicketMethod', {
+      restApiId: terminalApi.ref,
+      resourceId: terminalApiTickets.ref,
+      httpMethod: 'POST',
+      authorizationType: 'COGNITO_USER_POOLS',
+      authorizerId: terminalAuthorizer.ref,
+      apiKeyRequired: false,
+      operationName: 'createTerminalTicket',
+      integration: {
+        type: 'AWS_PROXY',
+        integrationHttpMethod: 'POST',
+        timeoutInMillis: 8_000,
+        uri: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':apigateway:',
+          Aws.REGION,
+          ':lambda:path/2015-03-31/functions/',
+          terminalTicket.functionArn,
+          '/invocations',
+        ]),
+      },
+    });
+    terminalTicketMethod.cfnOptions.condition = gatewayEnabled;
+    const terminalTicketPermission = new CfnPermission(this, 'TerminalTicketApiPermission', {
+      action: 'lambda:InvokeFunction',
+      functionName: terminalTicket.functionArn,
+      principal: 'apigateway.amazonaws.com',
+      sourceArn: Fn.join('', [
+        'arn:',
+        Aws.PARTITION,
+        ':execute-api:',
+        Aws.REGION,
+        ':',
+        Aws.ACCOUNT_ID,
+        ':',
+        terminalApi.ref,
+        '/*/POST/v1/sessions/*/terminal-tickets',
+      ]),
+    });
+    terminalTicketPermission.cfnOptions.condition = gatewayEnabled;
+    const terminalTicketThrottled = new CfnGatewayResponse(this, 'TerminalTicketThrottled', {
+      restApiId: terminalApi.ref,
+      responseType: 'THROTTLED',
+      statusCode: '429',
+      responseParameters: {
+        'gatewayresponse.header.Cache-Control': "'no-store'",
+        'gatewayresponse.header.Content-Type': "'application/json'",
+      },
+      responseTemplates: {
+        'application/json':
+          '{"code":"LIMIT_EXCEEDED","message":"Too many terminal ticket requests. Try again.","requestId":"$context.requestId"}',
+      },
+    });
+    terminalTicketThrottled.cfnOptions.condition = gatewayEnabled;
+    // API Gateway deployments are immutable snapshots. Bump this version when the route model changes.
+    const terminalTicketDeployment = new CfnDeployment(
+      this,
+      `TerminalTicketApiDeploymentV${terminalTicketApiDeploymentVersion}`,
+      {
+        restApiId: terminalApi.ref,
+        description: `Terminal ticket route version ${terminalTicketApiDeploymentVersion}.`,
+      },
+    );
+    terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
+    terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
+    const terminalTicketStage = new CfnStage(this, 'TerminalTicketApiStage', {
+      restApiId: terminalApi.ref,
+      deploymentId: terminalTicketDeployment.ref,
+      stageName: 'checkpoint',
+      methodSettings: [
+        {
+          httpMethod: 'POST',
+          // API Gateway method settings use JSON Pointer escaping for path separators.
+          resourcePath: '/~1v1~1sessions~1{id}~1terminal-tickets',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 16,
+          throttlingRateLimit: 8,
+        },
+      ],
+    });
+    terminalTicketStage.cfnOptions.condition = gatewayEnabled;
+
     const publishLogs = new LogGroup(this, 'PublishRecordingWorkLogs', {
       retention: RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -438,7 +702,7 @@ export class SessionStartStack extends Stack {
       environment: { SESSION_TABLE_NAME: table.tableName },
       memorySize: 256,
       timeout: Duration.seconds(10),
-      reservedConcurrentExecutions: Fn.conditionIf(recordingEnabled.logicalId, 4, 0) as unknown as number,
+      reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, 4, 0) as unknown as number,
     });
     const publishDeadLetters = new Queue(this, 'PublishRecordingWorkDeadLetters', {
       encryption: QueueEncryption.SQS_MANAGED,
@@ -472,7 +736,7 @@ export class SessionStartStack extends Stack {
       },
     });
     const taskStateCfnRule = taskStateRule.node.defaultChild as CfnRule;
-    taskStateCfnRule.state = Fn.conditionIf(recordingEnabled.logicalId, 'ENABLED', 'DISABLED') as unknown as string;
+    taskStateCfnRule.state = Fn.conditionIf(gatewayEnabled.logicalId, 'ENABLED', 'DISABLED') as unknown as string;
     taskStateRule.addTarget(
       new LambdaFunction(publish, {
         retryAttempts: 2,
@@ -481,7 +745,7 @@ export class SessionStartStack extends Stack {
       }),
     );
 
-    const gatewayLogs = new LogGroup(this, 'GatewayRecordingLogs', {
+    const gatewayLogs = new LogGroup(this, 'GatewayLogs', {
       retention: RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
     });
@@ -503,7 +767,7 @@ export class SessionStartStack extends Stack {
       }),
     );
 
-    const gatewayRole = new Role(this, 'GatewayRecordingRole', {
+    const gatewayRole = new Role(this, 'GatewayRole', {
       assumedBy: new ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
     gatewayRole.addToPolicy(
@@ -511,6 +775,7 @@ export class SessionStartStack extends Stack {
         actions: [
           'dynamodb:BatchGetItem',
           'dynamodb:ConditionCheckItem',
+          'dynamodb:DeleteItem',
           'dynamodb:GetItem',
           'dynamodb:PutItem',
           'dynamodb:UpdateItem',
@@ -556,6 +821,105 @@ export class SessionStartStack extends Stack {
       }),
     );
 
+    const terminalLoadBalancer = new CfnLoadBalancer(this, 'TerminalLoadBalancer', {
+      type: 'application',
+      scheme: 'internet-facing',
+      ipAddressType: 'ipv4',
+      subnets: publicIngressSubnetIds.valueAsList,
+      securityGroups: [loadBalancerSecurityGroup.attrGroupId],
+      loadBalancerAttributes: [
+        { key: 'idle_timeout.timeout_seconds', value: '60' },
+        { key: 'routing.http.drop_invalid_header_fields.enabled', value: 'true' },
+      ],
+    });
+    terminalLoadBalancer.cfnOptions.condition = gatewayEnabled;
+    const terminalTargetGroup = new CfnTargetGroup(this, 'TerminalGatewayTargetGroup', {
+      vpcId: vpcId.valueAsString,
+      targetType: 'ip',
+      ipAddressType: 'ipv4',
+      protocol: 'HTTP',
+      protocolVersion: 'HTTP1',
+      port: gatewayPort,
+      healthCheckEnabled: true,
+      healthCheckProtocol: 'HTTP',
+      healthCheckPort: 'traffic-port',
+      healthCheckPath: '/healthz',
+      healthCheckIntervalSeconds: 30,
+      healthCheckTimeoutSeconds: 5,
+      healthyThresholdCount: 2,
+      unhealthyThresholdCount: 2,
+      matcher: { httpCode: '200' },
+      targetGroupAttributes: [
+        { key: 'deregistration_delay.timeout_seconds', value: '30' },
+        { key: 'stickiness.enabled', value: 'false' },
+      ],
+    });
+    terminalTargetGroup.cfnOptions.condition = gatewayEnabled;
+    const terminalListener = new CfnListener(this, 'TerminalHttpsListener', {
+      loadBalancerArn: terminalLoadBalancer.ref,
+      port: 443,
+      protocol: 'HTTPS',
+      sslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
+      certificates: [{ certificateArn: terminalCertificateArn.valueAsString }],
+      defaultActions: [
+        {
+          type: 'fixed-response',
+          fixedResponseConfig: { statusCode: '404', contentType: 'text/plain', messageBody: 'Not found' },
+        },
+      ],
+    });
+    terminalListener.cfnOptions.condition = gatewayEnabled;
+    const terminalListenerRule = new CfnListenerRule(this, 'TerminalWebSocketRoute', {
+      listenerArn: terminalListener.ref,
+      priority: 1,
+      conditions: [{ field: 'path-pattern', pathPatternConfig: { values: ['/v1/terminal'] } }],
+      actions: [{ type: 'forward', targetGroupArn: terminalTargetGroup.ref }],
+    });
+    terminalListenerRule.cfnOptions.condition = gatewayEnabled;
+
+    const terminalWebAcl = new CfnWebACL(this, 'TerminalWebAcl', {
+      scope: 'REGIONAL',
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: 'opsreplay-terminal-web-acl',
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: 'terminal-connection-rate-limit',
+          priority: 0,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              aggregateKeyType: 'IP',
+              evaluationWindowSec: 60,
+              limit: 300,
+              scopeDownStatement: {
+                byteMatchStatement: {
+                  fieldToMatch: { uriPath: {} },
+                  positionalConstraint: 'EXACTLY',
+                  searchString: '/v1/terminal',
+                  textTransformations: [{ priority: 0, type: 'NONE' }],
+                },
+              },
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: 'opsreplay-terminal-connection-rate-limit',
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+    terminalWebAcl.cfnOptions.condition = gatewayEnabled;
+    const terminalWebAclAssociation = new CfnWebACLAssociation(this, 'TerminalWebAclAssociation', {
+      resourceArn: terminalLoadBalancer.ref,
+      webAclArn: terminalWebAcl.attrArn,
+    });
+    terminalWebAclAssociation.cfnOptions.condition = gatewayEnabled;
+
     const gatewayImage = Fn.join('', [
       Aws.ACCOUNT_ID,
       '.dkr.ecr.',
@@ -565,8 +929,8 @@ export class SessionStartStack extends Stack {
       '/opsreplay-gateway@',
       gatewayImageDigest.valueAsString,
     ]);
-    const gatewayTask = new CfnTaskDefinition(this, 'GatewayRecordingTask', {
-      family: 'opsreplay-gateway-recording',
+    const gatewayTask = new CfnTaskDefinition(this, 'GatewayTask', {
+      family: 'opsreplay-gateway',
       cpu: '512',
       memory: '1024',
       networkMode: 'awsvpc',
@@ -576,32 +940,41 @@ export class SessionStartStack extends Stack {
       runtimePlatform: { cpuArchitecture: 'X86_64', operatingSystemFamily: 'LINUX' },
       containerDefinitions: [
         {
-          name: 'gateway-recording',
+          name: 'gateway',
           image: gatewayImage,
           essential: true,
           readonlyRootFilesystem: true,
           user: 'node',
           stopTimeout: 30,
           linuxParameters: { initProcessEnabled: true, capabilities: { drop: ['ALL'] } },
+          portMappings: [{ name: 'terminal-websocket', containerPort: gatewayPort, protocol: 'tcp' }],
           environment: [
             { name: 'SESSION_TABLE_NAME', value: table.tableName },
             { name: 'RECORDING_BUCKET_NAME', value: recordings.bucketName },
             { name: 'MAXIMUM_CONCURRENT_RECORDINGS', value: gatewayRecordingCapacity.valueAsString },
             { name: 'MONITOR_PORT', value: '9443' },
+            { name: 'GATEWAY_PORT', value: String(gatewayPort) },
+            { name: 'TERMINAL_ALLOWED_ORIGINS', value: terminalAllowedOrigins.valueAsString },
+            { name: 'MAXIMUM_TERMINAL_CONNECTIONS', value: String(maximumTerminalConnections) },
+            {
+              name: 'MAXIMUM_PENDING_TERMINAL_AUTHENTICATIONS',
+              value: String(maximumPendingTerminalAuthentications),
+            },
+            { name: 'TERMINAL_PORT', value: String(terminalPort) },
           ],
           logConfiguration: {
             logDriver: 'awslogs',
             options: {
               'awslogs-group': gatewayLogs.logGroupName,
               'awslogs-region': Aws.REGION,
-              'awslogs-stream-prefix': 'gateway-recording',
+              'awslogs-stream-prefix': 'gateway',
             },
           },
         },
       ],
     });
-    gatewayTask.cfnOptions.condition = recordingEnabled;
-    const gatewayService = new CfnService(this, 'GatewayRecordingService', {
+    gatewayTask.cfnOptions.condition = gatewayEnabled;
+    const gatewayService = new CfnService(this, 'GatewayService', {
       cluster: clusterArn.valueAsString,
       taskDefinition: gatewayTask.ref,
       desiredCount: gatewayDesiredCount.valueAsNumber,
@@ -616,6 +989,14 @@ export class SessionStartStack extends Stack {
       enableEcsManagedTags: true,
       enableExecuteCommand: false,
       propagateTags: 'TASK_DEFINITION',
+      healthCheckGracePeriodSeconds: 30,
+      loadBalancers: [
+        {
+          targetGroupArn: terminalTargetGroup.ref,
+          containerName: 'gateway',
+          containerPort: gatewayPort,
+        },
+      ],
       networkConfiguration: {
         awsvpcConfiguration: {
           assignPublicIp: 'DISABLED',
@@ -624,19 +1005,37 @@ export class SessionStartStack extends Stack {
         },
       },
     });
-    gatewayService.cfnOptions.condition = recordingEnabled;
+    gatewayService.cfnOptions.condition = gatewayEnabled;
+    gatewayService.addResourceDependency(terminalListenerRule);
     gatewayService.addResourceDependency(monitorIngress);
+    gatewayService.addResourceDependency(terminalIngress);
     gatewayService.addResourceDependency(awsEndpointIngress);
 
     new CfnOutput(this, 'RecordingBucketName', { value: recordings.bucketName });
-    new CfnOutput(this, 'GatewayRecordingServiceName', {
+    new CfnOutput(this, 'GatewayServiceName', {
       value: gatewayService.attrName,
-      condition: recordingEnabled,
+      condition: gatewayEnabled,
+    });
+    new CfnOutput(this, 'TerminalLoadBalancerDnsName', {
+      value: terminalLoadBalancer.attrDnsName,
+      condition: gatewayEnabled,
+    });
+    new CfnOutput(this, 'TerminalTicketApiUrl', {
+      value: Fn.join('', [
+        'https://',
+        terminalApi.ref,
+        '.execute-api.',
+        Aws.REGION,
+        '.',
+        Aws.URL_SUFFIX,
+        '/checkpoint',
+      ]),
+      condition: gatewayEnabled,
     });
     new CfnOutput(this, 'EnvironmentMonitorSecurityGroup', {
       value: environmentMonitorSecurityGroupId.valueAsString,
     });
     new CfnOutput(this, 'GatewaySecurityGroupId', { value: gatewaySecurityGroup.attrGroupId });
-    // Session start remains disabled. No public route or terminal listener exists in this increment.
+    // Session start remains disabled. The complete Gateway path is also disabled unless explicitly enabled.
   }
 }

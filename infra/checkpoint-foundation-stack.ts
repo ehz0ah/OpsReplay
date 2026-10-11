@@ -15,6 +15,7 @@ import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import type { Construct } from 'constructs';
 
 const workloadSubnetName = 'workloads';
+const publicIngressSubnetName = 'public-ingress';
 const vpcCidr = '10.42.0.0/24';
 const vpcDnsResolverIpv4 = '10.42.0.2';
 
@@ -43,9 +44,15 @@ export class CheckpointFoundationStack extends Stack {
 
     const vpc = new Vpc(this, 'Vpc', {
       ipAddresses: IpAddresses.cidr(vpcCidr),
-      maxAzs: 1,
+      // An internet-facing ALB requires subnets in at least two Availability Zones.
+      maxAzs: 2,
       natGateways: 0,
       subnetConfiguration: [
+        {
+          cidrMask: 27,
+          name: publicIngressSubnetName,
+          subnetType: SubnetType.PUBLIC,
+        },
         {
           cidrMask: 26,
           name: workloadSubnetName,
@@ -53,6 +60,7 @@ export class CheckpointFoundationStack extends Stack {
         },
       ],
     });
+    const publicIngressSubnets = vpc.selectSubnets({ subnetGroupName: publicIngressSubnetName });
     const workloadSubnets = vpc.selectSubnets({ subnetGroupName: workloadSubnetName });
 
     const endpointSecurityGroup = new CfnSecurityGroup(this, 'AwsInterfaceEndpointSecurityGroup', {
@@ -222,6 +230,7 @@ export class CheckpointFoundationStack extends Stack {
 
     const outputs: Record<string, string> = {
       EnvironmentClusterArn: cluster.attrArn,
+      PublicIngressSubnetIds: publicIngressSubnets.subnetIds.join(','),
       EnvironmentSubnetIds: workloadSubnets.subnetIds.join(','),
       EnvironmentSecurityGroupIds: environmentSecurityGroup.attrGroupId,
       EnvironmentVpcId: vpc.vpcId,

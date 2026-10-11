@@ -31,7 +31,7 @@ function synthesize() {
   };
 }
 
-test('checkpoint workloads have private endpoint-only network access', () => {
+test('checkpoint workloads stay isolated behind bounded public ingress subnets', () => {
   const { directory, template, rendered } = synthesize();
   try {
     assert.deepEqual(rendered.Parameters.S3PrefixListId, {
@@ -51,14 +51,30 @@ test('checkpoint workloads have private endpoint-only network access', () => {
     });
 
     template.resourceCountIs('AWS::EC2::VPC', 1);
-    template.resourceCountIs('AWS::EC2::Subnet', 1);
-    template.resourceCountIs('AWS::EC2::InternetGateway', 0);
+    template.resourceCountIs('AWS::EC2::Subnet', 4);
+    template.resourceCountIs('AWS::EC2::InternetGateway', 1);
+    template.resourceCountIs('AWS::EC2::VPCGatewayAttachment', 1);
+    template.resourceCountIs('AWS::EC2::Route', 2);
     template.resourceCountIs('AWS::EC2::NatGateway', 0);
     template.resourceCountIs('AWS::EC2::EIP', 0);
-    template.hasResourceProperties('AWS::EC2::Subnet', {
-      CidrBlock: '10.42.0.0/26',
-      MapPublicIpOnLaunch: false,
-    });
+    const subnets = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::EC2::Subnet');
+    const subnetType = (resource: Resource) =>
+      (resource.Properties?.Tags as { Key: string; Value: string }[] | undefined)?.find(
+        (tag) => tag.Key === 'aws-cdk:subnet-type',
+      )?.Value;
+    assert.equal(subnets.filter((subnet) => subnetType(subnet) === 'Public').length, 2);
+    assert.equal(subnets.filter((subnet) => subnetType(subnet) === 'Isolated').length, 2);
+    for (const subnet of subnets.filter((item) => subnetType(item) === 'Public')) {
+      assert.equal(subnet.Properties?.MapPublicIpOnLaunch, true);
+    }
+    for (const subnet of subnets.filter((item) => subnetType(item) === 'Isolated')) {
+      assert.equal(subnet.Properties?.MapPublicIpOnLaunch, false);
+    }
+    const publicRoutes = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::EC2::Route');
+    for (const route of publicRoutes) {
+      assert.equal(route.Properties?.DestinationCidrBlock, '0.0.0.0/0');
+      assert.ok(route.Properties?.GatewayId);
+    }
 
     const endpoints = Object.values(rendered.Resources).filter((resource) => resource.Type === 'AWS::EC2::VPCEndpoint');
     assert.equal(endpoints.length, 5);
@@ -77,7 +93,7 @@ test('checkpoint workloads have private endpoint-only network access', () => {
       const properties = endpoint.Properties;
       assert.ok(properties);
       assert.equal(properties.PrivateDnsEnabled, true);
-      assert.equal((properties.SubnetIds as unknown[]).length, 1);
+      assert.equal((properties.SubnetIds as unknown[]).length, 2);
       assert.equal((properties.SecurityGroupIds as unknown[]).length, 1);
     }
 
@@ -147,11 +163,14 @@ test('checkpoint workloads have private endpoint-only network access', () => {
 
     const allowedResourceTypes = new Set([
       'AWS::EC2::RouteTable',
+      'AWS::EC2::Route',
       'AWS::EC2::SecurityGroup',
       'AWS::EC2::SecurityGroupIngress',
+      'AWS::EC2::InternetGateway',
       'AWS::EC2::Subnet',
       'AWS::EC2::SubnetRouteTableAssociation',
       'AWS::EC2::VPC',
+      'AWS::EC2::VPCGatewayAttachment',
       'AWS::EC2::VPCEndpoint',
       'AWS::ECR::Repository',
       'AWS::ECS::Cluster',
@@ -354,6 +373,7 @@ test('checkpoint outputs match the existing application-stack deployment inputs'
       'GatewayRepositoryUri',
       'GitHubImagePublisherRoleArn',
       'MonitorRepositoryUri',
+      'PublicIngressSubnetIds',
       'S3GatewayEndpointPrefixListId',
       'VpcDnsResolverIpv4',
     ]);
