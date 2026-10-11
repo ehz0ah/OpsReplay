@@ -5,6 +5,8 @@ export const terminalRecordingSchema = Object.freeze({
   maximumResponseBytes: 24 * 1_024,
   maximumJournalBytes: 20_000_000,
   maximumEvents: 100_000,
+  reservedExitBytes: 128,
+  reservedExitEvents: 1,
   maximumPageEvents: 100,
   maximumInputBytes: 16 * 1_024,
   maximumOutputBytes: 8 * 1_024,
@@ -203,26 +205,26 @@ export function isTerminalRecordingPage(
       event.sequence !== sequence + 1 ||
       event.recordedAt < previousTime ||
       event.recordedAt > value.observedAt ||
-      (value.loss !== null && event.recordedAt > value.loss.occurredAt)
+      (value.loss !== null && event.type !== 'exit' && event.recordedAt > value.loss.occurredAt)
     )
       return false;
     if (event.sequence === 1 && (event.type !== 'dimensions' || event.columns !== 80 || event.rows !== 24))
       return false;
     if (event.type === 'exit') {
-      if (value.shellState !== 'exited' || event.sequence !== value.latestSequence) return false;
+      // Exit survives permanent loss, but must remain the final control observation.
+      if (
+        value.shellState !== 'exited' ||
+        event.sequence !== value.latestSequence ||
+        (value.loss !== null && event.recordedAt < value.loss.occurredAt)
+      )
+        return false;
       exited = true;
     }
     sequence = event.sequence;
     previousTime = event.recordedAt;
   }
   if (value.events.length === 0 && after !== value.latestSequence) return false;
-  if (
-    value.shellState === 'exited' &&
-    value.loss === null &&
-    sequence === value.latestSequence &&
-    value.events.length > 0 &&
-    !exited
-  )
+  if (value.shellState === 'exited' && sequence === value.latestSequence && value.events.length > 0 && !exited)
     return false;
   if (Buffer.byteLength(JSON.stringify(value), 'utf8') + 1 > terminalRecordingSchema.maximumResponseBytes) return false;
   return value.nextSequence === sequence;

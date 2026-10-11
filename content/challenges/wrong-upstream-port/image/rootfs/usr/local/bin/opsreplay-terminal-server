@@ -402,9 +402,8 @@ class TerminalState:
                 self.recording.mark_loss("data_gap")
                 return
             if not data:
-                # A living background process can retain the slave after Bash exits.
-                if data is None:
-                    self.recording.mark_loss("data_gap")
+                # The tail ends at the first empty read after Bash exit. A quiet
+                # background process retaining the slave does not prove data loss.
                 return
             if not self._queue_output(("output", data), len(data), deadline):
                 self.recording.mark_loss("data_gap")
@@ -454,9 +453,7 @@ class TerminalState:
             if self.shell_exit_code is not None:
                 return
             self.shell_exit_code = exit_code
-        with self.recording.lock:
-            self.recording.append("exit", code=exit_code)
-            self.recording.shell_state = "exited"
+        self.recording.finish(exit_code)
         self.recording_finalized.set()
         # One zero-byte control event may follow the bounded output queue.
         self._queue_output(("exit", exit_code), 0)

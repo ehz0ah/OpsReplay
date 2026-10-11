@@ -10,6 +10,8 @@ import uuid
 
 MAX_JOURNAL_BYTES = 20_000_000
 MAX_JOURNAL_EVENTS = 100_000
+# Includes the maximum sequence, millisecond timestamp, and signed shell exit code.
+MAX_EXIT_EVENT_BYTES = 128
 MAX_PAGE_EVENTS = 100
 MAX_FRAME_BYTES = 24 * 1024
 MAX_REQUEST_BYTES = 1024
@@ -51,7 +53,7 @@ class RecordingJournal:
 
     def append(self, event_type, **payload):
         with self.lock:
-            if self.loss is not None:
+            if self.loss is not None or self.shell_state == "exited":
                 return
             event = {
                 "sequence": len(self.events) + 1,
@@ -60,11 +62,32 @@ class RecordingJournal:
                 **payload,
             }
             encoded = encode(event)
-            if len(self.events) >= MAX_JOURNAL_EVENTS or self.byte_count + len(encoded) > MAX_JOURNAL_BYTES:
+            if (
+                len(self.events) >= MAX_JOURNAL_EVENTS - 1
+                or self.byte_count + len(encoded) > MAX_JOURNAL_BYTES - MAX_EXIT_EVENT_BYTES
+            ):
                 self.loss = {"reason": "limit_exceeded", "occurredAt": event["recordedAt"]}
                 return
             self.events.append(encoded)
             self.byte_count += len(encoded)
+
+    def finish(self, exit_code):
+        with self.lock:
+            if self.shell_state == "exited":
+                return
+            # Exit is a control observation, not resumed data or proof the gap was
+            # filled. Data appends reserve its bytes and one sequence slot.
+            event = encode({
+                "sequence": len(self.events) + 1,
+                "recordedAt": self.timestamp(),
+                "type": "exit",
+                "code": exit_code,
+            })
+            if len(event) > MAX_EXIT_EVENT_BYTES:
+                raise ValueError("terminal exit event exceeds reserved capacity")
+            self.events.append(event)
+            self.byte_count += len(event)
+            self.shell_state = "exited"
 
     def bytes_event(self, event_type, data):
         self.append(event_type, data=base64.b64encode(data).decode("ascii"))
