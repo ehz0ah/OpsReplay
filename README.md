@@ -9,7 +9,7 @@ services in an isolated cloud container. They diagnose with production tools, re
 configuration files, and see real consequences. Afterwards they can play back the session
 beside the logs and metrics, or retry in a fresh environment.
 
-**Status: local Challenge image with a private interactive terminal, monitor measurements
+**Status: local Challenge image with a private interactive terminal and bounded recording source, monitor measurements
 and control, disabled session provisioning, and a completed disposable AWS checkpoint for
 image publication and the private gateway runtime.** The disposable resources were removed after validation. The
 [preliminary report, version 5](docs/reports/preliminary/README.md)
@@ -30,7 +30,8 @@ event action, combined private Gateway service, public ALB, terminal-ticket rout
 the checkpoint network, endpoints, cluster, and image repositories. The API also defines
 an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
-complete Gateway path remains disabled and has not run in AWS. Captures, remaining API,
+complete Gateway path remains disabled and has not run in AWS. The terminal source is
+process-local; Gateway terminal persistence and playback are not implemented. Captures, remaining API,
 web application, and lifecycle completion are not implemented. No checkpoint image is
 currently published in AWS, and no public route is deployed.
 

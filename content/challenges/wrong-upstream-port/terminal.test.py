@@ -17,6 +17,7 @@ PORT = 7681
 MAX_LINE_BYTES = 24 * 1024
 MAX_REPLAY_BYTES = 64 * 1024
 SERVER_PATH = "/usr/local/bin/opsreplay-terminal-server"
+sys.path.insert(0, "/usr/local/bin")
 
 
 def verify_terminal_helpers():
@@ -31,6 +32,8 @@ def verify_terminal_helpers():
     state.lock = module.threading.RLock()
     state.output_condition = module.threading.Condition(state.lock)
     state.stopping = module.threading.Event()
+    state.child_exit_detected = module.threading.Event()
+    state.recording = module.RecordingJournal()
     state.pending_output = module.collections.deque()
     state.pending_output_bytes = 0
     chunk = b"x" * module.MAX_OUTPUT_BYTES
@@ -95,6 +98,7 @@ def verify_terminal_helpers():
     exit_state.replay = bytearray()
     exit_state.replay_truncated = False
     exit_state.generation = 2
+    exit_state.child_exit_detected = module.threading.Event()
     exit_state.shell_exit_code = 7
     exit_state.shell_exited = module.threading.Event()
     active = RecordingConnection()

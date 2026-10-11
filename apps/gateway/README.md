@@ -136,6 +136,20 @@ The recorder caps a stream at 10,000 frames.
 The controller does not claim or renew the recorder lease. The recording-session runner
 supplies the current checkpoint and a sink scoped to its valid lease.
 
+## Terminal recording source boundary
+
+The Challenge now exposes a bounded read-only terminal source on its existing private
+port. It records the original PTY stream once, independent of browser attachments.
+See the [private contract](../../packages/contracts/private/terminal-recording.ts) and
+[source decision](../../docs/decisions/terminal-recording-source.md).
+
+This Gateway still records only monitor measurements and monitor recovery/outage
+events. It does not yet read or persist the terminal source. The next integration must
+validate source identity, sequences, clocks, loss, and bounds; commit immutable data
+before advancing cursors; and apply the saved lifecycle cutoff under the existing
+recorder lease. Full recording completion must require terminal and monitor final
+cursors. No readiness or completion behaviour changes in the source-only increment.
+
 ## Monitor recording persistence
 
 `DynamoMonitorRecordingStore` claims and renews a 15-second recorder lease, fences stale

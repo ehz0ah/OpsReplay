@@ -7,10 +7,10 @@ implements the wrong-upstream-port service stack and image tests. The
 [monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
 and authenticated HTTPS control. A gateway controller can record, resume, and seal this
 monitor stream through an injected sink. The reference image has a private interactive
-terminal server, and the gateway has a locally tested client for its private protocol.
-Monitor captures, the terminal recording stream, the deployed durable recording store,
-browser terminal access, and the complete running gateway do not exist yet. Storage
-adapters for monitor recordings are implemented and tested locally. Numbers
+terminal and a bounded read-only recording source. The gateway has a locally tested
+interactive client, admission, browser relay, composed process, and monitor storage
+adapters. Terminal persistence, captures, lifecycle completion, and the public AWS path
+remain unimplemented or unvalidated. Numbers
 marked proposed are starting values to measure, not results. The full task and publication
 requirements below remain unproven.
 
@@ -69,12 +69,12 @@ shared network namespace and volume.
 ## Private terminal server
 
 The reference Challenge image listens on private TCP port 7681 and owns one root Bash
-PTY. The endpoint is not an authentication boundary. The future gateway must authenticate
+PTY. The endpoint is not an authentication boundary. The gateway must authenticate
 the learner, authorize the session, and consume a terminal ticket before it connects.
 The task security group must accept this port only from the gateway.
 
 The private protocol is newline-delimited JSON. Each frame is at most 24 KiB. The first
-frame must be an `attach` frame with protocol version 1, mode `interactive`, a positive
+interactive frame must be an `attach` frame with protocol version 1, mode `interactive`, a positive
 input generation, and terminal dimensions from 1 to 500. A successful attach returns
 `ready`. Input and output bytes use base64. Decoded input is at most 16 KiB. `resize` and
 `heartbeat` use the installed generation. Complete PTY writes return `input_accepted`.
@@ -95,8 +95,8 @@ not the terminal recording stream.
 
 The gateway's private terminal client validates this protocol, serializes operations,
 and applies output backpressure. It does not retry an input whose acknowledgement is
-lost. The caller must supply a generation that a later gateway session layer claims from
-authoritative session state. Browser authentication and relay remain separate.
+lost. The caller must supply a generation that Gateway admission claims from
+authoritative session state. The Gateway admission and browser relay provide that layer.
 
 At most eight clients can wait or attach. An unattached client has five seconds to send
 its first frame. An attached client has a 45-second idle limit. Terminal bytes are not
@@ -108,7 +108,12 @@ new marker. Bash ignores up to ten consecutive Ctrl-D inputs at an empty prompt.
 explicit `exit` terminates the terminal. The server watches the Bash process directly,
 so a background process that keeps the PTY open cannot hide that exit.
 After Bash exits, the active handler stops processing new operations while queued tail
-output and the final `exit` frame are delivered. New attachments remain rejected.
+output and the final `exit` frame are delivered. New interactive attachments remain rejected.
+Read-only recording access remains available for at most 60 seconds after source
+finalization. Tail collection is bounded by one second after detected Bash exit and
+64 KiB. A retained or flooding background PTY causes `data_gap`, not an indefinite
+wait or a false complete tail. SIGTERM and SIGINT do not wait for this grace period.
+The startup probe requests recording metadata and requires `shellState: running`.
 
 ## Lifecycle
 
@@ -284,13 +289,46 @@ The complete recording design belongs to the session, not the browser connection
 renewable recorder lease, proposed at 15 seconds with renewal every five seconds. It
 keeps reading the terminal and monitor after the browser disconnects. Gateway workers
 discover unclaimed or expired leases through the session work index. A replacement
-increments the recorder generation and resumes from saved cursors. A future terminal
-recording stream must buffer sequenced output for bounded reconnects, as the monitor does for its data.
-A buffer overflow or missing range is recorded, never treated as an empty interval.
-Only the recorder creates command events and requests captures. A browser may connect
-through another gateway copy, which proxies input and output but does not record them
-again. The current private terminal server implements only the interactive stream. The
-separate read-only recording stream and recorder reconnection are deferred.
+increments the recorder generation and resumes from saved cursors. The reference
+terminal now exposes the independent source described below. Gateway terminal reading,
+persistence, cutoff reconciliation, and combined terminal/monitor completion remain
+future integration. The current monitor-only completion is not proof of full playback.
+Only the future recorder creates command events and requests captures. A browser may
+connect through another gateway copy, which proxies input and output without recording
+replay again.
+
+### Bounded terminal source
+
+On the same private TCP 7681 endpoint, a separate connection sends
+`{"type":"attach","version":1,"mode":"recording"}`. It receives `recording_ready`
+metadata and then uses `{"type":"read","source":"<source UUID>","after":0}`.
+See the [private typed contract](../packages/contracts/private/terminal-recording.ts)
+and [source decision](decisions/terminal-recording-source.md).
+
+One source UUID lasts for the process/attempt, independent of input and recorder
+generations. The journal records initial 80 by 24 dimensions, successful attach/resize
+dimensions, successfully written input prefixes, original PTY output, and final shell
+exit. Bytes are canonical base64. Sequences are contiguous. Replay delivery creates
+no new event. Input observation is not proof of a completed command. UTC millisecond
+timestamps use a fixed wall origin plus monotonic elapsed time.
+
+Reads are nondestructive and do not change the shell, generation, replay, or learner
+activity. Each page has at most 100 events and 24 KiB including its newline. Requests
+have a 1 KiB limit and ten reads per second per connection. Both modes share the
+eight-connection cap and existing attach, idle, and send deadlines. Metadata gives
+source/start, dimensions, latest sequence, observation time, `running`, `exiting`, or
+`exited` shell state, and permanent loss reason/time.
+
+The source retains an append-only prefix of at most 20,000,000 encoded event bytes and
+100,000 events in process memory. This is not S3 persistence or the export size bound.
+Exhaustion freezes the prefix with `limit_exceeded` at the first omitted observation.
+A missing exit tail reports `data_gap`. Neither silently evicts data nor stops the
+shell. Root can alter this source; the future Gateway must independently validate it.
+
+Lifecycle sealing is not added here. Future integration must apply the saved cutoff,
+advance a durable cursor only after commit, and wait for an observation strictly later
+than a millisecond cutoff before excluding more equal-timestamp records. Loss after a
+cutoff must not automatically invalidate a complete prefix before it.
 
 Chunks have immutable keys that include the recorder generation and sequence range.
 The gateway saves object references and event cursors only after successful uploads,

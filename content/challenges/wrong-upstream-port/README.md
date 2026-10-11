@@ -3,7 +3,8 @@
 This implements the service stack and private terminal endpoint in
 [the draft manifest](challenge.json), not a complete Challenge session. A
 [separate monitor test](../../../apps/monitor/README.md) runs traffic and recovery
-checks beside this image. There is no browser terminal gateway or AWS deployment.
+checks beside this image. The Gateway browser relay is implemented separately and
+is tested locally. This standalone run deploys no AWS resources.
 The manifest remains unpublished.
 
 ## Build and enter
@@ -29,8 +30,28 @@ health check. Stopping a service or changing its port must not end the container
 
 The image also starts a private terminal server on TCP port 7681. It owns one root Bash
 PTY for the lifetime of the container attempt. The local run script does not publish
-this port. Image tests connect from inside the container. Browser access, terminal
-tickets, and gateway proxying remain separate work.
+this port. Image tests connect from inside the container. The existing Gateway uses
+its unchanged interactive v1 protocol. The same endpoint now provides a separate
+read-only recording mode, not another browser relay.
+
+### Terminal recording source
+
+```text
+Bash PTY -> terminal server -> interactive connection -> Gateway -> browser
+                           -> recording connection -> future Gateway persistence
+```
+
+The source records original output, successfully written input bytes, dimensions,
+and exit. It does not parse commands or prove that input executed. A stable source
+UUID and nondestructive `after` cursor support reconnects without duplicating replay.
+The journal retains a prefix bounded by 20,000,000 encoded event bytes and 100,000
+events. Overflow reports permanent `limit_exceeded` and leaves the shell usable.
+Pages have at most 100 events and 24 KiB. This learner-controlled temporary memory
+is not durable storage or tamper-proof evidence. See the
+[source contract and bounds](../../../docs/challenges.md#bounded-terminal-source).
+
+Gateway terminal persistence, command markers, captures, scoring, and playback are
+not implemented by this image change.
 
 The container includes `nano`, `vi` / `vim` (Vim tiny), `curl`, `ss`, `ps`, `less`,
 and `psql`. Inspect the real services and logs:
@@ -83,9 +104,11 @@ The terminal process does not open a replacement shell after it stops or after t
 container restarts. Its generation fence is process memory. Losing that state makes the
 terminal unavailable so that a stale client cannot gain input access to a new shell.
 The shell ignores up to ten consecutive Ctrl-D inputs at an empty prompt to reduce
-accidental exits. A deliberate `exit` stops the terminal because a replacement shell
-would hide the loss of shell-local state. Create a fresh container for a fresh terminal
-attempt.
+accidental exits. A deliberate `exit` immediately rejects new interactive operations,
+finalizes a bounded output tail, and allows read-only recording access for at most
+60 seconds. Startup checks fail during this grace period. A background process
+retaining or flooding the PTY produces an explicit `data_gap`. SIGTERM and SIGINT
+stop promptly. Create a fresh container for a fresh terminal attempt.
 
 After leaving the shell, discard this local attempt and its edits:
 
@@ -118,10 +141,13 @@ reference fix, trap, and safe alternative through `docker exec`. They verify rea
 responses, stored orders, service and container restarts, fresh-attempt reset, and local
 runtime restrictions. They also verify command input and output, resize, reconnect,
 generation fencing, protocol limits, log redaction, and fail-closed terminal restarts.
+Recording checks cover independent readers, disconnected output, cursor replay,
+raw bytes, partial-write injection, retention/page limits, overflow, and bounded exit.
+Actual Python responses also pass the strict TypeScript private contract.
 Each test removes its containers and data, including on failure. The suite makes a
 bounded number of requests and keeps no database volumes. Set
 `OPSREPLAY_CHALLENGE_IMAGE` to test a different already-built image reference.
 
 These are image integration checks, not the full publication harness. The separate
 monitor image tests check sustained recovery. Neither suite proves full monitor
-isolation, recording, playback, or Fargate behaviour.
+isolation, durable terminal recording, playback, or Fargate behaviour.
