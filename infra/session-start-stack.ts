@@ -954,6 +954,7 @@ export class SessionStartStack extends Stack {
           'dynamodb:DeleteItem',
           'dynamodb:GetItem',
           'dynamodb:PutItem',
+          'dynamodb:Query',
           'dynamodb:UpdateItem',
         ],
         resources: [table.tableArn],
@@ -969,6 +970,12 @@ export class SessionStartStack extends Stack {
             'dynamodb:LeadingKeys': [unfinishedWorkIndex.recordingPartition],
           },
         },
+      }),
+    );
+    gatewayRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [recordings.arnForObjects('sessions/*/terminal/*/live/*')],
       }),
     );
     gatewayRole.addToPolicy(

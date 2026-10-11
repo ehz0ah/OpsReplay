@@ -25,6 +25,12 @@ import {
   type MonitorRecordingState,
 } from '../src/monitor-recording-store.js';
 import { startLocalDatabase } from '../../api/test/local-dynamodb.js';
+import {
+  advanceTerminalCheckpoint,
+  initialTerminalCheckpoint,
+} from '../../../packages/contracts/private/terminal-persistence.js';
+import { terminalPage, terminalReady } from '../../../packages/contracts/private/test-support/terminal-fixture.js';
+import type { TerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -433,6 +439,137 @@ test('publishes one canonical sealed reference and makes retries idempotent', as
     f.store.markIncomplete(f.sessionId, 'task_lost', '2026-10-07T00:00:05.000Z'),
     storeError('invalid_state'),
   );
+});
+
+test('monitor completion requires a valid terminal seal when terminal state exists', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  await setDraining(f, claimed.lease, cutoffAt);
+  const checkpoint = advanceTerminalCheckpoint(
+    initialTerminalCheckpoint(terminalReady({ startedAt: now, observedAt: now })),
+    terminalPage(undefined, {
+      startedAt: now,
+      observedAt: '2026-10-07T00:00:04.000Z',
+      events: [{ type: 'dimensions', sequence: 1, recordedAt: now, columns: 80, rows: 24 }],
+    }),
+  );
+  await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_RECORDING' }, checkpoint);
+  const sealed = { startedAt, cutoffAt, source: null, cursor: 0, frames: [], final: metric(cutoffAt) };
+  const canonical = reference(f.sessionId, 1, 'sealed', 0, 0);
+  await assert.rejects(
+    f.store.seal(claimed.lease, sealed, canonical, '2026-10-07T00:00:04.000Z'),
+    storeError('invalid_state'),
+  );
+  const terminal: TerminalSealState = {
+    schemaVersion: 1,
+    cutoffAt,
+    checkpoint,
+    cursor: 1,
+    pageCount: 1,
+    recordedBytes: checkpoint.recordedBytes,
+    lastAt: now,
+    excludedAt: null,
+    complete: false,
+  };
+  await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' }, terminal);
+  await assert.rejects(
+    f.store.seal(claimed.lease, sealed, canonical, '2026-10-07T00:00:04.000Z'),
+    storeError('invalid_state'),
+  );
+  await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' }, { ...terminal, complete: true });
+  await f.store.seal(claimed.lease, sealed, canonical, '2026-10-07T00:00:04.000Z');
+  assert.equal((await f.store.get(f.sessionId))?.status, 'complete');
+});
+
+test('a terminal checkpoint created after the seal read cannot bypass combined completion', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  await setDraining(f, claimed.lease, cutoffAt);
+  let raced = false;
+  const racing = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand && !raced) {
+          raced = true;
+          await f.put(
+            { PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_RECORDING' },
+            initialTerminalCheckpoint(terminalReady({ startedAt: now, observedAt: now })),
+          );
+        }
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await assert.rejects(
+    racing.seal(
+      claimed.lease,
+      { startedAt, cutoffAt, source: null, cursor: 0, frames: [], final: metric(cutoffAt) },
+      reference(f.sessionId, 1, 'sealed', 0, 0),
+      '2026-10-07T00:00:04.000Z',
+    ),
+  );
+  assert.equal(raced, true);
+  assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
+  assert.deepEqual(await publicRecording(f), { status: 'draining', reason: null });
+});
+
+test('a terminal seal changed after validation prevents combined publication', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, '2026-10-07T00:00:00.500Z');
+  const cutoffAt = '2026-10-07T00:00:03.000Z';
+  await setDraining(f, claimed.lease, cutoffAt);
+  const checkpoint = advanceTerminalCheckpoint(
+    initialTerminalCheckpoint(terminalReady({ startedAt: now, observedAt: now })),
+    terminalPage(undefined, {
+      startedAt: now,
+      observedAt: '2026-10-07T00:00:04.000Z',
+      events: [{ type: 'dimensions', sequence: 1, recordedAt: now, columns: 80, rows: 24 }],
+    }),
+  );
+  await f.put({ PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_RECORDING' }, checkpoint);
+  const terminal: TerminalSealState = {
+    schemaVersion: 1,
+    cutoffAt,
+    checkpoint,
+    cursor: 1,
+    pageCount: 1,
+    recordedBytes: checkpoint.recordedBytes,
+    lastAt: now,
+    excludedAt: null,
+    complete: true,
+  };
+  const terminalKey = { PK: `SESSION#${f.sessionId}`, SK: 'TERMINAL_SEAL' };
+  await f.put(terminalKey, terminal);
+  let raced = false;
+  const racing = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand && !raced) {
+          raced = true;
+          await f.put(terminalKey, { ...terminal, complete: false });
+        }
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await assert.rejects(
+    racing.seal(
+      claimed.lease,
+      { startedAt, cutoffAt, source: null, cursor: 0, frames: [], final: metric(cutoffAt) },
+      reference(f.sessionId, 1, 'sealed', 0, 0),
+      '2026-10-07T00:00:04.000Z',
+    ),
+  );
+  assert.equal(raced, true);
+  assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
+  assert.deepEqual(await publicRecording(f), { status: 'draining', reason: null });
 });
 
 test('marks a claimed recording incomplete after session start fails', async () => {

@@ -34,33 +34,35 @@ concerns for reflection and never scores them.
 One table is sufficient initially. Normal requests read by key and never scan. Item
 names are a storage convention, not part of the HTTP contract.
 
-| PK             | SK                                       | Contents                                                                                  |
-| -------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `USER#<id>`    | `PROFILE`                                | Minimal account preferences                                                               |
-| `USER#<id>`    | `PLAN`                                   | Plan, source, expiry, cohort                                                              |
-| `USER#<id>`    | `ACTIVE`                                 | Active-session lock holding the session ID                                                |
-| `USER#<id>`    | `PROGRESS#<contentId>`                   | Learner progress                                                                          |
-| `USER#<id>`    | `START#<requestId>`                      | Session start receipt                                                                     |
-| `USER#<id>`    | `REVIEWREQ#<requestId>`                  | Review submission receipt                                                                 |
-| `CONTENT#<id>` | `VERSION#<version>`                      | Server-only published Challenge admission snapshot                                        |
-| `SESSION#<id>` | `STATE`                                  | Private session record                                                                    |
-| `SESSION#<id>` | `RECORDING`                              | Lease, cursors, references, and nullable `retainUntil`                                    |
-| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>` | One immutable provisional monitor object reference and its sequence range                 |
-| `SESSION#<id>` | `TERMINAL_RECORDING`                     | Terminal source metadata, cursor, last committed event, and encoded event bytes; no lease |
-| `SESSION#<id>` | `TERMINAL_CHUNK#<source>#<sequence>`     | One immutable terminal page reference; identity does not change at takeover               |
-| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`       | Timeline event, time-ordered                                                              |
-| `SESSION#<id>` | `TICKET#<sha256>`                        | Terminal ticket owner, session, ISO expiry, and numeric `ExpiresAt`                       |
-| `SESSION#<id>` | `INPUT`                                  | Input generation and owning connection, independent of recorder lease                     |
-| `SESSION#<id>` | `REQUEST#<requestId>`                    | End and hint receipts                                                                     |
-| `SESSION#<id>` | `HINT#<hintId>`                          | Released hint and time                                                                    |
-| `SESSION#<id>` | `PROPOSAL#<proposalId>`                  | Assistant command proposal                                                                |
-| `SESSION#<id>` | `TURN#<turnId>`                          | Challenge assistant turn                                                                  |
-| `SESSION#<id>` | `CONVERSATION`                           | Active turn ID and fixed expiry                                                           |
-| `SESSION#<id>` | `FINALISED`                              | Marker that the finaliser has run                                                         |
-| `SESSION#<id>` | `DEBRIEF`                                | Derived debrief and score components                                                      |
-| `REVIEW#<id>`  | `STATE`                                  | Review submission and match result                                                        |
-| `REVIEW#<id>`  | `TURN#<turnId>`                          | Code Review assistant turn                                                                |
-| `REVIEW#<id>`  | `CONVERSATION`                           | Active turn ID and fixed expiry                                                           |
+| PK             | SK                                          | Contents                                                                                  |
+| -------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `USER#<id>`    | `PROFILE`                                   | Minimal account preferences                                                               |
+| `USER#<id>`    | `PLAN`                                      | Plan, source, expiry, cohort                                                              |
+| `USER#<id>`    | `ACTIVE`                                    | Active-session lock holding the session ID                                                |
+| `USER#<id>`    | `PROGRESS#<contentId>`                      | Learner progress                                                                          |
+| `USER#<id>`    | `START#<requestId>`                         | Session start receipt                                                                     |
+| `USER#<id>`    | `REVIEWREQ#<requestId>`                     | Review submission receipt                                                                 |
+| `CONTENT#<id>` | `VERSION#<version>`                         | Server-only published Challenge admission snapshot                                        |
+| `SESSION#<id>` | `STATE`                                     | Private session record                                                                    |
+| `SESSION#<id>` | `RECORDING`                                 | Lease, cursors, references, and nullable `retainUntil`                                    |
+| `SESSION#<id>` | `CHUNK#<source>#<generation>#<sequence>`    | One immutable provisional monitor object reference and its sequence range                 |
+| `SESSION#<id>` | `TERMINAL_RECORDING`                        | Terminal source metadata, cursor, last committed event, and encoded event bytes; no lease |
+| `SESSION#<id>` | `TERMINAL_CHUNK#<source>#<sequence>`        | One immutable terminal page reference; identity does not change at takeover               |
+| `SESSION#<id>` | `TERMINAL_SEAL`                             | Frozen source checkpoint, cutoff, sealed cursor, page count, bytes, and completion        |
+| `SESSION#<id>` | `TERMINAL_SEALED_CHUNK#<source>#<sequence>` | One immutable sealed terminal page reference                                              |
+| `SESSION#<id>` | `EVENT#<epochMillis>#<source>#<n>`          | Timeline event, time-ordered                                                              |
+| `SESSION#<id>` | `TICKET#<sha256>`                           | Terminal ticket owner, session, ISO expiry, and numeric `ExpiresAt`                       |
+| `SESSION#<id>` | `INPUT`                                     | Input generation and owning connection, independent of recorder lease                     |
+| `SESSION#<id>` | `REQUEST#<requestId>`                       | End and hint receipts                                                                     |
+| `SESSION#<id>` | `HINT#<hintId>`                             | Released hint and time                                                                    |
+| `SESSION#<id>` | `PROPOSAL#<proposalId>`                     | Assistant command proposal                                                                |
+| `SESSION#<id>` | `TURN#<turnId>`                             | Challenge assistant turn                                                                  |
+| `SESSION#<id>` | `CONVERSATION`                              | Active turn ID and fixed expiry                                                           |
+| `SESSION#<id>` | `FINALISED`                                 | Marker that the finaliser has run                                                         |
+| `SESSION#<id>` | `DEBRIEF`                                   | Derived debrief and score components                                                      |
+| `REVIEW#<id>`  | `STATE`                                     | Review submission and match result                                                        |
+| `REVIEW#<id>`  | `TURN#<turnId>`                             | Code Review assistant turn                                                                |
+| `REVIEW#<id>`  | `CONVERSATION`                              | Active turn ID and fixed expiry                                                           |
 
 Event sort keys use the event time, a stable source stream ID, and its sequence number.
 Reconnects preserve these IDs. API events use their request identity. The monitor assigns command
@@ -80,15 +82,16 @@ because admission also recovers an expired turn through a conditional write.
 
 ## Private S3 layout
 
-| Key prefix                                         | Contents                                           | Writer              |
-| -------------------------------------------------- | -------------------------------------------------- | ------------------- |
-| `content/challenges/<id>/<version>/`               | Manifest and debrief assets                        | Content publication |
-| `content/reviews/<id>/<version>/`                  | Review bundle                                      | Content publication |
-| `content/learn/<id>/<version>/`                    | Rendered Pro Learn entry                           | Learn build step    |
-| `sessions/<sessionId>/terminal/<generation>/live/` | Byte-preserving private JSON source pages          | Gateway             |
-| `sessions/<sessionId>/terminal/<generation>/`      | Derived asciicast v2 playback, not yet implemented | Gateway             |
-| `sessions/<sessionId>/metrics/<generation>/`       | Metric series chunks                               | Gateway             |
-| `sessions/<sessionId>/captures/<generation>/`      | Per-command captures                               | Gateway             |
+| Key prefix                                           | Contents                                           | Writer              |
+| ---------------------------------------------------- | -------------------------------------------------- | ------------------- |
+| `content/challenges/<id>/<version>/`                 | Manifest and debrief assets                        | Content publication |
+| `content/reviews/<id>/<version>/`                    | Review bundle                                      | Content publication |
+| `content/learn/<id>/<version>/`                      | Rendered Pro Learn entry                           | Learn build step    |
+| `sessions/<sessionId>/terminal/<generation>/live/`   | Byte-preserving private JSON source pages          | Gateway             |
+| `sessions/<sessionId>/terminal/<generation>/sealed/` | Exact-cutoff private JSON terminal pages           | Gateway             |
+| `sessions/<sessionId>/terminal/<generation>/`        | Derived asciicast v2 playback, not yet implemented | Gateway             |
+| `sessions/<sessionId>/metrics/<generation>/`         | Metric series chunks                               | Gateway             |
+| `sessions/<sessionId>/captures/<generation>/`        | Per-command captures                               | Gateway             |
 
 Published content keys are immutable, with a hash in the catalogue manifest. The
 frontend bucket holds only the static application and free Learn pages. Browsers read
@@ -150,9 +153,12 @@ their keys. Terminal DynamoDB references omit generation: the source and ending 
 identify an accepted page across takeovers. The terminal checkpoint and immutable
 reference commit in one transaction that checks the existing `RECORDING` lease and the
 exact previous checkpoint. Empty reads save metadata without an object. These terminal
-adapters are implemented locally but not connected to the active worker. Terminal sealing
-must create sealed-retention copies before complete references are published. See the
-[storage decision](decisions/gateway-terminal-persistence.md).
+adapters are connected to the composed worker locally. `TERMINAL_SEAL` freezes a covered
+checkpoint and advances only after each immutable sealed page commits. Exclusion proof
+identifies the next event in an exact committed live page. Combined publication conditions
+both terminal snapshots and the shared lease. See the
+[storage decision](decisions/gateway-terminal-persistence.md) and
+[combined-worker decision](decisions/combined-recording-worker.md).
 
 The canonical sealed monitor object is referenced directly by `RECORDING`, so a
 final sequence that matches the last provisional page cannot collide with that page.
@@ -175,11 +181,11 @@ It contains raw input/output, dimensions, and exit, not command events.
 This is separate from durable recording storage and does not consume a recorder lease.
 See the [terminal source decision](decisions/terminal-recording-source.md).
 
-Gateway terminal persistence is still absent. Its future checkpoint must save source,
-cursor, and immutable object references after commit, then reconcile the saved lifecycle
-cutoff. Full recording completion requires both terminal and monitor final cursors;
-the implemented monitor-only completion must be extended before readiness integration.
-The existing export cap remains independent of the source's encoded-byte cap.
+Gateway terminal persistence and combined cutoff sealing are implemented locally.
+Recording completion now requires both terminal and monitor final cursors when terminal
+state exists. Legacy monitor-only records use an absence condition to reject concurrent
+terminal initialisation. Lifecycle integration and exports remain separate work.
+The export cap remains independent of the source's encoded-byte cap.
 
 ## Bounds and retention
 

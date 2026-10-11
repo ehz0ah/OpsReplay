@@ -3,7 +3,15 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const require = createRequire(import.meta.url);
-const { MonitorClient, MonitorClientError, MonitorRecorder, MonitorRecordingRunner } = require('/test/client.cjs');
+const {
+  MonitorClient,
+  MonitorClientError,
+  MonitorRecorder,
+  MonitorRecordingRunner,
+  TerminalRecorder,
+  TerminalRecordingClient,
+  TerminalClient,
+} = require('/test/client.cjs');
 
 class MemoryRecordingSink {
   startedAt = null;
@@ -138,6 +146,43 @@ async function main() {
     }
 
     const health = await waitUntilReady(client);
+    let terminalCheckpoint;
+    const terminalPages = [];
+    const terminalSink = {
+      begin: async (ready) => {
+        terminalCheckpoint = { schemaVersion: 1, metadata: ready, cursor: 0, frontier: null, recordedBytes: 0 };
+        return terminalCheckpoint;
+      },
+      append: async (previous, page) => {
+        assert.equal(page.events[0]?.sequence ?? previous.cursor + 1, previous.cursor + 1);
+        terminalPages.push(structuredClone(page));
+        terminalCheckpoint = {
+          ...previous,
+          metadata: page,
+          cursor: page.nextSequence,
+          frontier: page.events.at(-1) ?? previous.frontier,
+        };
+        return terminalCheckpoint;
+      },
+    };
+    const terminal = new TerminalRecorder({
+      connect: (signal) => TerminalRecordingClient.connect({ host: '127.0.0.1' }, signal),
+      sink: terminalSink,
+      pollIntervalMs: 100,
+    });
+    const terminalController = new AbortController();
+    let terminalCutoff = null;
+    await terminal.begin(terminalController.signal);
+    const terminalRunning = terminal.record(terminalController.signal, () => terminalCutoff);
+    const { client: interactive } = await TerminalClient.connect({
+      host: '127.0.0.1',
+      generation: 1,
+      columns: 80,
+      rows: 24,
+      onOutput: async () => {},
+    });
+    await interactive.input(Buffer.from("printf 'OPSREPLAY_COMBINED_SOURCE\\n'\n"));
+    interactive.close();
     const sink = new MemoryRecordingSink();
     const firstRecorder = new MonitorRecorder({ client, sink, pollIntervalMs: 100 });
     const started = await firstRecorder.begin();
@@ -164,6 +209,18 @@ async function main() {
     await resumedRun;
 
     const cutoffAt = new Date().toISOString();
+    terminalCutoff = cutoffAt;
+    const terminalFinal = await terminalRunning;
+    terminal.close();
+    assert.ok(terminalFinal.cursor > 1);
+    assert.ok(
+      terminalPages
+        .flatMap((page) => page.events)
+        .filter((event) => event.type === 'output')
+        .map((event) => Buffer.from(event.data, 'base64').toString())
+        .join('')
+        .includes('OPSREPLAY_COMBINED_SOURCE'),
+    );
     const sealed = await resumedRecorder.seal(cutoffAt);
 
     assert.equal(sealed.cutoffAt, cutoffAt);
@@ -201,6 +258,7 @@ async function main() {
     process.stdout.write(
       JSON.stringify({
         health,
+        terminalCursor: terminalFinal.cursor,
         startedAt: started.startedAt,
         beginCount: sink.beginCount,
         resumedFrom: firstCheckpoint.cursor,

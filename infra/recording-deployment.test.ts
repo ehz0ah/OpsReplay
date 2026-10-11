@@ -535,6 +535,7 @@ test('recording remains durable and least-privilege inside the combined Gateway 
               'dynamodb:DeleteItem',
               'dynamodb:GetItem',
               'dynamodb:PutItem',
+              'dynamodb:Query',
               'dynamodb:UpdateItem',
             ]) &&
           JSON.stringify(statement.Condition) ===
@@ -571,14 +572,23 @@ test('recording remains durable and least-privilege inside the combined Gateway 
             JSON.stringify({ Null: { 's3:ExistingObjectTag/opsreplay-retention': 'false' } }),
       ),
     );
+    assert.ok(
+      statements.some(
+        (statement) =>
+          statement.Action === 's3:GetObject' &&
+          JSON.stringify(statement.Resource).includes('/sessions/*/terminal/*/live/*'),
+      ),
+    );
     assert.equal(
       statements.some((statement) => {
         const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
         return (
-          actions.some(
-            (action) =>
-              typeof action === 'string' && ['s3:GetObject', 's3:ListBucket', 's3:DeleteObject'].includes(action),
-          ) && JSON.stringify(statement.Resource).includes('Recordings')
+          JSON.stringify(statement.Resource).includes('Recordings') &&
+          (actions.some(
+            (action) => typeof action === 'string' && ['s3:ListBucket', 's3:DeleteObject'].includes(action),
+          ) ||
+            (actions.includes('s3:GetObject') &&
+              !JSON.stringify(statement.Resource).includes('/sessions/*/terminal/*/live/*')))
         );
       }),
       false,

@@ -301,6 +301,7 @@ export async function runGatewayRuntime(
         recordingBucketName: configuration.recordingBucketName,
         maximumConcurrentRecordings: configuration.maximumConcurrentRecordings,
         monitorPort: configuration.monitorPort,
+        terminalPort: configuration.terminal?.terminalPort ?? 7681,
         recorderId,
         report: (event) => safeReport(dependencies.report, event),
       },

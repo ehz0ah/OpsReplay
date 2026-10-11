@@ -31,9 +31,10 @@ the checkpoint network, endpoints, cluster, and image repositories. The API also
 an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
 complete Gateway path remains disabled and has not run in AWS. The terminal source is
-process-local. Its read-only Gateway client is tested locally but is not wired into the
-recording worker. Durable private terminal page adapters are tested locally but not wired into
-that worker; terminal sealing and playback are not implemented. Captures, remaining API,
+process-local. The composed recorder now collects terminal pages and monitor measurements
+under one lease. It copies the exact terminal prefix into sealed retention and requires
+both streams before publishing recording completion. These paths are tested locally,
+not deployed. Playback is not implemented. Captures, remaining API,
 web application, and lifecycle completion are not implemented. No checkpoint image is
 currently published in AWS, and no public route is deployed.
 
