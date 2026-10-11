@@ -228,7 +228,9 @@ hash, with the owner, session, and an expiry of 60 seconds. A conditional transa
 rechecks that the owned session is still `ready` before it writes the ticket. Each
 connection needs a new ticket. The ticket never appears in a URL. The deployed API
 Gateway route owns request throttling and returns `429 LIMIT_EXCEEDED` without invoking
-the Lambda.
+the Lambda. The browser must retry a throttled ticket request with capped exponential
+backoff and full jitter. It must obtain a new ticket after a failed connection attempt
+because it cannot know whether Gateway consumed the previous ticket.
 
 ### End
 

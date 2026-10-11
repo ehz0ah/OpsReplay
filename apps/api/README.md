@@ -65,9 +65,10 @@ The CDK definition configures table TTL on `ExpiresAt` and reserves that attribu
 expiring items. The action has its own Lambda, log group, and role. The role is limited
 to `dynamodb:GetItem`, `dynamodb:ConditionCheckItem`, and `dynamodb:PutItem` on
 `SESSION#*`. Its single API Gateway method requires an existing Cognito user pool, has a
-rate of 8 requests per second and burst of 16, and maps a throttled request to the public
-`429 LIMIT_EXCEEDED` error without invoking Lambda. The function has zero reserved
-concurrency and the route is absent while the Gateway path is disabled.
+default rate of 8 requests per second and burst of 16. Stack parameters can tune these
+limits for the checkpoint. API Gateway maps throttling, authentication, access, other
+4xx, and 5xx failures to the public error shape without invoking Lambda. The function
+has zero reserved concurrency and the route is absent while the Gateway path is disabled.
 
 The [expiry handler](src/expire-provisioning/index.ts) is a separate Scheduler target.
 At the saved deadline it marks a session `error`, discovers and stops active tasks, and

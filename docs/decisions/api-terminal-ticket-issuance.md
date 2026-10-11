@@ -44,7 +44,8 @@ The public API Gateway method must have explicit rate and burst limits before it
 enabled. API Gateway owns the route's `429 LIMIT_EXCEEDED` response. Its GatewayResponse
 mapping must return the shared `code`, `message`, and `requestId` error shape without
 invoking this Lambda. The limits must be selected and checked against measured
-class-sized connection and reconnect traffic. This handler does not implement a second,
+class-sized connection and reconnect traffic. The browser must use capped exponential
+backoff with full jitter after `429`. This handler does not implement a second,
 independent rate counter.
 
 Enable DynamoDB TTL on the table-wide `ExpiresAt` attribute. Reserve that top-level name
@@ -64,6 +65,6 @@ and validation before storage. A bundle test loads the independent Lambda output
 verifies that unauthenticated input is rejected before AWS access.
 
 CDK template tests cover the separate Lambda, narrow IAM role, Cognito-authorized API
-Gateway route, method throttle, fixed 429 response, Gateway URL configuration, and
-DynamoDB TTL. They do not prove managed DynamoDB, API Gateway, Cognito, IAM, the public
-Gateway URL, browser CORS, or AWS deployment.
+Gateway route, method throttle, shared gateway error responses, Gateway URL
+configuration, and DynamoDB TTL. They do not prove managed DynamoDB, API Gateway,
+Cognito, IAM, the public Gateway URL, browser CORS, or AWS deployment.
