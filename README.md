@@ -21,7 +21,7 @@ The [API](apps/api/README.md) has a session-start Lambda, a separate provisionin
 Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
 session actions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
 recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
-a production monitor client, a private terminal client, an authenticated terminal
+a production monitor client, private interactive and recording terminal clients, an authenticated terminal
 admission core, a browser terminal relay, a bounded recording controller, durable
 recording adapters, a work source, and a composed Gateway process. These parts are
 tested locally, including as a hardened container against DynamoDB Local and
@@ -31,7 +31,8 @@ the checkpoint network, endpoints, cluster, and image repositories. The API also
 an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
 complete Gateway path remains disabled and has not run in AWS. The terminal source is
-process-local; Gateway terminal persistence and playback are not implemented. Captures, remaining API,
+process-local. Its read-only Gateway client is tested locally but is not wired into the
+recording worker; terminal persistence and playback are not implemented. Captures, remaining API,
 web application, and lifecycle completion are not implemented. No checkpoint image is
 currently published in AWS, and no public route is deployed.
 

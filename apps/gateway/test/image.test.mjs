@@ -13,6 +13,7 @@ const challengePath = new URL('../../../content/challenges/wrong-upstream-port/'
 const gatewayBundle = join(root, 'dist/gateway/client.cjs');
 const gatewayDriver = fileURLToPath(new URL('image-client.mjs', import.meta.url));
 const terminalDriver = fileURLToPath(new URL('terminal-image-client.mjs', import.meta.url));
+const recordingDriver = fileURLToPath(new URL('terminal-recording-image-client.mjs', import.meta.url));
 const containers = new Set();
 
 function run(command, args, timeout = 30_000) {
@@ -170,7 +171,8 @@ function runGateway(challenge, secret, certificate, expectTlsFailure = false) {
   }
 }
 
-function runTerminalClient(challenge) {
+function runTerminalClient(challenge, recordingMode) {
+  const driver = recordingMode === undefined ? terminalDriver : recordingDriver;
   const name = 'opsreplay-gateway-terminal-' + randomUUID();
   const id = success(
     docker(
@@ -199,17 +201,18 @@ function runTerminalClient(challenge) {
       '--mount',
       `type=bind,src=${gatewayBundle},dst=/test/client.cjs,readonly`,
       '--mount',
-      `type=bind,src=${terminalDriver},dst=/test/terminal-image-client.mjs,readonly`,
+      `type=bind,src=${driver},dst=/test/terminal-image-client.mjs,readonly`,
       '--entrypoint',
       'node',
       monitorImage,
       '/test/terminal-image-client.mjs',
+      ...(recordingMode === undefined ? [] : [recordingMode]),
     ),
   );
   containers.add(name);
   try {
     assert.equal(id.length, 64);
-    const result = run('docker', ['start', '--attach', name], 30_000);
+    const result = run('docker', ['start', '--attach', name], recordingMode === undefined ? 30_000 : 60_000);
     return JSON.parse(success(result));
   } finally {
     removeContainer(name);
@@ -251,6 +254,36 @@ test('bundled gateway client controls the real Challenge terminal safely', { tim
     removeContainer(challenge);
   }
 });
+
+for (const mode of ['normal', 'loss']) {
+  test(`bundled terminal recording client reads the real PTY: ${mode}`, { timeout: 90_000 }, async () => {
+    const challenge = 'opsreplay-gateway-recording-shop-' + randomUUID();
+    try {
+      success(run('sh', [fileURLToPath(new URL('run-local.sh', challengePath)), challenge, challengeImage]));
+      containers.add(challenge);
+      await eventually(
+        () => exec(challenge, 'opsreplay-check-startup').status === 0,
+        'Challenge listeners did not start',
+      );
+      const result = runTerminalClient(challenge, mode);
+      assert.equal(result.mode, mode);
+      assert.equal(result.sourceStable, true);
+      assert.equal(result.exitCode, 7);
+      assert.ok(result.events > 1);
+      if (mode === 'normal') {
+        assert.equal(result.disconnectedOutput, true);
+        assert.equal(result.replayStable, true);
+        assert.equal(result.loss, null);
+      } else {
+        assert.equal(result.shellUsable, true);
+        assert.equal(result.prefixFrozen, true);
+        assert.equal(result.loss, 'limit_exceeded');
+      }
+    } finally {
+      removeContainer(challenge);
+    }
+  });
+}
 
 test('bundled gateway recorder resumes and seals the real monitor stream', { timeout: 150_000 }, async () => {
   const tls = temporaryTls('opsreplay-gateway-monitor-tls-');

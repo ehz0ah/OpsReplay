@@ -8,7 +8,7 @@ implements the wrong-upstream-port service stack and image tests. The
 and authenticated HTTPS control. A gateway controller can record, resume, and seal this
 monitor stream through an injected sink. The reference image has a private interactive
 terminal and a bounded read-only recording source. The gateway has a locally tested
-interactive client, admission, browser relay, composed process, and monitor storage
+interactive and recording clients, admission, browser relay, composed process, and monitor storage
 adapters. Terminal persistence, captures, lifecycle completion, and the public AWS path
 remain unimplemented or unvalidated. Numbers
 marked proposed are starting values to measure, not results. The full task and publication
@@ -276,7 +276,7 @@ reconnection. Connection limits are resource bounds, not an availability boundar
 monitor makes the recording incomplete and the attempt a platform error with no score.
 Stronger denial-of-service isolation requires a separate network trust boundary. The
 certificate delivery and task-address publication path is implemented locally but is
-not deployed. The gateway supervisor is not implemented.
+not deployed. The monitor recording supervisor is tested locally.
 
 **Untrusted files.** Watched files are written by a root learner. The monitor reads only
 regular files, never follows symbolic links, and caps the bytes it reads. Otherwise a
@@ -292,9 +292,9 @@ renewable recorder lease, proposed at 15 seconds with renewal every five seconds
 keeps reading the terminal and monitor after the browser disconnects. Gateway workers
 discover unclaimed or expired leases through the session work index. A replacement
 increments the recorder generation and resumes from saved cursors. The reference
-terminal now exposes the independent source described below. Gateway terminal reading,
-persistence, cutoff reconciliation, and combined terminal/monitor completion remain
-future integration. The current monitor-only completion is not proof of full playback.
+terminal now exposes the independent source described below. A read-only Gateway client
+validates and reads it locally. Terminal persistence, worker integration, cutoff
+reconciliation, and combined terminal/monitor completion remain future integration. The current monitor-only completion is not proof of full playback.
 Only the future recorder creates command events and requests captures. A browser may
 connect through another gateway copy, which proxies input and output without recording
 replay again.
@@ -337,7 +337,8 @@ bounds, not measured capacity for a four-hour session. Relevant loss makes the f
 combined recording incomplete with a null score under P09. See the
 [source decision](decisions/terminal-recording-source.md#lifetime-budget-and-consequence)
 for the budget and conditional durable-trimming requirements. Root can alter this
-source; the future Gateway must independently validate it.
+source; the [Gateway client](decisions/gateway-terminal-recording-client.md) validates
+wire data and continuity but cannot prove authenticity or complete capture.
 
 Lifecycle sealing is not added here. Future integration must apply the saved cutoff,
 advance a durable cursor only after commit, and wait for an observation strictly later
