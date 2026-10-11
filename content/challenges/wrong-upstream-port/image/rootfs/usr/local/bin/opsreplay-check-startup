@@ -1,14 +1,36 @@
 #!/usr/bin/python3
-"""Check initial listeners before learner access. This is not a liveness check."""
+"""Check initial listeners and a usable shell. This is not a liveness check."""
 
+import json
 import socket
 import sys
+import time
 
 for port in (80, 8080, 5432, 7681):
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=1):
-            pass
-    except OSError:
+        with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
+            if port == 7681:
+                connection.sendall(b'{"type":"attach","version":1,"mode":"recording"}\n')
+                data = bytearray()
+                deadline = time.monotonic() + 1
+                while b"\n" not in data:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ValueError("terminal metadata timed out")
+                    connection.settimeout(remaining)
+                    chunk = connection.recv(1024)
+                    if not chunk or len(data) + len(chunk) > 1024:
+                        raise ValueError("invalid terminal metadata")
+                    data.extend(chunk)
+                metadata = json.loads(bytes(data).split(b"\n", 1)[0])
+                if (
+                    not isinstance(metadata, dict)
+                    or metadata.get("type") != "recording_ready"
+                    or metadata.get("version") != 1
+                    or metadata.get("shellState") != "running"
+                ):
+                    raise ValueError("terminal shell is not running")
+    except (OSError, ValueError):
         sys.exit(f"Initial listener on port {port} is not ready.")
 
-print("Initial service listeners are ready.")
+print("Initial service listeners and terminal shell are ready.")

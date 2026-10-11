@@ -9,6 +9,7 @@ import test from 'node:test';
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
 const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
+const recordingTest = readFileSync(new URL('./recording.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
 const containers = new Set();
 
@@ -236,13 +237,35 @@ test('private terminal preserves one shell, fences stale input, and fails closed
   assert.equal(success(docker('inspect', '--format', '{{.State.Status}}', id)), 'running');
 });
 
-test('exiting the shell stops the terminal server without replacing the shell', async (t) => {
+test('terminal recording is independent, bounded, and leaves interactive input usable', async (t) => {
+  const id = await fresh(t);
+  success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: recordingTest, timeout: 45_000 }));
+  const logs = docker('logs', id);
+  assert.ok(!logs.stdout.includes('recording-away') && !logs.stderr.includes('recording-away'));
+});
+
+for (const mode of ['exit', 'flood']) {
+  test(`terminal recording preserves bounded post-exit access (${mode})`, async (t) => {
+    const id = await fresh(t);
+    success(
+      run('docker', ['exec', '--interactive', id, 'python3', '-', mode], { input: recordingTest, timeout: 20_000 }),
+    );
+    const started = Date.now();
+    success(exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'stop', 'terminal'));
+    assert.ok(Date.now() - started < 5_000, 'SIGTERM must not wait for recording grace');
+  });
+}
+
+test('exiting the shell stops the terminal server after read-only recording grace', async (t) => {
   const id = await fresh(t);
   success(terminal(id, 'shell-exit'));
-  await eventually(() => {
+  const deadline = Date.now() + 65_000;
+  while (true) {
     const status = exec(id, 'supervisorctl', '-c', '/etc/supervisor/supervisord.conf', 'status', 'terminal');
-    return /FATAL|EXITED/.test(status.stdout);
-  }, 'Terminal server remained active after its shell exited');
+    if (/FATAL|EXITED/.test(status.stdout)) break;
+    assert.ok(Date.now() < deadline, 'Terminal server exceeded its read-only recording grace');
+    await delay(500);
+  }
   assert.match(success(exec(id, 'cat', '/var/log/supervisor/terminal.log')), /Refusing to open a replacement shell/);
   const startup = exec(id, 'opsreplay-check-startup');
   assert.equal(startup.status, 1);

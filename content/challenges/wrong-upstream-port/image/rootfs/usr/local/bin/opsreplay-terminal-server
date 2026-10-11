@@ -23,6 +23,15 @@ import termios
 import threading
 import time
 
+from opsreplay_terminal_recording import (
+    INITIAL_COLUMNS,
+    INITIAL_ROWS,
+    MAX_READS_PER_SECOND,
+    MAX_REQUEST_BYTES,
+    POST_EXIT_SECONDS,
+    RecordingJournal,
+)
+
 
 PROTOCOL_VERSION = 1
 DEFAULT_PORT = 7681
@@ -42,6 +51,8 @@ MAX_TERMINAL_DIMENSION = 500
 STATE_DIRECTORY = "/run/opsreplay-terminal"
 STARTED_MARKER = f"{STATE_DIRECTORY}/started"
 SHELL_EXIT_PENDING = object()
+MAX_EXIT_TAIL_BYTES = MAX_REPLAY_BYTES
+EXIT_TAIL_SECONDS = 1
 
 
 class ProtocolError(Exception):
@@ -77,10 +88,10 @@ def integer(value, minimum, maximum):
     return value
 
 
-def read_master(master_fd):
+def read_master(master_fd, maximum_bytes=MAX_OUTPUT_BYTES):
     """Return bytes, b'' for EOF, or None when a non-blocking read would wait."""
     try:
-        return os.read(master_fd, MAX_OUTPUT_BYTES)
+        return os.read(master_fd, maximum_bytes)
     except BlockingIOError:
         return None
 
@@ -93,14 +104,16 @@ class Connection:
         self.send_lock = threading.Lock()
         self.closed = threading.Event()
         self.generation = None
+        self.last_frame_bytes = 0
 
-    def receive(self, timeout_seconds):
+    def receive(self, timeout_seconds, maximum_bytes=MAX_LINE_BYTES):
         deadline = time.monotonic() + timeout_seconds
         while True:
             newline = self.buffer.find(b"\n")
             if newline >= 0:
-                if newline + 1 > MAX_LINE_BYTES:
+                if newline + 1 > maximum_bytes:
                     raise ProtocolError("FRAME_TOO_LARGE")
+                self.last_frame_bytes = newline + 1
                 line = bytes(self.buffer[:newline])
                 del self.buffer[: newline + 1]
                 if not line:
@@ -112,7 +125,7 @@ class Connection:
                 if not isinstance(frame, dict):
                     raise ProtocolError("INVALID_FRAME")
                 return frame
-            if len(self.buffer) > MAX_LINE_BYTES:
+            if len(self.buffer) >= maximum_bytes:
                 raise ProtocolError("FRAME_TOO_LARGE")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -126,7 +139,7 @@ class Connection:
             if not readable:
                 raise ProtocolError("IDLE_TIMEOUT")
             try:
-                chunk = self.sock.recv(min(4096, MAX_LINE_BYTES + 1 - len(self.buffer)))
+                chunk = self.sock.recv(min(4096, maximum_bytes + 1 - len(self.buffer)))
             except BlockingIOError:
                 continue
             if not chunk:
@@ -206,10 +219,16 @@ class TerminalState:
         self.output_condition = threading.Condition(self.lock)
         self.shell_exit_code = None
         self.child_exit_code = None
+        self.child_exit_at = None
+        self.exit_tail_bytes = 0
         self.child_exit_detected = threading.Event()
         self.shell_exited = threading.Event()
+        self.recording_finalized = threading.Event()
+        self.recording = RecordingJournal()
         self.child_pid, self.master_fd = self._start_shell()
         os.set_blocking(self.master_fd, False)
+        self._set_size(self.master_fd, INITIAL_COLUMNS, INITIAL_ROWS)
+        self.recording.append("dimensions", columns=INITIAL_COLUMNS, rows=INITIAL_ROWS)
         self.reader = threading.Thread(target=self._read_output, name="terminal-pty-reader", daemon=True)
         self.sender = threading.Thread(target=self._send_output, name="terminal-output-sender", daemon=True)
         self.waiter = threading.Thread(target=self._wait_for_shell, name="terminal-shell-wait", daemon=True)
@@ -246,13 +265,18 @@ class TerminalState:
             self.replay_truncated = True
         self.replay.extend(data)
 
-    def _queue_output(self, event, byte_count):
+    def _queue_output(self, event, byte_count, deadline=None):
         with self.output_condition:
-            while not self.stopping.is_set() and (
+            while event[0] != "exit" and not self.stopping.is_set() and (
                 len(self.pending_output) >= MAX_PENDING_OUTPUT_FRAMES
                 or self.pending_output_bytes + byte_count > MAX_PENDING_OUTPUT_BYTES
             ):
-                self.output_condition.wait(timeout=0.5)
+                if deadline is None and self.child_exit_detected.is_set():
+                    deadline = self.child_exit_at + EXIT_TAIL_SECONDS
+                if deadline is not None and time.monotonic() >= deadline:
+                    self.recording.mark_loss("data_gap")
+                    return False
+                self.output_condition.wait(timeout=0.05 if deadline is not None else 0.5)
             if self.stopping.is_set():
                 return False
             self.pending_output.append((event, byte_count))
@@ -344,22 +368,46 @@ class TerminalState:
             except ChildProcessError:
                 self.child_exit_code = -1
                 break
-        self.child_exit_detected.set()
+        with self.recording.lock:
+            self.child_exit_at = time.monotonic()
+            if self.recording.shell_state == "running":
+                self.recording.shell_state = "exiting"
+            self.child_exit_detected.set()
+
+    def _observe_output(self):
+        with self.recording.lock:
+            maximum_bytes = MAX_OUTPUT_BYTES
+            if self.child_exit_detected.is_set():
+                if self.exit_tail_bytes >= MAX_EXIT_TAIL_BYTES or time.monotonic() >= self.child_exit_at + EXIT_TAIL_SECONDS:
+                    self.recording.mark_loss("data_gap")
+                    return b""
+                maximum_bytes = min(maximum_bytes, MAX_EXIT_TAIL_BYTES - self.exit_tail_bytes)
+            data = read_master(self.master_fd, maximum_bytes)
+            if data:
+                if self.child_exit_detected.is_set():
+                    self.exit_tail_bytes += len(data)
+                self.recording.bytes_event("output", data)
+            return data
 
     def _drain_output(self):
-        while True:
+        deadline = self.child_exit_at + EXIT_TAIL_SECONDS
+        while not self.stopping.is_set():
             try:
-                data = read_master(self.master_fd)
+                data = self._observe_output()
             except InterruptedError:
                 continue
             except OSError as error:
-                if error.errno in (errno.EBADF, errno.EIO):
+                if error.errno == errno.EIO:
                     return
-                self._finish_shell(-1)
+                self.recording.mark_loss("data_gap")
                 return
-            if data is None or not data:
+            if not data:
+                # A living background process can retain the slave after Bash exits.
+                if data is None:
+                    self.recording.mark_loss("data_gap")
                 return
-            if not self._queue_output(("output", data), len(data)):
+            if not self._queue_output(("output", data), len(data), deadline):
+                self.recording.mark_loss("data_gap")
                 return
 
     def _read_output(self):
@@ -372,7 +420,7 @@ class TerminalState:
                 readable, _, _ = select.select([self.master_fd], [], [], 0.5)
                 if not readable:
                     continue
-                data = read_master(self.master_fd)
+                data = self._observe_output()
                 if data is None:
                     continue
                 if not data:
@@ -384,16 +432,21 @@ class TerminalState:
                     break
                 if self.stopping.is_set() or error.errno == errno.EBADF:
                     return
+                self.recording.mark_loss("data_gap")
                 self._finish_shell(-1)
                 return
 
             if not self._queue_output(("output", data), len(data)):
+                if not self.stopping.is_set():
+                    self._finish_shell(self.child_exit_code)
                 return
 
         if self.stopping.is_set():
             return
         self.child_exit_detected.wait(timeout=0.5)
         exit_code = self.child_exit_code if self.child_exit_detected.is_set() else -1
+        if not self.child_exit_detected.is_set():
+            self.recording.mark_loss("data_gap")
         self._finish_shell(exit_code)
 
     def _finish_shell(self, exit_code):
@@ -401,6 +454,11 @@ class TerminalState:
             if self.shell_exit_code is not None:
                 return
             self.shell_exit_code = exit_code
+        with self.recording.lock:
+            self.recording.append("exit", code=exit_code)
+            self.recording.shell_state = "exited"
+        self.recording_finalized.set()
+        # One zero-byte control event may follow the bounded output queue.
         self._queue_output(("exit", exit_code), 0)
 
     @staticmethod
@@ -412,12 +470,16 @@ class TerminalState:
         sent = False
         with self.input_lock:
             with self.output_condition:
-                if self.shell_exit_code is not None:
+                if self.shell_exit_code is not None or self.child_exit_detected.is_set():
                     return "SHELL_EXITED"
                 if generation <= self.generation:
                     return "STALE_GENERATION"
                 try:
-                    self._set_size(self.master_fd, columns, rows)
+                    with self.recording.lock:
+                        if self.recording.shell_state != "running":
+                            return "SHELL_EXITED"
+                        self._set_size(self.master_fd, columns, rows)
+                        self.recording.append("dimensions", columns=columns, rows=rows)
                 except OSError:
                     return "SHELL_EXITED"
                 replaced = self.active
@@ -470,7 +532,7 @@ class TerminalState:
         return None
 
     def _validate_owner(self, connection, generation):
-        if self.shell_exit_code is not None:
+        if self.shell_exit_code is not None or self.child_exit_detected.is_set():
             if not self.shell_exited.is_set():
                 return SHELL_EXIT_PENDING
             return "SHELL_EXITED"
@@ -498,7 +560,12 @@ class TerminalState:
                 if not writable:
                     return "INPUT_UNCERTAIN"
                 try:
-                    written = os.write(master_fd, data[offset:])
+                    with self.recording.lock:
+                        if self.recording.shell_state != "running":
+                            return "INPUT_UNCERTAIN" if offset else SHELL_EXIT_PENDING
+                        written = os.write(master_fd, data[offset:])
+                        if written > 0:
+                            self.recording.bytes_event("input", data[offset : offset + written])
                 except BlockingIOError:
                     continue
                 except OSError:
@@ -515,7 +582,11 @@ class TerminalState:
                 if invalid is not None:
                     return invalid
                 try:
-                    self._set_size(self.master_fd, columns, rows)
+                    with self.recording.lock:
+                        if self.recording.shell_state != "running":
+                            return SHELL_EXIT_PENDING
+                        self._set_size(self.master_fd, columns, rows)
+                        self.recording.append("dimensions", columns=columns, rows=rows)
                 except OSError:
                     return "SHELL_EXITED"
         return None
@@ -560,11 +631,44 @@ class TerminalState:
 
 
 class TerminalHandler(socketserver.BaseRequestHandler):
+    @staticmethod
+    def record(connection, state, attach):
+        if connection.last_frame_bytes > MAX_REQUEST_BYTES:
+            raise ProtocolError("FRAME_TOO_LARGE")
+        exact_keys(attach, {"type", "version", "mode"})
+        integer(attach["version"], PROTOCOL_VERSION, PROTOCOL_VERSION)
+        if attach["type"] != "attach":
+            raise ProtocolError("INVALID_FRAME")
+        if not connection.send(state.recording.ready()):
+            return
+        reads = collections.deque()
+        while not state.stopping.is_set():
+            frame = connection.receive(IDLE_TIMEOUT_SECONDS, MAX_REQUEST_BYTES)
+            exact_keys(frame, {"type", "source", "after"})
+            if frame["type"] != "read" or not isinstance(frame["source"], str):
+                raise ProtocolError("INVALID_FRAME")
+            after = integer(frame["after"], 0, MAX_GENERATION)
+            now = time.monotonic()
+            while reads and now - reads[0] >= 1:
+                reads.popleft()
+            if len(reads) >= MAX_READS_PER_SECOND:
+                raise ProtocolError("RATE_LIMITED")
+            reads.append(now)
+            try:
+                page = state.recording.page(frame["source"], after)
+            except ValueError as error:
+                raise ProtocolError(str(error)) from error
+            if not connection.send(page):
+                return
+
     def handle(self):
         connection = Connection(self.request)
         state = self.server.terminal_state
         try:
             attach = connection.receive(ATTACH_TIMEOUT_SECONDS)
+            if attach.get("mode") == "recording":
+                self.record(connection, state, attach)
+                return
             exact_keys(attach, {"type", "version", "mode", "generation", "columns", "rows"})
             version = integer(attach["version"], PROTOCOL_VERSION, PROTOCOL_VERSION)
             if attach["type"] != "attach" or version != PROTOCOL_VERSION or attach["mode"] != "interactive":
@@ -700,8 +804,8 @@ def main():
                 threading.Thread(target=server.shutdown, name="terminal-shutdown", daemon=True).start()
 
             def stop_after_shell_exit():
-                state.shell_exited.wait()
-                if not stopped.is_set():
+                state.recording_finalized.wait()
+                if not stopped.wait(POST_EXIT_SECONDS):
                     server.shutdown()
 
             signal.signal(signal.SIGTERM, stop)

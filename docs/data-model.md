@@ -152,6 +152,20 @@ event does not append it twice. The final debrief uses the sealed set of referen
 not a fresh scan of the S3 prefix. Terminal outcomes with incomplete recording store a
 null score. They never substitute zero for missing counters.
 
+The reference terminal source now keeps one process-generated UUID, contiguous event
+sequences, and a nondestructive cursor. Its temporary journal retains at most
+20,000,000 serialized event bytes and 100,000 events. `limit_exceeded` or `data_gap`
+freezes the retained prefix and exposes the first loss time without inventing more
+sequences. It contains raw input/output, dimensions, and exit, not command events.
+This is separate from durable recording storage and does not consume a recorder lease.
+See the [terminal source decision](decisions/terminal-recording-source.md).
+
+Gateway terminal persistence is still absent. Its future checkpoint must save source,
+cursor, and immutable object references after commit, then reconcile the saved lifecycle
+cutoff. Full recording completion requires both terminal and monitor final cursors;
+the implemented monitor-only completion must be extended before readiness integration.
+The existing export cap remains independent of the source's encoded-byte cap.
+
 ## Bounds and retention
 
 DynamoDB has a 400 KB item limit. Proposed application limits, to validate with the
