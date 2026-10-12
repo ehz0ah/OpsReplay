@@ -154,17 +154,22 @@ async function main() {
     const terminalPages = [];
     const terminalSink = {
       begin: async (ready) => {
-        terminalCheckpoint = { schemaVersion: 1, metadata: ready, cursor: 0, frontier: null, recordedBytes: 0 };
+        const { type: _type, ...metadata } = ready;
+        terminalCheckpoint = { schemaVersion: 1, metadata, cursor: 0, frontier: null, recordedBytes: 0 };
         return terminalCheckpoint;
       },
       append: async (previous, page) => {
         assert.equal(page.events[0]?.sequence ?? previous.cursor + 1, previous.cursor + 1);
         terminalPages.push(structuredClone(page));
+        const { type: _type, events: _events, nextSequence: _next, ...metadata } = page;
         terminalCheckpoint = {
           ...previous,
-          metadata: page,
+          metadata,
           cursor: page.nextSequence,
           frontier: page.events.at(-1) ?? previous.frontier,
+          recordedBytes:
+            previous.recordedBytes +
+            page.events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0),
         };
         return terminalCheckpoint;
       },
