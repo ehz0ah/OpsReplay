@@ -89,7 +89,7 @@ async function fixture() {
     },
   } as unknown as S3Client;
   const client: CaptureClient = {
-    baseline: async () => ({ baselineAt: at, incomplete: false }),
+    baseline: async () => ({ baselineAt: at, incomplete: false, unavailable: false }),
     capture: async (request) => {
       calls++;
       return {
@@ -103,6 +103,7 @@ async function fixture() {
         logs: [],
         metrics: { at, values: { request_rate: 1 } },
         incomplete: false,
+        unavailable: false,
       } satisfies FileCapture;
     },
   };
@@ -273,6 +274,81 @@ test('exhausted and mixed capture conflicts are typed and do not advance the sav
     assert.equal((await f.get('CAPTURE_STATE')).cursor, 0);
     assert.equal(await f.get('CAPTURE#000001'), undefined);
   }
+});
+
+test('bounded incomplete capture excerpts do not reject an otherwise complete capture frontier', async () => {
+  const f = await fixture();
+  const signal = new AbortController().signal;
+  const terminal = initialTerminalCheckpoint(terminalReady({ startedAt: at, observedAt: at, source: f.source }));
+  const parser = { ...initialCommandParser(f.source), count: 2 };
+  await f.put('TERMINAL_RECORDING', terminal);
+  const client: CaptureClient = {
+    ...f.client,
+    capture: async (request) => ({
+      ...(await f.client.capture(request)),
+      logs: [{ path: '/var/log/nginx/access.log', lines: Array.from({ length: 200 }, () => 'request') }],
+      incomplete: true,
+    }),
+  };
+  const recorder = f.create(database.document, client);
+  await recorder.baseline(f.lease, signal);
+  await recorder.finish(f.lease, terminal, at, signal, parser);
+  assert.equal((await f.get('CAPTURE_COVERAGE')).captures.cursor, 2);
+  assert.equal((await f.get('CAPTURE#000001')).incomplete, true);
+});
+
+test('unavailable baselines, files, and metrics remain sticky and prevent capture coverage', async () => {
+  for (const kind of ['baseline', 'file', 'metric']) {
+    const f = await fixture();
+    const signal = new AbortController().signal;
+    const terminal = initialTerminalCheckpoint(terminalReady({ startedAt: at, observedAt: at, source: f.source }));
+    const parser = { ...initialCommandParser(f.source), count: 2 };
+    await f.put('TERMINAL_RECORDING', terminal);
+    const client: CaptureClient = {
+      baseline: async () => ({ baselineAt: at, incomplete: kind === 'baseline', unavailable: kind === 'baseline' }),
+      capture: async (request) => ({
+        ...(await f.client.capture(request)),
+        ...(request.commandSeq === 1 && kind !== 'baseline'
+          ? {
+              incomplete: true,
+              unavailable: true,
+              ...(kind === 'metric'
+                ? { metrics: null }
+                : { files: [{ path: '/etc/config', before: 'before', after: null }] }),
+            }
+          : {}),
+      }),
+    };
+    const recorder = f.create(database.document, client);
+    await recorder.baseline(f.lease, signal);
+    await assert.rejects(
+      recorder.finish(f.lease, terminal, at, signal, parser),
+      (error: unknown) => error instanceof TerminalRecordingStoreError && error.code === 'invalid_stream',
+    );
+    assert.equal((await f.get('CAPTURE_STATE')).unavailable, true);
+    assert.equal((await f.get('CAPTURE_STATE')).cursor, 2);
+    assert.equal(await f.get('CAPTURE_COVERAGE'), undefined);
+  }
+});
+
+test('concurrent bounded captures publish one canonical cursor and warning', async () => {
+  const f = await fixture();
+  const signal = new AbortController().signal;
+  const client: CaptureClient = {
+    ...f.client,
+    capture: async (request) => ({ ...(await f.client.capture(request)), incomplete: true }),
+  };
+  const recorder = f.create(database.document, client);
+  await recorder.baseline(f.lease, signal);
+  await Promise.all([recorder.collect(f.lease, signal), recorder.collect(f.lease, signal)]);
+  const state = await f.get('CAPTURE_STATE');
+  assert.equal(state.cursor, 2);
+  assert.equal(state.incomplete, true);
+  assert.equal(state.unavailable, false);
+  assert.equal(
+    state.retainedBytes,
+    [...f.objects.values()].reduce((sum, bytes) => sum + bytes.length, 0),
+  );
 });
 
 test('final captures save exact task-independent coverage before terminal sealing', async () => {

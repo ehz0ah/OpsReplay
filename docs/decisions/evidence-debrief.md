@@ -45,8 +45,11 @@ prove understanding, authentic execution, or causality.
 
 Only manifest-declared config and log paths are read. A Linux descriptor-anchored
 walk holds each parent and uses NOFOLLOW, DIRECTORY, and NONBLOCK flags. Links,
-directories, FIFOs, missing files, invalid UTF-8, and bounds produce incomplete
-evidence, never access to another Monitor path. Configuration observations store
+directories, FIFOs, missing files, invalid UTF-8, and read-budget expiry produce
+unavailable evidence, never access to another Monitor path. `unavailable` implies
+`incomplete` and blocks complete recording. Byte, line, and aggregate excerpt bounds
+produce only an `incomplete` warning. They do not remove a score derived from
+complete terminal and Monitor evidence. Configuration observations store
 bounded before/after blocks. This replaces the proposed unified-diff wire format:
 a renderer can show the same blocks as a diff without an extra diff algorithm.
 New log lines and a timestamped Monitor metric sample accompany each capture.
@@ -56,7 +59,11 @@ The baseline precedes readiness. Monitor serialises captures, not terminal input
 and saves duplicate request receipts. `baselineAt` is the previous read start;
 `startedAt` and `completedAt` describe the current read. Later commands and
 background processes can change files throughout this interval. Log rotation or
-truncation can lose unread lines and marks incomplete evidence. A shared four-second
+truncation can lose unread lines and marks the interval incomplete, not unavailable.
+After a bounded excerpt, the next log cursor starts at the observed file end. The
+omitted tail stays part of the warned interval, not a later command's capture.
+A byte-bound split UTF-8 tail is omitted without replacing invalid interior bytes.
+Gateway keeps both warning and availability summaries sticky. A shared four-second
 read budget is checked between filesystem operations and after each read. Expiry
 omits evidence and marks it incomplete. The six-second HTTP deadline closes the
 response, but neither deadline cancels a kernel filesystem operation already in
@@ -87,6 +94,13 @@ receipts and captures; 16 KiB per command event and watched file; 4,000 characte
 per command/excerpt; 20 paths; 200 new lines per log; 256 KiB per capture. The
 command publication uses at most 20 commands and 256 KiB per batch, not per source
 page. Actual total-limit omission marks loss, not a silently complete result.
+
+Private baseline, capture objects, and saved capture state now require an explicit
+`unavailable` flag. References retain their existing `incomplete` warning field.
+These unpublished contracts change together. No deployed data needs migration.
+Do not mix old and new Monitor/Gateway versions or downgrade over active captures.
+Old records without the flag fail closed rather than guessing whether loss was
+ordinary truncation or unsafe evidence.
 
 ## Environment publication prerequisite
 

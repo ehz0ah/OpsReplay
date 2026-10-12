@@ -66,6 +66,15 @@ async function main() {
     const large = await readWatchedFile(root, '/etc/large');
     assert.equal(large.incomplete, true);
     assert.equal(large.text?.length, 16_384);
+    assert.equal(large.unavailable, false);
+    // The byte cap may split a multi-byte character, but never invalid interior bytes.
+    await writeFile(root + '/etc/utf8', 'x'.repeat(16_383) + '😀tail');
+    const utf8 = await readWatchedFile(root, '/etc/utf8');
+    assert.equal(utf8.text, 'x'.repeat(16_383));
+    assert.equal(utf8.incomplete, true);
+    assert.equal(utf8.unavailable, false);
+    await writeFile(root + '/etc/invalid', Buffer.from([0x61, 0xff, 0x62]));
+    assert.equal((await readWatchedFile(root, '/etc/invalid')).unavailable, true);
     await appendFile(root + '/etc/log', Array.from({ length: 201 }, () => 'line\n').join(''));
     const truncated = await captures.capture({ commandId: randomUUID(), commandSeq: 3 });
     assert.equal(truncated.incomplete, true);
@@ -79,6 +88,46 @@ async function main() {
     const shortened = await captures.capture({ commandId: randomUUID(), commandSeq: 5 });
     assert.equal(shortened.incomplete, true);
     assert.deepEqual(shortened.logs, [{ path: '/etc/log', lines: ['x'] }]);
+
+    assert.equal(truncated.unavailable, false);
+    assert.equal(rotated.unavailable, false);
+    assert.equal(shortened.unavailable, false);
+    await appendFile(root + '/etc/log', ('large ' + 'x'.repeat(100) + '\n').repeat(300));
+    const burst = await captures.capture({ commandId: randomUUID(), commandSeq: 6 });
+    assert.equal(burst.incomplete, true);
+    assert.equal(burst.unavailable, false);
+    await appendFile(root + '/etc/log', 'next interval\n');
+    const fresh = await captures.capture({ commandId: randomUUID(), commandSeq: 7 });
+    assert.deepEqual(fresh.logs, [{ path: '/etc/log', lines: ['next interval'] }]);
+    assert.equal(fresh.incomplete, false);
+    await rm(root + '/etc/log');
+    const missing = await captures.capture({ commandId: randomUUID(), commandSeq: 8 });
+    assert.equal(missing.incomplete, true);
+    assert.equal(missing.unavailable, true);
+    for (const path of ['/etc/link', '/parent/secret', '/missing', '/etc/directory', '/etc/fifo'])
+      assert.equal((await readWatchedFile(root, path)).unavailable, true);
+    assert.equal(expired.unavailable, true);
+    const unsafeBaseline = new FileCaptures({ configs: ['/etc/link'], logs: [] }, root);
+    assert.equal((await unsafeBaseline.baseline()).unavailable, true);
+    const absentMetric = new FileCaptures({ configs: [], logs: [] }, root);
+    await absentMetric.baseline();
+    assert.equal((await absentMetric.capture({ commandId: randomUUID(), commandSeq: 1 })).unavailable, true);
+    // Per-file and aggregate excerpt bounds are warnings even for a large baseline.
+    const paths = Array.from({ length: 20 }, (_, index) => `/etc/config-${index}`);
+    for (const path of paths) await writeFile(root + path, 'a'.repeat(20_000));
+    const aggregate = new FileCaptures(
+      { configs: paths, logs: [] },
+      root,
+      () => new Date(3000 + time++).toISOString(),
+      () => ({ at: new Date(3000 + time++).toISOString(), values: { request_rate: 1 } }),
+    );
+    assert.deepEqual((await aggregate.baseline()).unavailable, false);
+    for (const path of paths) await writeFile(root + path, 'b'.repeat(20_000));
+    const bounded = await aggregate.capture({ commandId: randomUUID(), commandSeq: 1 });
+    assert.equal(bounded.incomplete, true);
+    assert.equal(bounded.unavailable, false);
+    assert.ok(bounded.files.length < paths.length);
+    assert.ok(Buffer.byteLength(JSON.stringify(bounded)) <= 256 * 1024);
 
     // Replace an ancestor while reads are in progress. Each result must be a
     // held-directory observation or incomplete, never the linked Monitor path.

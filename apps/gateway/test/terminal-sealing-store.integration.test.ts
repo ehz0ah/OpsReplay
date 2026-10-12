@@ -121,11 +121,12 @@ async function coverageFixture() {
   const parser = { ...initialCommandParser(f.checkpoint.metadata.source), cursor: f.checkpoint.cursor };
   const captures = {
     schemaVersion: 1,
-    baseline: { baselineAt: at(0), incomplete: false },
+    baseline: { baselineAt: at(0), incomplete: false, unavailable: false },
     cursor: 0,
     sequence: 0,
     retainedBytes: 0,
     incomplete: false,
+    unavailable: false,
   };
   await f.put('COMMAND_PARSER', parser);
   await f.put('CAPTURE_STATE', captures);
@@ -148,6 +149,12 @@ test('coverage uses the saved cutoff proof when the terminal clock leads the Gat
     metadata: { ...f.checkpoint.metadata, observedAt: at(3.25) },
   };
   await f.put('TERMINAL_RECORDING', checkpoint);
+  const captures = (
+    await database.document.send(
+      new GetCommand({ TableName: f.table, Key: f.key('CAPTURE_COVERAGE'), ConsistentRead: true }),
+    )
+  ).Item!.data;
+  await f.put('CAPTURE_COVERAGE', { ...captures, terminal: checkpoint });
   const coverage = await f.leases.cover(f.lease, f.value, f.monitor, checkpoint, at(1.75));
   assert.deepEqual(coverage.terminal, checkpoint);
   assert.equal(coverage.coveredAt, at(1.75));

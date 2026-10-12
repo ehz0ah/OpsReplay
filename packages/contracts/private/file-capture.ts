@@ -39,11 +39,15 @@ export interface FileCapture {
   files: { path: string; before: string | null; after: string | null }[];
   logs: { path: string; lines: string[] }[];
   metrics: CaptureMetricSample | null;
+  /** The interval is a bounded excerpt or has unavailable evidence. */
   incomplete: boolean;
+  /** A required read or metric is missing or unsafe, not merely truncated. */
+  unavailable: boolean;
 }
 export interface CaptureBaseline {
   baselineAt: string;
   incomplete: boolean;
+  unavailable: boolean;
 }
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -73,9 +77,11 @@ export function isCaptureRequest(value: unknown): value is CaptureRequest {
 export function isCaptureBaseline(value: unknown): value is CaptureBaseline {
   return (
     record(value) &&
-    exact(value, ['baselineAt', 'incomplete']) &&
+    exact(value, ['baselineAt', 'incomplete', 'unavailable']) &&
     isMonitorControlTimestamp(value.baselineAt) &&
-    typeof value.incomplete === 'boolean'
+    typeof value.incomplete === 'boolean' &&
+    typeof value.unavailable === 'boolean' &&
+    (!value.unavailable || value.incomplete)
   );
 }
 export function isFileCapture(value: unknown): value is FileCapture {
@@ -93,6 +99,7 @@ export function isFileCapture(value: unknown): value is FileCapture {
       'logs',
       'metrics',
       'incomplete',
+      'unavailable',
     ]) ||
     value.schemaVersion !== 1 ||
     !isCaptureRequest({ commandId: value.commandId, commandSeq: value.commandSeq }) ||
@@ -105,8 +112,10 @@ export function isFileCapture(value: unknown): value is FileCapture {
     value.baselineAt > value.startedAt ||
     value.startedAt > value.completedAt ||
     typeof value.incomplete !== 'boolean' ||
+    typeof value.unavailable !== 'boolean' ||
+    (value.unavailable && !value.incomplete) ||
     (value.metrics === null
-      ? !value.incomplete
+      ? !value.unavailable
       : !validMetric(value.metrics) ||
         !isMonitorControlTimestamp(value.metrics.at) ||
         value.metrics.at > value.completedAt) ||
@@ -127,7 +136,8 @@ export function isFileCapture(value: unknown): value is FileCapture {
         exact(v, ['path', 'before', 'after']) &&
         isWatchedPath(v.path) &&
         content(v.before) &&
-        content(v.after),
+        content(v.after) &&
+        ((v.before !== null && v.after !== null) || value.unavailable),
     ) &&
     value.logs.every(
       (v) =>

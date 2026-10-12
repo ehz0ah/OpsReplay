@@ -1044,8 +1044,8 @@ export class DynamoMonitorRecordingStore
         parser.cursor !== terminal.Item.data.cursor ||
         (parser.lossAt !== null && parser.lossAt <= value.cutoffAt) ||
         !isCaptureState(captures) ||
-        captures.incomplete ||
-        captures.baseline.incomplete ||
+        captures.unavailable ||
+        captures.baseline.unavailable ||
         captures.sequence !== captures.cursor ||
         captures.cursor < (isCommandParserCheckpoint(sealedParser) ? sealedParser.count : 0)
       )

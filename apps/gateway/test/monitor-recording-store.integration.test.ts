@@ -64,11 +64,12 @@ async function seedCommandEvidence(f: Fixture, terminalSource: string, cursor: n
     { PK: `SESSION#${f.sessionId}`, SK: 'CAPTURE_STATE' },
     {
       schemaVersion: 1,
-      baseline: { baselineAt: now, incomplete: false },
+      baseline: { baselineAt: now, incomplete: false, unavailable: false },
       cursor: 0,
       sequence: 0,
       retainedBytes: 0,
       incomplete: false,
+      unavailable: false,
     },
   );
 }
@@ -856,7 +857,7 @@ test('parser loss, missing sealed parser, capture loss and cutoff-open backlog p
     ['SEALED_COMMAND_PARSER', { source: randomUUID() }],
     ['SEALED_COMMAND_PARSER', { mode: 'osc', control: '133;C;' }],
     ['SEALED_COMMAND_PARSER', { utf8Tail: '8A==' }],
-    ['CAPTURE_STATE', { incomplete: true }],
+    ['CAPTURE_STATE', { incomplete: true, unavailable: true }],
     ['SEALED_COMMAND_PARSER', { count: 1 }],
   ] as const) {
     const f = await combinedFixture();
