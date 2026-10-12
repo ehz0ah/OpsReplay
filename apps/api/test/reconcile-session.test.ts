@@ -99,6 +99,29 @@ test('sweep saves progress before work and limits concurrent session checks to f
   assert.deepEqual(seen, ids);
 });
 
+test('pending playback is a normal reconcile and sweep result, not a Lambda failure', async () => {
+  const id = randomUUID();
+  const logs: { result: string }[] = [];
+  await createReconcileHandler({
+    reconcile: async () => 'playback_pending',
+    taskSession: async () => false,
+    log: (value) => logs.push(value),
+  })({ sessionId: id }, context);
+  await createSessionSweep({
+    client: {
+      send: async (command: GetCommand | QueryCommand | PutCommand) =>
+        command instanceof QueryCommand ? { Items: [{ PK: `SESSION#${id}`, SK: 'LIFECYCLE' }] } : {},
+    } as unknown as DynamoDBDocumentClient,
+    table: 'test-table',
+    reconcile: async () => 'playback_pending',
+    report: (value) => logs.push(value),
+  })({}, context);
+  assert.deepEqual(
+    logs.map((value) => value.result),
+    ['playback_pending', 'playback_pending'],
+  );
+});
+
 test('invalid sweep cursors and expired invocation budgets cannot reach session work', async () => {
   let queries = 0;
   const client = {

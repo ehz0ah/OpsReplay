@@ -12,6 +12,10 @@ import {
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { PlaybackExporter } from '../../../packages/session/src/playback-export.js';
+import { DynamoFinaliseStore } from '../../../packages/session/src/finalise-store.js';
+import { DynamoAttemptStore } from '../../../packages/session/src/attempt-store.js';
+import { createReconcileSession } from '../src/session-lifecycle/reconcile.js';
+import { LifecycleStore } from '../src/session-lifecycle/store.js';
 import {
   isPlaybackExportState,
   isPlaybackReference,
@@ -152,6 +156,140 @@ test('long exports resume forward from the saved checkpoint and bound each pass'
   assert.equal(completedRow.Item!.WorkPK, undefined);
   assert.deepEqual(completedRow.Item!.data, f.lifecycle);
 });
+test('reconciliation publishes results before bounded export passes and reports pending as normal work', async () => {
+  const f = await fixture(false, 45);
+  const active = { PK: `USER#${f.session.ownerId}`, SK: 'ACTIVE' };
+  await database.document.send(
+    new PutCommand({ TableName: f.table, Item: { ...active, data: { sessionId: f.id, requestId: randomUUID() } } }),
+  );
+  const finaliser = new DynamoFinaliseStore(database.document, f.table);
+  let results = 0;
+  const reconcile = createReconcileSession({
+    sessions: {
+      session: (id, signal) => new LifecycleStore(database.document, f.table).session(id, signal),
+      saveTask: async () => {
+        throw new Error('Cleanup already confirmed.');
+      },
+    },
+    attempts: new DynamoAttemptStore(database.document, f.table),
+    environment: {
+      findActive: async () => {
+        throw new Error('Task already stopped.');
+      },
+      describe: async () => {
+        throw new Error('Task already stopped.');
+      },
+      stop: async () => {
+        throw new Error('Task already stopped.');
+      },
+    },
+    schedules: { ensure: async () => {}, delete: async () => {} },
+    finalise: async (session, signal) => {
+      if (await finaliser.saved(f.id, signal)) return;
+      results++;
+      await finaliser.commit(session, f.debrief, signal);
+    },
+    preparePlayback: async (session, signal) => {
+      assert.ok(await finaliser.saved(f.id, signal));
+      const lock = await database.document.send(new GetCommand({ TableName: f.table, Key: active }));
+      assert.equal(lock.Item, undefined);
+      return f.exporter.prepare(session, signal);
+    },
+    now: () => new Date(playbackEnd),
+  });
+  assert.equal(await reconcile(f.id), 'playback_pending');
+  assert.equal((await f.get('PLAYBACK_EXPORT')).terminalCursor, 20);
+  assert.equal(await reconcile(f.id), 'playback_pending');
+  assert.equal(await reconcile(f.id), 'cleaned');
+  assert.equal(results, 1);
+  const progress = await database.document.send(
+    new GetCommand({ TableName: f.table, Key: { PK: active.PK, SK: 'PROGRESS#wrong-upstream-port' } }),
+  );
+  assert.deepEqual(progress.Item?.data, { completedAttempts: 1 });
+});
+
+test('interrupted and lost continuation writes retain discovery and exact retry receipts', async () => {
+  for (const lost of [false, true]) {
+    const f = await fixture(false, 45);
+    await new DynamoFinaliseStore(database.document, f.table).commit(f.session, f.debrief);
+    let interrupted = false;
+    const client = {
+      send: async (command: any, options: any) => {
+        const continuation =
+          command instanceof TransactWriteCommand &&
+          command.input.TransactItems?.some((item) => item.Put?.Item?.SK === 'LIFECYCLE_HINT#playback');
+        if (continuation && !interrupted) {
+          interrupted = true;
+          if (lost) await database.document.send(command, options);
+          throw new Error('Continuation interrupted.');
+        }
+        return database.document.send(command, options);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const exporter = new PlaybackExporter(client, f.table, f.s3, 'test-recordings', () => Date.parse(playbackEnd));
+    if (lost) assert.equal(await exporter.prepare(f.session), false);
+    else await assert.rejects(exporter.prepare(f.session), /Continuation interrupted/);
+    assert.equal((await f.get('PLAYBACK_EXPORT')).terminalCursor, 20);
+    const work = await database.document.send(
+      new GetCommand({ TableName: f.table, Key: { PK: `SESSION#${f.id}`, SK: 'LIFECYCLE' } }),
+    );
+    assert.equal(work.Item?.WorkPK, 'LIFECYCLE');
+    assert.ok(await f.get('DEBRIEF'));
+    assert.equal(await f.exporter.prepare(f.session), false);
+    assert.equal(await f.exporter.prepare(f.session), true);
+  }
+});
+
+test('stale continuation cannot restore discovery after another exporter completes', async () => {
+  const f = await fixture(false, 25);
+  let raced = false;
+  const client = {
+    send: async (command: any, options: any) => {
+      if (
+        !raced &&
+        command instanceof TransactWriteCommand &&
+        command.input.TransactItems?.some((item) => item.Put?.Item?.SK === 'LIFECYCLE_HINT#playback')
+      ) {
+        raced = true;
+        assert.equal(await f.exporter.prepare(f.session), true);
+      }
+      return database.document.send(command, options);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const exporter = new PlaybackExporter(client, f.table, f.s3, 'test-recordings', () => Date.parse(playbackEnd));
+  assert.equal(await exporter.prepare(f.session), true);
+  assert.equal(raced, true);
+  const row = await database.document.send(
+    new GetCommand({ TableName: f.table, Key: { PK: `SESSION#${f.id}`, SK: 'LIFECYCLE' } }),
+  );
+  assert.equal(row.Item?.WorkPK, undefined);
+});
+
+test('pure transaction contention retries the exact export request without duplicate progress', async () => {
+  const f = await fixture();
+  let first: TransactWriteCommand | undefined;
+  let conflicts = 0;
+  const client = {
+    send: async (command: any, options: any) => {
+      if (command instanceof TransactWriteCommand && conflicts < 2) {
+        first ??= command;
+        assert.equal(command, first);
+        conflicts++;
+        throw Object.assign(new Error('Contended.'), { name: 'TransactionConflictException' });
+      }
+      return database.document.send(command, options);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  assert.equal(
+    await new PlaybackExporter(client, f.table, f.s3, 'test-recordings', () => Date.parse(playbackEnd)).prepare(
+      f.session,
+    ),
+    true,
+  );
+  assert.equal(conflicts, 2);
+  assert.equal((await f.get('PLAYBACK_EXPORT')).terminalCount, 2);
+});
+
 test('upload failure leaves source frontier unacknowledged and conditional conflicts retry once', async () => {
   const failed = await fixture();
   failed.fail();

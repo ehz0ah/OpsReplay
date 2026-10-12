@@ -84,13 +84,11 @@ export function createGetPlaybackHandler(
       const retention = Date.parse(recording.retainUntil!);
       if (now() >= retention) throw new ResultReadError('RECORDING_EXPIRED');
       const exportState = await store.get(id, 'PLAYBACK_EXPORT', signal);
-      if (
-        !isPlaybackExportState(exportState) ||
-        !exportState.complete ||
-        exportState.cutoffAt !== session.view.endedAt ||
-        exportState.unavailable !== null
-      )
-        throw new ResultReadError('PLAYBACK_PENDING');
+      if (exportState === undefined) throw new ResultReadError('PLAYBACK_PENDING');
+      if (!isPlaybackExportState(exportState) || exportState.cutoffAt !== session.view.endedAt)
+        throw new Error('Invalid playback export state.');
+      if (!exportState.complete) throw new ResultReadError('PLAYBACK_PENDING');
+      if (exportState.unavailable !== null) throw new Error('Playback export is unavailable.');
       const terminalSource = await store.get(
         id,
         recording.status === 'complete' ? 'TERMINAL_SEAL' : 'TERMINAL_RECORDING',

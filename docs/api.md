@@ -290,11 +290,14 @@ Responses are `no-store`; logs contain only operation, correlation ID, result, a
 The timeline lists events in time order, during and after the attempt. It contains the
 learner's own command text and bounded output excerpts, Monitor signals, and lifecycle
 events. The reserved assistance-event reader has no hint or assistant writer yet. It
-never contains validator or probe definitions. Live pages are provisional. A source
-change invalidates an existing cursor; request the first page again. Terminal sessions
+never contains validator or probe definitions. Live pages are provisional. Their cursors
+bind the session, readiness and source identity, then seek after the last `(at, id)`.
+Ordinary appends and lease changes do not invalidate them. Empty polls retain the cursor.
+A readiness/source change or the switch to final paging requires a first-page restart.
+Late provisional events at or before the cursor, or updates to an already returned active
+command, require a refresh. Final pages retain strict snapshot binding. Terminal sessions
 require a saved debrief. Timeline responses contain at most 100 events and 240 KiB of
-event data. Each page rereads the bounded command and event history to sort and fix its
-snapshot. This cost is not a constant-time read and needs checkpoint measurement.
+event data. Each page rereads the bounded command and event history to sort it. This cost is not a constant-time read and needs checkpoint measurement.
 At recording expiry the timeline returns `410 RECORDING_EXPIRED`; the debrief remains.
 
 The finaliser computes the debrief once, after the session reaches an outcome and the
@@ -304,7 +307,10 @@ and `409 DEBRIEF_PENDING` with `retryAfterSeconds` while it runs. A session that
 became ready has no debrief and returns `404`. See
 [Challenge environments](challenges.md) for the derivation.
 
-`GET /v1/sessions/{id}/playback` is available with the debrief. It returns pre-signed
+The debrief, highlights, progress and matching-lock release commit without waiting for
+playback exports. `GET /v1/sessions/{id}/playback` returns `409 PLAYBACK_PENDING` with
+`retryAfterSeconds: 3` until the independent export completes. Missing or corrupt source
+objects remain integrity failures, not normal pending. Once ready, it returns pre-signed
 S3 GET URLs for terminal recording chunks, metric chunks, and eligible saved captures,
 plus the saved highlights. `limit` is 1 to 25, default 25. Each page scans at most that
 many reference rows in metrics, terminal, then capture order. An ineligible post-cutoff

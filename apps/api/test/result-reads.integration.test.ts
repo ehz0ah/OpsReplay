@@ -133,11 +133,11 @@ async function fixture(pages = 2, complete = false) {
       return `https://test.invalid/${encodeURIComponent(key)}?signed=true`;
     },
   };
+  await new DynamoFinaliseStore(database.document, table).commit(f.session, f.debrief);
   const exporter = new PlaybackExporter(database.document, table, s3, 'test-recordings', () => clock);
   while (!(await exporter.prepare(f.session))) {
     /* bounded passes */
   }
-  await new DynamoFinaliseStore(database.document, table).commit(f.session, f.debrief);
   const store = new ResultReader(client, table);
   const logs: unknown[] = [];
   const debrief = createGetDebriefHandler(store, (value) => logs.push(value));
@@ -262,6 +262,35 @@ test('pending playback has its own response and does not hide the saved debrief'
   assert.equal(f.signs.length, 0);
 });
 
+test('corrupt export state returns an integrity error rather than normal pending', async () => {
+  const f = await fixture();
+  await f.put('PLAYBACK_EXPORT', { complete: false });
+  const response = await f.call('playback');
+  assert.equal(response.statusCode, 500);
+  assert.equal(JSON.parse(response.body).code, 'INTERNAL_ERROR');
+  assert.equal((await f.call('debrief')).statusCode, 200);
+  assert.equal(f.objectReads.length, 0);
+  assert.equal(f.signs.length, 0);
+});
+
+test('final timeline cursors reject a changed result snapshot', async () => {
+  const f = await fixture();
+  const first = await f.call('timeline', { limit: '1' });
+  assert.equal(first.statusCode, 200, first.body);
+  const cursor = JSON.parse(first.body).nextCursor;
+  assert.ok(cursor);
+  await f.put('EVENT#0000000000000#hint#1', {
+    id: 'hint-one',
+    at: playbackAt,
+    kind: 'assistance',
+    action: 'hint_released',
+    refId: 'hint-1',
+  });
+  const response = await f.call('timeline', { cursor });
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).code, 'INVALID_CURSOR');
+});
+
 test('expired recording creates no links, while the saved debrief and grant remain readable', async () => {
   const f = await fixture();
   f.clock(Date.parse(f.recording.retainUntil!));
@@ -370,11 +399,12 @@ test('capture eligibility follows command cutoff and preserves the actual drain 
     }
     await f.put('CAPTURE_STATE', {
       schemaVersion: 1,
-      baseline: { baselineAt, incomplete: false },
+      baseline: { baselineAt, incomplete: false, unavailable: false },
       cursor: 2,
       sequence: 2,
       retainedBytes: 1000,
       incomplete: false,
+      unavailable: false,
     });
     const first = await f.call('playback');
     assert.equal(first.statusCode, 200, first.body);
@@ -400,11 +430,12 @@ test('capture eligibility follows command cutoff and preserves the actual drain 
     const cursor = JSON.parse((await f.call('playback', { limit: '1' })).body).nextCursor;
     await f.put('CAPTURE_STATE', {
       schemaVersion: 1,
-      baseline: { baselineAt, incomplete: false },
+      baseline: { baselineAt, incomplete: false, unavailable: false },
       cursor: 2,
       sequence: 2,
       retainedBytes: 1001,
       incomplete: false,
+      unavailable: false,
     });
     assert.equal((await f.call('playback', { cursor })).statusCode, 400);
   }
