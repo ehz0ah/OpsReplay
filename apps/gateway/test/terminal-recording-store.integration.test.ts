@@ -190,6 +190,31 @@ test('does not mistake an uncommitted transport failure for a durable acknowledg
   assert.equal((await f.chunks()).length, 0);
 });
 
+test('pure transaction conflicts retry begin and commit in place with the same token', async () => {
+  const f = await fixture();
+  const attempts = new Map<string, number>();
+  const retrying = wrappedStore(f, async (command, options) => {
+    if (command instanceof TransactWriteCommand) {
+      const token = command.input.ClientRequestToken!;
+      const count = (attempts.get(token) ?? 0) + 1;
+      attempts.set(token, count);
+      if (count === 1)
+        throw Object.assign(new Error('Contention'), {
+          name: 'TransactionCanceledException',
+          CancellationReasons: command.input.TransactItems!.map((_, index) => ({
+            Code: index === 0 ? 'TransactionConflict' : 'None',
+          })),
+        });
+    }
+    return send(command, options);
+  });
+  const initial = await retrying.begin(f.lease, terminalReady(), now);
+  await retrying.commit(f.lease, initial, f.page, f.reference, at(1));
+  assert.deepEqual([...attempts.values()], [2, 2]);
+  assert.equal((await f.leases.get(f.sessionId))?.generation, 1);
+  assert.equal((await f.chunks()).length, 1);
+});
+
 test('empty reads commit only metadata and cannot acknowledge missing events', async () => {
   const f = await fixture();
   const initial = await f.store.begin(f.lease, terminalReady(), now);

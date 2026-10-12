@@ -7,6 +7,7 @@ import {
   PutCommand,
   ScanCommand,
   TransactWriteCommand,
+  UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 import {
@@ -200,6 +201,48 @@ test('claims a session, saves a start, and atomically advances a chunk cursor', 
   const chunks = (await f.rows()).filter((row) => String(row.SK).startsWith('CHUNK#'));
   assert.equal(chunks.length, 1);
   assert.deepEqual((chunks[0]!.data as { reference: unknown }).reference, page);
+});
+
+test('retries renewal and append contention without replacing the recorder generation', async () => {
+  const f = await fixture();
+  const lease = (await claim(f)).lease;
+  await f.store.begin(lease, startedAt, startedAt);
+  const counts = new Map<unknown, number>();
+  const retrying = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof UpdateCommand || command instanceof TransactWriteCommand) {
+          const count = (counts.get(command) ?? 0) + 1;
+          counts.set(command, count);
+          if (count === 1)
+            throw Object.assign(new Error('Contention'), {
+              name: command instanceof UpdateCommand ? 'TransactionConflictException' : 'TransactionCanceledException',
+              CancellationReasons: [{ Code: 'TransactionConflict' }, { Code: 'None' }],
+            });
+        }
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  await retrying.renew(lease, '2026-10-07T00:00:02.000Z', 5_000);
+  await retrying.append(lease, startedAt, reference(f.sessionId, 1, 'live'), '2026-10-07T00:00:03.000Z');
+  assert.deepEqual([...counts.values()], [2, 2]);
+  assert.equal((await f.store.get(f.sessionId))?.generation, 1);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+});
+
+test('fenced incomplete publication rejects an old recorder after takeover', async () => {
+  const f = await fixture();
+  const lease = (await claim(f)).lease;
+  await f.store.begin(lease, startedAt, startedAt);
+  await setDraining(f, lease);
+  await claim(f, 'replacement', '2026-10-07T00:00:05.000Z');
+  await assert.rejects(
+    f.store.markIncomplete(f.sessionId, 'data_gap', '2026-10-07T00:00:06.000Z', undefined, lease),
+    storeError('stale_lease'),
+  );
+  assert.equal((await f.store.get(f.sessionId))?.status, 'draining');
 });
 
 test('allows only one concurrent recorder claim', async () => {

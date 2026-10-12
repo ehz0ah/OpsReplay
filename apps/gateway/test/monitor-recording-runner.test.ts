@@ -248,6 +248,11 @@ class MemoryRecordingStore implements MonitorRecordingLeaseStore, MonitorRecordi
     this.state = initial === undefined ? undefined : clone(initial);
   }
 
+  async markIncomplete(_id: string, reason: string): Promise<void> {
+    assert.ok(this.state);
+    this.state = { ...this.state, status: 'incomplete', reason, recorderId: null, leaseExpiresAt: null };
+  }
+
   async get(): Promise<MonitorRecordingState | undefined> {
     return this.state === undefined ? undefined : clone(this.state);
   }
@@ -675,6 +680,70 @@ test('combined runner resumes an already durable drain without reconnecting term
   assert.equal(result.status, 'complete');
   assert.equal(terminal.connections(), 0);
   assert.equal(terminal.seal()?.complete, true);
+});
+
+test('terminal loss keeps Monitor collection alive and publishes incomplete once at cutoff', async () => {
+  const terminal = terminalFixture();
+  let reads = 0;
+  let closes = 0;
+  terminal.options.connect = async () => ({
+    ready: terminalReady({ startedAt, observedAt: startedAt }),
+    client: {
+      read: async () => {
+        reads++;
+        return terminalPage(undefined, {
+          startedAt,
+          observedAt: '2026-10-08T00:00:06.000Z',
+          events: [{ type: 'dimensions', sequence: 1, recordedAt: startedAt, columns: 80, rows: 24 }],
+          loss: { reason: 'limit_exceeded', occurredAt: '2026-10-08T00:00:06.000Z' },
+        });
+      },
+      close: () => {
+        closes++;
+      },
+    },
+  });
+  const store = new MemoryRecordingStore();
+  const client = new FakeMonitorClient();
+  const gate = new GateWait();
+  const running = new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    recordings: store,
+    chunks: new MemoryChunkStore(),
+    terminal: terminal.options,
+    wait: gate.wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  await until(() => store.appends === 1 && terminal.checkpoint()?.metadata.loss !== null, 'Streams did not advance');
+  assert.equal(client.closed, false);
+  store.enterDrain();
+  gate.release();
+  assert.equal((await running).status, 'incomplete');
+  assert.equal(reads, 1);
+  assert.ok(closes > 0);
+  assert.equal(store.state?.reason, 'limit_exceeded');
+  assert.equal(store.seals, 0);
+  assert.equal(client.sealedAt, cutoffAt);
+  terminal.options.connect = async () => {
+    throw new Error('Lost source must not be reopened');
+  };
+  const replacement = new MemoryRecordingStore(
+    recordingState({ status: 'draining', startedAt, cutoffAt, drainDeadlineAt }),
+  );
+  const resumed = await new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client: new FakeMonitorClient(),
+    recordings: replacement,
+    chunks: new MemoryChunkStore(),
+    terminal: terminal.options,
+    wait: new GateWait().wait,
+    now: () => '2026-10-08T00:00:11.000Z',
+  }).run(new AbortController().signal);
+  assert.equal(resumed.status, 'incomplete');
+  assert.equal(reads, 1);
 });
 
 test('terminal failure cancels monitor work and cannot publish combined completion', async () => {

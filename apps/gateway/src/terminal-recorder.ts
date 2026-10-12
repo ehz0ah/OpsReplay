@@ -6,8 +6,10 @@ import type {
 } from '../../../packages/contracts/private/terminal-recording.js';
 import { isMonitorControlTimestamp } from '../../../packages/contracts/private/monitor-control.js';
 import { terminalCoversCutoff } from '../../../packages/contracts/private/terminal-sealing.js';
+import { advanceTerminalCheckpoint } from '../../../packages/contracts/private/terminal-persistence.js';
 import type { DurableTerminalRecordingSink } from './terminal-recording-sink.js';
 import { TerminalRecordingClientError } from './terminal-recording-client.js';
+import { TerminalRecordingStoreError } from './terminal-recording-store.js';
 
 export interface ClosableTerminalRecordingClient {
   read(after: number, signal?: AbortSignal): Promise<TerminalRecordingPage>;
@@ -66,16 +68,31 @@ export class TerminalRecorder {
       const end = cutoff();
       if (end !== null && !isMonitorControlTimestamp(end)) throw new TerminalRecorderError('invalid_state');
       const loss = this.current.metadata.loss;
-      if (loss && (end === null || loss.occurredAt <= end)) throw new TerminalRecorderError(loss.reason);
+      if (loss && end !== null && loss.occurredAt <= end) throw new TerminalRecorderError(loss.reason);
       if (end !== null && terminalCoversCutoff(this.current, end)) return this.checkpoint;
       try {
-        if (this.current.frontier?.type === 'exit' && this.current.cursor === this.current.metadata.latestSequence) {
+        if (
+          (loss || this.current.frontier?.type === 'exit') &&
+          this.current.cursor === this.current.metadata.latestSequence
+        ) {
           this.connection.client.close();
           await this.wait(this.interval, signal);
           continue;
         }
         const page = await this.connection.client.read(this.current.cursor, signal);
-        this.current = await this.options.sink.append(this.current, page, signal);
+        // Validate even skipped observations. Only the durable checkpoint can prove coverage.
+        let next: TerminalRecordingCheckpoint;
+        try {
+          next = advanceTerminalCheckpoint(this.current, page);
+        } catch {
+          throw new TerminalRecordingStoreError('invalid_stream');
+        }
+        const unchanged =
+          page.events.length === 0 &&
+          next.metadata.latestSequence === this.current.metadata.latestSequence &&
+          next.metadata.shellState === this.current.metadata.shellState &&
+          JSON.stringify(next.metadata.loss) === JSON.stringify(this.current.metadata.loss);
+        if (end !== null || !unchanged) this.current = await this.options.sink.append(this.current, page, signal);
         await this.wait(page.events.length > 0 ? 100 : this.interval, signal);
       } catch (error) {
         if (

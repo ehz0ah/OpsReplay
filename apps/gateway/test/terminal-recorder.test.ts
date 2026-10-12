@@ -134,6 +134,63 @@ test('loss before or at cutoff cannot become complete; loss after cutoff permits
   assert.equal((await f.recorder.record(signal, () => at(1))).cursor, 1);
 });
 
+test('source loss holds one connection until cutoff instead of restarting collection', async () => {
+  const f = fixture([
+    terminalPage(undefined, { observedAt: at(1), loss: { reason: 'limit_exceeded', occurredAt: at(1) } }),
+  ]);
+  const controller = new AbortController();
+  await f.recorder.begin(controller.signal);
+  let end: string | null = null;
+  const running = f.recorder.record(controller.signal, () => {
+    if (f.closed()) end = at(2);
+    return end;
+  });
+  await assert.rejects(running, (e) => e instanceof TerminalRecorderError && e.code === 'limit_exceeded');
+  assert.deepEqual(f.cursors, [0]);
+  assert.ok(f.closed());
+});
+
+test('unchanged idle polls do not write, but cutoff coverage and metadata changes do', async () => {
+  let saved = advanceTerminalCheckpoint(initialTerminalCheckpoint(terminalReady()), terminalPage());
+  let reads = 0;
+  let commits = 0;
+  let cutoff: string | null = null;
+  const signal = new AbortController().signal;
+  const recorder = new TerminalRecorder({
+    connect: async () => ({
+      ready: terminalReady(),
+      client: {
+        read: async () => {
+          reads++;
+          return terminalPage([], {
+            nextSequence: 1,
+            latestSequence: 1,
+            observedAt: at(reads),
+            shellState: reads >= 3 ? 'exiting' : 'running',
+          });
+        },
+        close: () => {},
+      },
+    }),
+    sink: {
+      begin: async () => saved,
+      append: async (previous, page) => {
+        commits++;
+        saved = advanceTerminalCheckpoint(previous, page);
+        return saved;
+      },
+    },
+    wait: async () => {
+      if (reads === 3) cutoff = at(3);
+    },
+  });
+  await recorder.begin(signal);
+  const result = await recorder.record(signal, () => cutoff);
+  assert.equal(reads, 4);
+  assert.equal(commits, 2);
+  assert.equal(result.metadata.observedAt, at(4));
+});
+
 test('failed append leaves cursor unchanged and begin failure closes the private connection', async () => {
   let closed = false;
   const failure = new Error('Save failed');

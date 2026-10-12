@@ -5,7 +5,7 @@ import type { TerminalRecordingCheckpoint } from '../../../packages/contracts/pr
 import { terminalCoversCutoff } from './terminal-recorder.js';
 import { MonitorRecorder, monitorRecordingPolling } from './monitor-recorder.js';
 import { DurableMonitorRecordingSink } from './monitor-recording-sink.js';
-import { TerminalRecorder, type TerminalRecordingConnection } from './terminal-recorder.js';
+import { TerminalRecorder, TerminalRecorderError, type TerminalRecordingConnection } from './terminal-recorder.js';
 import { DurableTerminalRecordingSink } from './terminal-recording-sink.js';
 import { TerminalSealer } from './terminal-sealer.js';
 import type { TerminalChunkStore } from './terminal-chunk-store.js';
@@ -15,6 +15,7 @@ import { TerminalRecordingStoreError, type TerminalRecordingStateStore } from '.
 import {
   MonitorRecordingStoreError,
   monitorRecorderLease,
+  type MonitorRecordingLifecycleStore,
   type MonitorRecordingLeaseStore,
   type MonitorRecordingState,
   type MonitorRecordingStateStore,
@@ -24,7 +25,8 @@ export interface ClosableMonitorRecordingClient extends MonitorRecordingClient {
   close(): void;
 }
 
-export type MonitorRecordingRunStatus = 'complete' | 'not_acquired' | 'not_recordable' | 'ownership_lost' | 'cancelled';
+export type MonitorRecordingRunStatus =
+  'complete' | 'incomplete' | 'not_acquired' | 'not_recordable' | 'ownership_lost' | 'cancelled';
 
 export interface MonitorRecordingRunResult {
   status: MonitorRecordingRunStatus;
@@ -36,7 +38,7 @@ export interface MonitorRecordingRunnerOptions {
   recorderId: string;
   client: ClosableMonitorRecordingClient;
   chunks: MonitorChunkStore;
-  recordings: MonitorRecordingLeaseStore & MonitorRecordingStateStore;
+  recordings: MonitorRecordingLeaseStore & MonitorRecordingStateStore & MonitorRecordingLifecycleStore;
   terminal?: {
     connect(signal: AbortSignal): Promise<TerminalRecordingConnection>;
     chunks: TerminalChunkStore;
@@ -93,7 +95,7 @@ export class MonitorRecordingRunner {
   private readonly recorderId: string;
   private readonly client: ClosableMonitorRecordingClient;
   private readonly chunks: MonitorChunkStore;
-  private readonly recordings: MonitorRecordingLeaseStore & MonitorRecordingStateStore;
+  private readonly recordings: MonitorRecordingLeaseStore & MonitorRecordingStateStore & MonitorRecordingLifecycleStore;
   private readonly leaseDurationMs: number;
   private readonly renewalIntervalMs: number;
   private readonly pollIntervalMs: number | undefined;
@@ -221,7 +223,9 @@ export class MonitorRecordingRunner {
         if (!(
           drain &&
           savedTerminal &&
-          (savedSeal?.cutoffAt === drain.cutoffAt || terminalCoversCutoff(savedTerminal, drain.cutoffAt))
+          (savedSeal?.cutoffAt === drain.cutoffAt ||
+            terminalCoversCutoff(savedTerminal, drain.cutoffAt) ||
+            (savedTerminal.metadata.loss !== null && savedTerminal.metadata.loss.occurredAt <= drain.cutoffAt))
         )) {
           await terminalRecorder.begin(lifetime.signal);
           terminalTask = terminalRecorder
@@ -230,8 +234,10 @@ export class MonitorRecordingRunner {
               () => {},
               (error: unknown) => {
                 terminalFailure = error;
-                lifetime.abort(error);
-                polling.abort(error);
+                if (!(error instanceof TerminalRecorderError && ['data_gap', 'limit_exceeded'].includes(error.code))) {
+                  lifetime.abort(error);
+                  polling.abort(error);
+                }
               },
             );
         }
@@ -279,7 +285,7 @@ export class MonitorRecordingRunner {
       }
 
       if (renewalFailure !== undefined) throw renewalFailure;
-      if (terminalFailure !== undefined) throw terminalFailure;
+      if (terminalFailure !== undefined && !(terminalFailure instanceof TerminalRecorderError)) throw terminalFailure;
       if (signal.aborted) return { status: 'cancelled', generation };
       if (lifetime.signal.aborted) throw lifetime.signal.reason;
       if (drain === null) throw new MonitorRecordingRunnerError('invalid_state');
@@ -287,6 +293,16 @@ export class MonitorRecordingRunner {
       await recorder.seal(drain.cutoffAt, lifetime.signal);
       if (terminalSealer && terminalRecorder) {
         if (terminalTask) await terminalTask;
+        const checkpoint = terminalTask ? terminalRecorder.checkpoint : savedTerminal!;
+        const loss = checkpoint.metadata.loss;
+        if (loss && loss.occurredAt <= drain.cutoffAt) {
+          // Stop renewing before the atomic terminal-state write removes this lease.
+          stopRenewal.abort();
+          await renewal;
+          terminalFailure = undefined;
+          await this.recordings.markIncomplete(this.sessionId, loss.reason, this.now(), lifetime.signal, claimed.lease);
+          return { status: 'incomplete', generation };
+        }
         if (terminalFailure !== undefined) throw terminalFailure;
         if (lifetime.signal.aborted) throw lifetime.signal.reason;
         await terminalSealer.seal(

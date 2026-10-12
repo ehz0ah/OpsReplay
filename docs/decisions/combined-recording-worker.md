@@ -16,7 +16,10 @@ supplies terminal collection and sealing. The internal runner still supports mon
 fixtures and legacy records. Terminal input ownership remains separate.
 
 Start lease renewal before attachments. Collect the two streams concurrently, each from
-its own committed cursor. Terminal failures cancel monitor work and prevent completion.
+its own committed cursor. Operational terminal failures cancel monitor work and prevent
+completion. Source loss is different: consume the retained prefix, close the terminal
+socket, and keep monitor collection running until lifecycle supplies a cutoff. Relevant
+loss then publishes an incomplete recording once, fenced by the recorder generation.
 Renewal continues independently during polling, uploads, and sealing. The lifecycle layer,
 not the recorder, owns outcomes, the cutoff, and drain deadline.
 
@@ -44,6 +47,22 @@ completion. It validates the terminal seal and conditions both exact terminal sn
 For legacy records without terminal state, an absence condition prevents concurrent late
 initialisation from bypassing this check. Stored covered drains do not reopen the terminal
 source during takeover.
+
+Skip unchanged empty terminal observations before a cutoff. Validate them without advancing
+the durable checkpoint. Commit metadata changes and post-cutoff observations so coverage
+still uses saved evidence. The page transaction enforces the lease without a redundant
+up-front lease read.
+
+Retry only pure DynamoDB transaction contention, up to four attempts with 25, 50, and
+100 millisecond backoff and caller cancellation. Reuse the exact command and request token.
+Do not retry failed conditions or unknown cancellation reasons. Exhausted contention is
+isolated to its session. Keep uploads outside these retries. No per-session write queue is
+added: it would not prevent cross-process conflicts and could delay lease renewal behind
+slow work.
+
+The fixed drain window still includes page copying in this increment. PR #51 must separate
+short task coverage from durable sealing before activation. Large-page delayed tests belong
+with that lifecycle change. This is an open merge blocker for the complete series.
 
 No additional AWS service or lease is added. Gateway IAM gains base-table `Query` restricted
 to session keys and `s3:GetObject` restricted to live terminal pages. It cannot list or delete

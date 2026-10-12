@@ -10,6 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY packages/contracts/schemas/ packages/contracts/schemas/
 COPY packages/contracts/private/ packages/contracts/private/
+COPY packages/dynamodb/src/ packages/dynamodb/src/
 COPY apps/gateway/src/ apps/gateway/src/
 COPY scripts/build-gateway.mjs scripts/build-gateway.mjs
 RUN node scripts/build-gateway.mjs
