@@ -22,6 +22,7 @@
             "SESSION_ACTIVE",
             "SESSION_TERMINAL",
             "DEBRIEF_PENDING",
+            "PLAYBACK_PENDING",
             "RECORDING_EXPIRED",
             "CAPACITY_UNAVAILABLE",
             "HINT_NOT_AVAILABLE",
@@ -1408,9 +1409,23 @@
         },
         "recording": {
           "$ref": "#/$defs/RecordingState"
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 1000
         }
       },
-      "required": ["sessionId", "expiresAt", "terminal", "metrics", "captures", "highlights", "recording"],
+      "required": [
+        "sessionId",
+        "expiresAt",
+        "terminal",
+        "metrics",
+        "captures",
+        "highlights",
+        "recording",
+        "nextCursor"
+      ],
       "allOf": [
         {
           "properties": {
@@ -2098,9 +2113,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "type": { "const": "proposal_status" },
-            "proposalId": { "type": "string", "format": "uuid" },
-            "status": { "$ref": "#/$defs/ProposalStatus" }
+            "type": {
+              "const": "proposal_status"
+            },
+            "proposalId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "status": {
+              "$ref": "#/$defs/ProposalStatus"
+            }
           },
           "required": ["type", "proposalId", "status"]
         },

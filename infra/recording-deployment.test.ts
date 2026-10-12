@@ -375,7 +375,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV4');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV5');
     assert.equal(gatewayResponses.length, 5);
     const deploymentDependencies = [deployment[1].DependsOn].flat();
     assert.ok(deploymentDependencies.includes(method[0]));
@@ -394,7 +394,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     });
     template.hasResourceProperties('AWS::ApiGateway::Stage', {
       StageName: 'checkpoint',
-      MethodSettings: [
+      MethodSettings: Match.arrayWith([
         {
           HttpMethod: 'POST',
           ResourcePath: '/~1v1~1sessions~1{id}~1end',
@@ -422,7 +422,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
           ThrottlingBurstLimit: { Ref: 'TerminalTicketBurstLimit' },
           ThrottlingRateLimit: { Ref: 'TerminalTicketRateLimit' },
         },
-      ],
+      ]),
     });
     const expectedGatewayResponses = {
       THROTTLED: [
@@ -460,7 +460,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(apiPermissions.length, 3);
+    assert.equal(apiPermissions.length, 6);
     const ticketPermission = apiPermissions.find(([, resource]) =>
       JSON.stringify(resource.Properties?.SourceArn).includes('POST/v1/sessions/*/terminal-tickets'),
     );
@@ -598,7 +598,9 @@ test('recording remains durable and least-privilege inside the combined Gateway 
           ) ||
             (actions.includes('s3:GetObject') &&
               !JSON.stringify(statement.Resource).includes('/sessions/*/terminal/*/live/*') &&
-              !JSON.stringify(statement.Resource).includes('/sessions/*/metrics/*/sealed/*')))
+              !JSON.stringify(statement.Resource).includes('/sessions/*/metrics/*/sealed/*') &&
+              !JSON.stringify(statement.Resource).includes('/sessions/*/playback/*') &&
+              !JSON.stringify(statement.Resource).includes('/sessions/*/captures/*')))
         );
       }),
       false,

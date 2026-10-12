@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { lifecycleKey, isSessionLifecycleState } from '../../contracts/private/session-lifecycle.js';
 import { isMonitorRecordingState } from '../../contracts/private/monitor-persistence.js';
+import { lifecycleWorkItem } from '../../contracts/private/session-lifecycle.js';
+import { lifecycleHintItem } from '../../contracts/private/lifecycle-hint.js';
+import { isPlaybackHighlights, type PlaybackHighlight } from './playback-highlights.js';
 import { isDebrief, type Debrief } from './debrief.js';
 import type { SessionRecord } from '../../../apps/api/src/start-session/types.js';
 import { validSession, validProgress, validLock } from '../../../apps/api/src/start-session/validation.js';
@@ -42,10 +45,16 @@ export class DynamoFinaliseStore {
     if (!isDebrief(data) || data.sessionId !== sessionId) throw new FinaliseStoreError('invalid_store');
     return structuredClone(data);
   }
-  async commit(session: SessionRecord, debrief: Debrief, signal?: AbortSignal): Promise<Debrief> {
+  async commit(
+    session: SessionRecord,
+    debrief: Debrief,
+    signal?: AbortSignal,
+    highlights: PlaybackHighlight[] = [],
+  ): Promise<Debrief> {
     if (
       !validSession(session) ||
       !isDebrief(debrief) ||
+      !isPlaybackHighlights(highlights) ||
       debrief.sessionId !== session.view.id ||
       session.view.readyAt === null ||
       debrief.outcome !== session.view.status ||
@@ -65,11 +74,18 @@ export class DynamoFinaliseStore {
     const recordingKey = { PK: `SESSION#${id}`, SK: 'RECORDING' };
     const progressKey = { PK: `USER#${session.ownerId}`, SK: `PROGRESS#${session.view.challenge.id}` };
     const activeKey = { PK: `USER#${session.ownerId}`, SK: 'ACTIVE' };
-    const [lifecycle, recording, progress, lock] = await Promise.all([
+    const terminalKey = {
+      PK: `SESSION#${id}`,
+      SK: session.view.recording.status === 'complete' ? 'TERMINAL_SEAL' : 'TERMINAL_RECORDING',
+    };
+    const monitorFinalKey = { PK: `SESSION#${id}`, SK: 'MONITOR_FINAL' };
+    const [lifecycle, recording, progress, lock, terminal, monitorFinal] = await Promise.all([
       this.get(lifecycleKey(id), signal),
       this.get(recordingKey, signal),
       this.get(progressKey, signal),
       this.get(activeKey, signal),
+      this.get(terminalKey, signal),
+      this.get(monitorFinalKey, signal),
     ]);
     if (
       !isSessionLifecycleState(lifecycle, id) ||
@@ -120,6 +136,7 @@ export class DynamoFinaliseStore {
     const commands = [
       change(recorded, { schemaVersion: 1, sessionId: id, endedAt: session.view.endedAt }, undefined),
       change({ PK: `SESSION#${id}`, SK: 'DEBRIEF' }, debrief, undefined),
+      change({ PK: `SESSION#${id}`, SK: 'PLAYBACK_HIGHLIGHTS' }, structuredClone(highlights), undefined),
       {
         Put: {
           TableName: this.table,
@@ -130,10 +147,14 @@ export class DynamoFinaliseStore {
         },
       },
       unchanged(recordingKey, recording),
+      { Put: { TableName: this.table, Item: lifecycleHintItem(id, 'playback', session.view.endedAt!) } },
+      unchanged(terminalKey, terminal),
+      unchanged(monitorFinalKey, monitorFinal),
       {
         Put: {
           TableName: this.table,
-          Item: { ...lifecycleKey(id), data: lifecycle },
+          // Keep export discovery until its independent completion transaction.
+          Item: lifecycleWorkItem(lifecycle),
           ConditionExpression: '#d = :expected',
           ExpressionAttributeNames: { '#d': 'data' },
           ExpressionAttributeValues: { ':expected': lifecycle },

@@ -71,6 +71,10 @@ names are a storage convention, not part of the HTTP contract.
 | `SESSION#<id>`           | `CONVERSATION`                                             | Active turn ID and fixed expiry                                                           |
 | `SESSION#<id>`           | `FINALISED`                                                | Marker that the finaliser has run                                                         |
 | `SESSION#<id>`           | `DEBRIEF`                                                  | Derived debrief and score components                                                      |
+| `SESSION#<id>`           | `MONITOR_FINAL`                                            | Immutable cutoff sample/counters receipt, atomic with complete recording                  |
+| `SESSION#<id>`           | `PLAYBACK_EXPORT`                                          | Fixed source hash, resumable cursors, decoder tails, byte/count bounds, completion        |
+| `SESSION#<id>`           | `PLAYBACK#<kind>#<ending-sequence>`                        | Immutable terminal or metric export reference                                             |
+| `SESSION#<id>`           | `PLAYBACK_HIGHLIGHTS`                                      | Bounded observed-only highlights, atomic with the debrief                                 |
 | `REVIEW#<id>`            | `STATE`                                                    | Review submission and match result                                                        |
 | `REVIEW#<id>`            | `TURN#<turnId>`                                            | Code Review assistant turn                                                                |
 | `REVIEW#<id>`            | `CONVERSATION`                                             | Active turn ID and fixed expiry                                                           |
@@ -95,16 +99,17 @@ because admission also recovers an expired turn through a conditional write.
 
 ## Private S3 layout
 
-| Key prefix                                           | Contents                                           | Writer              |
-| ---------------------------------------------------- | -------------------------------------------------- | ------------------- |
-| `content/challenges/<id>/<version>/`                 | Manifest and debrief assets                        | Content publication |
-| `content/reviews/<id>/<version>/`                    | Review bundle                                      | Content publication |
-| `content/learn/<id>/<version>/`                      | Rendered Pro Learn entry                           | Learn build step    |
-| `sessions/<sessionId>/terminal/<generation>/live/`   | Byte-preserving private JSON source pages          | Gateway             |
-| `sessions/<sessionId>/terminal/<generation>/sealed/` | Exact-cutoff private JSON terminal pages           | Gateway             |
-| `sessions/<sessionId>/terminal/<generation>/`        | Derived asciicast v2 playback, not yet implemented | Gateway             |
-| `sessions/<sessionId>/metrics/<generation>/`         | Metric series chunks                               | Gateway             |
-| `sessions/<sessionId>/captures/<generation>/`        | Per-command captures                               | Gateway             |
+| Key prefix                                           | Contents                                  | Writer              |
+| ---------------------------------------------------- | ----------------------------------------- | ------------------- |
+| `content/challenges/<id>/<version>/`                 | Manifest and debrief assets               | Content publication |
+| `content/reviews/<id>/<version>/`                    | Review bundle                             | Content publication |
+| `content/learn/<id>/<version>/`                      | Rendered Pro Learn entry                  | Learn build step    |
+| `sessions/<sessionId>/terminal/<generation>/live/`   | Byte-preserving private JSON source pages | Gateway             |
+| `sessions/<sessionId>/terminal/<generation>/sealed/` | Exact-cutoff private JSON terminal pages  | Gateway             |
+| `sessions/<sessionId>/playback/terminal/<source>/`   | Derived asciicast v2 chunks               | Lifecycle finaliser |
+| `sessions/<sessionId>/playback/metrics/<source>/`    | Derived public Monitor frame chunks       | Lifecycle finaliser |
+| `sessions/<sessionId>/metrics/<generation>/`         | Metric series chunks                      | Gateway             |
+| `sessions/<sessionId>/captures/<generation>/`        | Per-command captures                      | Gateway             |
 
 Published content keys are immutable, with a hash in the catalogue manifest. The
 frontend bucket holds only the static application and free Learn pages. Browsers read
@@ -198,8 +203,9 @@ Gateway terminal persistence and combined cutoff sealing are implemented locally
 Recording completion now requires both terminal and monitor final cursors when terminal
 state exists. Legacy monitor-only records use an absence condition to reject concurrent
 terminal initialisation. Lifecycle integration and debrief finalisation are tested
-locally; exports/read APIs remain separate work. Finalisation requires private manifest
-hash pins, confirmed cleanup, and matching session/recording/lifecycle snapshots.
+locally. Resumable exports and owner read APIs are also implemented, but remain disabled.
+Finalisation requires private manifest hash pins, confirmed cleanup, completed matching
+exports, and matching session/recording/lifecycle/terminal/final-Monitor snapshots.
 Live parser and command receipts commit with terminal pages. Sealed parser and receipts
 commit with cutoff pages. Capture uploads precede atomic reference/cursor writes under
 the same lease. Combined completion rejects parser loss, incomplete controls/UTF-8,
@@ -211,7 +217,28 @@ unpublished private fields require compatible Monitor and Gateway versions.
 Incomplete finalisation uses safe saved command and
 Monitor event projections, never invented final counters. See the
 [evidence/debrief decision](decisions/evidence-debrief.md).
-The export cap remains independent of the source's encoded-byte cap.
+Exports use content-addressed keys with source sequence ranges. Uploads carry the existing
+sealed/provisional retention tag, SHA-256 checksum, encryption, and an absent-object
+condition. A retry accepts only an equal existing object. Each checkpoint/reference
+transaction conditions the fixed source snapshots and previous progress. A completed
+export is conditioned again in the result/progress/lock transaction.
+
+`MONITOR_FINAL` is saved in the recording seal transaction, so delayed finalisation can
+use final counters and bounded `MONITOR_EVENTS` projections after S3 expiry. A projection
+gap fails closed. Legacy complete records without this receipt require their sealed S3
+object. There is no backfill for earlier finalised results. These record formats are
+undeployed.
+
+The export cap remains independent of the source's encoded-byte cap. Terminal chunks are
+at most 256 KiB. The aggregate ceiling is 171,200,000 bytes: six times the source's
+20,000,000-byte budget plus 512 bytes for each of at most 100,000 events. This conservative
+bound covers JSON escapes and per-chunk syntax; it is not a measured workload or a larger
+source allowance. Metric chunks are at most 8 MiB with an aggregate ceiling of 40,960,000
+bytes for at most 10,000 bounded frames. Preparation handles at most 20 source pages per
+pass. Playback scans at most 25 reference rows per page. Timeline rereads at most 5,000
+commands and 10,000 Monitor events plus 500 reserved assistance events. It has a 240 KiB
+event-response budget and an invocation deadline, not a constant-time guarantee.
+See [the playback decision](decisions/playback-api.md).
 
 ## Bounds and retention
 

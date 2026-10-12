@@ -459,6 +459,29 @@ evidence, possible harmful actions, outages, and the start of recovery are highl
 Outage and recovery highlights point to their event time with a null `commandSeq`. Playback
 reads stored data. It never restarts an environment.
 
+The local exporter runs in existing reconcile/sweep finalisation after confirmed cleanup.
+It pins the recording, terminal, lifecycle, and final Monitor receipt, resumes forward
+from saved checkpoints, and processes at most 20 source pages per pass. It uploads
+immutable exports before conditional reference/checkpoint commits. It uses no new lease.
+Export completion and highlights are required before debrief availability and the atomic
+progress/lock commit. Expired sources save an unavailable export receipt without object
+access, so expiry does not prevent finalisation.
+
+Terminal exports use asciicast v2. Keep one terminal renderer across chunks; align each
+chunk's relative event times with its `startedAt`. Do not reset the screen at each chunk
+header. Recorded input is data and must never execute. Output, dimensions, and exit
+markers replay; OSC 133 command metadata is removed. Original bytes stay in private source
+pages. Invalid or cut-off UTF-8 shows a replacement character. Metrics retain saved
+public Monitor frames and the sealed final sample. Partial exports stop at the outcome
+cutoff and remain visibly incomplete. Capture links use the requesting command's cutoff
+eligibility and preserve the actual baseline/start/completion interval, including drain.
+They do not claim an atomic snapshot or command causality.
+
+Read APIs are separate disabled Lambdas. Playback pages expose at most 25 selected object
+links and repeat the bounded saved highlights. The full timeline is paginated separately.
+No browser player, backfill for old finalised records, or AWS deployment is included.
+See [the playback decision](decisions/playback-api.md).
+
 A retry starts a fresh task from the current published version. It is labelled `retry`
 and never changes the first attempt, its debrief, or its score.
 

@@ -13,7 +13,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 8);
+    template.resourceCountIs('AWS::Lambda::Function', 11);
     template.resourceCountIs('AWS::DynamoDB::Table', 1);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -171,7 +171,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       resources.filter(
         (item) => item.Type === 'AWS::Lambda::Function' && item.Properties?.ReservedConcurrentExecutions === 0,
       ).length,
-      5,
+      8,
     );
     for (const role of resources.filter((item) => item.Type === 'AWS::IAM::Role')) {
       assert.equal(role.Properties?.ManagedPolicyArns, undefined);

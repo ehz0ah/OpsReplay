@@ -5,6 +5,7 @@ import { before, after, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { DynamoFinaliseStore } from '../../../packages/session/src/finalise-store.js';
+import { createFinaliseSession } from '../../../packages/session/src/finalise.js';
 import { deriveDebrief, type DebriefManifest } from '../../../packages/session/src/debrief.js';
 import { initialSessionLifecycle } from '../../../packages/contracts/private/session-lifecycle.js';
 import { recordingRetainUntil } from '../../../packages/contracts/private/recording-retention.js';
@@ -110,7 +111,9 @@ test('concurrent finalisation commits result, progress, availability and lock re
   assert.deepEqual(await f.progress(), { completedAttempts: 1 });
   assert.equal(await f.lock(), undefined);
   assert.equal((await f.get('STATE'))?.data.view.debriefAvailable, true);
-  assert.equal((await f.get('LIFECYCLE'))?.WorkPK, undefined);
+  assert.equal((await f.get('LIFECYCLE'))?.WorkPK, 'LIFECYCLE');
+  assert.ok(await f.get('LIFECYCLE_HINT#playback'));
+  assert.equal(await f.get('PLAYBACK_EXPORT'), undefined);
   assert.ok(await f.get('FINALISED'));
   assert.deepEqual(await f.store.commit(f.session, f.debrief), f.debrief);
 });
@@ -170,6 +173,48 @@ test('progress and lock races cannot commit a stale result or release a replacem
       assert.ok(await f.lock());
       assert.deepEqual(await f.progress(), { completedAttempts: 1 });
     }
+  }
+});
+
+test('terminal and final Monitor snapshot races cannot publish a result or release the lock', async () => {
+  for (const target of ['TERMINAL_RECORDING', 'MONITOR_FINAL']) {
+    const f = await fixture();
+    let raced = false;
+    const client = {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand && !raced) {
+          raced = true;
+          await f.put(target, { schemaVersion: 1, cutoffAt: end });
+        }
+        return database.document.send(command as never, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    await assert.rejects(new DynamoFinaliseStore(client, f.table).commit(f.session, f.debrief));
+    assert.equal(await f.get('DEBRIEF'), undefined);
+    assert.equal(await f.get('FINALISED'), undefined);
+    assert.equal(await f.progress(), undefined);
+    assert.ok(await f.lock());
+  }
+});
+test('pending or corrupt playback does not gate result publication or replay evidence', async () => {
+  for (const playback of [{ complete: false }, { invalid: true }]) {
+    const f = await fixture();
+    await f.put('PLAYBACK_EXPORT', playback);
+    let reads = 0;
+    const finalise = createFinaliseSession({
+      store: f.store,
+      manifest: async () => {
+        reads++;
+        return manifest;
+      },
+      evidence: async () => ({ commands: [], events: [], counters: null }),
+    });
+    await finalise(f.session);
+    assert.equal((await f.get('STATE'))!.data.view.debriefAvailable, true);
+    assert.equal(await f.lock(), undefined);
+    assert.deepEqual(await f.progress(), { completedAttempts: 1 });
+    await finalise(f.session);
+    assert.equal(reads, 1);
   }
 });
 

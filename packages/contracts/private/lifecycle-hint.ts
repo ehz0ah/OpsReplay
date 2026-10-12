@@ -1,14 +1,15 @@
 import { isTerminalSessionId, isTerminalTimestamp } from './terminal-access.js';
 
 export const lifecycleHintPrefix = 'LIFECYCLE_HINT#';
-export type LifecycleHintTransition = 'ready' | 'outcome' | 'recovery_met' | 'coverage' | 'complete' | 'incomplete';
+export type LifecycleHintTransition =
+  'ready' | 'outcome' | 'recovery_met' | 'coverage' | 'complete' | 'incomplete' | 'playback';
 
 /** Bounded transition hints. Cursor, lease and heartbeat writes never produce a hint. */
 export function lifecycleHintItem(sessionId: string, transition: LifecycleHintTransition, at: string) {
   if (
     !isTerminalSessionId(sessionId) ||
     !isTerminalTimestamp(at) ||
-    !['ready', 'outcome', 'recovery_met', 'coverage', 'complete', 'incomplete'].includes(transition)
+    !['ready', 'outcome', 'recovery_met', 'coverage', 'complete', 'incomplete', 'playback'].includes(transition)
   )
     throw new Error('Invalid lifecycle hint.');
   return {

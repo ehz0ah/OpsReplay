@@ -9,6 +9,14 @@ import { RecordedEvidenceReader } from '../../../packages/session/src/recorded-e
 import { readManifest, manifestHash, manifestKey } from '../../../packages/session/src/manifest.js';
 import { createFinaliseSession } from '../../../packages/session/src/finalise.js';
 import { DynamoFinaliseStore } from '../../../packages/session/src/finalise-store.js';
+import { PlaybackExporter } from '../../../packages/session/src/playback-export.js';
+import { createGetDebriefHandler } from '../../api/src/get-debrief/handler.js';
+import { createListTimelineHandler } from '../../api/src/list-timeline/handler.js';
+import { createGetPlaybackHandler } from '../../api/src/get-playback/handler.js';
+import { ResultReader } from '../../api/src/result-reads/shared.js';
+import { createMonitorCertificate } from '../../api/src/session-lifecycle/monitor-certificate.js';
+import { createHash } from 'node:crypto';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { once } from 'node:events';
 import { createServer, type Socket } from 'node:net';
 import { Readable } from 'node:stream';
@@ -16,7 +24,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { GetObjectCommand, PutObjectCommand, S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3ServiceException,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import { generate } from 'selfsigned';
 import { recordingWorkOrder, unfinishedWorkIndex } from '../../../packages/contracts/private/recording-work.js';
 import {
@@ -222,7 +236,7 @@ test(
     );
     const objects = new Map<string, { bytes: Buffer; tag: string }>();
     const s3 = {
-      send: async (command: GetObjectCommand | PutObjectCommand) => {
+      send: async (command: GetObjectCommand | PutObjectCommand | HeadObjectCommand) => {
         const objectKey = command.input.Key!;
         if (command instanceof PutObjectCommand) {
           assert.equal(command.input.IfNoneMatch, '*');
@@ -241,6 +255,11 @@ test(
         }
         const saved = objects.get(objectKey);
         assert.ok(saved, 'Only committed object references can be read');
+        if (command instanceof HeadObjectCommand)
+          return {
+            ContentLength: saved.bytes.length,
+            ChecksumSHA256: createHash('sha256').update(saved.bytes).digest('base64'),
+          };
         return { ContentLength: saved.bytes.length, Body: Readable.from([saved.bytes]) };
       },
     } as unknown as S3Client;
@@ -358,6 +377,10 @@ test(
       await database.document.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))
     ).Item!.data as typeof savedSession;
     finalSession.pins.manifestSha256 = manifestHash(content);
+    // The transport fixture certificate is short-lived. Saved HTTP reads use the
+    // production session certificate contract, without reopening the stopped task.
+    finalSession.launchRecoveryDeadline = new Date(Date.now() + 120000).toISOString();
+    finalSession.monitorCertificate = (await createMonitorCertificate(finalSession)).certificate;
     await database.document.send(new PutCommand({ TableName: table, Item: { ...key, data: finalSession } }));
     await database.document.send(
       new PutCommand({
@@ -378,6 +401,7 @@ test(
     assert.ok(evidence.counters);
     await attempts.cleanup(sessionId, new Date().toISOString(), true);
     const store = new DynamoFinaliseStore(database.document, table);
+    const playback = new PlaybackExporter(database.document, table, s3, 'opsreplay-recordings-test');
     const finalise = createFinaliseSession({
       store,
       manifest: (session, signal) => readManifest(database.document, table, session, signal),
@@ -393,5 +417,38 @@ test(
       ['not_observed', 'not_observed', 'not_observed'],
     );
     await finalise(finalSession);
+    while (!(await playback.prepare(finalSession))) {
+      /* bounded export continuation */
+    }
+    const results = new ResultReader(database.document, table);
+    const actions = {
+      debrief: createGetDebriefHandler(results),
+      timeline: createListTimelineHandler(results, evidenceReader),
+      playback: createGetPlaybackHandler(results, s3, 'opsreplay-recordings-test', {
+        credentialExpiresAt: async () => null,
+        sign: async (key) => `https://test.invalid/${encodeURIComponent(key)}`,
+      }),
+    };
+    for (const route of ['debrief', 'timeline', 'playback'] as const) {
+      const response = await actions[route](
+        {
+          httpMethod: 'GET',
+          resource: `/v1/sessions/{id}/${route}`,
+          pathParameters: { id: sessionId },
+          body: null,
+          queryStringParameters: null,
+          multiValueQueryStringParameters: null,
+          requestContext: { authorizer: { claims: { sub: finalSession.ownerId } } },
+        } as unknown as APIGatewayProxyEvent,
+        { awsRequestId: randomUUID(), getRemainingTimeInMillis: () => 25000 },
+      );
+      assert.equal(response.statusCode, 200, response.body);
+      if (route === 'playback') {
+        const view = JSON.parse(response.body);
+        assert.ok(view.terminal.length > 0);
+        assert.ok(view.metrics.length > 0);
+        assert.equal(view.recording.status, 'complete');
+      }
+    }
   },
 );

@@ -83,8 +83,8 @@ test('session status shares the Cognito API but has a separate bounded read-only
     assert.deepEqual(otherActions.sort(), ['logs:CreateLogStream', 'logs:PutLogEvents']);
     template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
     template.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
-    template.resourceCountIs('AWS::ApiGateway::Method', 3);
-    template.resourceCountIs('AWS::Lambda::Function', 8);
+    template.resourceCountIs('AWS::ApiGateway::Method', 6);
+    template.resourceCountIs('AWS::Lambda::Function', 11);
 
     const method = get('AWS::ApiGateway::Method').find(([, resource]) => resource.Properties?.HttpMethod === 'GET');
     assert.ok(method);
@@ -110,7 +110,7 @@ test('session status shares the Cognito API but has a separate bounded read-only
     assert.ok(JSON.stringify(permission[1].Properties?.SourceArn).includes('/*/GET/v1/sessions/*'));
     const deployment = get('AWS::ApiGateway::Deployment')[0];
     assert.ok(deployment);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV4');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV5');
     const dependencies = [deployment[1].DependsOn].flat();
     for (const [id] of get('AWS::ApiGateway::Method')) assert.ok(dependencies.includes(id));
     template.hasResourceProperties('AWS::ApiGateway::Stage', {

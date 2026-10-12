@@ -483,5 +483,5 @@ console.log(
     ' Markdown files.',
 );
 console.log(
-  'This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run gateway:test and npm run gateway:image:test for the gateway monitor client, recorder, and storage adapters, npm run api:test for session provisioning, and npm run infra:test for CDK definitions. The gateway service, deployed recording store, UI, remaining API routes, and AWS integration remain unimplemented.',
+  'This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run gateway:test and npm run gateway:runtime:image:test for the composed gateway, npm run api:test for session lifecycle, evidence, playback and owner reads, and npm run infra:test for disabled CDK definitions. The web application, remaining API routes, content publication and complete AWS flow remain unimplemented or unvalidated.',
 );
