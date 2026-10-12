@@ -31,7 +31,11 @@ source, sequence, and timestamp. The first `met` observation is retained until
 an outcome is fixed. A worker restart or lifecycle sweep replays this observation
 before applying loss and timeout policies. Sustained recovery cannot claim more
 time than has elapsed since measurement started. The required duration cannot
-change during an attempt.
+change during an attempt. Source observations can lead the Gateway or Lambda clock.
+Their stream order and exact saved checkpoint remain authoritative. A clock lead
+never rejects a Monitor page. Readiness returns a retryable conflict until local
+time reaches its origin and initial observation. Recovery replay defers a future
+sample until local time catches up, so outcomes do not acquire future cutoffs.
 
 The first valid outcome atomically changes the session and recording to drain,
 with one cutoff and a 30-second task-coverage deadline. Later outcome requests return the saved
@@ -77,7 +81,9 @@ uses `error/recorder_unavailable`, not `environment_exited`. The outcome transac
 checks the exact observation so recovered data prevents a stale loss decision.
 
 After both streams cover the cutoff, the Gateway commits `RECORDING_COVERAGE` with the
-exact terminal checkpoint, sealed Monitor reference, and final metric. This transaction
+exact terminal checkpoint, sealed Monitor reference, and final metric. Terminal source
+timestamps prove coverage at the fixed cutoff. They are not compared with the Gateway's
+`coveredAt` clock. Lease and task-deadline checks still use the Gateway clock. This transaction
 replaces the recording write deadline with a separate 24-hour sealing bound. The
 lifecycle retains the original task deadline. The longer bound is an operational
 safety limit, not a performance promise. It is below seven-day provisional retention.

@@ -99,7 +99,12 @@ test(
         while ((newline = buffer.indexOf('\n')) >= 0) {
           const request = JSON.parse(buffer.slice(0, newline)) as { type: string; after: number };
           buffer = buffer.slice(newline + 1);
-          const metadata = { source, startedAt, observedAt: new Date().toISOString(), latestSequence: 2 };
+          const metadata = {
+            source,
+            startedAt,
+            observedAt: new Date(Date.now() + 2_000).toISOString(),
+            latestSequence: 2,
+          };
           if (request.type === 'attach') {
             socket.write(JSON.stringify(terminalReady(metadata)) + '\n');
           } else {
@@ -119,14 +124,20 @@ test(
     assert.ok(terminalAddress && typeof terminalAddress === 'object');
     const controller = new AbortController();
     let running: Promise<void> | undefined;
+    const cancel = () => controller.abort();
+    t.signal.addEventListener('abort', cancel, { once: true });
     t.after(async () => {
       controller.abort();
-      await running;
-      for (const socket of sockets) socket.destroy();
-      terminal.close();
-      await control.close();
-      https.closeAllConnections();
-      await new Promise<void>((resolve) => https.close(() => resolve()));
+      try {
+        await running;
+      } finally {
+        t.signal.removeEventListener('abort', cancel);
+        for (const socket of sockets) socket.destroy();
+        await new Promise<void>((resolve) => terminal.close(() => resolve()));
+        https.closeAllConnections();
+        await new Promise<void>((resolve) => https.close(() => resolve()));
+        await control.close();
+      }
     });
     await database.client.send(
       new CreateTableCommand({
@@ -213,6 +224,9 @@ test(
       { dynamo: database.document, s3 },
     );
     running = supervisor.run(controller.signal);
+    // Observe rejection immediately. Cleanup still awaits and reports the failure,
+    // but an early rejection must not bypass socket cleanup or leak the Monitor timer.
+    void running.catch(() => controller.abort());
     const recordings = new DynamoMonitorRecordingStore(database.document, table);
     const terminals = new DynamoTerminalRecordingStore(database.document, table);
     await eventually(

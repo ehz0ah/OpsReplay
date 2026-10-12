@@ -266,7 +266,6 @@ export class DynamoAttemptStore {
     recovery = structuredClone(recovery);
     if (
       !isTerminalTimestamp(startedAt) ||
-      startedAt > now ||
       !isTerminalRecordingCheckpoint(terminal) ||
       terminal.cursor < 1 ||
       terminal.metadata.loss !== null ||
@@ -282,6 +281,7 @@ export class DynamoAttemptStore {
       if (session.view.status !== 'provisioning') return session;
       if (
         startedAt < session.view.createdAt ||
+        startedAt > now ||
         now >= session.provisioningDeadline ||
         Date.parse(now) >= Date.parse(startedAt) + session.view.timeLimitSeconds * 1000 ||
         !session.taskArn ||
@@ -315,10 +315,11 @@ export class DynamoAttemptStore {
         observation.startedAt !== startedAt ||
         observation.source !== recording.source ||
         observation.cursor > recording.cursor ||
-        !same(observation.recovery, recovery) ||
-        observation.at > now
+        !same(observation.recovery, recovery)
       )
         throw new AttemptStoreError('invalid_store');
+      // Preserve source time. A small clock lead delays readiness, not recording.
+      if (observation.at > now) throw new AttemptStoreError('conflict');
       next.lastMonitorAt = observation.at;
       try {
         await this.client.send(
@@ -722,7 +723,6 @@ export class DynamoAttemptStore {
         observation.source !== recording.source ||
         observation.cursor > recording.cursor ||
         observation.startedAt !== previous.readyAt ||
-        observation.at > now ||
         observation.recovery.requiredSeconds !== previous.recovery?.requiredSeconds
       )
         throw new AttemptStoreError('invalid_store');
@@ -734,7 +734,9 @@ export class DynamoAttemptStore {
           recording.leaseExpiresAt! <= now)
       )
         throw new AttemptStoreError('stale_lease');
-      if (observation.at < previous.lastMonitorAt) return;
+      // A saved source sample can lead this process. Retry it once local time
+      // reaches the sample, so an outcome never acquires a future cutoff.
+      if (observation.at > now || observation.at < previous.lastMonitorAt) return;
       if (session.view.endsAt === null) throw new AttemptStoreError('invalid_store');
       if (observation.at >= session.view.endsAt) {
         await this.outcome(id, 'failed', 'time_limit', session.view.endsAt, signal, undefined, identity, now);

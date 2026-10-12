@@ -292,7 +292,7 @@ test('monitor observations commit with the cursor and survive response loss', as
     source,
     cursor: 1,
     sequence: 1,
-    at: startedAt,
+    at: '2026-10-07T00:00:01.100Z',
     recovery: { state: 'failing' as const, sustainedSeconds: 0, requiredSeconds: 1 },
   };
   let lost = false;

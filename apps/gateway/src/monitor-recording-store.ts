@@ -680,13 +680,13 @@ export class DynamoMonitorRecordingStore
     ) {
       throw new MonitorRecordingStoreError('invalid_input');
     }
+    // Source ordering is validated against its stream, not this process clock.
     if (
       observation !== undefined &&
       (!isMonitorLifecycleObservation(observation, lease.sessionId) ||
         observation.startedAt !== startedAt ||
         observation.source !== reference.source ||
-        observation.cursor !== reference.nextSequence ||
-        observation.at > now)
+        observation.cursor !== reference.nextSequence)
     )
       throw new MonitorRecordingStoreError('invalid_input');
     const previousObservation = observation

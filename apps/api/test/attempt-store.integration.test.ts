@@ -125,6 +125,35 @@ test('readiness saves measurement origin under the current lease and requires co
   assert.equal((await f.store.lifecycle(f.id))?.lastSeenAt, at(1));
 });
 
+test('a leading Monitor clock defers lifecycle decisions without rejecting durable evidence', async () => {
+  const f = await fixture();
+  await assert.rejects(
+    f.store.ready(f.lease, at(1), f.terminal, { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 }, at(0.9)),
+    (error: unknown) => error instanceof AttemptStoreError && error.code === 'conflict',
+  );
+  await f.put('MONITOR_OBSERVATION', { ...f.observation, at: at(2.1) });
+  await assert.rejects(f.ready(), (error: unknown) => error instanceof AttemptStoreError && error.code === 'conflict');
+  await f.store.ready(
+    f.lease,
+    at(1),
+    f.terminal,
+    { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+    at(2.1),
+  );
+  await f.put('RECORDING', { ...f.recording, cursor: 2 });
+  await f.put('MONITOR_OBSERVATION', {
+    ...f.observation,
+    cursor: 2,
+    sequence: 2,
+    at: at(62),
+    recovery: { state: 'met', sustainedSeconds: 60, requiredSeconds: 60 },
+  });
+  assert.equal(await reconcileFixture(f, 61.9).reconcile(f.id), 'active');
+  assert.equal((await f.store.session(f.id))?.view.status, 'ready');
+  assert.equal(await reconcileFixture(f, 62).reconcile(f.id), 'draining');
+  assert.equal((await f.store.session(f.id))?.view.endedAt, at(62));
+});
+
 test('competing outcomes fix one cutoff and drain without releasing the active lock', async () => {
   const f = await fixture();
   await f.ready();
