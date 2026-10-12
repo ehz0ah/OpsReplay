@@ -87,6 +87,7 @@ test('resource budgets match the authored task while leaving bounded CPU and mem
   for (const container of task.ContainerDefinitions) {
     assert.equal(container.Essential, true);
     assert.equal(container.StopTimeout, 30);
+    assert.equal(container.VersionConsistency, 'enabled');
     assert.equal(container.HealthCheck, undefined);
     assert.equal(container.RestartPolicy, undefined);
   }

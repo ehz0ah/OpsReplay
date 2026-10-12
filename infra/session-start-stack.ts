@@ -1623,6 +1623,8 @@ export class SessionStartStack extends Stack {
     gatewayService.addResourceDependency(awsEndpointIngress);
 
     new CfnOutput(this, 'RecordingBucketName', { value: recordings.bucketName });
+    new CfnOutput(this, 'SessionTableName', { value: table.tableName });
+    new CfnOutput(this, 'SessionTableArn', { value: table.tableArn });
     new CfnOutput(this, 'GatewayServiceName', {
       value: gatewayService.attrName,
       condition: gatewayEnabled,

@@ -22,6 +22,8 @@
     "apps/monitor/**/*.ts",
     "infra/**/*.ts",
     "packages/contracts/private/**/*.ts",
-    "packages/session/**/*.ts"
+    "packages/session/**/*.ts",
+    "packages/content/**/*.ts",
+    "scripts/publish-reference-release.ts"
   ]
 }

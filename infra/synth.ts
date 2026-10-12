@@ -1,5 +1,6 @@
 import { App } from 'aws-cdk-lib';
 import { CheckpointFoundationStack } from './checkpoint-foundation-stack.js';
+import { ContentPublicationStack } from './content-publication-stack.js';
 import { GitHubOidcProviderStack } from './github-oidc-provider-stack.js';
 import { ReferenceEnvironmentStack } from './reference-environment-stack.js';
 import { SessionStartStack } from './session-start-stack.js';
@@ -11,6 +12,7 @@ const region = process.env.CDK_DEFAULT_REGION;
 const deployment = account && region ? { env: { account, region } } : undefined;
 new GitHubOidcProviderStack(app, 'OpsReplayGitHubOidcProvider', deployment);
 new CheckpointFoundationStack(app, 'OpsReplayCheckpointFoundation', deployment);
+new ContentPublicationStack(app, 'OpsReplayContentPublication', deployment);
 new SessionStartStack(app, 'OpsReplaySessionStart', deployment);
 new ReferenceEnvironmentStack(app, 'OpsReplayReferenceEnvironment', deployment);
 app.synth();

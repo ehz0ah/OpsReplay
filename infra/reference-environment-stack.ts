@@ -57,6 +57,7 @@ export class ReferenceEnvironmentStack extends Stack {
           cpu: 768,
           memory: 1536,
           readonlyRootFilesystem: false,
+          versionConsistency: 'enabled',
           stopTimeout: 30,
           linuxParameters: {
             initProcessEnabled: true,
@@ -78,6 +79,7 @@ export class ReferenceEnvironmentStack extends Stack {
           cpu: 256,
           memory: 512,
           readonlyRootFilesystem: true,
+          versionConsistency: 'enabled',
           stopTimeout: 30,
           linuxParameters: { initProcessEnabled: true, capabilities: { drop: ['ALL'] } },
           dependsOn: [{ containerName: 'challenge', condition: 'START' }],

@@ -52,7 +52,8 @@ jobs:
         run: |
           npm run monitor:image:build
           npm run monitor:image:test
-          npm run monitor:runtime:image:build
+          npm run monitor:reference:image:build
+          npm run monitor:reference:image:test
 
       - name: Build and test Gateway image
         run: |
@@ -65,7 +66,7 @@ jobs:
           mkdir -p artifacts
           docker save --output artifacts/checkpoint-images.tar \
             opsreplay/gateway-recording:dev \
-            opsreplay/monitor:dev \
+            opsreplay/monitor-reference:dev \
             opsreplay/challenge-wrong-upstream-port:dev
 
       - name: Upload tested image bundle

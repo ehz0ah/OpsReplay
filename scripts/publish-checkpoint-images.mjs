@@ -1,6 +1,19 @@
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { referenceImageManifest } from './reference-image-manifest.mjs';
+import { createHash } from 'node:crypto';
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonical(value[key])]),
+    );
+  return value;
+}
 import { pathToFileURL } from 'node:url';
 
 export const checkpointImages = Object.freeze([
@@ -12,7 +25,7 @@ export const checkpointImages = Object.freeze([
   Object.freeze({
     name: 'monitor',
     repository: 'opsreplay/monitor',
-    localImage: 'opsreplay/monitor:dev',
+    localImage: 'opsreplay/monitor-reference:dev',
   }),
   Object.freeze({
     name: 'challenge',
@@ -141,7 +154,11 @@ function writeSummary(path, manifest) {
   );
 }
 
-export function publishCheckpointImages({ env = process.env, run = defaultRun } = {}) {
+export function publishCheckpointImages({
+  env = process.env,
+  run = defaultRun,
+  readReference = referenceImageManifest,
+} = {}) {
   if (env.GITHUB_REF !== 'refs/heads/main') throw new Error('Checkpoint images can be published only from main.');
   const commitSha = env.GITHUB_SHA ?? '';
   if (!commitPattern.test(commitSha)) throw new Error('GITHUB_SHA must be a 40-character lowercase commit SHA.');
@@ -150,6 +167,23 @@ export function publishCheckpointImages({ env = process.env, run = defaultRun } 
 
   const bundlePath = resolve(env.CHECKPOINT_IMAGE_BUNDLE ?? 'artifacts/checkpoint-images.tar');
   const localConfigDigests = parseDockerArchiveManifest(run('tar', ['-xOf', bundlePath, 'manifest.json']));
+  for (const image of checkpointImages) {
+    const loadedConfigDigest = run('docker', ['image', 'inspect', '--format', '{{.Id}}', image.localImage]);
+    if (loadedConfigDigest !== localConfigDigests.get(image.name)) {
+      throw new Error(`Loaded image ${image.localImage} does not match the tested image archive.`);
+    }
+  }
+  const buildManifest = readReference(localConfigDigests.get('monitor'));
+  if (
+    buildManifest?.id !== 'wrong-upstream-port' ||
+    buildManifest?.status !== 'draft' ||
+    buildManifest?.environment?.image?.digest !== null ||
+    buildManifest?.environment?.monitorImage?.digest !== null
+  )
+    throw new Error('The tested reference image does not contain the draft reference manifest.');
+  const buildManifestSha256 = createHash('sha256')
+    .update(JSON.stringify(canonical(buildManifest)))
+    .digest('hex');
   const account = run('aws', ['sts', 'get-caller-identity', '--query', 'Account', '--output', 'text']);
   if (!accountPattern.test(account)) throw new Error('AWS STS returned an invalid account ID.');
   const registry = `${account}.dkr.ecr.${region}.amazonaws.com`;
@@ -196,12 +230,13 @@ export function publishCheckpointImages({ env = process.env, run = defaultRun } 
           repository: image.repository,
           tag,
           digest,
+          configDigest: localConfigDigests.get(image.name),
           imageUri: `${registry}/${image.repository}@${digest}`,
         },
       ];
     }),
   );
-  const manifest = { schemaVersion: 1, commitSha, region, images };
+  const manifest = { schemaVersion: 1, commitSha, account, region, buildManifestSha256, images };
   const manifestPath = resolve(env.CHECKPOINT_IMAGE_MANIFEST ?? 'artifacts/checkpoint-images.json');
   mkdirSync(dirname(manifestPath), { recursive: true });
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
