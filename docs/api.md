@@ -112,8 +112,8 @@ learner liveness, deadline repair, bounded drain, and confirmed cleanup. It is t
 locally through DynamoDB Local and fake ECS and Scheduler ports. New lifecycle actions
 and triggers remain disabled. No public route is deployed. Shared lifecycle routines
 are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
-now has local debrief/finalisation code. Playback read routes and an approved AWS
-checkpoint remain separate prerequisites.
+now has local debrief/finalisation code, bounded playback exports, and separate owner
+read routes. These routes remain disabled. An approved AWS checkpoint is still required.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -282,9 +282,20 @@ request ID returns the same hint. Hints are released in authored order.
 
 ### Timeline, debrief, and playback
 
+The three separate read Lambdas are implemented and tested locally, not deployed.
+Each checks Cognito identity, request shape, session ownership, and the saved access
+grant before reading result data. Current plan expiry does not revoke that grant.
+Responses are `no-store`; logs contain only operation, correlation ID, result, and duration.
+
 The timeline lists events in time order, during and after the attempt. It contains the
-learner's own command text and bounded output excerpts. It never contains validator or
-probe definitions.
+learner's own command text and bounded output excerpts, Monitor signals, and lifecycle
+events. The reserved assistance-event reader has no hint or assistant writer yet. It
+never contains validator or probe definitions. Live pages are provisional. A source
+change invalidates an existing cursor; request the first page again. Terminal sessions
+require a saved debrief. Timeline responses contain at most 100 events and 240 KiB of
+event data. Each page rereads the bounded command and event history to sort and fix its
+snapshot. This cost is not a constant-time read and needs checkpoint measurement.
+At recording expiry the timeline returns `410 RECORDING_EXPIRED`; the debrief remains.
 
 The finaliser computes the debrief once, after the session reaches an outcome and the
 recording is sealed as `complete` or `incomplete`. `SessionView.recording` exposes this
@@ -294,9 +305,18 @@ became ready has no debrief and returns `404`. See
 [Challenge environments](challenges.md) for the derivation.
 
 `GET /v1/sessions/{id}/playback` is available with the debrief. It returns pre-signed
-S3 GET URLs, valid for five minutes (proposed), for terminal recording chunks, metric
-chunks, and one capture per command, plus the highlights the debrief identified. The
-client requests a new manifest when the links expire. The debrief and playback both
+S3 GET URLs for terminal recording chunks, metric chunks, and eligible saved captures,
+plus the saved highlights. `limit` is 1 to 25, default 25. Each page scans at most that
+many reference rows in metrics, terminal, then capture order. An ineligible post-cutoff
+capture can produce fewer links, including an empty page with `nextCursor`. Continue
+until `nextCursor` is null. Cursors bind the session and saved export/capture snapshot;
+they do not grant access. The client can change the page size and must renew links by
+requesting the required pages again.
+
+Before signing, the handler verifies every selected object's length and SHA-256 checksum.
+All links on one page use the same signing time and `expiresAt`. They last at most five
+minutes, bounded further by recording retention and temporary credential expiration.
+Credentials are fixed for that request, so a provider refresh cannot change this bound. The debrief and playback both
 carry the final recording status and reason. Incomplete playback lists only saved
 objects, and its debrief has `score: null`. The client shows the missing-data notice.
 The playback handler reads the authoritative `RECORDING` item before object references.
@@ -447,8 +467,11 @@ graded. A later submission for the same exercise has `answerInformed: true`.
 
 ## Limits and compatibility
 
-Paginated reads use opaque cursors bound to the owner, resource, and query. The default
-page size is 50 and the maximum is 100. Reusing a cursor with a changed query is `400`.
+Paginated reads use opaque cursors, not access tokens. Timeline and playback cursors
+bind the session and snapshot; ownership is checked independently on every page.
+Timeline `limit` is 1 to 100, default 100. Playback `limit` is 1 to 25, default 25.
+Other proposed paginated reads default to 50 with a maximum of 100. Invalid or stale
+cursors, duplicate parameters, unknown parameters, and non-decimal limits return `400`.
 
 The server enforces per-learner limits on session starts, concurrent sessions,
 assistant turns, and hint requests before any side effect. The proposed concurrent

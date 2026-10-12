@@ -7,6 +7,7 @@ import { commandId, commandEvidenceLimits } from '../../contracts/private/comman
 import { isMonitorEvidencePage } from '../../contracts/private/monitor-evidence.js';
 import { isMonitorRecordingState, type MonitorRecordingState } from '../../contracts/private/monitor-persistence.js';
 import { isMonitorControlTimestamp } from '../../contracts/private/monitor-control.js';
+import { isMonitorFinalEvidence } from '../../contracts/private/monitor-final.js';
 import { isMonitorMetricFrame, isMonitorPayload, type MonitorFrame } from '../../../apps/gateway/src/monitor-client.js';
 // Command events are derived atomically while the terminal seal advances.
 import { readRecordingObject } from './object-reader.js';
@@ -71,7 +72,12 @@ export class RecordedEvidenceReader {
       cursor = result.LastEvaluatedKey;
     } while (cursor);
   }
-  private async commands(session: SessionRecord, complete: boolean, signal?: AbortSignal): Promise<CommandEvidence[]> {
+  private async commands(
+    session: SessionRecord,
+    complete: boolean,
+    signal?: AbortSignal,
+    live = false,
+  ): Promise<CommandEvidence[]> {
     const id = session.view.id;
     const commands: CommandEvidence[] = [];
     let commandBytes = 0;
@@ -94,7 +100,16 @@ export class RecordedEvidenceReader {
         async (rows) => {
           const values: CommandEvidence[] = [];
           for (const row of rows) {
-            const expanded = await expandCommandRow(this.dynamo, this.table, id, 'COMMAND', row, signal);
+            const expanded = await expandCommandRow(
+              this.dynamo,
+              this.table,
+              id,
+              'COMMAND',
+              row,
+              signal,
+              0,
+              live ? (isCommandParserCheckpoint(parser) ? parser.count - (parser.active ? 1 : 0) : 0) : 5000,
+            );
             for (const command of expanded) {
               if (
                 !isCommandParserCheckpoint(parser) ||
@@ -112,7 +127,7 @@ export class RecordedEvidenceReader {
       // Missing parser evidence remains incomplete. No raw input proves completion.
       if (isCommandParserCheckpoint(parser) && parser.active) add([parser.active.event]);
       return commands.map((command) =>
-        command.endedAt === null || command.endedAt > session.view.endedAt!
+        !live && (command.endedAt === null || command.endedAt > session.view.endedAt!)
           ? {
               ...command,
               command: '[unfinished command unavailable]',
@@ -172,8 +187,19 @@ export class RecordedEvidenceReader {
     session: SessionRecord,
     recording: MonitorRecordingState,
     signal?: AbortSignal,
+    live = false,
   ): Promise<Pick<RecordedEvidence, 'events' | 'counters'>> {
-    if (!recording.sealed) {
+    const receipt = !live ? await this.get(session.view.id, 'MONITOR_FINAL', signal) : undefined;
+    if (
+      receipt !== undefined &&
+      (recording.status !== 'complete' ||
+        !isMonitorFinalEvidence(receipt) ||
+        receipt.cutoffAt !== session.view.endedAt ||
+        receipt.source !== recording.source ||
+        receipt.cursor !== recording.cursor)
+    )
+      throw new Error('Invalid final Monitor receipt.');
+    if (!recording.sealed || isMonitorFinalEvidence(receipt)) {
       const events: DebriefMonitorEvent[] = [];
       let cursor = 0;
       await this.rows(
@@ -181,21 +207,23 @@ export class RecordedEvidenceReader {
         'MONITOR_EVENTS#',
         async (rows) => {
           for (const row of rows) {
+            if ((live || isMonitorFinalEvidence(receipt)) && cursor >= recording.cursor) break;
             if (
               !isMonitorEvidencePage(row.data) ||
               row.SK !== `MONITOR_EVENTS#${String(row.data.nextSequence).padStart(6, '0')}` ||
               row.data.source !== recording.source ||
               row.data.after !== cursor ||
-              row.data.nextSequence > recording.cursor
+              (!live && !isMonitorFinalEvidence(receipt) && row.data.nextSequence > recording.cursor)
             )
               throw new Error('Invalid partial Monitor evidence.');
-            cursor = row.data.nextSequence;
+            cursor = Math.min(row.data.nextSequence, recording.cursor);
             for (const item of row.data.events) {
               if (
+                item.sequence <= recording.cursor &&
                 item.recordedAt >= session.view.readyAt! &&
-                item.recordedAt <= session.view.endedAt! &&
+                (live || item.recordedAt <= session.view.endedAt!) &&
                 item.event.at >= session.view.readyAt! &&
-                item.event.at <= session.view.endedAt!
+                (live || item.event.at <= session.view.endedAt!)
               )
                 events.push(item.event);
             }
@@ -204,7 +232,9 @@ export class RecordedEvidenceReader {
         },
         signal,
       );
-      return { events, counters: null };
+      if (isMonitorFinalEvidence(receipt) && cursor < receipt.cursor)
+        throw new Error('Final Monitor projection has a gap.');
+      return { events, counters: isMonitorFinalEvidence(receipt) ? { ...receipt.final.counters } : null };
     }
     const reference = recording.sealed;
     const object = await readRecordingObject(
@@ -250,6 +280,20 @@ export class RecordedEvidenceReader {
       if (frame.payload.type === 'timeline') events.push(frame.payload.event);
     }
     return { events, counters: { ...object.final.counters } };
+  }
+  /** Live reads use saved frontiers and exclude later atomic publications. */
+  async readTimeline(session: SessionRecord, signal?: AbortSignal): Promise<RecordedEvidence> {
+    if (!['ready', 'provisioning'].includes(session.view.status)) return this.read(session, signal);
+    if (!session.view.readyAt) return { commands: [], events: [], counters: null };
+    const raw = await this.get(session.view.id, 'RECORDING', signal);
+    if (
+      !isMonitorRecordingState(raw, session.view.id) ||
+      raw.status !== 'recording' ||
+      raw.startedAt !== session.view.readyAt
+    )
+      throw new Error('Invalid live timeline source.');
+    const commands = await this.commands(session, false, signal, true);
+    return { commands, ...(await this.monitor(session, raw, signal, true)) };
   }
   async read(session: SessionRecord, signal?: AbortSignal): Promise<RecordedEvidence> {
     const raw = await this.get(session.view.id, 'RECORDING', signal);

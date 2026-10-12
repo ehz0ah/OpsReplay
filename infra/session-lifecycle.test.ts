@@ -40,8 +40,9 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
       if (name !== 'EndSession') {
         assert.equal(actions.includes('ecs:RunTask'), true);
         const bootstrap = statements.filter((statement) => [statement.Action].flat().includes('s3:PutObject'));
-        assert.equal(bootstrap.length, 1);
-        assert.ok(JSON.stringify(bootstrap[0].Resource).includes('MonitorSecretFiles'));
+        assert.equal(bootstrap.length, 2);
+        assert.ok(bootstrap.some((statement) => JSON.stringify(statement.Resource).includes('MonitorSecretFiles')));
+        assert.ok(bootstrap.some((statement) => JSON.stringify(statement.Resource).includes('/sessions/*/playback/*')));
       }
       if (name === 'EndSession') {
         assert.equal(

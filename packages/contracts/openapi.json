@@ -549,6 +549,12 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
           "500": {
             "$ref": "#/components/responses/Error"
           }
@@ -611,6 +617,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            }
           }
         ],
         "responses": {
@@ -623,6 +647,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -1102,6 +1129,7 @@
               "SESSION_ACTIVE",
               "SESSION_TERMINAL",
               "DEBRIEF_PENDING",
+              "PLAYBACK_PENDING",
               "RECORDING_EXPIRED",
               "CAPACITY_UNAVAILABLE",
               "HINT_NOT_AVAILABLE",
@@ -2488,9 +2516,23 @@
           },
           "recording": {
             "$ref": "#/components/schemas/RecordingState"
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 1000
           }
         },
-        "required": ["sessionId", "expiresAt", "terminal", "metrics", "captures", "highlights", "recording"],
+        "required": [
+          "sessionId",
+          "expiresAt",
+          "terminal",
+          "metrics",
+          "captures",
+          "highlights",
+          "recording",
+          "nextCursor"
+        ],
         "allOf": [
           {
             "properties": {

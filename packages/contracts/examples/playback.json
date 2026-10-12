@@ -105,7 +105,16 @@
       "commandSeq": null,
       "label": "Storefront proxy stopped accepting connections"
     },
-    { "kind": "recovery", "at": "2026-10-05T02:06:03Z", "commandSeq": null, "label": "Recovery checks passing" }
+    {
+      "kind": "recovery",
+      "at": "2026-10-05T02:06:03Z",
+      "commandSeq": null,
+      "label": "Recovery checks passing"
+    }
   ],
-  "recording": { "status": "complete", "reason": null }
+  "recording": {
+    "status": "complete",
+    "reason": null
+  },
+  "nextCursor": null
 }

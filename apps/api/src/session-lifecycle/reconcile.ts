@@ -7,7 +7,7 @@ export interface SessionDeadlinePort {
   ensure(session: SessionRecord, now: Date, signal?: AbortSignal): Promise<void>;
   delete(session: SessionRecord, signal?: AbortSignal): Promise<void>;
 }
-export type ReconcileResult = 'ignored' | 'active' | 'draining' | 'cleanup_pending' | 'cleaned';
+export type ReconcileResult = 'ignored' | 'active' | 'draining' | 'cleanup_pending' | 'playback_pending' | 'cleaned';
 export function createReconcileSession({
   sessions,
   attempts,
@@ -16,6 +16,7 @@ export function createReconcileSession({
   provision,
   publish,
   finalise,
+  preparePlayback,
   now = () => new Date(),
 }: {
   sessions: Pick<LifecycleStorePort, 'session' | 'saveTask'>;
@@ -40,6 +41,7 @@ export function createReconcileSession({
     signal?: AbortSignal,
   ): Promise<'published' | 'ignored'>;
   finalise?(session: SessionRecord, signal?: AbortSignal): Promise<void>;
+  preparePlayback?(session: SessionRecord, signal?: AbortSignal): Promise<boolean>;
   now?: () => Date;
 }) {
   return async (id: string, signal?: AbortSignal): Promise<ReconcileResult> => {
@@ -201,7 +203,10 @@ export function createReconcileSession({
     await attempts.cleanup(id, at, true, signal);
     if (session.view.readyAt === null) await attempts.completeNeverReady(id, at, signal);
     if (session.view.recording.status === 'draining') return 'draining';
-    if (session.view.readyAt !== null && finalise) await finalise(session, signal);
+    if (session.view.readyAt !== null && finalise) {
+      await finalise(session, signal);
+      if (preparePlayback && !(await preparePlayback(session, signal))) return 'playback_pending';
+    }
     return 'cleaned';
   };
 }

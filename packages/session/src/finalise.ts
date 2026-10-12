@@ -1,8 +1,9 @@
 import { deriveDebrief, type Debrief, type DebriefManifest } from './debrief.js';
 import type { RecordedEvidence } from './recorded-evidence.js';
+import { playbackHighlights, type PlaybackHighlight } from './playback-highlights.js';
 import type { SessionRecord } from '../../../apps/api/src/start-session/types.js';
 
-/** Ordinary shared code, not a Lambda call. Cleanup is committed before this runs. */
+/** Ordinary shared code. Result publication does not depend on playback export. */
 export function createFinaliseSession({
   store,
   manifest,
@@ -10,7 +11,12 @@ export function createFinaliseSession({
 }: {
   store: {
     saved(id: string, signal?: AbortSignal): Promise<Debrief | undefined>;
-    commit(session: SessionRecord, debrief: Debrief, signal?: AbortSignal): Promise<Debrief>;
+    commit(
+      session: SessionRecord,
+      debrief: Debrief,
+      signal?: AbortSignal,
+      highlights?: PlaybackHighlight[],
+    ): Promise<Debrief>;
   };
   manifest(session: SessionRecord, signal?: AbortSignal): Promise<DebriefManifest>;
   evidence(session: SessionRecord, signal?: AbortSignal): Promise<RecordedEvidence>;
@@ -19,10 +25,7 @@ export function createFinaliseSession({
     if (await store.saved(session.view.id, signal)) return;
     const content = await manifest(session, signal);
     const recorded = await evidence(session, signal);
-    await store.commit(
-      session,
-      deriveDebrief(content, session, recorded.commands, recorded.events, recorded.counters),
-      signal,
-    );
+    const debrief = deriveDebrief(content, session, recorded.commands, recorded.events, recorded.counters);
+    await store.commit(session, debrief, signal, playbackHighlights(debrief, recorded));
   };
 }

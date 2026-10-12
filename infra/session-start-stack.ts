@@ -46,7 +46,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 4;
+const terminalTicketApiDeploymentVersion = 5;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
 const terminalOriginPortPattern =
@@ -594,7 +594,38 @@ export class SessionStartStack extends Stack {
       action.addToRolePolicy(
         new PolicyStatement({
           actions: ['s3:GetObject'],
-          resources: [recordings.arnForObjects('sessions/*/metrics/*/sealed/*')],
+          resources: [
+            recordings.arnForObjects('sessions/*/metrics/*/sealed/*'),
+            recordings.arnForObjects('sessions/*/metrics/*/live/*'),
+            recordings.arnForObjects('sessions/*/terminal/*/sealed/*'),
+            recordings.arnForObjects('sessions/*/terminal/*/live/*'),
+            recordings.arnForObjects('sessions/*/playback/*'),
+          ],
+        }),
+      );
+    }
+    for (const action of [reconcileSession, sweepSessions]) {
+      action.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['s3:PutObject', 's3:PutObjectTagging'],
+          resources: [recordings.arnForObjects('sessions/*/playback/*')],
+          conditions: {
+            StringEquals: {
+              [`s3:RequestObjectTag/${recordingRetention.tagKey}`]: [
+                recordingRetention.provisionalTagValue,
+                recordingRetention.sealedTagValue,
+              ],
+            },
+            'ForAllValues:StringEquals': { 's3:RequestObjectTagKeys': [recordingRetention.tagKey] },
+          },
+        }),
+      );
+      action.addToRolePolicy(
+        new PolicyStatement({
+          effect: Effect.DENY,
+          actions: ['s3:PutObjectTagging'],
+          resources: [recordings.arnForObjects('sessions/*/playback/*')],
+          conditions: { Null: { [`s3:ExistingObjectTag/${recordingRetention.tagKey}`]: 'false' } },
         }),
       );
     }
@@ -940,6 +971,101 @@ export class SessionStartStack extends Stack {
       ]),
     });
     getSessionPermission.cfnOptions.condition = gatewayEnabled;
+    const resultMethods: CfnMethod[] = [];
+    for (const [id, action, path, memory] of [
+      ['GetDebrief', 'get-debrief', 'debrief', 256],
+      ['ListTimeline', 'list-timeline', 'timeline', 512],
+      ['GetPlayback', 'get-playback', 'playback', 512],
+    ] as const) {
+      const logs = new LogGroup(this, `${id}Logs`, {
+        retention: RetentionDays.ONE_WEEK,
+        removalPolicy: RemovalPolicy.DESTROY,
+      });
+      const role = new Role(this, `${id}Role`, { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
+      logs.grantWrite(role);
+      role.addToPolicy(
+        new PolicyStatement({
+          actions: path === 'debrief' ? ['dynamodb:GetItem'] : ['dynamodb:GetItem', 'dynamodb:Query'],
+          resources: [table.tableArn],
+          conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+        }),
+      );
+      if (path !== 'debrief')
+        role.addToPolicy(
+          new PolicyStatement({
+            actions: ['s3:GetObject'],
+            resources:
+              path === 'timeline'
+                ? [recordings.arnForObjects('sessions/*/metrics/*/sealed/*')]
+                : [
+                    recordings.arnForObjects('sessions/*/playback/*'),
+                    recordings.arnForObjects('sessions/*/captures/*'),
+                  ],
+          }),
+        );
+      const fn = new Function(this, id, {
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'index.handler',
+        code: Code.fromAsset(fileURLToPath(new URL(`../dist/${action}/`, import.meta.url))),
+        role,
+        logGroup: logs,
+        environment: {
+          SESSION_TABLE_NAME: table.tableName,
+          ...(path === 'debrief' ? {} : { RECORDING_BUCKET_NAME: recordings.bucketName }),
+        },
+        memorySize: memory,
+        timeout: Duration.seconds(path === 'debrief' ? 10 : 25),
+        reservedConcurrentExecutions: 0,
+      });
+      const resource = new ApiGatewayResource(this, `${id}Resource`, {
+        restApiId: terminalApi.ref,
+        parentId: terminalApiSession.ref,
+        pathPart: path,
+      });
+      resource.cfnOptions.condition = gatewayEnabled;
+      const method = new CfnMethod(this, `${id}Method`, {
+        restApiId: terminalApi.ref,
+        resourceId: resource.ref,
+        httpMethod: 'GET',
+        authorizationType: 'COGNITO_USER_POOLS',
+        authorizerId: terminalAuthorizer.ref,
+        apiKeyRequired: false,
+        operationName: action,
+        integration: {
+          type: 'AWS_PROXY',
+          integrationHttpMethod: 'POST',
+          timeoutInMillis: path === 'debrief' ? 8000 : 23000,
+          uri: Fn.join('', [
+            'arn:',
+            Aws.PARTITION,
+            ':apigateway:',
+            Aws.REGION,
+            ':lambda:path/2015-03-31/functions/',
+            fn.functionArn,
+            '/invocations',
+          ]),
+        },
+      });
+      method.cfnOptions.condition = gatewayEnabled;
+      const permission = new CfnPermission(this, `${id}ApiPermission`, {
+        action: 'lambda:InvokeFunction',
+        functionName: fn.functionArn,
+        principal: 'apigateway.amazonaws.com',
+        sourceArn: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':execute-api:',
+          Aws.REGION,
+          ':',
+          Aws.ACCOUNT_ID,
+          ':',
+          terminalApi.ref,
+          `/*/GET/v1/sessions/*/${path}`,
+        ]),
+      });
+      permission.cfnOptions.condition = gatewayEnabled;
+      resultMethods.push(method);
+    }
     const endResource = new ApiGatewayResource(this, 'SessionEndResource', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSession.ref,
@@ -1106,6 +1232,7 @@ export class SessionStartStack extends Stack {
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
     terminalTicketDeployment.addResourceDependency(endMethod);
+    for (const method of resultMethods) terminalTicketDeployment.addResourceDependency(method);
     for (const response of terminalTicketGatewayResponses) {
       terminalTicketDeployment.addResourceDependency(response);
     }
@@ -1114,6 +1241,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        ...['debrief', 'timeline', 'playback'].map((path) => ({
+          httpMethod: 'GET',
+          resourcePath: `/~1v1~1sessions~1{id}~1${path}`,
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 4,
+          throttlingRateLimit: 2,
+        })),
         {
           httpMethod: 'POST',
           resourcePath: '/~1v1~1sessions~1{id}~1end',

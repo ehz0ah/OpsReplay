@@ -14,6 +14,7 @@ import { DynamoFinaliseStore } from '../../../../packages/session/src/finalise-s
 import { createFinaliseSession } from '../../../../packages/session/src/finalise.js';
 import { readManifest } from '../../../../packages/session/src/manifest.js';
 import { RecordedEvidenceReader } from '../../../../packages/session/src/recorded-evidence.js';
+import { PlaybackExporter } from '../../../../packages/session/src/playback-export.js';
 
 export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.env) {
   const table = environment.SESSION_TABLE_NAME;
@@ -26,6 +27,7 @@ export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.
     throw new Error('RECORDING_BUCKET_NAME is invalid.');
   const sessions = new LifecycleStore(dynamo, table);
   const evidence = new RecordedEvidenceReader(dynamo, table, createS3Client(), recordingBucket);
+  const playback = new PlaybackExporter(dynamo, table, createS3Client(), recordingBucket);
   const finalise = createFinaliseSession({
     store: new DynamoFinaliseStore(dynamo, table),
     manifest: (session, signal) => readManifest(dynamo, table, session, signal),
@@ -52,6 +54,7 @@ export function createLifecycleRuntime(environment: NodeJS.ProcessEnv = process.
     provision,
     publish: createPublishRecordingWork({ store: sessions }),
     finalise,
+    preparePlayback: (session, signal) => playback.prepare(session, signal),
   });
   return { table, dynamo, sessions, reconcile };
 }

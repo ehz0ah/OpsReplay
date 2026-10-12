@@ -4,7 +4,9 @@ Status: admission, launch, recording work, status, terminal tickets, owner end,
 readiness, outcomes, liveness, deadline repair, and confirmed cleanup are implemented
 and tested locally. Deterministic debrief and atomic once-only finalisation now run
 as shared code in reconcile/sweep after confirmed cleanup. CDK defines disabled
-routes and lifecycle triggers. Owner debrief/timeline/playback reads remain separate. No AWS deployment has run. Follow
+routes and lifecycle triggers. Bounded resumable playback exports and three separate
+owner debrief/timeline/playback read actions are implemented locally. New actions remain
+disabled. No AWS deployment has run for this increment. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -95,8 +97,10 @@ ID. It saves one outcome and receipt, with a fixed recording cutoff and 30-secon
 A durable coverage receipt permits task stop while terminal sealing continues under its
 separate 24-hour bound. Cleanup confirms STOPPED and deletes all timers. Missing Monitor
 observations allow five minutes for recorder recovery, then use `recorder_unavailable`.
-Only transition hints invoke stream reconciliation, not per-page or lease writes. Ready-attempt locks remain held until the next PR commits
-debrief, progress, and finalisation together. Never-ready attempts have no debrief.
+Only transition hints invoke stream reconciliation, not per-page or lease writes.
+Ready-attempt locks remain held until the shared finaliser commits debrief, highlights,
+progress, and finalisation together. Playback export completion does not delay that
+transaction. Never-ready attempts have no debrief.
 See the [lifecycle decision](../../docs/decisions/session-lifecycle.md) for authority,
 recovery replay, heartbeat rules, failure handling, and activation limits.
 
@@ -113,6 +117,16 @@ Lambda has no trigger. The recording-work action, session-status and terminal-ti
 Gateway service are also inactive by default. Do not enable the flow until its AWS
 integration checks pass.
 Do not seed the draft repository Challenge as published content.
+
+The separate [debrief](src/get-debrief/index.ts), [timeline](src/list-timeline/index.ts),
+and [playback](src/get-playback/index.ts) actions use the same saved-owner/grant checks,
+with no state mutation. Debrief reads saved results. Timeline reads bounded command and
+Monitor projections; live pages are provisional and stale cursors require restart.
+Playback uses fixed export/capture snapshots and keyset reference paging, verifies selected
+object length/checksum, and signs at most 25 links for at most 300 seconds. Temporary
+credential expiry and recording retention can shorten that duration. Each action has its
+own bundle, read-only role, timeout, and zero reserved concurrency. Routes are conditional
+on the Gateway path but these functions still require explicit checkpoint activation.
 
 ## Local checks
 
@@ -135,7 +149,8 @@ IAM, Cognito verification, Scheduler delivery, cloud networking, or Fargate beha
 
 The build creates separate `dist/start-session/`, `dist/get-session/`, `dist/create-terminal-ticket/`,
 `dist/expire-provisioning/`, `dist/publish-recording-work/`, `dist/end-session/`,
-`dist/reconcile-session/`, and `dist/sweep-sessions/` bundles from the lockfile.
+`dist/reconcile-session/`, `dist/sweep-sessions/`, `dist/get-debrief/`,
+`dist/list-timeline/`, and `dist/get-playback/` bundles from the lockfile.
 CDK output goes to `cdk.out/`. These directories do not belong in Git.
 
 ## Bounds
@@ -155,7 +170,14 @@ CDK output goes to `cdk.out/`. These directories do not belong in Git.
   not performance-tuned values.
 - Reuse only clients and validators, never learner state, across invocations.
 
-Next: bounded playback exports and owner-authorised debrief/timeline/playback reads.
+Read limits: debrief 256 MiB/10 seconds; timeline and playback 512 MiB/25 seconds,
+with API integration timeouts of 8 and 23 seconds. Read routes have a checkpoint burst
+of four and rate of two per second. Timeline rereads bounded history per page; cloud
+latency and memory use remain unmeasured. Export preparation processes at most 20 source
+pages per pass in the existing reconcile/sweep functions.
+
+Next: reviewed integration and an explicitly approved disposable AWS checkpoint.
+No AWS writes, frontend player, new service, or migration/backfill are part of this PR.
 Publication must supply the immutable private manifest and mandatory SHA-256 pin.
 The finaliser reads accepted sealed evidence, not private manifests in a browser or
 assistant prompt. Incomplete results retain safe saved events and have a null score.

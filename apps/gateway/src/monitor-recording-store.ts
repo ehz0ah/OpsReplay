@@ -43,6 +43,7 @@ import {
   type MonitorEvidencePage,
 } from '../../../packages/contracts/private/monitor-evidence.js';
 import { canonicalJson } from '../../../packages/session/src/canonical.js';
+import { isMonitorFinalEvidence } from '../../../packages/contracts/private/monitor-final.js';
 
 export const monitorRecorderLease = Object.freeze({
   defaultDurationMs: 15_000,
@@ -912,7 +913,14 @@ export class DynamoMonitorRecordingStore
       !validReference(reference, lease.sessionId, lease.generation, 'sealed') ||
       reference.source !== value.source ||
       reference.nextSequence !== value.cursor ||
-      reference.frameCount !== value.frames.length
+      reference.frameCount !== value.frames.length ||
+      !isMonitorFinalEvidence({
+        schemaVersion: 1,
+        cutoffAt: value.cutoffAt,
+        source: value.source,
+        cursor: value.cursor,
+        final: value.final,
+      })
     ) {
       throw new MonitorRecordingStoreError('invalid_input');
     }
@@ -1097,6 +1105,23 @@ export class DynamoMonitorRecordingStore
             ]
           : []),
         { Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'complete', now) } },
+        {
+          Put: {
+            TableName: this.table,
+            Item: {
+              PK: `SESSION#${lease.sessionId}`,
+              SK: 'MONITOR_FINAL',
+              data: {
+                schemaVersion: 1,
+                cutoffAt: value.cutoffAt,
+                source: value.source,
+                cursor: value.cursor,
+                final: structuredClone(value.final),
+              },
+            },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
         ...evidenceItems.map(({ SK, data }) => ({
           ConditionCheck: {
             TableName: this.table,
@@ -1178,9 +1203,17 @@ export class DynamoMonitorRecordingStore
       await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
-      const [saved, publicStatus] = await Promise.all([
+      const [saved, publicStatus, finalReceipt] = await Promise.all([
         this.get(lease.sessionId, signal),
         this.sessionRecordingStatus(lease.sessionId, signal),
+        this.client.send(
+          new GetCommand({
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK: 'MONITOR_FINAL' },
+            ConsistentRead: true,
+          }),
+          sendOptions(signal),
+        ),
       ]);
       if (
         saved?.status === 'complete' &&
@@ -1190,7 +1223,15 @@ export class DynamoMonitorRecordingStore
         saved.cursor === value.cursor &&
         sameReference(saved.sealed, reference) &&
         publicStatus === 'complete' &&
-        (coverage === undefined || isDeepStrictEqual(await this.coverage(lease.sessionId, signal), coverage))
+        (coverage === undefined || isDeepStrictEqual(await this.coverage(lease.sessionId, signal), coverage)) &&
+        canonicalJson(finalReceipt.Item?.data) ===
+          canonicalJson({
+            schemaVersion: 1,
+            cutoffAt: value.cutoffAt,
+            source: value.source,
+            cursor: value.cursor,
+            final: value.final,
+          })
       ) {
         return;
       }
