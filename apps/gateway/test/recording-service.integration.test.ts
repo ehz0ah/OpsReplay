@@ -22,7 +22,7 @@ import { createServer, type Socket } from 'node:net';
 import { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
-import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
+import { CreateTableCommand, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import {
   GetObjectCommand,
@@ -322,17 +322,34 @@ test(
       }
     }
     const cutoffAt = new Date().toISOString();
-    await attempts.outcome(
-      sessionId,
-      'ended',
-      'learner_ended',
-      cutoffAt,
-      undefined,
-      savedSession.ownerId,
-      undefined,
-      cutoffAt,
-      randomUUID(),
-    );
+    const endRequestId = randomUUID();
+    // The 100 ms fixture renewals can exhaust one call's three CAS attempts.
+    // Retry the same decision within the existing deadline, without relaxing CAS.
+    await eventually(async () => {
+      try {
+        await attempts.outcome(
+          sessionId,
+          'ended',
+          'learner_ended',
+          cutoffAt,
+          t.signal,
+          savedSession.ownerId,
+          undefined,
+          cutoffAt,
+          endRequestId,
+        );
+        return true;
+      } catch (error) {
+        if (
+          !t.signal.aborted &&
+          error instanceof TransactionCanceledException &&
+          error.CancellationReasons?.some((reason) => reason.Code === 'ConditionalCheckFailed') &&
+          error.CancellationReasons.every((reason) => ['None', 'ConditionalCheckFailed'].includes(reason.Code!))
+        )
+          return false;
+        throw error;
+      }
+    }, 'End did not commit within the bounded contention retry window');
     await eventually(
       async () => (await recordings.get(sessionId))?.status === 'complete',
       'Combined recording did not complete',

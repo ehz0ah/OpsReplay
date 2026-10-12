@@ -305,6 +305,79 @@ test('outcome retries recorder initialization between reads and fences the unsta
   assert.equal((await f.get('RECORDING')).startedAt, null);
 });
 
+test('end retry preserves atomicity after lease renewals exhaust the transaction budget', async () => {
+  const f = await fixture();
+  await f.ready();
+  const lifecycle = await f.get('LIFECYCLE');
+  const recordings = new DynamoMonitorRecordingStore(database.document, f.table);
+  let renewals = 0;
+  const hooked = withReadHook(f, async (key) => {
+    if (key === 'RECORDING' && renewals < 3) {
+      // Each actual renewal invalidates the snapshot already read by outcome().
+      await recordings.renew(f.lease, at(70 + renewals++), 30_000);
+    }
+  });
+  const requestId = randomUUID();
+  let now = 70;
+  const handler = createEndSessionHandler({ store: hooked.store, now: () => new Date(at(now)) });
+  const event = {
+    httpMethod: 'POST',
+    resource: '/v1/sessions/{id}/end',
+    pathParameters: { id: f.id },
+    requestContext: { authorizer: { claims: { sub: 'learner-1' } } },
+    body: JSON.stringify({ requestId }),
+    isBase64Encoded: false,
+  } as unknown as APIGatewayProxyEvent;
+  const invoke = () => handler(event, { awsRequestId: randomUUID(), getRemainingTimeInMillis: () => 30_000 });
+
+  const exhausted = await invoke();
+  assert.equal(exhausted.statusCode, 500, exhausted.body);
+  assert.deepEqual(JSON.parse(exhausted.body), {
+    code: 'INTERNAL_ERROR',
+    message: 'The session could not be ended. Retry with the same request ID.',
+    requestId,
+  });
+  assert.equal(renewals, 3);
+  assert.equal(hooked.writes.length, 3);
+  assert.equal((await f.get('STATE')).view.status, 'ready');
+  assert.equal((await f.get('STATE')).view.endedAt, null);
+  assert.deepEqual(await f.get('LIFECYCLE'), lifecycle);
+  assert.equal(await f.get(`REQUEST#${requestId}`), undefined);
+  const renewed = await recordings.get(f.id);
+  assert.equal(renewed?.status, 'recording');
+  assert.equal(renewed?.updatedAt, at(72));
+  assert.equal(renewed?.cutoffAt, null);
+
+  now = 74;
+  const retried = await invoke();
+  assert.equal(retried.statusCode, 200, retried.body);
+  assert.equal(hooked.writes.length, 4);
+  const saved = (await f.store.session(f.id))!;
+  assert.equal(saved.view.status, 'ended');
+  assert.equal(saved.view.statusReason, 'learner_ended');
+  assert.equal(saved.view.endedAt, at(74));
+  assert.deepEqual(JSON.parse(retried.body), { session: saved.view });
+  assert.deepEqual(await f.get(`REQUEST#${requestId}`), {
+    schemaVersion: 1,
+    operation: 'end_session',
+    ownerId: 'learner-1',
+    requestId,
+    sessionId: f.id,
+  });
+  assert.equal((await recordings.get(f.id))?.cutoffAt, at(74));
+  assert.equal((await recordings.get(f.id))?.drainDeadlineAt, at(104));
+
+  now = 75;
+  const duplicate = await invoke();
+  assert.equal(duplicate.statusCode, 200, duplicate.body);
+  assert.deepEqual(JSON.parse(duplicate.body), JSON.parse(retried.body));
+  assert.equal(hooked.writes.length, 4);
+  const lock = await database.document.send(
+    new GetCommand({ TableName: f.table, Key: { PK: 'USER#learner-1', SK: 'ACTIVE' }, ConsistentRead: true }),
+  );
+  assert.equal(lock.Item?.data.sessionId, f.id);
+});
+
 test('persistent session and recording mismatches exhaust three reads without writes', async (t) => {
   for (const mismatch of ['pending-with-recorder', 'recording-without-recorder']) {
     await t.test(mismatch, async () => {
