@@ -255,12 +255,37 @@ export class PlaybackExporter {
     } catch (error) {
       if (signal?.aborted) throw error;
       const saved = await this.get(id, 'PLAYBACK_EXPORT', signal);
-      if (
-        isPlaybackExportState(saved) &&
-        saved.sourceSha256 === state.sourceSha256 &&
-        (saved.terminalCursor > state.terminalCursor || saved.metricCursor > state.metricCursor || saved.complete)
-      )
-        return saved.complete;
+      if (isPlaybackExportState(saved) && saved.sourceSha256 === state.sourceSha256) {
+        if (
+          saved.terminalCursor > state.terminalCursor ||
+          saved.metricCursor > state.metricCursor ||
+          (saved.metricScanKey !== null &&
+            (state.metricScanKey === null || saved.metricScanKey > state.metricScanKey)) ||
+          saved.complete
+        )
+          return saved.complete;
+        // A lost response can leave the exact hint and work index committed.
+        const [receipt, work] = await Promise.all([
+          this.get(id, hint.SK, signal),
+          this.dynamo.send(
+            new GetCommand({ TableName: this.table, Key: this.key(id, 'LIFECYCLE'), ConsistentRead: true }),
+            signal ? { abortSignal: signal } : undefined,
+          ),
+        ]);
+        const expected = {
+          ...hint.data,
+          sourceSha256: state.sourceSha256,
+          terminalCursor: state.terminalCursor,
+          metricCursor: state.metricCursor,
+          metricScanKey: state.metricScanKey,
+        };
+        if (
+          canonicalJson(saved) === canonicalJson(state) &&
+          canonicalJson(receipt) === canonicalJson(expected) &&
+          canonicalJson(work.Item) === canonicalJson(lifecycleWorkItem(lifecycle))
+        )
+          return false;
+      }
       throw error;
     }
   }
@@ -376,7 +401,7 @@ export class PlaybackExporter {
           unavailable: null,
         };
     if (this.now() >= Date.parse(recording.retainUntil!)) {
-      // Expired playback must not hold the result/progress lock forever.
+      // Expiry retires export work without reading retained objects.
       if (state.unavailable === 'expired')
         return (await this.commit(id, recording, sources, state, state, undefined, undefined, signal)).complete;
       return (

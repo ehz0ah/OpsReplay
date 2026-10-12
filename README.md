@@ -40,8 +40,10 @@ Lambda actions and triggers remain disabled. Command receipts, safe interval cap
 debrief finalisation are now implemented locally. Finalisation commits the result,
 progress, and matching ready-attempt lock release together after confirmed cleanup.
 Bounded resumable playback exports and three separate owner read APIs are implemented
-locally. Finalisation saves export completion and highlights before it makes the debrief
-available. All new read Lambdas have zero reserved concurrency. Content publication,
+locally. Finalisation saves the debrief, highlights and progress, and releases the matching
+lock without waiting for playback exports. Pending exports use the existing lifecycle
+work index and transition hints. Playback returns its own pending response. All new read
+Lambdas have zero reserved concurrency. Content publication,
 environment task definitions, remaining API, and the web application are not implemented.
 No checkpoint image is currently published in AWS,
 and no public route is deployed.

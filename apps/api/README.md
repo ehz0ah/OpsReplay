@@ -121,7 +121,10 @@ Do not seed the draft repository Challenge as published content.
 The separate [debrief](src/get-debrief/index.ts), [timeline](src/list-timeline/index.ts),
 and [playback](src/get-playback/index.ts) actions use the same saved-owner/grant checks,
 with no state mutation. Debrief reads saved results. Timeline reads bounded command and
-Monitor projections; live pages are provisional and stale cursors require restart.
+Monitor projections. Live pages use a stable session/source identity and an `(at, id)`
+keyset cursor. Appends and lease changes do not invalidate it. The cursor remains at the
+last event on an empty poll. A readiness/source change or the switch to a final snapshot
+requires restart. Final pages retain strict snapshot binding.
 Playback uses fixed export/capture snapshots and keyset reference paging, verifies selected
 object length/checksum, and signs at most 25 links for at most 300 seconds. Temporary
 credential expiry and recording retention can shorten that duration. Each action has its

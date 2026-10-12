@@ -204,8 +204,9 @@ Recording completion now requires both terminal and monitor final cursors when t
 state exists. Legacy monitor-only records use an absence condition to reject concurrent
 terminal initialisation. Lifecycle integration and debrief finalisation are tested
 locally. Resumable exports and owner read APIs are also implemented, but remain disabled.
-Finalisation requires private manifest hash pins, confirmed cleanup, completed matching
-exports, and matching session/recording/lifecycle/terminal/final-Monitor snapshots.
+Finalisation requires private manifest hash pins, confirmed cleanup, and matching
+session/recording/lifecycle/terminal/final-Monitor snapshots. Playback exports do not
+gate the atomic debrief, highlights, progress and matching-lock release transaction.
 Live parser and command receipts commit with terminal pages. Sealed parser and receipts
 commit with cutoff pages. Capture uploads precede atomic reference/cursor writes under
 the same lease. Combined completion rejects parser loss, incomplete controls/UTF-8,
@@ -220,8 +221,11 @@ Monitor event projections, never invented final counters. See the
 Exports use content-addressed keys with source sequence ranges. Uploads carry the existing
 sealed/provisional retention tag, SHA-256 checksum, encryption, and an absent-object
 condition. A retry accepts only an equal existing object. Each checkpoint/reference
-transaction conditions the fixed source snapshots and previous progress. A completed
-export is conditioned again in the result/progress/lock transaction.
+transaction conditions the fixed source snapshots and previous progress. Result
+publication preserves the indexed lifecycle item and creates a playback transition hint.
+Each pending bounded pass advances that hint. Export completion atomically removes the
+work-index attributes without changing lifecycle data. Interrupted passes remain
+sweep-discoverable. Stale continuations cannot reindex completed exports.
 
 `MONITOR_FINAL` is saved in the recording seal transaction, so delayed finalisation can
 use final counters and bounded `MONITOR_EVENTS` projections after S3 expiry. A projection

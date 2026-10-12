@@ -4,7 +4,8 @@ export const lifecycleHintPrefix = 'LIFECYCLE_HINT#';
 export type LifecycleHintTransition =
   'ready' | 'outcome' | 'recovery_met' | 'coverage' | 'complete' | 'incomplete' | 'playback';
 
-/** Bounded transition hints. Cursor, lease and heartbeat writes never produce a hint. */
+/** Bounded lifecycle hints. Recorder cursor, lease and heartbeat writes never
+ * produce hints. Playback continuation emits one hint per pending export pass. */
 export function lifecycleHintItem(sessionId: string, transition: LifecycleHintTransition, at: string) {
   if (
     !isTerminalSessionId(sessionId) ||
