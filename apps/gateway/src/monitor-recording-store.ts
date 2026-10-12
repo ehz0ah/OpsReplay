@@ -44,6 +44,11 @@ import {
 } from '../../../packages/contracts/private/monitor-evidence.js';
 import { canonicalJson } from '../../../packages/session/src/canonical.js';
 import { isMonitorFinalEvidence } from '../../../packages/contracts/private/monitor-final.js';
+import {
+  isMonitorLiveTelemetry,
+  monitorLiveTelemetryKey,
+  type MonitorLiveTelemetry,
+} from '../../../packages/contracts/private/live-telemetry.js';
 
 export const monitorRecorderLease = Object.freeze({
   defaultDurationMs: 15_000,
@@ -79,6 +84,7 @@ export interface MonitorRecordingStateStore {
     signal?: AbortSignal,
     observation?: MonitorLifecycleObservation,
     evidence?: MonitorEvidencePage,
+    live?: MonitorLiveTelemetry,
   ): Promise<void>;
   seal(
     lease: MonitorRecorderLease,
@@ -719,6 +725,7 @@ export class DynamoMonitorRecordingStore
     signal?: AbortSignal,
     observation?: MonitorLifecycleObservation,
     evidence?: MonitorEvidencePage,
+    live?: MonitorLiveTelemetry,
   ): Promise<void> {
     if (
       !validLease(lease) ||
@@ -744,6 +751,16 @@ export class DynamoMonitorRecordingStore
         evidence.after !== reference.after ||
         evidence.nextSequence !== reference.nextSequence ||
         evidence.events.some((item) => item.recordedAt < startedAt || item.recordedAt > now))
+    )
+      throw new MonitorRecordingStoreError('invalid_input');
+    if (
+      live !== undefined &&
+      (!isMonitorLiveTelemetry(live, lease.sessionId) ||
+        live.startedAt !== startedAt ||
+        live.source !== reference.source ||
+        live.frontier !== reference.nextSequence ||
+        live.sequence <= reference.after ||
+        live.recordedAt > now)
     )
       throw new MonitorRecordingStoreError('invalid_input');
     const previousObservation = observation
@@ -775,7 +792,7 @@ export class DynamoMonitorRecordingStore
         previousObservation.at > observation.at ||
         previousObservation.recovery.requiredSeconds !== observation.recovery.requiredSeconds)
     ) {
-      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence)) return;
+      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence, live)) return;
       throw new MonitorRecordingStoreError('invalid_input');
     }
     const chunk = {
@@ -846,6 +863,36 @@ export class DynamoMonitorRecordingStore
               },
             ]
           : []),
+        ...(live
+          ? [
+              {
+                Put: {
+                  TableName: this.table,
+                  Item: { ...monitorLiveTelemetryKey(lease.sessionId), data: structuredClone(live) },
+                  ConditionExpression:
+                    'attribute_not_exists(PK) OR (' +
+                    '#data.#sessionId = :liveSessionId AND #data.#startedAt = :liveStartedAt AND ' +
+                    '#data.#source = :liveSource AND #data.#frontier < :liveFrontier AND ' +
+                    '#data.#sequence < :liveSequence)',
+                  ExpressionAttributeNames: {
+                    '#data': 'data',
+                    '#sessionId': 'sessionId',
+                    '#startedAt': 'startedAt',
+                    '#source': 'source',
+                    '#frontier': 'frontier',
+                    '#sequence': 'sequence',
+                  },
+                  ExpressionAttributeValues: {
+                    ':liveSessionId': lease.sessionId,
+                    ':liveStartedAt': startedAt,
+                    ':liveSource': reference.source,
+                    ':liveFrontier': live.frontier,
+                    ':liveSequence': live.sequence,
+                  },
+                },
+              },
+            ]
+          : []),
         ...(observation
           ? [
               keepRecovery
@@ -880,7 +927,7 @@ export class DynamoMonitorRecordingStore
       await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
-      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence)) return;
+      if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal, evidence, live)) return;
       if (conditionalFailure(error)) {
         const saved = await this.get(lease.sessionId, signal);
         if (
@@ -1401,6 +1448,7 @@ export class DynamoMonitorRecordingStore
     reference: StoredMonitorChunk,
     signal?: AbortSignal,
     evidence?: MonitorEvidencePage,
+    live?: MonitorLiveTelemetry,
   ): Promise<boolean> {
     const [state, chunk] = await Promise.all([
       this.get(sessionId, signal),
@@ -1424,6 +1472,25 @@ export class DynamoMonitorRecordingStore
         sendOptions(signal),
       );
       if (canonicalJson(saved.Item?.data) !== canonicalJson(evidence)) return false;
+    }
+    if (live) {
+      const saved = await this.client.send(
+        new GetCommand({
+          TableName: this.table,
+          Key: monitorLiveTelemetryKey(sessionId),
+          ConsistentRead: true,
+        }),
+        sendOptions(signal),
+      );
+      const current = saved.Item?.data;
+      const exact = canonicalJson(current) === canonicalJson(live);
+      const superseded =
+        isMonitorLiveTelemetry(current, sessionId) &&
+        current.startedAt === live.startedAt &&
+        current.source === live.source &&
+        current.frontier > reference.nextSequence &&
+        current.sequence > live.sequence;
+      if (!exact && !superseded) return false;
     }
     return (
       state !== undefined &&

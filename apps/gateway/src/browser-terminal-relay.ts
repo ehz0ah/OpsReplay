@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { setTimeout as delay } from 'node:timers/promises';
 import { ShellMarkerFilter } from './shell-marker-filter.js';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -10,6 +11,11 @@ import publicSchema from '../../../packages/contracts/schemas/public.schema.json
 import { TerminalAdmissionError, type TerminalAdmissionStore } from './terminal-admission-store.js';
 import { TerminalClientError, type TerminalClientEnd } from './terminal-client.js';
 import {
+  GatewayLiveTelemetryError,
+  type GatewayLiveTelemetryCursor,
+  type GatewayLiveTelemetryStore,
+} from './live-telemetry-store.js';
+import {
   GatewayTerminalSession,
   type OpenTerminalSessionOptions,
   type TerminalConnection,
@@ -20,6 +26,7 @@ const DEFAULT_PATH = '/v1/terminal';
 const DEFAULT_AUTH_TIMEOUT_MS = 5_000;
 const DEFAULT_SEND_TIMEOUT_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
+const DEFAULT_TELEMETRY_INTERVAL_MS = 5_000;
 const DEFAULT_COLUMNS = 80;
 const DEFAULT_ROWS = 24;
 const MAX_BROWSER_INPUT_BYTES = 16 * 1024;
@@ -39,6 +46,7 @@ type GatewayErrorCode =
   | 'SESSION_NOT_READY'
   | 'SESSION_TERMINAL'
   | 'REPLACED'
+  | 'TELEMETRY_UNAVAILABLE'
   | 'PROPOSAL_UNAVAILABLE'
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
@@ -49,6 +57,7 @@ const errorMessages: Record<GatewayErrorCode, string> = {
   SESSION_NOT_READY: 'The terminal session is not ready.',
   SESSION_TERMINAL: 'The terminal session has ended.',
   REPLACED: 'This terminal connection was replaced.',
+  TELEMETRY_UNAVAILABLE: 'Live telemetry is temporarily unavailable. Use the session API for current status.',
   PROPOSAL_UNAVAILABLE: 'Proposal execution is not available.',
   RATE_LIMITED: 'Terminal input is arriving too quickly.',
   INTERNAL_ERROR: 'The terminal connection failed.',
@@ -67,6 +76,7 @@ const utf8 = new TextDecoder('utf-8', { fatal: true });
 export interface BrowserTerminalSession extends TerminalConnection {
   learnerHeartbeat?(signal?: AbortSignal): Promise<void>;
   readonly sessionId: string;
+  readonly connectionId: string;
   readonly generation: number;
 }
 
@@ -93,6 +103,8 @@ export interface GatewayBrowserTerminalConnectionOptions {
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
   heartbeatIntervalMs?: number;
+  telemetryIntervalMs?: number;
+  telemetry?: GatewayLiveTelemetryStore;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
@@ -183,6 +195,7 @@ export class GatewayBrowserTerminalConnection {
   private readonly authTimeoutMs: number;
   private readonly sendTimeoutMs: number;
   private readonly heartbeatIntervalMs: number;
+  private readonly telemetryIntervalMs: number;
   private readonly initialColumns: number;
   private readonly initialRows: number;
   private readonly lifetime = new AbortController();
@@ -218,6 +231,11 @@ export class GatewayBrowserTerminalConnection {
       DEFAULT_HEARTBEAT_INTERVAL_MS,
       'Heartbeat interval',
       DEFAULT_HEARTBEAT_INTERVAL_MS,
+    );
+    this.telemetryIntervalMs = boundedMilliseconds(
+      options.telemetryIntervalMs,
+      DEFAULT_TELEMETRY_INTERVAL_MS,
+      'Telemetry interval',
     );
     this.initialColumns = boundedDimension(options.initialColumns, DEFAULT_COLUMNS, 20, 500, 'Initial columns');
     this.initialRows = boundedDimension(options.initialRows, DEFAULT_ROWS, 5, 200, 'Initial rows');
@@ -345,6 +363,7 @@ export class GatewayBrowserTerminalConnection {
       this.authenticated = true;
       this.releaseOutputGate();
       this.scheduleHeartbeat();
+      if (this.options.telemetry !== undefined) this.startTask(this.streamTelemetry());
     } catch (error) {
       if (this.state !== 'authenticating') return;
       if (error instanceof TerminalAdmissionError) {
@@ -462,6 +481,63 @@ export class GatewayBrowserTerminalConnection {
       return;
     }
     this.fail('INTERNAL_ERROR', 1011);
+  }
+
+  private async streamTelemetry(): Promise<void> {
+    const telemetry = this.options.telemetry;
+    const session = this.session;
+    if (telemetry === undefined || session === undefined) return;
+    let cursor: GatewayLiveTelemetryCursor | undefined;
+    let unavailableReported = false;
+    while (this.state === 'ready' && !this.lifetime.signal.aborted) {
+      try {
+        const update = await telemetry.read(
+          {
+            sessionId: session.sessionId,
+            connectionId: session.connectionId,
+            generation: session.generation,
+          },
+          cursor,
+          this.lifetime.signal,
+        );
+        if (this.state !== 'ready') return;
+        if (update.type === 'terminal') {
+          await this.sendJson({ type: 'status', status: update.status, reason: update.reason });
+          return;
+        }
+        if (update.metric !== null) await this.sendJson(update.metric);
+        for (const event of update.events) await this.sendJson({ type: 'timeline', event });
+        cursor = update.cursor;
+        unavailableReported = false;
+      } catch (error) {
+        if (this.lifetime.signal.aborted) return;
+        if (error instanceof GatewayLiveTelemetryError) {
+          if (error.code === 'cancelled') return;
+          if (error.code === 'replaced') {
+            this.fail('REPLACED', 1008);
+            return;
+          }
+          if (error.code === 'telemetry_unavailable') {
+            if (!unavailableReported) {
+              await this.sendJson(publicError('TELEMETRY_UNAVAILABLE'));
+              unavailableReported = true;
+            }
+          } else {
+            this.fail('INTERNAL_ERROR', 1011);
+            return;
+          }
+        } else {
+          this.fail('INTERNAL_ERROR', 1011);
+          return;
+        }
+      }
+      try {
+        await delay(this.telemetryIntervalMs, undefined, { signal: this.lifetime.signal });
+      } catch {
+        if (this.lifetime.signal.aborted) return;
+        throw new BrowserSendError();
+      }
+    }
   }
 
   private sendJson(value: object): Promise<void> {
@@ -635,6 +711,8 @@ export interface GatewayBrowserTerminalRelayOptions {
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
   heartbeatIntervalMs?: number;
+  telemetryIntervalMs?: number;
+  telemetry?: GatewayLiveTelemetryStore;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
@@ -840,6 +918,10 @@ export class GatewayBrowserTerminalRelay {
       ...(this.options.heartbeatIntervalMs === undefined
         ? {}
         : { heartbeatIntervalMs: this.options.heartbeatIntervalMs }),
+      ...(this.options.telemetryIntervalMs === undefined
+        ? {}
+        : { telemetryIntervalMs: this.options.telemetryIntervalMs }),
+      ...(this.options.telemetry === undefined ? {} : { telemetry: this.options.telemetry }),
       ...(this.options.initialColumns === undefined ? {} : { initialColumns: this.options.initialColumns }),
       ...(this.options.initialRows === undefined ? {} : { initialRows: this.options.initialRows }),
       ...(this.options.terminalPort === undefined ? {} : { terminalPort: this.options.terminalPort }),

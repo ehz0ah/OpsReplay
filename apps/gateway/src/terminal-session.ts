@@ -51,6 +51,7 @@ export interface TerminalSessionReady {
 export class GatewayTerminalSession {
   readonly ended: Promise<TerminalClientEnd>;
   readonly sessionId: string;
+  readonly connectionId: string;
   readonly generation: number;
   private lastSeenWriteAt: number | undefined;
 
@@ -61,6 +62,7 @@ export class GatewayTerminalSession {
     private readonly now: () => Date,
   ) {
     this.sessionId = admission.sessionId;
+    this.connectionId = admission.connectionId;
     this.generation = admission.generation;
     this.ended = terminal.ended;
   }

@@ -34,6 +34,10 @@ import { terminalPage, terminalReady } from '../../../packages/contracts/private
 import type { TerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
 import { monitorObservationKey } from '../../../packages/contracts/private/monitor-persistence.js';
 import { initialCommandParser } from '../../../packages/contracts/private/command-evidence.js';
+import {
+  monitorLiveTelemetryKey,
+  type MonitorLiveTelemetry,
+} from '../../../packages/contracts/private/live-telemetry.js';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
 before(
@@ -120,6 +124,20 @@ function metric(at: string): MonitorMetricFrame {
 function frame(sequence = 1): MonitorFrame {
   const recordedAt = `2026-10-07T00:00:0${sequence}.000Z`;
   return { source, sequence, recordedAt, payload: metric(recordedAt) };
+}
+
+function liveTelemetry(sessionId: string, sequence: number, frontier = sequence): MonitorLiveTelemetry {
+  const recordedAt = `2026-10-07T00:00:0${sequence}.000Z`;
+  return {
+    schemaVersion: 1,
+    sessionId,
+    startedAt,
+    source,
+    frontier,
+    sequence,
+    recordedAt,
+    metric: metric(recordedAt),
+  };
 }
 
 function reference(
@@ -351,6 +369,119 @@ test('Monitor event projection and cursor commit atomically and replay only the 
   );
   assert.equal(await f.get({ PK: `SESSION#${f.sessionId}`, SK: 'MONITOR_EVENTS#000002' }), undefined);
   assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+});
+
+test('live metric projection commits with its page and advances monotonically across response loss', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, startedAt);
+  const firstPage = reference(f.sessionId, 1, 'live');
+  const firstLive = liveTelemetry(f.sessionId, 1);
+  let lost = false;
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand && !lost) {
+          lost = true;
+          throw new Error('Response lost');
+        }
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+
+  await uncertain.append(
+    claimed.lease,
+    startedAt,
+    firstPage,
+    firstLive.recordedAt,
+    undefined,
+    undefined,
+    undefined,
+    firstLive,
+  );
+  assert.equal(lost, true);
+  assert.deepEqual(await f.get(monitorLiveTelemetryKey(f.sessionId)), firstLive);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+
+  await uncertain.append(
+    claimed.lease,
+    startedAt,
+    firstPage,
+    firstLive.recordedAt,
+    undefined,
+    undefined,
+    undefined,
+    structuredClone(firstLive),
+  );
+  await assert.rejects(
+    uncertain.append(claimed.lease, startedAt, firstPage, firstLive.recordedAt, undefined, undefined, undefined, {
+      ...firstLive,
+      metric: { ...firstLive.metric, sample: { ...firstLive.metric.sample, values: { request_rate: 99 } } },
+    }),
+    storeError('invalid_state'),
+  );
+
+  const secondPage = reference(f.sessionId, 1, 'live', 1, 2);
+  const secondLive = liveTelemetry(f.sessionId, 2);
+  await f.store.append(
+    claimed.lease,
+    startedAt,
+    secondPage,
+    secondLive.recordedAt,
+    undefined,
+    undefined,
+    undefined,
+    secondLive,
+  );
+  assert.deepEqual(await f.get(monitorLiveTelemetryKey(f.sessionId)), secondLive);
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 2);
+
+  await f.store.append(
+    claimed.lease,
+    startedAt,
+    firstPage,
+    secondLive.recordedAt,
+    undefined,
+    undefined,
+    undefined,
+    firstLive,
+  );
+  assert.deepEqual(await f.get(monitorLiveTelemetryKey(f.sessionId)), secondLive);
+});
+
+test('a rejected live projection cannot advance the recording cursor or publish its page', async () => {
+  const f = await fixture();
+  const claimed = await claim(f);
+  await f.store.begin(claimed.lease, startedAt, startedAt);
+  await f.store.append(claimed.lease, startedAt, reference(f.sessionId, 1, 'live'), startedAt);
+  const conflicting = {
+    ...liveTelemetry(f.sessionId, 1),
+    source: '33333333-3333-4333-8333-333333333333',
+  };
+  await f.put(monitorLiveTelemetryKey(f.sessionId), conflicting);
+
+  await assert.rejects(
+    f.store.append(
+      claimed.lease,
+      startedAt,
+      reference(f.sessionId, 1, 'live', 1, 2),
+      '2026-10-07T00:00:02.000Z',
+      undefined,
+      undefined,
+      undefined,
+      liveTelemetry(f.sessionId, 2),
+    ),
+    storeError('invalid_state'),
+  );
+  assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
+  assert.deepEqual(await f.get(monitorLiveTelemetryKey(f.sessionId)), conflicting);
+  assert.equal(
+    (await f.rows()).filter((row) => String(row.SK).startsWith('CHUNK#') && String(row.SK).endsWith('#000002')).length,
+    0,
+  );
 });
 
 test('allows only one concurrent recorder claim', async () => {
@@ -1177,7 +1308,8 @@ test('the runner drives the durable store from claim through canonical sealing',
   const f = await fixture();
   const client = new RunnerClient();
   const waits = new RunnerWait();
-  let clock = now;
+  // The sink commit happens after the Monitor returns its start and first frame.
+  let clock = startedAt;
   const running = new MonitorRecordingRunner({
     sessionId: f.sessionId,
     recorderId: 'gateway-runner',

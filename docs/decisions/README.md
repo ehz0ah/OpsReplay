@@ -82,6 +82,11 @@ the existing StartSession action to the existing Regional API, narrows Cognito i
 one public app client, and applies one exact browser origin to proxy and gateway errors.
 Keep start concurrency at zero until the complete runtime is activated.
 
+13 October 2026: [Durable Gateway live telemetry](gateway-live-telemetry.md) commits one
+replaceable public metric with the accepted Monitor page and serves bounded command and
+Monitor deltas through the admitted browser connection. Keep historical catch-up in the
+timeline API and do not claim durable or exactly-once WebSocket delivery.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

@@ -97,11 +97,20 @@ and private terminal. The next attachment receives the terminal server's
 `replayTruncated` warning. Public errors use fixed text and never include tickets,
 terminal data, task addresses, or internal errors.
 
+After admission, one non-overlapping five-second loop reads live telemetry for the same
+session, connection ID, and input generation. The first read sends only the latest
+accepted metric and establishes command and Monitor frontiers. Later reads send bounded
+command and Monitor event deltas. Historical catch-up remains the timeline API; the
+WebSocket does not promise replay or exactly-once delivery. A temporary evidence-read
+failure sends `TELEMETRY_UNAVAILABLE` once per outage without closing the terminal. A
+failed authorization check or replaced input generation closes the connection. All
+messages use the existing one-second bounded browser send path.
+
 The runtime image now composes the relay with the recording supervisor when its complete
 terminal configuration is present. CDK now defines its public ALB and private security
-group path. Learner heartbeat, command evidence, and interval captures are implemented
-locally. Dashboard traffic, proposals, playback exports/read APIs, and AWS validation
-remain separate work.
+group path. Learner heartbeat, command evidence, interval captures, and durable live
+dashboard delivery are implemented locally. Proposals, frontend dashboard rendering,
+and AWS validation remain separate work.
 
 ## Monitor client
 
@@ -208,7 +217,10 @@ recording item has no retention boundary while active. Sealing saves a conservat
 deterministic `retainUntil` before any reader can use the terminal object references.
 
 `DurableMonitorRecordingSink` connects these adapters to `MonitorRecorder`. It uploads an
-object before it advances DynamoDB state. Final sealing requires the lifecycle state to
+object before it advances DynamoDB state. The same fenced append transaction replaces
+one small `LIVE_MONITOR` item with the latest public metric from that accepted page.
+`MONITOR_OBSERVATION` remains independent and keeps the first sustained recovery for
+lifecycle decisions. Final sealing requires the lifecycle state to
 already be `draining`, the exact saved cutoff, a current lease, and time remaining before
 the drain deadline. It then atomically publishes the canonical S3 reference and changes
 both recording records to `complete`.
@@ -298,7 +310,7 @@ The tests use temporary self-signed certificates and the real monitor HTTPS serv
 cover certificate rejection before HTTP, authentication, TLS version, connection reuse,
 one safe retry, deadlines, cancellation, response bounds, sequence continuity, lease
 renewal, drain races, restart from a durable checkpoint, exact sealing, work discovery,
-bounded concurrency, duplicate suppression, and failure isolation. DynamoDB Local also
+bounded concurrency, duplicate suppression, cross-Gateway live telemetry, and failure isolation. DynamoDB Local also
 tests the keys-only GSI and conditional work retirement. The image test runs the bundled
 runner against the monitor and Challenge containers in one task-like network namespace.
 The runtime image test starts the real process as a non-root, read-only container. It

@@ -34,14 +34,10 @@ import {
   monitorControlClientError,
   monitorControlSchema,
 } from '../../../packages/contracts/private/monitor-control.js';
+import type { LiveMetricMessage } from '../../../packages/contracts/private/live-telemetry.js';
 
 export type MonitorHealth = MonitorControlHealth;
-export interface MonitorMetricFrame {
-  type: 'metrics';
-  sample: { at: string; values: Record<string, number> };
-  counters: { totalRequests: number; failedRequests: number };
-  recovery: { state: 'failing' | 'sustaining' | 'met'; sustainedSeconds: number; requiredSeconds: number };
-}
+export type MonitorMetricFrame = LiveMetricMessage;
 export interface MonitorTimelineFrame {
   type: 'timeline';
   event: {

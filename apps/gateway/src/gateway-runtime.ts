@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { createGatewayAwsClients, type GatewayAwsClients } from './aws.js';
 import { GatewayBrowserTerminalRelay, type GatewayBrowserTerminalRelayOptions } from './browser-terminal-relay.js';
+import { DynamoGatewayLiveTelemetryStore, type GatewayLiveTelemetryStore } from './live-telemetry-store.js';
 import {
   createGatewayRecordingSupervisor,
   type GatewayRecordingServiceClients,
@@ -62,6 +63,7 @@ export interface GatewayRuntimeDependencies {
     clients: GatewayRecordingServiceClients,
   ) => RecordingSupervisor;
   createAdmissions: (client: DynamoDBDocumentClient, tableName: string) => TerminalAdmissionStore;
+  createTelemetry: (client: DynamoDBDocumentClient, tableName: string) => GatewayLiveTelemetryStore;
   createRelay: (server: HttpServer, options: GatewayBrowserTerminalRelayOptions) => BrowserTerminalRelay;
   createHttpServer: (listener: (request: IncomingMessage, response: ServerResponse) => void) => HttpServer;
   createRecorderId: () => string;
@@ -233,6 +235,7 @@ const defaultDependencies: GatewayRuntimeDependencies = {
   createClients: createGatewayAwsClients,
   createSupervisor: createGatewayRecordingSupervisor,
   createAdmissions: (client, tableName) => new DynamoTerminalAdmissionStore(client, tableName),
+  createTelemetry: (client, tableName) => new DynamoGatewayLiveTelemetryStore(client, tableName),
   createRelay: (server, options) => new GatewayBrowserTerminalRelay(server, options),
   createHttpServer: (listener) =>
     createServer(
@@ -312,9 +315,11 @@ export async function runGatewayRuntime(
       server = dependencies.createHttpServer(requestHandler(() => ready));
       server.maxConnections = configuration.terminal.maximumConnections + httpConnectionAllowance;
       const admissions = dependencies.createAdmissions(clients.dynamo, configuration.sessionTableName);
+      const telemetry = dependencies.createTelemetry(clients.dynamo, configuration.sessionTableName);
       relay = dependencies.createRelay(server, {
         allowedOrigins: configuration.terminal.allowedOrigins,
         admissions,
+        telemetry,
         maxConnections: configuration.terminal.maximumConnections,
         maxPendingAuthentications: configuration.terminal.maximumPendingAuthentications,
         terminalPort: configuration.terminal.terminalPort,
