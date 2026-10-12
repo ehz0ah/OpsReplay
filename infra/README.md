@@ -340,8 +340,8 @@ No full-stack AWS run is required for each small PR. Local checks do not prove l
 changes. Repeat a bounded checkpoint when a change affects a managed-service contract or
 runtime behavior that local tests cannot verify.
 
-Before a pilot, add Route 53, create the Cognito resources referenced by the ticket
-route, extend the REST API with streaming and browser CORS, add separate environment
+Before a pilot, add Route 53, choose and validate the managed or external Cognito path,
+connect the browser to the exact-origin REST API, add any required streaming route, add separate environment
 configuration, budgets and alarms including Fargate vCPU use, the reconciliation sweep,
 backup and restore validation, and rollback. Do not add a NAT gateway, Redis, or
 unrelated AWS services without a recorded need.

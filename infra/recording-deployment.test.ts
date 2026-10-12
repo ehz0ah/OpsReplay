@@ -98,8 +98,16 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
           AssertDescription: 'TerminalGatewayUrl is required when EnableGatewayPath is true.',
         },
         {
-          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'CognitoUserPoolArn' }, ''] }] },
-          AssertDescription: 'CognitoUserPoolArn is required when EnableGatewayPath is true.',
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'PublicApiAllowedOrigin' }, ''] }] },
+          AssertDescription: 'PublicApiAllowedOrigin is required when EnableGatewayPath is true.',
+        },
+        {
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'BrowserCallbackUrl' }, ''] }] },
+          AssertDescription: 'BrowserCallbackUrl is required when EnableGatewayPath is true.',
+        },
+        {
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'BrowserLogoutUrl' }, ''] }] },
+          AssertDescription: 'BrowserLogoutUrl is required when EnableGatewayPath is true.',
         },
       ],
     });
@@ -332,10 +340,10 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
       Timeout: 10,
       MemorySize: 256,
       Environment: {
-        Variables: {
+        Variables: Match.objectLike({
           SESSION_TABLE_NAME: Match.anyValue(),
           TERMINAL_GATEWAY_URL: { Ref: 'TerminalGatewayUrl' },
-        },
+        }),
       },
       ReservedConcurrentExecutions: {
         'Fn::If': ['GatewayPathEnabled', { Ref: 'TerminalTicketBurstLimit' }, 0],
@@ -375,7 +383,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV5');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV6');
     assert.equal(gatewayResponses.length, 5);
     const deploymentDependencies = [deployment[1].DependsOn].flat();
     assert.ok(deploymentDependencies.includes(method[0]));
@@ -383,7 +391,15 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
       Type: 'COGNITO_USER_POOLS',
       IdentitySource: 'method.request.header.Authorization',
-      ProviderARNs: [{ Ref: 'CognitoUserPoolArn' }],
+      ProviderARNs: [
+        {
+          'Fn::If': [
+            'ManagedCognitoIdentity',
+            { 'Fn::GetAtt': ['CheckpointUserPool', 'Arn'] },
+            { Ref: 'CognitoUserPoolArn' },
+          ],
+        },
+      ],
     });
     template.hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'POST',
@@ -452,15 +468,19 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
       assert.ok(expected, `Unexpected GatewayResponse ${String(responseType)}`);
       assert.equal(response.Properties?.StatusCode, expected[0]);
       assert.deepEqual(response.Properties?.ResponseParameters, {
+        'gatewayresponse.header.Access-Control-Allow-Origin': {
+          'Fn::Join': ['', ["'", { Ref: 'PublicApiAllowedOrigin' }, "'"]],
+        },
         'gatewayresponse.header.Cache-Control': "'no-store'",
         'gatewayresponse.header.Content-Type': "'application/json'",
+        'gatewayresponse.header.Vary': "'Origin'",
       });
       assert.deepEqual(response.Properties?.ResponseTemplates, { 'application/json': expected[1] });
     }
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(apiPermissions.length, 6);
+    assert.equal(apiPermissions.length, 7);
     const ticketPermission = apiPermissions.find(([, resource]) =>
       JSON.stringify(resource.Properties?.SourceArn).includes('POST/v1/sessions/*/terminal-tickets'),
     );

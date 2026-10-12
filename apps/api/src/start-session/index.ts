@@ -13,6 +13,7 @@ import { loadLaunchConfiguration } from './configuration.js';
 import { createStartHandler } from './handler.js';
 import { StartStore } from './store.js';
 import { createAwsTransport } from '../shared/aws.js';
+import { loadPublicApiPolicy, withPublicApiPolicy } from '../shared/public-api.js';
 
 const table = process.env.SESSION_TABLE_NAME;
 if (!table) throw new Error('SESSION_TABLE_NAME is required');
@@ -32,9 +33,12 @@ const provision = createProvisionSession({
   schedule: new ProvisioningSchedule(createSchedulerClient(), loadScheduleConfiguration(process.env)),
   environment: new FargateEnvironment(createEcsClient()),
 });
-export const handler = createStartHandler({
-  store: new StartStore(client, table),
-  launchConfiguration: loadLaunchConfiguration(process.env),
-  provision,
-  log: (entry) => console.info(JSON.stringify(entry)),
-});
+export const handler = withPublicApiPolicy(
+  createStartHandler({
+    store: new StartStore(client, table),
+    launchConfiguration: loadLaunchConfiguration(process.env),
+    provision,
+    log: (entry) => console.info(JSON.stringify(entry)),
+  }),
+  loadPublicApiPolicy(process.env),
+);

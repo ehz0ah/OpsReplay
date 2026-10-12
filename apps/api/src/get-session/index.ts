@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { createAwsTransport } from '../shared/aws.js';
+import { loadPublicApiPolicy, withPublicApiPolicy } from '../shared/public-api.js';
 import { createGetSessionHandler } from './handler.js';
 import { DynamoSessionReader } from './store.js';
 
@@ -11,7 +12,10 @@ const client = DynamoDBDocumentClient.from(
   new DynamoDBClient({ maxAttempts: 2, requestHandler: createAwsTransport(2000) }),
 );
 
-export const handler = createGetSessionHandler({
-  store: new DynamoSessionReader(client, table),
-  log: (entry) => console.info(JSON.stringify(entry)),
-});
+export const handler = withPublicApiPolicy(
+  createGetSessionHandler({
+    store: new DynamoSessionReader(client, table),
+    log: (entry) => console.info(JSON.stringify(entry)),
+  }),
+  loadPublicApiPolicy(process.env),
+);

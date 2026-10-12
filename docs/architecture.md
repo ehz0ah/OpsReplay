@@ -8,9 +8,10 @@ authenticated HTTPS control run locally. The gateway monitor client, bounded rec
 controller, durable recording adapters, work source, supervisor, browser terminal relay,
 and composed process are implemented and tested locally. CDK defines an inactive Gateway
 path with a public ALB, private network edges, and terminal-ticket route, plus the
-disposable foundation used for its checkpoint. The temporary resources were removed.
-Captures, the remaining lifecycle handlers, terminal recording, DNS, browser CORS, and
-the web application are not implemented.
+disposable foundation used for its checkpoint. It also defines optional checkpoint-owned
+Cognito resources, one exact browser origin, and an inactive authenticated session-start
+route. The temporary resources were removed. DNS and the web application are not
+implemented.
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these

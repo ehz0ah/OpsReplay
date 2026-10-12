@@ -675,6 +675,8 @@ test('the bundled Lambda loads on Node 22 and rejects unauthenticated input with
     'SCHEDULER_GROUP_NAME',
     'PROVISIONING_EXPIRY_FUNCTION_ARN',
     'SCHEDULER_TARGET_ROLE_ARN',
+    'PUBLIC_API_ALLOWED_ORIGIN',
+    'COGNITO_USER_POOL_CLIENT_ID',
   ] as const;
   const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   try {
@@ -688,6 +690,8 @@ test('the bundled Lambda loads on Node 22 and rejects unauthenticated input with
     process.env.SCHEDULER_GROUP_NAME = 'test-sessions';
     process.env.PROVISIONING_EXPIRY_FUNCTION_ARN = 'arn:aws:lambda:ap-southeast-1:123456789012:function:test-expiry';
     process.env.SCHEDULER_TARGET_ROLE_ARN = 'arn:aws:iam::123456789012:role/test-scheduler';
+    process.env.PUBLIC_API_ALLOWED_ORIGIN = 'https://app.opsreplay.test';
+    process.env.COGNITO_USER_POOL_CLIENT_ID = 'client123';
     const bundled = createRequire(import.meta.url)('../../../dist/start-session/index.cjs');
     const response = await bundled.handler(event(request(), null), context);
     assert.equal(response.statusCode, 401);

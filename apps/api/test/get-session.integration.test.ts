@@ -415,14 +415,19 @@ test('logging failures do not change a read result and correlation IDs are serve
   assert.equal(response.body.includes('untrusted-request-id'), false);
 });
 
-test('the bundled Lambda has no development identity bypass or extra configuration requirement', async () => {
-  const previous = process.env.SESSION_TABLE_NAME;
+test('the bundled Lambda requires its fixed browser policy and has no development identity bypass', async () => {
+  const names = ['SESSION_TABLE_NAME', 'PUBLIC_API_ALLOWED_ORIGIN', 'COGNITO_USER_POOL_CLIENT_ID'] as const;
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   try {
     process.env.SESSION_TABLE_NAME = 'test-unused';
+    process.env.PUBLIC_API_ALLOWED_ORIGIN = 'https://app.opsreplay.test';
+    process.env.COGNITO_USER_POOL_CLIENT_ID = 'client123';
     const bundled = createRequire(import.meta.url)('../../../dist/get-session/index.cjs');
     assert.equal((await bundled.handler(event(randomUUID(), null), context)).statusCode, 401);
   } finally {
-    if (previous === undefined) delete process.env.SESSION_TABLE_NAME;
-    else process.env.SESSION_TABLE_NAME = previous;
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
   }
 });

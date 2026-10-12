@@ -77,6 +77,11 @@ binds the tested image configurations, embedded draft manifest, completed privat
 manifest, and exact task revision. Store private content before conditional admission,
 use a separate read-and-content-write identity, and keep apply manual and inactive.
 
+13 October 2026: [Authenticated session entry](authenticated-session-entry.md) connects
+the existing StartSession action to the existing Regional API, narrows Cognito identity to
+one public app client, and applies one exact browser origin to proxy and gateway errors.
+Keep start concurrency at zero until the complete runtime is activated.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |
