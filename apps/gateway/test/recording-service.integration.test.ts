@@ -193,6 +193,7 @@ test(
       },
     } as unknown as S3Client;
     const reports: string[] = [];
+    const failures: unknown[] = [];
     const supervisor = createGatewayRecordingSupervisor(
       {
         sessionTableName: table,
@@ -204,7 +205,10 @@ test(
         pollIntervalMs: 100,
         renewalIntervalMs: 100,
         monitorPollIntervalMs: 100,
-        report: (event) => reports.push(event.type),
+        report: (event) => {
+          reports.push(event.type);
+          if (event.type === 'runner_failed') failures.push(event.error);
+        },
       },
       { dynamo: database.document, s3 },
     );
@@ -259,6 +263,7 @@ test(
           ?.WorkPK,
       'Completed combined work was not retired',
     );
-    assert.equal(reports.includes('run_failed'), false);
+    assert.deepEqual(failures, []);
+    assert.ok(await recordings.coverage(sessionId));
   },
 );

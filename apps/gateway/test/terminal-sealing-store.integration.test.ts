@@ -88,6 +88,128 @@ async function fixture() {
   };
 }
 
+async function coverageFixture() {
+  const f = await fixture();
+  const state = (await f.leases.get(f.sessionId))!;
+  await f.put('RECORDING', { ...state, startedAt: now });
+  const value = {
+    startedAt: now,
+    cutoffAt: at(1),
+    source: null,
+    cursor: 0,
+    frames: [],
+    final: {
+      type: 'metrics' as const,
+      sample: { at: at(1), values: { request_rate: 1 } },
+      counters: { totalRequests: 1, failedRequests: 1 },
+      recovery: { state: 'failing' as const, sustainedSeconds: 0, requiredSeconds: 60 },
+    },
+  };
+  const sha256 = 'a'.repeat(64);
+  const monitor = {
+    phase: 'sealed' as const,
+    source: null,
+    after: 0,
+    nextSequence: 0,
+    frameCount: 0,
+    sha256,
+    objectKey: `sessions/${f.sessionId}/metrics/000000001/sealed/empty/000000-000000-${sha256}.json`,
+  };
+  return { ...f, value, monitor };
+}
+
+test('coverage permits task-independent sealing after the short drain and fences a takeover', async () => {
+  const f = await coverageFixture();
+  const coverage = await f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));
+  assert.equal(coverage.taskDrainDeadlineAt, at(10));
+  assert.equal((await f.leases.get(f.sessionId))?.drainDeadlineAt, coverage.sealingDeadlineAt);
+  const latePage = terminalPage([], {
+    ...f.page,
+    events: [],
+    nextSequence: f.checkpoint.cursor,
+    observedAt: at(4),
+  });
+  await assert.rejects(f.recordings.commit(f.lease, f.checkpoint, latePage, null, at(4)));
+  assert.deepEqual(await f.recordings.get(f.sessionId), f.checkpoint);
+  const replacement = (await f.leases.claim({ sessionId: f.sessionId, recorderId: 'gateway-2', now: at(20) })).lease;
+  await assert.rejects(f.leases.finishCovered(f.lease, coverage, at(21)));
+  const initial = await f.seals.begin(replacement, f.checkpoint, at(1), at(21));
+  const partial = await f.seals.append(replacement, initial, f.sealed, f.eventBytes, at(21));
+  await f.seals.finish(replacement, partial, { reference: f.reference, page: f.page }, at(21));
+  await f.leases.finishCovered(replacement, coverage, at(21));
+  const complete = await f.leases.get(f.sessionId);
+  assert.equal(complete?.status, 'complete');
+  assert.equal(complete?.generation, 2);
+  assert.deepEqual(complete?.sealed, f.monitor);
+  await f.leases.finishCovered(replacement, coverage, at(21));
+});
+
+test('coverage recovers only an exact receipt after a lost response', async () => {
+  const f = await coverageFixture();
+  const uncertain = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        const result = await database.document.send(command as TransactWriteCommand, options as never);
+        if (command instanceof TransactWriteCommand) throw new Error('Response lost');
+        return result;
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  const coverage = await uncertain.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));
+  assert.deepEqual(await uncertain.cover(f.lease, f.value, f.monitor, f.checkpoint, at(4)), coverage);
+  await assert.rejects(
+    uncertain.cover(
+      f.lease,
+      f.value,
+      f.monitor,
+      { ...f.checkpoint, recordedBytes: f.checkpoint.recordedBytes + 1 },
+      at(4),
+    ),
+  );
+  await assert.rejects(
+    uncertain.cover(
+      f.lease,
+      { ...f.value, final: { ...f.value.final, counters: { totalRequests: 2, failedRequests: 1 } } },
+      f.monitor,
+      f.checkpoint,
+      at(4),
+    ),
+  );
+  assert.deepEqual(await f.leases.coverage(f.sessionId), coverage);
+});
+
+test('coverage does not extend an expired drain or accept a changed terminal snapshot', async () => {
+  const f = await coverageFixture();
+  await assert.rejects(
+    f.leases.cover(
+      f.lease,
+      f.value,
+      f.monitor,
+      { ...f.checkpoint, recordedBytes: f.checkpoint.recordedBytes + 1 },
+      at(3),
+    ),
+  );
+  await assert.rejects(f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(10)));
+  assert.equal(await f.leases.coverage(f.sessionId), undefined);
+  assert.equal((await f.leases.get(f.sessionId))?.drainDeadlineAt, at(10));
+});
+
+test('covered completion requires the exact frozen terminal checkpoint', async () => {
+  const f = await coverageFixture();
+  const coverage = await f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));
+  const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(4));
+  const partial = await f.seals.append(f.lease, initial, f.sealed, f.eventBytes, at(4));
+  await f.seals.finish(f.lease, partial, { reference: f.reference, page: f.page }, at(4));
+  const altered = { ...f.checkpoint, recordedBytes: f.checkpoint.recordedBytes + 1 };
+  await f.put('TERMINAL_RECORDING', altered);
+  await assert.rejects(f.leases.finishCovered(f.lease, coverage, at(4)));
+  assert.equal((await f.leases.get(f.sessionId))?.status, 'draining');
+  await f.put('TERMINAL_RECORDING', f.checkpoint);
+  await f.leases.finishCovered(f.lease, coverage, at(4));
+  assert.equal((await f.leases.get(f.sessionId))?.status, 'complete');
+});
+
 test('sealing publishes a durable prefix and only completes with cutoff exclusion', async () => {
   const f = await fixture();
   const initial = await f.seals.begin(f.lease, f.checkpoint, at(1), at(3));

@@ -210,6 +210,13 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
     const items = [
       this.leaseCheck(lease, now),
       {
+        ConditionCheck: {
+          TableName: this.table,
+          Key: { PK: `SESSION#${lease.sessionId}`, SK: 'RECORDING_COVERAGE' },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        },
+      },
+      {
         Put: {
           TableName: this.table,
           Item: { ...key(lease.sessionId), data: next },

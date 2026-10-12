@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
+import { lifecycleHintItem } from '../../../packages/contracts/private/lifecycle-hint.js';
+import {
+  isRecordingCoverage,
+  recordingCoverageKey,
+  recordingSealingDurationMs,
+  type RecordingCoverage,
+} from '../../../packages/contracts/private/recording-coverage.js';
 import { GetCommand, TransactWriteCommand, UpdateCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { isMonitorControlTimestamp } from '../../../packages/contracts/private/monitor-control.js';
 import { recordingRetainUntil } from '../../../packages/contracts/private/recording-retention.js';
@@ -20,7 +28,10 @@ export type { MonitorRecordingIncompleteReason, MonitorRecordingStatus, MonitorR
 import { isMonitorRecordingGeneration, isMonitorRecordingSessionId } from './monitor-recording-identity.js';
 import type { StoredMonitorChunk } from './monitor-chunk-store.js';
 import { isTerminalSealState } from '../../../packages/contracts/private/terminal-sealing.js';
-import { isTerminalRecordingCheckpoint } from '../../../packages/contracts/private/terminal-persistence.js';
+import {
+  isTerminalRecordingCheckpoint,
+  type TerminalRecordingCheckpoint,
+} from '../../../packages/contracts/private/terminal-persistence.js';
 
 export const monitorRecorderLease = Object.freeze({
   defaultDurationMs: 15_000,
@@ -206,6 +217,159 @@ export class DynamoMonitorRecordingStore
     if (!result.Item) return undefined;
     if (!isMonitorRecordingState(result.Item.data, sessionId)) throw new MonitorRecordingStoreError('invalid_store');
     return cloneState(result.Item.data);
+  }
+
+  async coverage(sessionId: string, signal?: AbortSignal): Promise<RecordingCoverage | undefined> {
+    if (!validSessionId(sessionId)) throw new MonitorRecordingStoreError('invalid_input');
+    const result = await this.client.send(
+      new GetCommand({ TableName: this.table, Key: recordingCoverageKey(sessionId), ConsistentRead: true }),
+      sendOptions(signal),
+    );
+    if (!result.Item) return undefined;
+    if (!isRecordingCoverage(result.Item.data, sessionId)) throw new MonitorRecordingStoreError('invalid_store');
+    return structuredClone(result.Item.data);
+  }
+
+  /** Commit task-independent coverage before copying terminal pages. The deadline changes atomically. */
+  async cover(
+    lease: MonitorRecorderLease,
+    value: SealedMonitorRecording,
+    reference: StoredMonitorChunk,
+    terminal: TerminalRecordingCheckpoint,
+    now: string,
+    signal?: AbortSignal,
+  ): Promise<RecordingCoverage> {
+    if (!validLease(lease) || !isMonitorControlTimestamp(now)) throw new MonitorRecordingStoreError('invalid_input');
+    const current = await this.get(lease.sessionId, signal);
+    const saved = await this.coverage(lease.sessionId, signal);
+    if (saved) {
+      if (
+        !current ||
+        current.recorderId !== lease.recorderId ||
+        current.generation !== lease.generation ||
+        current.leaseExpiresAt! <= now
+      )
+        throw new MonitorRecordingStoreError('stale_lease');
+      if (
+        current.status !== 'draining' ||
+        current.startedAt !== value.startedAt ||
+        current.cutoffAt !== saved.cutoffAt ||
+        saved.cutoffAt !== value.cutoffAt ||
+        !isDeepStrictEqual(saved.terminal, terminal) ||
+        !isDeepStrictEqual(saved.final, value.final) ||
+        !sameReference(saved.monitor, reference) ||
+        reference.source !== value.source ||
+        reference.nextSequence !== value.cursor ||
+        reference.frameCount !== value.frames.length ||
+        current.drainDeadlineAt !== saved.sealingDeadlineAt ||
+        now >= saved.sealingDeadlineAt
+      )
+        throw new MonitorRecordingStoreError('invalid_state');
+      return saved;
+    }
+    if (
+      !current ||
+      current.status !== 'draining' ||
+      current.cutoffAt !== value.cutoffAt ||
+      current.startedAt !== value.startedAt ||
+      current.recorderId !== lease.recorderId ||
+      current.generation !== lease.generation ||
+      current.leaseExpiresAt! <= now
+    )
+      throw new MonitorRecordingStoreError('stale_lease');
+    if (
+      !validReference(reference, lease.sessionId, lease.generation, 'sealed') ||
+      reference.source !== value.source ||
+      reference.nextSequence !== value.cursor ||
+      value.frames.length !== value.cursor
+    )
+      throw new MonitorRecordingStoreError('invalid_input');
+    const coverage: RecordingCoverage = {
+      schemaVersion: 1,
+      sessionId: lease.sessionId,
+      cutoffAt: value.cutoffAt,
+      coveredAt: now,
+      taskDrainDeadlineAt: current.drainDeadlineAt!,
+      sealingDeadlineAt: new Date(Date.parse(now) + recordingSealingDurationMs).toISOString(),
+      terminal: structuredClone(terminal),
+      monitor: structuredClone(reference),
+      final: structuredClone(value.final),
+    };
+    if (!isRecordingCoverage(coverage, lease.sessionId)) throw new MonitorRecordingStoreError('invalid_input');
+    const command = new TransactWriteCommand({
+      ClientRequestToken: randomUUID(),
+      TransactItems: [
+        {
+          ConditionCheck: {
+            TableName: this.table,
+            Key: { PK: `SESSION#${lease.sessionId}`, SK: 'TERMINAL_RECORDING' },
+            ConditionExpression: '#data = :terminal',
+            ExpressionAttributeNames: { '#data': 'data' },
+            ExpressionAttributeValues: { ':terminal': terminal },
+          },
+        },
+        {
+          Update: {
+            TableName: this.table,
+            Key: recordingKey(lease.sessionId),
+            UpdateExpression: 'SET #data.#deadline = :deadline',
+            ConditionExpression:
+              '#data.#status = :draining AND #data.#owner = :owner AND #data.#generation = :generation AND #data.#expires > :now AND #data.#cutoff = :cutoff AND #data.#deadline = :previousDeadline AND #data.#started = :started',
+            ExpressionAttributeNames: {
+              '#data': 'data',
+              '#deadline': 'drainDeadlineAt',
+              '#status': 'status',
+              '#owner': 'recorderId',
+              '#generation': 'generation',
+              '#expires': 'leaseExpiresAt',
+              '#cutoff': 'cutoffAt',
+              '#started': 'startedAt',
+            },
+            ExpressionAttributeValues: {
+              ':draining': 'draining',
+              ':owner': lease.recorderId,
+              ':generation': lease.generation,
+              ':now': now,
+              ':cutoff': value.cutoffAt,
+              ':started': value.startedAt,
+              ':previousDeadline': current.drainDeadlineAt,
+              ':deadline': coverage.sealingDeadlineAt,
+            },
+          },
+        },
+        {
+          ConditionCheck: {
+            TableName: this.table,
+            Key: sessionKey(lease.sessionId),
+            ConditionExpression: '#data.#view.#recording.#status = :draining',
+            ExpressionAttributeNames: {
+              '#data': 'data',
+              '#view': 'view',
+              '#recording': 'recording',
+              '#status': 'status',
+            },
+            ExpressionAttributeValues: { ':draining': 'draining' },
+          },
+        },
+        {
+          Put: {
+            TableName: this.table,
+            Item: { ...recordingCoverageKey(lease.sessionId), data: coverage },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+        { Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'coverage', now) } },
+      ],
+    });
+    try {
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
+      return coverage;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const recovered = await this.coverage(lease.sessionId, signal);
+      if (recovered && isDeepStrictEqual(recovered, coverage)) return recovered;
+      throw error;
+    }
   }
 
   async claim(value: ClaimMonitorRecording, signal?: AbortSignal): Promise<ClaimedMonitorRecording> {
@@ -430,6 +594,19 @@ export class DynamoMonitorRecordingStore
       ) {
         return saved;
       }
+      // Outcome can advance recording to draining between the read and update.
+      // Re-read once through renew to cap the new expiry at the drain deadline.
+      // This is bounded because draining cannot transition back to recording.
+      if (
+        conditionalFailure(error) &&
+        current.status === 'recording' &&
+        saved?.status === 'draining' &&
+        saved.recorderId === lease.recorderId &&
+        saved.generation === lease.generation &&
+        saved.leaseExpiresAt! > now &&
+        saved.drainDeadlineAt! > now
+      )
+        return this.renew(lease, now, leaseDurationMs, signal);
       if (conditionalFailure(error)) throw this.leaseOrStateError(saved, lease, now);
       throw error;
     }
@@ -594,6 +771,9 @@ export class DynamoMonitorRecordingStore
             ConditionExpression: 'attribute_not_exists(PK)',
           },
         },
+        ...(observation?.recovery.state === 'met' && !keepRecovery
+          ? [{ Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'recovery_met', now) } }]
+          : []),
         ...(observation
           ? [
               keepRecovery
@@ -665,6 +845,52 @@ export class DynamoMonitorRecordingStore
     ) {
       throw new MonitorRecordingStoreError('invalid_input');
     }
+    await this.publishSeal(lease, value, reference, now, signal);
+  }
+
+  async finishCovered(
+    lease: MonitorRecorderLease,
+    coverage: RecordingCoverage,
+    now: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!validLease(lease) || !isRecordingCoverage(coverage, lease.sessionId))
+      throw new MonitorRecordingStoreError('invalid_input');
+    const current = await this.get(lease.sessionId, signal);
+    if (
+      !current ||
+      !current.startedAt ||
+      current.cutoffAt !== coverage.cutoffAt ||
+      current.drainDeadlineAt !== coverage.sealingDeadlineAt ||
+      Number(coverage.monitor.objectKey.split('/')[3]) > current.generation
+    )
+      throw new MonitorRecordingStoreError('invalid_state');
+    await this.publishSeal(
+      lease,
+      {
+        startedAt: current.startedAt,
+        cutoffAt: coverage.cutoffAt,
+        source: coverage.monitor.source,
+        cursor: coverage.monitor.nextSequence,
+        final: coverage.final,
+      },
+      coverage.monitor,
+      now,
+      signal,
+      coverage,
+    );
+  }
+
+  private async publishSeal(
+    lease: MonitorRecorderLease,
+    value: Omit<SealedMonitorRecording, 'frames'>,
+    reference: StoredMonitorChunk,
+    now: string,
+    signal?: AbortSignal,
+    coverage?: RecordingCoverage,
+  ): Promise<void> {
+    if (!validLease(lease) || !isMonitorControlTimestamp(now) || now < value.cutoffAt)
+      throw new MonitorRecordingStoreError('invalid_input');
     const terminal = await this.client.send(
       new GetCommand({
         TableName: this.table,
@@ -691,6 +917,12 @@ export class DynamoMonitorRecordingStore
         terminalSeal.Item.data.cutoffAt !== value.cutoffAt ||
         terminalSeal.Item.data.checkpoint.metadata.source !== terminal.Item.data.metadata.source ||
         terminalSeal.Item.data.checkpoint.cursor > terminal.Item.data.cursor)
+    )
+      throw new MonitorRecordingStoreError('invalid_state');
+    if (
+      coverage &&
+      (!isDeepStrictEqual(terminal.Item?.data, coverage.terminal) ||
+        !isDeepStrictEqual(terminalSeal?.Item?.data?.checkpoint, coverage.terminal))
     )
       throw new MonitorRecordingStoreError('invalid_state');
     const terminalConditions = [
@@ -725,6 +957,20 @@ export class DynamoMonitorRecordingStore
       ClientRequestToken: randomUUID(),
       TransactItems: [
         ...terminalConditions,
+        ...(coverage
+          ? [
+              {
+                ConditionCheck: {
+                  TableName: this.table,
+                  Key: recordingCoverageKey(lease.sessionId),
+                  ConditionExpression: '#data = :coverage',
+                  ExpressionAttributeNames: { '#data': 'data' },
+                  ExpressionAttributeValues: { ':coverage': coverage },
+                },
+              },
+            ]
+          : []),
+        { Put: { TableName: this.table, Item: lifecycleHintItem(lease.sessionId, 'complete', now) } },
         {
           Update: {
             TableName: this.table,
@@ -804,7 +1050,8 @@ export class DynamoMonitorRecordingStore
         saved.source === value.source &&
         saved.cursor === value.cursor &&
         sameReference(saved.sealed, reference) &&
-        publicStatus === 'complete'
+        publicStatus === 'complete' &&
+        (coverage === undefined || isDeepStrictEqual(await this.coverage(lease.sessionId, signal), coverage))
       ) {
         return;
       }
@@ -880,6 +1127,7 @@ export class DynamoMonitorRecordingStore
     const command = new TransactWriteCommand({
       ClientRequestToken: randomUUID(),
       TransactItems: [
+        { Put: { TableName: this.table, Item: lifecycleHintItem(sessionId, 'incomplete', completedAt) } },
         {
           Put: {
             TableName: this.table,

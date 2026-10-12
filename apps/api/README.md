@@ -90,9 +90,11 @@ They do not invoke another Lambda. Provisioning and ready timers target reconcil
 the earlier provisioning-expiry definition remains disabled for rollback compatibility.
 
 The [owner end action](src/end-session/index.ts) validates Cognito identity and a request
-ID. It saves one outcome and receipt, with a fixed recording cutoff and 30-second drain.
-Cleanup waits for recorder completion or incomplete state before task stop, then confirms
-STOPPED and deletes all timers. Ready-attempt locks remain held until the next PR commits
+ID. It saves one outcome and receipt, with a fixed recording cutoff and 30-second task drain.
+A durable coverage receipt permits task stop while terminal sealing continues under its
+separate 24-hour bound. Cleanup confirms STOPPED and deletes all timers. Missing Monitor
+observations allow five minutes for recorder recovery, then use `recorder_unavailable`.
+Only transition hints invoke stream reconciliation, not per-page or lease writes. Ready-attempt locks remain held until the next PR commits
 debrief, progress, and finalisation together. Never-ready attempts have no debrief.
 See the [lifecycle decision](../../docs/decisions/session-lifecycle.md) for authority,
 recovery replay, heartbeat rules, failure handling, and activation limits.

@@ -40,6 +40,7 @@ export interface SessionView {
     | 'learner_ended'
     | 'heartbeat_missed'
     | 'environment_exited'
+    | 'recorder_unavailable'
     | 'start_failed'
     | null;
   alert: Alert;

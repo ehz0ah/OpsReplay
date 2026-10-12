@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { sendDynamoWrite } from '../../dynamodb/src/conflict-retry.js';
+import { lifecycleHintItem, type LifecycleHintTransition } from '../../contracts/private/lifecycle-hint.js';
+import {
+  isRecordingCoverage,
+  recordingCoverageKey,
+  type RecordingCoverage,
+} from '../../contracts/private/recording-coverage.js';
 import { isIP } from 'node:net';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
@@ -42,7 +49,13 @@ const validView = ajv.compile({ $ref: `${publicSchema.$id}#/$defs/SessionView` }
 
 export type SessionOutcome = 'resolved' | 'failed' | 'ended' | 'abandoned' | 'error';
 export type OutcomeReason =
-  'validators_passed' | 'time_limit' | 'learner_ended' | 'heartbeat_missed' | 'environment_exited' | 'start_failed';
+  | 'validators_passed'
+  | 'time_limit'
+  | 'learner_ended'
+  | 'heartbeat_missed'
+  | 'environment_exited'
+  | 'recorder_unavailable'
+  | 'start_failed';
 export interface AttemptView {
   id: string;
   status: 'provisioning' | 'ready' | SessionOutcome;
@@ -138,7 +151,8 @@ function snapshot(data: unknown, id: string): AttemptSnapshot {
     (Object.hasOwn(allowedReasons, view.status as string) &&
       view.statusReason !== allowedReasons[view.status as string]) ||
     (view.status === 'failed' && !['time_limit', 'environment_exited'].includes(view.statusReason as string)) ||
-    (view.status === 'error' && !['start_failed', 'environment_exited'].includes(view.statusReason as string)) ||
+    (view.status === 'error' &&
+      !['start_failed', 'environment_exited', 'recorder_unavailable'].includes(view.statusReason as string)) ||
     (view.readyAt === null
       ? view.endsAt !== null
       : (view.readyAt as string) < view.createdAt ||
@@ -191,6 +205,13 @@ export class DynamoAttemptStore {
     if (!isMonitorRecordingState(value, id)) throw new AttemptStoreError('invalid_store');
     return structuredClone(value);
   }
+  async coverage(id: string, signal?: AbortSignal): Promise<RecordingCoverage | undefined> {
+    this.validate(id);
+    const value = await this.data(recordingCoverageKey(id), signal);
+    if (value === undefined) return undefined;
+    if (!isRecordingCoverage(value, id)) throw new AttemptStoreError('invalid_store');
+    return structuredClone(value);
+  }
   async observation(id: string, signal?: AbortSignal): Promise<MonitorLifecycleObservation | undefined> {
     this.validate(id);
     const value = await this.data(monitorObservationKey(id), signal);
@@ -212,6 +233,9 @@ export class DynamoAttemptStore {
             }),
       },
     };
+  }
+  private hint(id: string, transition: LifecycleHintTransition, at: string) {
+    return { Put: { TableName: this.table, Item: lifecycleHintItem(id, transition, at) } };
   }
   private lifecyclePut(previous: SessionLifecycleState | undefined, next: SessionLifecycleState) {
     if (!isSessionLifecycleState(next, next.sessionId)) throw new AttemptStoreError('invalid_store');
@@ -305,6 +329,7 @@ export class DynamoAttemptStore {
               this.condition(monitorObservationKey(identity.sessionId), observation),
               this.condition(terminalKey(identity.sessionId), terminal),
               this.lifecyclePut(previous, next),
+              this.hint(identity.sessionId, 'ready', now),
               {
                 Update: {
                   TableName: this.table,
@@ -369,7 +394,7 @@ export class DynamoAttemptStore {
       failed: ['time_limit', 'environment_exited'],
       ended: ['learner_ended'],
       abandoned: ['heartbeat_missed'],
-      error: ['environment_exited', 'start_failed'],
+      error: ['environment_exited', 'recorder_unavailable', 'start_failed'],
     };
     if (!valid[status]?.includes(reason)) throw new AttemptStoreError('invalid_input');
     if (ownerId !== undefined && !isTerminalOwnerId(ownerId)) throw new AttemptStoreError('invalid_input');
@@ -436,6 +461,16 @@ export class DynamoAttemptStore {
       )
         throw new AttemptStoreError('conflict');
       const recording = await this.recording(id, signal);
+      const missingRecorderObservation =
+        reason === 'recorder_unavailable' ? await this.observation(id, signal) : undefined;
+      if (
+        reason === 'recorder_unavailable' &&
+        (session.view.status !== 'ready' ||
+          !missingRecorderObservation ||
+          Date.parse(observedAt) - Date.parse(missingRecorderObservation.at) <
+            sessionLifecycle.recorderRecoveryTimeoutMs)
+      )
+        return session;
       if (
         (session.view.recording.status === 'pending' && recording !== undefined) ||
         (session.view.recording.status !== 'pending' && session.view.recording.status !== recording?.status)
@@ -480,6 +515,10 @@ export class DynamoAttemptStore {
             ClientRequestToken: randomUUID(),
             TransactItems: [
               this.lifecyclePut(previous, next),
+              this.hint(id, 'outcome', observedAt),
+              ...(missingRecorderObservation
+                ? [this.condition(monitorObservationKey(id), missingRecorderObservation)]
+                : []),
               ...(requestId !== undefined
                 ? [
                     {
@@ -614,7 +653,8 @@ export class DynamoAttemptStore {
     )
       return;
     try {
-      await this.client.send(
+      await sendDynamoWrite(
+        this.client,
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [
@@ -700,7 +740,10 @@ export class DynamoAttemptStore {
         await this.outcome(id, 'failed', 'time_limit', session.view.endsAt, signal, undefined, identity, now);
         return;
       }
-      const next = { ...previous, lastMonitorAt: observation.at, recovery: observation.recovery };
+      // MONITOR_OBSERVATION already owns sample freshness. Copy only recovery changes.
+      const next = same(previous.recovery, observation.recovery)
+        ? previous
+        : { ...previous, lastMonitorAt: observation.at, recovery: observation.recovery };
       if (!same(previous, next)) {
         try {
           await this.client.send(
@@ -756,6 +799,8 @@ export class DynamoAttemptStore {
     const session = await this.session(id, signal);
     if (!session || active(session.view.status) || !session.view.endedAt) throw new AttemptStoreError('conflict');
     const current = await this.recording(id, signal);
+    const coverage = await this.coverage(id, signal);
+    if (coverage && (reason === 'task_lost' || reason === 'recorder_lost')) return;
     if (!record(current)) throw new AttemptStoreError('invalid_store');
     if (current.status === 'complete' || current.status === 'incomplete') return;
     if (
@@ -781,6 +826,7 @@ export class DynamoAttemptStore {
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [
+            this.hint(id, 'incomplete', now),
             {
               Put: {
                 TableName: this.table,
@@ -889,7 +935,9 @@ export class DynamoAttemptStore {
       !session ||
       active(session.view.status) ||
       !previous ||
-      (session.view.readyAt !== null && !['complete', 'incomplete'].includes(session.view.recording.status))
+      (session.view.readyAt !== null &&
+        !['complete', 'incomplete'].includes(session.view.recording.status) &&
+        !(await this.coverage(id, signal)))
     )
       throw new AttemptStoreError('conflict');
     const next = {

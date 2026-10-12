@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sessionLifecycle } from '../../../packages/contracts/private/session-lifecycle.js';
 import { TerminalClient, type TerminalClientEnd, type TerminalClientOptions } from './terminal-client.js';
 import {
   TerminalAdmissionError,
@@ -51,11 +52,13 @@ export class GatewayTerminalSession {
   readonly ended: Promise<TerminalClientEnd>;
   readonly sessionId: string;
   readonly generation: number;
+  private lastSeenWriteAt: number | undefined;
 
   private constructor(
     private readonly admission: TerminalAdmission,
     private readonly admissions: TerminalAdmissionStore,
     private readonly terminal: TerminalConnection,
+    private readonly now: () => Date,
   ) {
     this.sessionId = admission.sessionId;
     this.generation = admission.generation;
@@ -68,7 +71,8 @@ export class GatewayTerminalSession {
     signal?: AbortSignal,
   ): Promise<{ session: GatewayTerminalSession; ready: TerminalSessionReady }> {
     const connectionId = (dependencies.newConnectionId ?? randomUUID)();
-    const now = (dependencies.now ?? (() => new Date()))().toISOString();
+    const clock = dependencies.now ?? (() => new Date());
+    const now = clock().toISOString();
     const admission = await dependencies.admissions.admit(
       {
         sessionId: options.sessionId,
@@ -91,7 +95,7 @@ export class GatewayTerminalSession {
       signal,
     );
     return {
-      session: new GatewayTerminalSession(admission, dependencies.admissions, connected.client),
+      session: new GatewayTerminalSession(admission, dependencies.admissions, connected.client, clock),
       ready: {
         sessionId: admission.sessionId,
         generation: admission.generation,
@@ -123,15 +127,25 @@ export class GatewayTerminalSession {
   }
 
   private async recordLearnerSeen(signal?: AbortSignal): Promise<void> {
-    await this.admissions.recordLearnerSeen?.(
+    if (!this.admissions.recordLearnerSeen) return;
+    const now = this.now();
+    const at = now.getTime();
+    if (
+      this.lastSeenWriteAt !== undefined &&
+      at >= this.lastSeenWriteAt &&
+      at - this.lastSeenWriteAt < sessionLifecycle.heartbeatWriteIntervalMs
+    )
+      return;
+    await this.admissions.recordLearnerSeen(
       {
         sessionId: this.admission.sessionId,
         connectionId: this.admission.connectionId,
         generation: this.admission.generation,
       },
-      new Date().toISOString(),
+      now.toISOString(),
       signal,
     );
+    this.lastSeenWriteAt = at;
   }
 
   close(): void {

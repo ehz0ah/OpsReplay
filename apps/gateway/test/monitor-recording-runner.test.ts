@@ -682,6 +682,84 @@ test('combined runner resumes an already durable drain without reconnecting term
   assert.equal(terminal.seal()?.complete, true);
 });
 
+test('covered takeover seals from storage without calling either stopped task source', async () => {
+  const terminal = terminalFixture();
+  const ready = terminalReady({ startedAt, observedAt: startedAt });
+  await terminal.options.recordings.begin({ sessionId, recorderId: 'gateway-a', generation: 1 }, ready, startedAt);
+  const page = terminalPage(undefined, {
+    startedAt,
+    observedAt: '2026-10-08T00:00:11.000Z',
+    events: [{ type: 'dimensions', sequence: 1, recordedAt: startedAt, columns: 80, rows: 24 }],
+  });
+  await terminal.options.recordings.commit(
+    { sessionId, recorderId: 'gateway-a', generation: 1 },
+    terminal.checkpoint()!,
+    page,
+    encodeTerminalPage(sessionId, 1, 0, page).reference,
+    cutoffAt,
+  );
+  terminal.options.connect = async () => {
+    throw new Error('Stopped terminal must not be contacted');
+  };
+  const client = new FakeMonitorClient();
+  client.start = async () => {
+    throw new Error('Stopped Monitor must not be contacted');
+  };
+  const store = new MemoryRecordingStore(
+    recordingState({
+      status: 'draining',
+      startedAt,
+      cutoffAt,
+      drainDeadlineAt: '2026-10-09T00:00:11.000Z',
+      generation: 2,
+    }),
+  );
+  let finishes = 0;
+  const coverage = {
+    schemaVersion: 1 as const,
+    sessionId,
+    cutoffAt,
+    coveredAt: '2026-10-08T00:00:11.000Z',
+    taskDrainDeadlineAt: drainDeadlineAt,
+    sealingDeadlineAt: '2026-10-09T00:00:11.000Z',
+    terminal: terminal.checkpoint()!,
+    monitor: await new MemoryChunkStore().putSealed(sessionId, 1, {
+      startedAt,
+      cutoffAt,
+      source: null,
+      cursor: 0,
+      frames: [],
+      final: metric(cutoffAt),
+    }),
+    final: metric(cutoffAt),
+  };
+  const result = await new MonitorRecordingRunner({
+    sessionId,
+    recorderId: 'gateway-a',
+    client,
+    chunks: new MemoryChunkStore(),
+    recordings: store,
+    terminal: terminal.options,
+    coverage: {
+      get: async () => coverage,
+      commit: async () => {
+        throw new Error('Coverage must not be repeated');
+      },
+      finish: async (lease, saved) => {
+        assert.equal(lease.generation, 2);
+        assert.equal(saved, coverage);
+        finishes++;
+      },
+    },
+    now: () => '2026-10-08T00:00:11.000Z',
+    wait: new GateWait().wait,
+  }).run(new AbortController().signal);
+  assert.equal(result.status, 'complete');
+  assert.equal(finishes, 1);
+  assert.equal(terminal.seal()?.complete, true);
+  assert.equal(client.closed, true);
+});
+
 test('terminal loss keeps Monitor collection alive and publishes incomplete once at cutoff', async () => {
   const terminal = terminalFixture();
   let reads = 0;

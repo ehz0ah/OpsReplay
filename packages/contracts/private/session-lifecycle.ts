@@ -7,7 +7,7 @@ export const sessionLifecycle = Object.freeze({
   workSortKey: 'LIFECYCLE',
   drainDurationMs: 30_000,
   heartbeatTimeoutMs: 300_000,
-  monitorTimeoutMs: 30_000,
+  recorderRecoveryTimeoutMs: 300_000,
   heartbeatWriteIntervalMs: 15_000,
   maximumSweepItems: 25,
 });

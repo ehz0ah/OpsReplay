@@ -64,8 +64,11 @@ consistent batch read before input, resize, or heartbeat. A failed check does no
 the operation. It does not restore a ticket or generation after a failed private
 connection. The browser obtains a new ticket and claims a newer generation instead.
 
+Manual input and browser heartbeat update persistent learner liveness under the current
+input generation. Each connection caches successful calls for 15 seconds while every
+input still checks authorization. Pure transaction contention retries are bounded.
 This layer does not issue tickets, inspect an HTTP `Origin`, open a browser WebSocket,
-update persistent learner heartbeats, record terminal output, or change AWS resources.
+record terminal output, or change AWS resources.
 
 ## Browser terminal relay
 
@@ -79,8 +82,8 @@ Browser binary frames carry raw terminal input. Text frames carry validated `res
 `heartbeat`, and `run_proposal` messages. Proposal execution is not implemented and
 returns `PROPOSAL_UNAVAILABLE`. The relay serializes private operations, pauses browser
 reads during them, coalesces consecutive input frames into operations of at most 16 KiB,
-and bounds already-decoded input to 64 messages or 64 KiB. A browser `heartbeat` is only
-a transport liveness signal. The relay sends its own private terminal heartbeat and
+and bounds already-decoded input to 64 messages or 64 KiB. A browser `heartbeat` also
+records learner liveness under the current input generation. The relay sends its own private terminal heartbeat and
 WebSocket Ping after 20 seconds without another private operation, so browser timer
 throttling does not disconnect an idle learner.
 

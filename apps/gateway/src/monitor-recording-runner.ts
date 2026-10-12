@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { MonitorChunkStore, StoredMonitorChunk } from './monitor-chunk-store.js';
 import type { MonitorRecordingClient, SealedMonitorRecording } from './monitor-recorder.js';
 import type { TerminalRecordingCheckpoint } from '../../../packages/contracts/private/terminal-persistence.js';
+import type { RecordingCoverage } from '../../../packages/contracts/private/recording-coverage.js';
 import { terminalCoversCutoff } from './terminal-recorder.js';
 import { MonitorRecorder, monitorRecordingPolling } from './monitor-recorder.js';
 import { DurableMonitorRecordingSink } from './monitor-recording-sink.js';
@@ -46,6 +47,23 @@ export interface MonitorRecordingRunnerOptions {
     pages: TerminalPageArchive;
     seals: TerminalSealingStore;
     pollIntervalMs?: number;
+  };
+  coverage?: {
+    get(sessionId: string, signal?: AbortSignal): Promise<RecordingCoverage | undefined>;
+    commit(
+      lease: import('./monitor-recording-store.js').MonitorRecorderLease,
+      value: SealedMonitorRecording,
+      reference: StoredMonitorChunk,
+      terminal: TerminalRecordingCheckpoint,
+      now: string,
+      signal?: AbortSignal,
+    ): Promise<RecordingCoverage>;
+    finish(
+      lease: import('./monitor-recording-store.js').MonitorRecorderLease,
+      coverage: RecordingCoverage,
+      now: string,
+      signal?: AbortSignal,
+    ): Promise<void>;
   };
   lifecycle?: {
     ready(
@@ -114,6 +132,7 @@ export class MonitorRecordingRunner {
   private readonly pollIntervalMs: number | undefined;
   private readonly terminal: MonitorRecordingRunnerOptions['terminal'];
   private readonly lifecycle: MonitorRecordingRunnerOptions['lifecycle'];
+  private readonly optionsCoverage: MonitorRecordingRunnerOptions['coverage'];
   private readonly now: () => string;
   private readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private running = false;
@@ -146,6 +165,7 @@ export class MonitorRecordingRunner {
     this.pollIntervalMs = options.pollIntervalMs;
     this.terminal = options.terminal;
     this.lifecycle = options.lifecycle;
+    this.optionsCoverage = options.coverage;
     this.now = options.now ?? (() => new Date().toISOString());
     this.wait = options.wait ?? defaultWait;
   }
@@ -223,6 +243,29 @@ export class MonitorRecordingRunner {
         lifetime.abort(error);
         polling.abort(error);
       });
+
+      const coverage = await this.optionsCoverage?.get(this.sessionId, lifetime.signal);
+      if (coverage) {
+        if (
+          !this.terminal ||
+          !drain ||
+          drain.cutoffAt !== coverage.cutoffAt ||
+          drain.drainDeadlineAt !== coverage.sealingDeadlineAt
+        )
+          throw new MonitorRecordingRunnerError('invalid_state');
+        this.client.close();
+        await new TerminalSealer({
+          lease: claimed.lease,
+          pages: this.terminal.pages,
+          seals: this.terminal.seals,
+          now: this.now,
+        }).seal(coverage.terminal, coverage.cutoffAt, lifetime.signal);
+        stopRenewal.abort();
+        await renewal;
+        if (renewalFailure !== undefined) throw renewalFailure;
+        await this.optionsCoverage!.finish(claimed.lease, coverage, this.now(), lifetime.signal);
+        return { status: 'complete', generation };
+      }
 
       if (this.terminal) {
         terminalRecorder = new TerminalRecorder({
@@ -337,19 +380,34 @@ export class MonitorRecordingRunner {
         }
         if (terminalFailure !== undefined) throw terminalFailure;
         if (lifetime.signal.aborted) throw lifetime.signal.reason;
-        await terminalSealer.seal(
-          terminalTask ? terminalRecorder.checkpoint : savedTerminal!,
-          drain.cutoffAt,
-          lifetime.signal,
-        );
         if (!sealedMonitor) throw new MonitorRecordingRunnerError('invalid_state');
-        await this.recordings.seal(
+        const committedCoverage = await this.optionsCoverage?.commit(
           claimed.lease,
           sealedMonitor.value,
           sealedMonitor.reference,
+          checkpoint,
           this.now(),
           lifetime.signal,
         );
+        if (this.optionsCoverage) {
+          terminalRecorder.close();
+          this.client.close();
+        }
+        await terminalSealer.seal(checkpoint, drain.cutoffAt, lifetime.signal);
+        stopRenewal.abort();
+        await renewal;
+        if (renewalFailure !== undefined) throw renewalFailure;
+        if (this.optionsCoverage) {
+          if (!committedCoverage) throw new MonitorRecordingRunnerError('invalid_state');
+          await this.optionsCoverage.finish(claimed.lease, committedCoverage, this.now(), lifetime.signal);
+        } else
+          await this.recordings.seal(
+            claimed.lease,
+            sealedMonitor.value,
+            sealedMonitor.reference,
+            this.now(),
+            lifetime.signal,
+          );
       }
       return { status: 'complete', generation };
     } catch (error) {

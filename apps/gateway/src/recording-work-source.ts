@@ -17,6 +17,7 @@ import {
 import { isMonitorControlTimestamp } from '../../../packages/contracts/private/monitor-control.js';
 import { isMonitorRecordingSessionId } from './monitor-recording-identity.js';
 import { isMonitorRecordingState } from './monitor-recording-store.js';
+import { isRecordingCoverage } from '../../../packages/contracts/private/recording-coverage.js';
 
 export interface RecordingWork extends RecordingWorkIdentity {
   taskAddress: string;
@@ -67,7 +68,7 @@ const maximumCertificateBytes = 16_384;
 const maximumDiscoveryLimit = 64;
 const maximumExcludedSessions = maximumDiscoveryLimit * 2;
 const maximumQueryItems = maximumDiscoveryLimit + maximumExcludedSessions;
-const maximumBatchCandidates = 50;
+const maximumBatchCandidates = 33;
 const serverAuthOid = '1.3.6.1.5.5.7.3.1';
 const activeSessionStatuses = new Set(['provisioning', 'ready']);
 const terminalSessionStatuses = new Set(['resolved', 'failed', 'ended', 'abandoned', 'error']);
@@ -212,7 +213,7 @@ function retirementCondition(value: unknown, identity: RecordingWorkIdentity): R
   return undefined;
 }
 
-function inspectSession(value: unknown, identity: RecordingWorkIdentity, now: string): Inspection {
+function inspectSession(value: unknown, identity: RecordingWorkIdentity, now: string, coverage?: unknown): Inspection {
   if (!record(value)) return { kind: 'stale' };
   if (
     value.PK !== `SESSION#${identity.sessionId}` ||
@@ -259,12 +260,16 @@ function inspectSession(value: unknown, identity: RecordingWorkIdentity, now: st
     throw new RecordingWorkSourceError('invalid_store');
   }
 
+  const taskIndependent = coverage !== undefined && isRecordingCoverage(coverage, identity.sessionId);
+  if (coverage !== undefined && !taskIndependent) throw new RecordingWorkSourceError('invalid_store');
+  if (taskIndependent && (recordingStatus !== 'draining' || !terminalSessionStatuses.has(sessionStatus)))
+    throw new RecordingWorkSourceError('invalid_store');
   if (
     typeof data.monitorSecret !== 'string' ||
     !monitorSecretPattern.test(data.monitorSecret) ||
     typeof data.taskAddress !== 'string' ||
     isIP(data.taskAddress) !== 4 ||
-    !validCertificate(data.monitorCertificate, now)
+    !validCertificate(data.monitorCertificate, taskIndependent ? coverage.coveredAt : now)
   ) {
     throw new RecordingWorkSourceError('invalid_store');
   }
@@ -362,7 +367,12 @@ export class DynamoRecordingWorkSource implements RecordingWorkSource {
           if (entry.excluded) continue;
           let inspected: Inspection;
           try {
-            inspected = inspectSession(stored.get(sessionItemKey(identity.sessionId)), identity, value.now);
+            inspected = inspectSession(
+              stored.get(sessionItemKey(identity.sessionId)),
+              identity,
+              value.now,
+              stored.get(`SESSION#${identity.sessionId}\u0000RECORDING_COVERAGE`)?.data,
+            );
           } catch (error) {
             if (!(error instanceof RecordingWorkSourceError) || error.code !== 'invalid_store') throw error;
             invalidEntries++;
@@ -400,6 +410,7 @@ export class DynamoRecordingWorkSource implements RecordingWorkSource {
     const keys = candidates.flatMap(({ identity }) => [
       { PK: `SESSION#${identity.sessionId}`, SK: 'STATE' },
       { PK: `SESSION#${identity.sessionId}`, SK: 'RECORDING' },
+      { PK: `SESSION#${identity.sessionId}`, SK: 'RECORDING_COVERAGE' },
     ]);
     const result = await this.client.send(
       new BatchGetCommand({
