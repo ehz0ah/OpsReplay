@@ -3319,6 +3319,7 @@
                   "SESSION_NOT_READY",
                   "SESSION_TERMINAL",
                   "REPLACED",
+                  "TELEMETRY_UNAVAILABLE",
                   "TERMINAL_BUSY",
                   "PROPOSAL_UNAVAILABLE",
                   "RATE_LIMITED",

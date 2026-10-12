@@ -356,8 +356,7 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    `ready`, consumes the unexpired ticket, and claims the next terminal input generation.
    The same operation binds the connection to the authoritative private task address.
 2. The gateway installs the claimed generation at the terminal server and waits for
-   acknowledgement before sending `ready`. It also connects to the monitor through
-   authenticated TLS. `resumed` is true when the shell already existed. The
+   acknowledgement before sending `ready`. `resumed` is true when the shell already existed. The
    terminal server keeps one shell per session across reconnects. `replayTruncated` is
    true when output continuity became uncertain before this attachment. The client must
    show that warning to the learner.
@@ -369,10 +368,15 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    liveness calls within that interval after success, but still authorizes every input.
    Pure transaction contention has bounded retries. Other storage failures fail closed
    before PTY input. Private keepalive and recorder renewal do not update learner liveness.
-4. The gateway sends `metrics` every five seconds (proposed) with the latest sample,
-   cumulative request counters, and the aggregate recovery state. It sends `timeline`
-   when a command completes or a monitor signal occurs, and `status` when the session
-   status changes.
+4. One non-overlapping five-second loop reads telemetry from the session partition. Each
+   read is bound to the admitted session, connection ID, and input generation. On attach,
+   the gateway sends the latest `metrics` frame that was committed with an accepted Monitor page
+   and establishes current command and Monitor frontiers. It does not replay historical
+   timeline events. Later reads send bounded `timeline` deltas and coalesce superseded
+   metrics. The timeline API owns reconnect catch-up. WebSocket delivery is neither a
+   durable acknowledgement nor exactly once. `TELEMETRY_UNAVAILABLE` is nonfatal after
+   authorization succeeds; failed authorization and replacement fail closed. A terminal
+   `status` stops the loop.
    Recording continues independently when the browser disconnects. Each input batch
    and proposal checks that the session is still active before forwarding. The outcome
    timestamp remains the scoring cutoff for any input already in flight.
@@ -414,6 +418,7 @@ Only one terminal connection per session is active. A new authenticated connecti
 replaces and closes the old one. The old connection receives `error` with `REPLACED`
 when its transport can accept that frame immediately. Other `error` codes are
 `AUTH_FAILED`, `TICKET_EXPIRED`, `SESSION_NOT_READY`, `SESSION_TERMINAL`,
+`TELEMETRY_UNAVAILABLE` for a temporary live-evidence read failure,
 `TERMINAL_BUSY` when the shell is running a command, `PROPOSAL_UNAVAILABLE`,
 `RATE_LIMITED` when input exceeds the per-session rate, and `INTERNAL_ERROR`. The
 gateway never forwards browser frames to the monitor.

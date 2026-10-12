@@ -14,6 +14,11 @@ import {
 } from '../src/browser-terminal-relay.js';
 import { TerminalAdmissionError, type TerminalAdmissionStore } from '../src/terminal-admission-store.js';
 import { TerminalClientError, type TerminalClientEnd } from '../src/terminal-client.js';
+import {
+  GatewayLiveTelemetryError,
+  type GatewayLiveTelemetryCursor,
+  type GatewayLiveTelemetryStore,
+} from '../src/live-telemetry-store.js';
 
 const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ticket = 'a'.repeat(43);
@@ -152,6 +157,7 @@ function sessionFixture(replayTruncated = false): SessionFixture {
     terminalEnds.push(terminalEnd);
     const session: BrowserTerminalSession = {
       sessionId: value.sessionId,
+      connectionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       generation: 3,
       ended: terminalEnd.promise,
       input: async (data) => {
@@ -500,6 +506,7 @@ class FakePeer implements GatewayBrowserPeer {
   readonly sent: { data: string | Buffer; binary: boolean }[] = [];
   readonly sendCallbacks: ((error?: Error | null) => void)[] = [];
   pings = 0;
+  closedWith: { code: number; reason: string } | undefined;
   private messageListener: ((data: Buffer, binary: boolean) => void) | undefined;
   private closeListener: (() => void) | undefined;
   private errorListener: (() => void) | undefined;
@@ -518,7 +525,8 @@ class FakePeer implements GatewayBrowserPeer {
     callback();
   }
 
-  close(): void {
+  close(code = 1000, reason = ''): void {
+    this.closedWith = { code, reason };
     this.open = false;
     this.closeListener?.();
   }
@@ -570,6 +578,219 @@ class FakePeer implements GatewayBrowserPeer {
     this.sendCallbacks[index]?.();
   }
 }
+
+class AutoPeer extends FakePeer {
+  override send(data: string | Buffer, binary: boolean, callback: (error?: Error | null) => void): void {
+    this.sent.push({ data, binary });
+    callback();
+  }
+}
+
+const telemetryCursor: GatewayLiveTelemetryCursor = {
+  startedAt: '2026-10-13T00:00:00.000Z',
+  source: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  monitorSequence: 1,
+  commandSequence: 0,
+  metricSequence: 1,
+};
+
+const telemetryMetric = {
+  type: 'metrics' as const,
+  sample: { at: '2026-10-13T00:00:01.000Z', values: { request_rate: 10 } },
+  counters: { totalRequests: 10, failedRequests: 1 },
+  recovery: { state: 'failing' as const, sustainedSeconds: 0, requiredSeconds: 60 },
+};
+
+function peerJson(peer: FakePeer): Record<string, unknown>[] {
+  return peer.sent
+    .filter((item) => !item.binary)
+    .map((item) => JSON.parse(String(item.data)) as Record<string, unknown>);
+}
+
+test('delivers live metrics and timeline deltas for the admitted terminal binding', async () => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  const calls: { cursor: GatewayLiveTelemetryCursor | undefined; signal: AbortSignal | undefined }[] = [];
+  const event = {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc:2',
+    at: '2026-10-13T00:00:02.000Z',
+    kind: 'monitor' as const,
+    signal: 'recovery_sustaining' as const,
+    label: 'Checkout availability',
+  };
+  const nextCursor = { ...telemetryCursor, monitorSequence: 2, metricSequence: 2 };
+  const telemetry: GatewayLiveTelemetryStore = {
+    read: async (binding, cursor, signal) => {
+      assert.deepEqual(binding, {
+        sessionId,
+        connectionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        generation: 3,
+      });
+      calls.push({ cursor, signal });
+      return calls.length === 1
+        ? { type: 'telemetry', cursor: telemetryCursor, metric: telemetryMetric, events: [] }
+        : calls.length === 2
+          ? {
+              type: 'telemetry',
+              cursor: nextCursor,
+              metric: { ...telemetryMetric, sample: { ...telemetryMetric.sample, at: event.at } },
+              events: [event],
+            }
+          : { type: 'terminal', status: 'resolved', reason: 'validators_passed' };
+    },
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry,
+    telemetryIntervalMs: 5,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peerJson(peer).some((message) => message.type === 'status'));
+
+  const messages = peerJson(peer);
+  assert.equal(messages[0]?.type, 'ready');
+  assert.deepEqual(messages[1], telemetryMetric);
+  assert.equal(messages[2]?.type, 'metrics');
+  assert.deepEqual(messages[3], { type: 'timeline', event });
+  assert.deepEqual(messages[4], { type: 'status', status: 'resolved', reason: 'validators_passed' });
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0]?.cursor, undefined);
+  assert.deepEqual(calls[1]?.cursor, telemetryCursor);
+  assert.deepEqual(calls[2]?.cursor, nextCursor);
+  assert.ok(calls.every((call) => call.signal !== undefined));
+
+  connection.shutdown();
+  await connection.closed;
+});
+
+test('reports one nonfatal telemetry error per outage and resumes delivery', async () => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  let reads = 0;
+  const telemetry: GatewayLiveTelemetryStore = {
+    read: async () => {
+      reads++;
+      if ([1, 2, 4].includes(reads)) throw new GatewayLiveTelemetryError('telemetry_unavailable');
+      if (reads === 3) return { type: 'telemetry', cursor: telemetryCursor, metric: telemetryMetric, events: [] };
+      return { type: 'terminal', status: 'resolved', reason: 'validators_passed' };
+    },
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry,
+    telemetryIntervalMs: 5,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peerJson(peer).some((message) => message.type === 'status'));
+
+  const messages = peerJson(peer);
+  const unavailable = messages.filter((message) => message.code === 'TELEMETRY_UNAVAILABLE');
+  assert.equal(unavailable.length, 2);
+  assert.equal(messages.filter((message) => message.type === 'metrics').length, 1);
+  assert.equal(reads, 5);
+
+  connection.shutdown();
+  await connection.closed;
+});
+
+test('fails the connection when live telemetry authorization cannot be verified', async () => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry: { read: async () => Promise.reject(new GatewayLiveTelemetryError('authorization_failed')) },
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await connection.closed;
+
+  assert.deepEqual(peerJson(peer).at(-1), {
+    type: 'error',
+    code: 'INTERNAL_ERROR',
+    message: 'The terminal connection failed.',
+  });
+  assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
+  assert.ok(f.calls.includes('close'));
+});
+
+test('keeps telemetry reads non-overlapping and cancels the active read on shutdown', async () => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  let reads = 0;
+  let active = 0;
+  let maximumActive = 0;
+  let aborted = false;
+  const telemetry: GatewayLiveTelemetryStore = {
+    read: async (_binding, _cursor, signal) => {
+      reads++;
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      try {
+        await new Promise<void>((_resolve, reject) => {
+          const cancel = () => {
+            aborted = true;
+            reject(new GatewayLiveTelemetryError('cancelled'));
+          };
+          if (signal?.aborted) cancel();
+          else signal?.addEventListener('abort', cancel, { once: true });
+        });
+        throw new Error('Unreachable');
+      } finally {
+        active--;
+      }
+    },
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry,
+    telemetryIntervalMs: 5,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => reads === 1);
+  await delay(20);
+  assert.equal(reads, 1);
+  assert.equal(maximumActive, 1);
+
+  connection.shutdown();
+  await connection.closed;
+  assert.equal(aborted, true);
+  assert.equal(active, 0);
+});
+
+test('bounds a slow telemetry send and shuts down without polling again', async () => {
+  const peer = new FakePeer();
+  const f = sessionFixture();
+  let reads = 0;
+  const telemetry: GatewayLiveTelemetryStore = {
+    read: async () => {
+      reads++;
+      return { type: 'telemetry', cursor: telemetryCursor, metric: telemetryMetric, events: [] };
+    },
+  };
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry,
+    telemetryIntervalMs: 5,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 20,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peer.sent.length === 1);
+  peer.completeSend(0);
+  await waitFor(() => peer.sent.length === 2);
+  await connection.closed;
+
+  assert.equal(reads, 1);
+  assert.equal(peer.terminated, true);
+  assert.ok(f.calls.includes('close'));
+});
 
 test('stops the private terminal when one browser output send exceeds its deadline', async () => {
   const peer = new FakePeer();

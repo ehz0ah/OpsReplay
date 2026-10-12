@@ -1666,6 +1666,7 @@ export class SessionStartStack extends Stack {
           'dynamodb:GetItem',
           'dynamodb:PutItem',
           'dynamodb:Query',
+          'dynamodb:TransactGetItems',
           'dynamodb:UpdateItem',
         ],
         resources: [table.tableArn],

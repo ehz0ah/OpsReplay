@@ -59,10 +59,29 @@ test('uploads each object before it advances durable recording state', async () 
       assert.equal(actualNow, now);
       order.push('commit-begin');
     },
-    append: async (_actualLease, _actualStartedAt, actualReference, actualNow, _signal, _observation, evidence) => {
+    append: async (
+      _actualLease,
+      _actualStartedAt,
+      actualReference,
+      actualNow,
+      _signal,
+      _observation,
+      evidence,
+      live,
+    ) => {
       assert.deepEqual(actualReference, reference('live'));
       assert.equal(actualNow, now);
       assert.deepEqual(evidence, { schemaVersion: 1, source, after: 0, nextSequence: 1, events: [] });
+      assert.deepEqual(live, {
+        schemaVersion: 1,
+        sessionId: lease.sessionId,
+        startedAt,
+        source,
+        frontier: 1,
+        sequence: 1,
+        recordedAt: '2026-10-07T00:00:01.000Z',
+        metric: metric('2026-10-07T00:00:01.000Z'),
+      });
       order.push('commit-live');
     },
     seal: async (_actualLease, _value, actualReference, actualNow) => {
@@ -125,6 +144,58 @@ test('projects only timeline frames with their source sequence and recording tim
     },
   });
   await sink.append({ startedAt, source, after: 0, nextSequence: 2, frames });
+});
+
+test('publishes the latest metric without replacing the first sustained recovery observation', async () => {
+  const met = {
+    ...metric('2026-10-07T00:00:02.000Z'),
+    recovery: { state: 'met' as const, sustainedSeconds: 2, requiredSeconds: 2 },
+  };
+  const latest = metric('2026-10-07T00:00:03.000Z');
+  const frames: MonitorFrame[] = [
+    frame(),
+    { source, sequence: 2, recordedAt: met.sample.at, payload: met },
+    { source, sequence: 3, recordedAt: latest.sample.at, payload: latest },
+  ];
+  const sink = new DurableMonitorRecordingSink({
+    lease,
+    now: () => now,
+    recordLifecycle: true,
+    chunks: {
+      putLive: async () => ({ ...reference('live'), nextSequence: 3, frameCount: 3 }),
+      putSealed: async () => {
+        throw new Error('Unexpected seal');
+      },
+    },
+    recordings: {
+      begin: async () => {},
+      seal: async () => {},
+      append: async (_lease, _start, _reference, _now, _signal, observation, _evidence, live) => {
+        assert.deepEqual(observation, {
+          schemaVersion: 1,
+          sessionId: lease.sessionId,
+          startedAt,
+          source,
+          cursor: 3,
+          sequence: 2,
+          at: met.sample.at,
+          recovery: met.recovery,
+        });
+        assert.deepEqual(live, {
+          schemaVersion: 1,
+          sessionId: lease.sessionId,
+          startedAt,
+          source,
+          frontier: 3,
+          sequence: 3,
+          recordedAt: latest.sample.at,
+          metric: latest,
+        });
+      },
+    },
+  });
+
+  await sink.append({ startedAt, source, after: 0, nextSequence: 3, frames });
 });
 
 test('does not advance state when an object upload fails', async () => {

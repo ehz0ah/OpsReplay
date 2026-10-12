@@ -140,6 +140,7 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       'dynamodb:ListStreams',
       'dynamodb:PutItem',
       'dynamodb:Query',
+      'dynamodb:TransactGetItems',
       'dynamodb:UpdateItem',
       'ecr:BatchCheckLayerAvailability',
       'ecr:BatchGetImage',

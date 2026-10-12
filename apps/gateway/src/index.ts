@@ -1,6 +1,7 @@
 export * from './aws.js';
 export * from './browser-terminal-relay.js';
 export * from './gateway-runtime.js';
+export * from './live-telemetry-store.js';
 export * from './monitor-client.js';
 export * from './monitor-chunk-store.js';
 export * from './monitor-recorder.js';

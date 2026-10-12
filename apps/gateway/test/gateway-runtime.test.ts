@@ -14,6 +14,7 @@ import {
   type GatewayRuntimeEvent,
 } from '../src/gateway-runtime.js';
 import type { TerminalAdmissionStore } from '../src/terminal-admission-store.js';
+import type { GatewayLiveTelemetryStore } from '../src/live-telemetry-store.js';
 
 const recordingEnvironment = {
   SESSION_TABLE_NAME: 'opsreplay-sessions',
@@ -158,6 +159,7 @@ function fixture(run?: (signal: AbortSignal) => Promise<void>) {
   const actions: string[] = [];
   const clients = { dynamo: {}, s3: {}, close: () => actions.push('clients_closed') } as unknown as GatewayAwsClients;
   const admissions = {} as TerminalAdmissionStore;
+  const telemetry = {} as GatewayLiveTelemetryStore;
   let server: Server | undefined;
   let relayOptions: GatewayBrowserTerminalRelayOptions | undefined;
   let supervisorOptions: Record<string, unknown> | undefined;
@@ -186,9 +188,15 @@ function fixture(run?: (signal: AbortSignal) => Promise<void>) {
       assert.equal(tableName, 'opsreplay-sessions');
       return admissions;
     },
+    createTelemetry: (client, tableName) => {
+      assert.equal(client, clients.dynamo);
+      assert.equal(tableName, 'opsreplay-sessions');
+      return telemetry;
+    },
     createRelay: (actualServer, options) => {
       assert.equal(actualServer, server);
       assert.equal(options.admissions, admissions);
+      assert.equal(options.telemetry, telemetry);
       relayOptions = options;
       return {
         close: async () => {
@@ -235,6 +243,7 @@ test('runs the recording supervisor and terminal listener in one process', async
   assert.deepEqual(f.relayOptions(), {
     allowedOrigins: ['https://app.opsreplay.test', 'http://localhost:3000'],
     admissions: f.relayOptions()?.admissions,
+    telemetry: f.relayOptions()?.telemetry,
     maxConnections: 256,
     maxPendingAuthentications: 32,
     terminalPort: 7681,

@@ -565,6 +565,7 @@ test('recording remains durable and least-privilege inside the combined Gateway 
               'dynamodb:GetItem',
               'dynamodb:PutItem',
               'dynamodb:Query',
+              'dynamodb:TransactGetItems',
               'dynamodb:UpdateItem',
             ]) &&
           JSON.stringify(statement.Condition) ===
