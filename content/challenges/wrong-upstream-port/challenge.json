@@ -81,6 +81,10 @@
       "sustainSeconds": 60
     }
   ],
+  "startupChecks": [
+    { "kind": "tcp", "host": "127.0.0.1", "port": 8080, "timeoutMs": 1000 },
+    { "kind": "tcp", "host": "127.0.0.1", "port": 5432, "timeoutMs": 1000 }
+  ],
   "healthProbes": [
     {
       "id": "proxy-listening",

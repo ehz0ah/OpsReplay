@@ -85,6 +85,14 @@ export class Monitor {
     if (this.preparing) return this.preparing;
     const signal = this.controller.signal;
     this.preparing = (async () => {
+      // Initial-only prerequisites must pass before failed recovery can establish
+      // the authored incident. Run separately to preserve the transport bound.
+      const startup = await Promise.all(
+        (this.config.startupChecks ?? []).map((check) =>
+          this.transport.tcp(check.host, check.port, check.timeoutMs, signal),
+        ),
+      );
+      if (signal.aborted || !startup.every(Boolean)) return false;
       const [checks, probes] = await Promise.all([
         Promise.all(
           this.config.validators.map((v) => validateCheck(v.check, this.config.journeys, this.transport, signal)),

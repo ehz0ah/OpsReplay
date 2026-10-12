@@ -53,6 +53,25 @@ at most 30 attempts, and up to one second between attempts. A bounded in-flight
 check can finish after the deadline but cannot then admit the session. Exceptions
 fail immediately; shutdown cancels waits and fences late results. The
 initial-state verification and recording readiness transaction still gate access.
+
+Review reproduced the inverse startup error: with shop autostart disabled before
+launch, proxy 80 still listened and checkout failed, so Monitor incorrectly became
+ready. The private reference manifest now declares initial-only TCP `startupChecks`
+for shop 8080 and database 5432. Monitor requires all prerequisites before checking
+the authored failing recovery and healthy proxy probe. Each startup attempt checks
+at most 10 prerequisites concurrently, with 100-1000 ms timeouts, in a separate
+phase from validators/probes to preserve the existing concurrency bound.
+Checks use the existing loopback transport and cancellation signal. No startup
+traffic contributes to measurements. Missing listeners exhaust the existing
+readiness budget; late arrival cannot revive failed initialization.
+
+This optional manifest field does not change older manifests. It is not inferred
+from descriptive service addresses, which need not all represent required healthy
+startup listeners. It is not an ECS health check or ongoing outage probe. Once
+prepared, Monitor never polls these prerequisites again, preserving the legitimate
+repair that moves the shop listener from 8080 to 8081. TCP acceptance proves listener
+presence only; checkout validators still determine application recovery.
+
 Only Monitor's fixed error-code logs go to CloudWatch, in non-blocking mode with a
 1 MiB buffer. Learner terminal output is recorded from the existing PTY source,
 not from process logs.
@@ -65,6 +84,11 @@ Monitor-only bootstrap compatibility. Real Docker tests consume settings from th
 synthesised task, run the reference target with a separate test-client image, and
 exercise fault, reload/restart trap, both sustained repairs, captures, authentication,
 private files/processes, read-only mounts/root, and startup without a listener wait.
+Regression scenarios disable shop or database autostart before either runtime
+starts, require `starting` then terminal `failed` health with no measurements,
+reject late revival after the deadline, and allow a delayed shop before the deadline.
+Unit tests cover malformed/bounded startup configuration, omitted-field compatibility,
+missing listeners, shutdown fencing, and no post-readiness startup polling.
 
 Docker's extra PID limits and `no-new-privileges` are local test restrictions.
 Docker shares do not prove Fargate's task-level CPU enforcement. Static assertions

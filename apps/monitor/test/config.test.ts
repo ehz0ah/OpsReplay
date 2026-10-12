@@ -9,8 +9,48 @@ test('manifest validation projects only execution configuration', () => {
   const config = parseConfig(JSON.stringify(manifest));
   assert.equal(config.journeys[0]!.ratePerSecond, 2);
   assert.equal(config.validators[0]!.sustainSeconds, 60);
-  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'validators', 'watched']);
+  assert.deepEqual(Object.keys(config).sort(), ['journeys', 'probes', 'startupChecks', 'validators', 'watched']);
+  assert.deepEqual(config.startupChecks, manifest.startupChecks);
   assert.ok(!JSON.stringify(config).includes(manifest.plantedFault.summary));
+});
+
+test('startup checks are optional for existing manifests and never become ongoing probes', () => {
+  const { startupChecks, ...legacy } = structuredClone(manifest);
+  assert.equal(startupChecks.length, 2);
+  assert.deepEqual(parseConfig(JSON.stringify(legacy)).startupChecks, []);
+  const config = parseConfig(JSON.stringify(manifest));
+  assert.deepEqual(config.probes, manifest.healthProbes);
+  assert.deepEqual(config.validators, manifest.validators);
+});
+
+test('startup checks accept only bounded canonical loopback TCP targets', () => {
+  const check = manifest.startupChecks[0]!;
+  for (const startupChecks of [
+    [],
+    null,
+    [check, check],
+    Array.from({ length: 11 }, (_, index) => ({ ...check, port: 8000 + index })),
+    [{ ...check, kind: 'http' }],
+    [{ ...check, host: '169.254.170.2' }],
+    [{ ...check, host: 'localhost' }],
+    [{ ...check, host: '127.0.0.999' }],
+    [{ ...check, host: '127.0.0.01' }],
+    [{ ...check, port: 0 }],
+    [{ ...check, port: 65536 }],
+    [{ ...check, port: 8080.5 }],
+    [{ ...check, timeoutMs: 99 }],
+    [{ ...check, timeoutMs: 1001 }],
+    [{ ...check, extra: 'private-content' }],
+  ]) {
+    assert.throws(() => parseConfig(JSON.stringify({ ...manifest, startupChecks })), /^MonitorError: invalid_config$/);
+  }
+  const startupChecks = Array.from({ length: 10 }, (_, index) => ({
+    ...check,
+    host: '127.0.0.2',
+    port: 8000 + index,
+    timeoutMs: 100,
+  }));
+  assert.deepEqual(parseConfig(JSON.stringify({ ...manifest, startupChecks })).startupChecks, startupChecks);
 });
 
 test('invalid or oversized input has a fixed error without the private content', () => {
@@ -63,6 +103,7 @@ test('admission covers the public session maximum and recording headroom', () =>
     journeys: copy.traffic.journeys,
     validators: copy.validators,
     probes: copy.healthProbes,
+    startupChecks: copy.startupChecks,
     watched: {
       configs: copy.environment.services.flatMap((service) => service.configFiles),
       logs: copy.environment.services.flatMap((service) => service.logFiles),

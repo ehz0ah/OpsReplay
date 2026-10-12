@@ -457,6 +457,20 @@
       "maxItems": 10,
       "minItems": 1
     },
+    "startupChecks": {
+      "description": "Private initial-only TCP prerequisites, separate from recovery and ongoing outage probes. Omission preserves existing manifests.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/Check",
+        "type": "object",
+        "properties": {
+          "kind": { "const": "tcp" },
+          "timeoutMs": { "type": "integer", "maximum": 1000 }
+        }
+      }
+    },
     "healthProbes": {
       "type": "array",
       "items": {
