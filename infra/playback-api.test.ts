@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
-test('result reads have isolated disabled bundles, read-only roles and authenticated bounded routes', () => {
+test('result reads have isolated conditionally enabled bundles, read-only roles and authenticated bounded routes', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-results-cdk-'));
   try {
     const resources = Template.fromStack(new SessionStartStack(new App({ outdir: directory }), 'Test')).toJSON()
@@ -21,7 +21,9 @@ test('result reads have isolated disabled bundles, read-only roles and authentic
       const [id, fn] = Object.entries(resources).find(
         ([id, value]) => id.startsWith(name!) && value.Type === 'AWS::Lambda::Function',
       )!;
-      assert.equal(fn.Properties.ReservedConcurrentExecutions, 0);
+      assert.deepEqual(fn.Properties.ReservedConcurrentExecutions, {
+        'Fn::If': ['GatewayPathEnabled', 4, 0],
+      });
       assert.equal(fn.Properties.VpcConfig, undefined);
       assert.equal(fn.Properties.Timeout, path === 'debrief' ? 10 : 25);
       bundles.add(JSON.stringify(fn.Properties.Code));

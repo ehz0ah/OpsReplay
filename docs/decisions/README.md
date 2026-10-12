@@ -87,6 +87,11 @@ replaceable public metric with the accepted Monitor page and serves bounded comm
 Monitor deltas through the admitted browser connection. Keep historical catch-up in the
 timeline API and do not claim durable or exactly-once WebSocket delivery.
 
+13 October 2026: [Checkpoint runtime activation](checkpoint-activation.md) makes
+`EnableGatewayPath` control the complete existing-session runtime and adds a separate
+default-closed `EnableSessionAdmission` gate for StartSession. Close admission before
+draining; do not use disabled cleanup actions as a shutdown mechanism.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

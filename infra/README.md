@@ -3,9 +3,9 @@
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, terminal-ticket
 issuance, session-status reads, owner end, session reconciliation, bounded sweep,
-and the combined Gateway path behind a public ALB. The three new lifecycle actions,
-stream mapping, minute sweep, and STOPPED event rule remain disabled. Ready-attempt
-lock release depends on the next debrief/finalisation PR. See the
+and the combined Gateway path behind a public ALB. One complete-runtime switch now gates
+the actions and triggers required to finish existing sessions. A separate admission
+switch gates only new session starts. Both default to inactive. See the
 [lifecycle decision](../docs/decisions/session-lifecycle.md). The first disposable
 checkpoint verified GitHub OIDC image
 publication and the private gateway runtime in AWS. Its foundation, service, and image
@@ -69,13 +69,20 @@ uses an existing Cognito user pool and client by default. The explicit managed m
 instead creates a retained checkpoint user pool, public client, and AWS-managed login
 domain.
 
-`EnableGatewayPath` defaults to `false`. In this state the recording publisher,
-session-status action, and terminal-ticket action have zero reserved concurrency, the
-task-state rule is disabled, and the ALB, WAF, shared session API, Gateway task, and
-Gateway service are omitted. Start and expiry remain disabled independently. Enabling
-the path sets the publisher concurrency to four and each API action's concurrency to
-its configured burst limit, enables task-state publication, and creates one Gateway
-service with the configured desired count. Both API burst limits default to sixteen.
+`EnableGatewayPath` defaults to `false`. In this state all runtime actions have zero
+reserved concurrency, all runtime event paths are disabled, and the ALB, WAF, shared
+session API, Gateway task, and Gateway service are omitted. Enabling it activates the
+recording publisher, filtered lifecycle stream, minute sweep, RUNNING and STOPPED task
+events, reconciliation, owner end, result reads, status, terminal tickets, and one
+Gateway service with the configured desired count. ExpireProvisioning stays disabled
+because current schedules target ReconcileSession.
+
+`EnableSessionAdmission` also defaults to `false` and cannot be true unless
+`EnableGatewayPath` is true. It changes only StartSession reserved concurrency. Closing
+admission therefore keeps every existing-session path available while attempts drain.
+See the [activation decision](../docs/decisions/checkpoint-activation.md) and
+[AWS checkpoint runbook](../docs/runbooks/aws-checkpoint-activation.md).
+
 The public API bundles validate the exact browser origin and Cognito app-client ID when
 they initialise. The default disabled configuration leaves those values empty, so an
 accidental invocation fails closed during initialisation. This is expected until the
@@ -104,9 +111,11 @@ state update. API response caching and data tracing are disabled for both method
 These are bounded checkpoint defaults, not measured polling capacity.
 
 Reconcile and sweep reuse deterministic debrief/finalisation code after confirmed
-cleanup. Their roles add private manifest `GetItem`, session `Query`, and `GetObject`
-only for `sessions/*/metrics/*/sealed/*`. They cannot list or delete recording objects,
-read captures/raw PTY pages, or invoke another Lambda. Both remain disabled.
+cleanup. Their roles add private manifest `GetItem`, session `Query`, bounded reads for
+the required metric, terminal, and playback object prefixes, and retention-tagged
+playback writes. They cannot list or delete recording objects, change an existing
+retention tag, or invoke another Lambda. They run only when the complete runtime switch
+is enabled.
 
 The application stack does not create an environment task definition. The separate
 [`ReferenceEnvironmentStack`](reference-environment-stack.ts), synthesised as
@@ -220,6 +229,10 @@ deletion does not remove the retained buckets or table. Their object lifecycle r
 continue to apply while the buckets exist.
 
 ## Checkpoint deployment commands
+
+Use the [activation runbook](../docs/runbooks/aws-checkpoint-activation.md) for the
+current runtime-only, admission, drain, and shutdown sequence. The commands below retain
+the foundation history and do not by themselves authorise application activation.
 
 Do not run these commands until the change is reviewed and an AWS test window is
 approved. Prefix every account command so it cannot use the default profile.

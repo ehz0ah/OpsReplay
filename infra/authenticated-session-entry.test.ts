@@ -163,7 +163,9 @@ test('authenticated session entry has one exact browser policy and optional mana
     const startFunction = Object.entries(resources).find(
       ([id, value]) => id.startsWith('StartSession') && value.Type === 'AWS::Lambda::Function',
     );
-    assert.equal(startFunction?.[1].Properties?.ReservedConcurrentExecutions, 0);
+    assert.deepEqual(startFunction?.[1].Properties?.ReservedConcurrentExecutions, {
+      'Fn::If': ['SessionAdmissionEnabled', { Ref: 'StartSessionBurstLimit' }, 0],
+    });
 
     const [stage] = ofType('AWS::ApiGateway::Stage');
     assert.ok(stage);

@@ -44,6 +44,7 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
       Type: 'String',
       Default: 'false',
       AllowedValues: ['false', 'true'],
+      Description: 'Enable the complete checkpoint runtime while keeping new-session admission separately gated.',
     });
     assert.ok(rendered.Conditions.GatewayPathEnabled);
     assert.deepEqual(rendered.Parameters.PublicIngressSubnetIds, {
