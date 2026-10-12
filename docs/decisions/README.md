@@ -62,6 +62,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 | 12 October 2026 | [Playback exports and owner reads](playback-api.md): publish debrief/highlights/progress and release the matching lock before independent bounded exports in existing lifecycle actions, continue pending passes through existing hints and sweep discovery, pin source snapshots and final Monitor receipts, and add three separate owner-authorised paginated read actions. Preserve capture intervals, expiry, and null partial scores. All new actions remain disabled; AWS and frontend playback remain separate. |
 
+12 October 2026: [Session lifecycle](session-lifecycle.md) outcome reads now retry
+mixed session/recording snapshots within the existing three-attempt budget.
+Persistent inconsistency still fails closed; outcome, receipt, and lock contracts
+are unchanged. This is a locally tested concurrency fix, not AWS validation.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |
