@@ -83,7 +83,7 @@ export function createReconcileSession({
       ]);
       if (!state || !state.lastSeenAt || !state.lastMonitorAt || !session.view.endsAt || !observation || !recording)
         throw new Error('Ready lifecycle state is invalid.');
-      if (observation.source !== recording.source || observation.cursor > recording.cursor || observation.at > at)
+      if (observation.source !== recording.source || observation.cursor > recording.cursor)
         throw new Error('Monitor observation is invalid.');
       const lastMonitorAt = observation.at;
       const task = session.taskArn

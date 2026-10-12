@@ -118,6 +118,21 @@ async function coverageFixture() {
   return { ...f, value, monitor };
 }
 
+test('coverage uses the saved cutoff proof when the terminal clock leads the Gateway clock', async () => {
+  const f = await coverageFixture();
+  // The source is 250 ms ahead of the caller. Its valid checkpoint is already
+  // committed, and the post-cutoff frontier proves coverage independently.
+  const checkpoint = {
+    ...f.checkpoint,
+    metadata: { ...f.checkpoint.metadata, observedAt: at(3.25) },
+  };
+  await f.put('TERMINAL_RECORDING', checkpoint);
+  const coverage = await f.leases.cover(f.lease, f.value, f.monitor, checkpoint, at(1.75));
+  assert.deepEqual(coverage.terminal, checkpoint);
+  assert.equal(coverage.coveredAt, at(1.75));
+  assert.deepEqual(await f.leases.coverage(f.sessionId), coverage);
+});
+
 test('coverage permits task-independent sealing after the short drain and fences a takeover', async () => {
   const f = await coverageFixture();
   const coverage = await f.leases.cover(f.lease, f.value, f.monitor, f.checkpoint, at(3));

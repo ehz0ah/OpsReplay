@@ -19,7 +19,8 @@ export interface RecordingCoverage {
 }
 export const recordingCoverageKey = (sessionId: string) => ({ PK: `SESSION#${sessionId}`, SK: 'RECORDING_COVERAGE' });
 
-/** The monitor object includes its exact final metric. No task access is needed after this receipt. */
+/** The monitor object includes its exact final metric. No task access is needed after this receipt.
+ * Source timestamps prove the cutoff, not ordering against the Gateway's wall clock. */
 export function isRecordingCoverage(value: unknown, sessionId: string): value is RecordingCoverage {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const v = value as RecordingCoverage;
@@ -46,8 +47,6 @@ export function isRecordingCoverage(value: unknown, sessionId: string): value is
     v.sealingDeadlineAt !== new Date(Date.parse(v.coveredAt) + recordingSealingDurationMs).toISOString() ||
     !isTerminalRecordingCheckpoint(v.terminal) ||
     !terminalCoversCutoff(v.terminal, v.cutoffAt) ||
-    v.terminal.metadata.observedAt > v.coveredAt ||
-    (v.terminal.frontier !== null && v.terminal.frontier.recordedAt > v.coveredAt) ||
     (v.terminal.metadata.loss !== null && v.terminal.metadata.loss.occurredAt <= v.cutoffAt) ||
     typeof v.monitor?.objectKey !== 'string' ||
     !isMonitorMetricFrame(v.final) ||

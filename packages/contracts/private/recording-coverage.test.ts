@@ -34,6 +34,19 @@ const value = {
     recovery: { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
   },
 };
+test('coverage accepts a later source observation without imposing cross-process clock ordering', () => {
+  assert.equal(
+    isRecordingCoverage(
+      {
+        ...value,
+        terminal: { ...terminal, metadata: { ...terminal.metadata, observedAt: value.taskDrainDeadlineAt } },
+      },
+      id,
+    ),
+    true,
+  );
+});
+
 test('coverage validates task cutoff proof and a separate fixed sealing deadline', () => {
   assert.equal(isRecordingCoverage(value, id), true);
   for (const bad of [
@@ -42,7 +55,6 @@ test('coverage validates task cutoff proof and a separate fixed sealing deadline
     { ...value, sealingDeadlineAt: value.taskDrainDeadlineAt },
     { ...value, terminal: { ...terminal, metadata: { ...terminal.metadata, observedAt: cutoffAt } } },
     { ...value, final: { ...value.final, sample: { ...value.final.sample, at: coveredAt } } },
-    { ...value, terminal: { ...terminal, metadata: { ...terminal.metadata, observedAt: value.taskDrainDeadlineAt } } },
     {
       ...value,
       monitor: {
