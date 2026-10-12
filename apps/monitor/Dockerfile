@@ -30,4 +30,8 @@ COPY --from=build /build/dist/monitor/client.cjs /app/client.cjs
 COPY --from=build /build/dist/monitor/capture-check.cjs /app/capture-check.cjs
 COPY content/challenges/wrong-upstream-port/challenge.json /app/challenge.json
 
+# Candidate reference runtime, not a published Challenge. No test client or credentials.
+FROM runtime-base AS reference
+COPY --chown=node:node --chmod=444 content/challenges/wrong-upstream-port/challenge.json /app/challenge.json
+
 FROM runtime-base AS runtime

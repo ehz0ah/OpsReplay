@@ -34,6 +34,15 @@ continue from its last saved sequence without a second measurement stream.
 
 ## Lifecycle and timing
 
+12 October 2026: the reference task's `START` dependency exposed a startup race.
+Control now remains `starting` while retrying false initial-state checks serially,
+at most 30 attempts with up to one second between attempts and a 30-second monotonic
+readiness deadline. An in-flight check retains its existing bounded transport timeout;
+success at or after the deadline is rejected. Exceptions fail immediately. Shutdown
+cancels the pending delay and fences in-flight results. Repeated initialization shares
+one promise, including after failure; it does not reset the budget. No measurements,
+captures, or learner access begin while starting. Wire states and responses are unchanged.
+
 Start is idempotent and returns the fixed measurement origin, including after sealing.
 This lets a replacement recorder verify the stream before it retries the same seal. Seal
 accepts the platform lifecycle cutoff once. A retry with the same cutoff returns the same

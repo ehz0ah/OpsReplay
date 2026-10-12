@@ -83,8 +83,9 @@ jobs:
       - run: npm run monitor:test
       - run: npm run challenge:build
       - run: npm run monitor:image:build
+      - run: npm run monitor:reference:image:build
       - run: npm run gateway:image:test
-      - run: npm run monitor:image:test
+      - run: npm run monitor:reference:image:test
       - name: Remove monitor test containers after failure or cancellation
         if: always()
         run: |

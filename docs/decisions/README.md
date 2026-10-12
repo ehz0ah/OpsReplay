@@ -67,6 +67,11 @@ mixed session/recording snapshots within the existing three-attempt budget.
 Persistent inconsistency still fails closed; outcome, receipt, and lock contracts
 are unchanged. This is a locally tested concurrency fix, not AWS validation.
 
+12 October 2026: [Reference environment task](reference-environment-task.md) defines
+a candidate two-container Fargate revision with digest-only images, explicit resource
+budgets, private Monitor runtime content, and the existing watched-volume/bootstrap
+boundaries. Keep immutable content publication, AWS validation, and activation separate.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

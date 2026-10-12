@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { App } from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { ReferenceEnvironmentStack } from '../../../infra/reference-environment-stack.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const challengePath = new URL('../../../content/challenges/wrong-upstream-port/', import.meta.url);
@@ -14,6 +17,33 @@ const manifest = JSON.parse(readFileSync(new URL('challenge.json', challengePath
 const containers = new Set();
 const followers = new Set();
 const watchedVolumes = new Map();
+const synthesisDirectory = mkdtempSync(join(tmpdir(), 'opsreplay-reference-image-'));
+let task;
+try {
+  task = Template.fromStack(
+    new ReferenceEnvironmentStack(new App({ outdir: synthesisDirectory }), 'ReferenceImageTest'),
+  ).toJSON().Resources.ReferenceTask.Properties;
+} finally {
+  rmSync(synthesisDirectory, { recursive: true, force: true });
+}
+const challengeSettings = task.ContainerDefinitions.find((container) => container.Name === 'challenge');
+const monitorSettings = task.ContainerDefinitions.find((container) => container.Name === 'monitor');
+
+function resourceFlags(settings) {
+  return [
+    '--init',
+    '--user',
+    settings.User,
+    '--cpu-shares',
+    String(settings.Cpu),
+    '--memory',
+    `${settings.Memory}m`,
+    '--memory-swap',
+    `${settings.Memory}m`,
+    ...settings.LinuxParameters.Capabilities.Drop.flatMap((capability) => ['--cap-drop', capability]),
+    ...(settings.ReadonlyRootFilesystem ? ['--read-only'] : []),
+  ];
+}
 
 function run(command, args) {
   return spawnSync(command, args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 2 * 1024 * 1024, cwd: root });
@@ -38,6 +68,15 @@ const monitorImage = success(
     'image',
     'inspect',
     process.env.OPSREPLAY_MONITOR_IMAGE ?? 'opsreplay/monitor-test:dev',
+    '--format',
+    '{{.Id}}',
+  ),
+);
+const clientImage = success(
+  docker(
+    'image',
+    'inspect',
+    process.env.OPSREPLAY_MONITOR_CLIENT_IMAGE ?? process.env.OPSREPLAY_MONITOR_IMAGE ?? 'opsreplay/monitor-test:dev',
     '--format',
     '{{.Id}}',
   ),
@@ -133,6 +172,36 @@ test('the Monitor runtime image includes the available Debian Perl security upda
   assert.notEqual(version, '');
 });
 
+test('reference runtime contains only the private manifest and runtime, not test clients or credentials', () => {
+  const bytes = success(
+    docker('run', '--rm', '--network', 'none', '--entrypoint', 'cat', monitorImage, '/app/challenge.json'),
+  );
+  assert.deepEqual(JSON.parse(bytes), manifest);
+  if (monitorImage !== clientImage) {
+    success(
+      docker(
+        'run',
+        '--rm',
+        '--network',
+        'none',
+        '--entrypoint',
+        'sh',
+        monitorImage,
+        '-ec',
+        'test ! -e /app/client.cjs && test ! -e /app/capture-check.cjs',
+      ),
+    );
+  }
+  const [image] = JSON.parse(success(docker('image', 'inspect', monitorImage)));
+  assert.equal(image.Config.User, 'node');
+  assert.deepEqual(image.Config.Entrypoint, ['node', '/app/runtime.cjs']);
+  assert.deepEqual(image.Config.Cmd, ['/app/challenge.json']);
+  assert.equal(
+    image.Config.Env.some((value) => /OPSREPLAY_MONITOR_(SECRET|TLS_KEY_B64)=/.test(value)),
+    false,
+  );
+});
+
 test('Linux capture reader rejects links, directories, and FIFOs with bounded reads', () => {
   success(
     docker(
@@ -147,13 +216,13 @@ test('Linux capture reader rejects links, directories, and FIFOs with bounded re
       '/tmp:rw,noexec,nosuid,size=8m',
       '--entrypoint',
       'node',
-      monitorImage,
+      clientImage,
       '/app/capture-check.cjs',
     ),
   );
 });
 
-async function fresh(t) {
+async function fresh(t, waitForListeners = true) {
   const volume = 'opsreplay-watched-' + randomUUID();
   success(docker('volume', 'create', volume));
   const id = success(
@@ -166,18 +235,11 @@ async function fresh(t) {
       'storefront',
       '--network',
       'none',
-      '--cpus',
-      '1',
-      '--memory',
-      '2g',
-      '--memory-swap',
-      '2g',
+      ...resourceFlags(challengeSettings),
       '--pids-limit',
       '128',
       '--security-opt',
       'no-new-privileges=true',
-      '--cap-drop',
-      'NET_RAW',
       '--mount',
       `type=volume,src=${volume},dst=/opsreplay/watched`,
       '--env',
@@ -193,7 +255,8 @@ async function fresh(t) {
     // Other after-hooks can still own Monitor mounts. Remove the volume only
     // after all containers in this test process have been removed.
   });
-  await eventually(() => exec(id, 'opsreplay-check-startup').status === 0, 'Shop listeners did not start', 30_000);
+  if (waitForListeners)
+    await eventually(() => exec(id, 'opsreplay-check-startup').status === 0, 'Shop listeners did not start', 30_000);
   return id;
 }
 
@@ -217,21 +280,11 @@ function startMonitor(t, challenge, startTimeoutMs = 30_000) {
       'container:' + challenge,
       '--mount',
       `type=volume,src=${watchedVolumes.get(challenge)},dst=/opsreplay/watched,readonly`,
-      '--read-only',
-      '--cap-drop',
-      'ALL',
+      ...resourceFlags(monitorSettings),
       '--security-opt',
       'no-new-privileges=true',
-      '--cpus',
-      '0.5',
-      '--memory',
-      '128m',
-      '--memory-swap',
-      '128m',
       '--pids-limit',
       '64',
-      '--tmpfs',
-      '/tmp:rw,noexec,nosuid,size=8m',
       '--env',
       'OPSREPLAY_MONITOR_SECRET=' + secret,
       '--env',
@@ -282,7 +335,7 @@ function startMonitor(t, challenge, startTimeoutMs = 30_000) {
       'OPSREPLAY_MONITOR_CLIENT_START_TIMEOUT_MS=' + startTimeoutMs,
       '--entrypoint',
       'node',
-      monitorImage,
+      clientImage,
       '/app/client.cjs',
     ),
   );
@@ -399,7 +452,8 @@ test(
   'sidecar measures the real fault, safe reload, harmful restart, and reference recovery',
   { timeout: 180_000 },
   async (t) => {
-    const shop = await fresh(t);
+    // ECS START orders container startup, not service readiness.
+    const shop = await fresh(t, false);
     const monitor = startMonitor(t, shop);
     await eventually(
       () => monitor.metrics().some((m) => m.counters.failedRequests > 0),
@@ -410,9 +464,20 @@ test(
     assert.equal(inspect.HostConfig.Privileged, false);
     assert.equal(inspect.HostConfig.ReadonlyRootfs, true);
     assert.equal(inspect.HostConfig.PidMode, '');
+    assert.equal(inspect.HostConfig.CpuShares, monitorSettings.Cpu);
+    assert.equal(inspect.HostConfig.Memory, monitorSettings.Memory * 1024 * 1024);
+    assert.equal(inspect.HostConfig.Init, true);
     assert.ok(inspect.HostConfig.CapDrop.includes('ALL'));
     assert.equal(Object.keys(inspect.HostConfig.PortBindings ?? {}).length, 0);
     assert.equal(success(exec(monitor.id, 'id', '-u')), '1000');
+    assert.notEqual(exec(monitor.id, 'touch', '/opsreplay/watched/monitor-write-test').status, 0);
+    assert.notEqual(exec(monitor.id, 'touch', '/tmp/monitor-write-test').status, 0);
+    success(exec(shop, 'test', '!', '-e', '/app/challenge.json'));
+    const privateEnvironment = success(exec(shop, 'cat', '/proc/1/environ'));
+    assert.equal(privateEnvironment.includes('OPSREPLAY_MONITOR_SECRET='), false);
+    assert.equal(privateEnvironment.includes('OPSREPLAY_MONITOR_TLS_KEY_B64='), false);
+    const processes = success(exec(shop, 'ps', '-eo', 'args'));
+    assert.equal(processes.includes('/app/runtime.cjs'), false);
     success(exec(shop, 'test', '!', '-e', '/app/core.cjs'));
     success(docker('cp', monitor.certPath, shop + ':/tmp/monitor-ca.pem'));
     const unauthorized = exec(
