@@ -1,0 +1,41 @@
+# Reference runtime publication
+
+Date: 13 October 2026
+
+## Decision
+
+Publish the reference Challenge only through a reviewed two-step operation:
+
+1. inspect the exact tested image configurations and registered task revision;
+2. complete the embedded draft manifest by changing only its status and two image digests;
+3. require evidence references for repeated scenario tests, playback, Fargate isolation,
+   public-data secrecy, and independent content review;
+4. conditionally store the immutable private manifest;
+5. verify that stored value with a consistent read; and
+6. conditionally create the public admission snapshot.
+
+The embedded manifest cannot contain the final digest of its own Monitor image. The
+release descriptor therefore binds the embedded build-manifest hash and the completed
+private-manifest hash separately. Publication does not rebuild either image.
+
+Use a separate content-publisher role. It can read the two ECR manifests, describe task
+definitions, and get or put only `CONTENT#*` items in the shared table. ECS does not support
+resource-level permissions for `DescribeTaskDefinition`, so that read-only action uses
+`Resource: "*"`; the tool still validates the exact account, Region, family, revision,
+and complete task shape. The role cannot push images, register tasks, pass roles, deploy
+infrastructure, or admit sessions through an API.
+
+## Reason
+
+Admission must never refer to an untested image, a generic Monitor image, a mutable tag,
+or private content that was not stored. Conditional writes make identical retries safe
+and reject a conflicting use of the same Challenge version. Storing private content
+first means an interrupted operation can leave an unused private item, but cannot leave
+a startable version without its pinned manifest.
+
+## Limits
+
+The tools do not prove AWS behaviour until the approved checkpoint runs. Evidence
+references are reviewed operator assertions, not cryptographic proof of the underlying
+test results. The Pro time limit remains an explicit input because the team has not
+selected it. No current draft is promoted by this change.

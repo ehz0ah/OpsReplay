@@ -72,6 +72,11 @@ a candidate two-container Fargate revision with digest-only images, explicit res
 budgets, private Monitor runtime content, and the existing watched-volume/bootstrap
 boundaries. Keep immutable content publication, AWS validation, and activation separate.
 
+13 October 2026: [Reference runtime publication](reference-runtime-publication.md)
+binds the tested image configurations, embedded draft manifest, completed private
+manifest, and exact task revision. Store private content before conditional admission,
+use a separate read-and-content-write identity, and keep apply manual and inactive.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

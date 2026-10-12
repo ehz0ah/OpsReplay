@@ -27,6 +27,12 @@ const expectedConfigDigests = new Map([
   ['monitor', digest('b')],
   ['challenge', digest('c')],
 ]);
+const referenceManifest = {
+  id: 'wrong-upstream-port',
+  status: 'draft',
+  environment: { image: { digest: null }, monitorImage: { digest: null } },
+};
+const readReference = () => structuredClone(referenceManifest);
 
 function temporaryOutput() {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-checkpoint-images-'));
@@ -80,6 +86,9 @@ function archiveManifest(configDigests = localConfigDigests, configPath = (value
 
 function inspectImageBundle(command, args) {
   if (command === 'tar' && args[0] === '-xOf' && args.at(-1) === 'manifest.json') return archiveManifest();
+  if (command === 'docker' && args[0] === 'image' && args[1] === 'inspect') {
+    return localConfigDigests[args.at(-1)];
+  }
   return null;
 }
 
@@ -161,6 +170,33 @@ test('an invalid image archive fails before any AWS request', () => {
   }
 });
 
+test('a loaded tag that differs from the tested archive fails before any AWS request', () => {
+  const output = temporaryOutput();
+  const calls = [];
+  try {
+    assert.throws(
+      () =>
+        publishCheckpointImages({
+          env: environment(output),
+          run: (command, args) => {
+            calls.push([command, args]);
+            if (command === 'tar') return archiveManifest();
+            if (command === 'docker' && args[0] === 'image') return digest('f');
+            throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+          },
+          readReference,
+        }),
+      /does not match the tested image archive/,
+    );
+    assert.equal(
+      calls.some(([command]) => command === 'aws'),
+      false,
+    );
+  } finally {
+    rmSync(output.directory, { recursive: true, force: true });
+  }
+});
+
 test('an existing immutable commit tag is reused without a Docker login or push', () => {
   const output = temporaryOutput();
   const calls = [];
@@ -175,7 +211,7 @@ test('an existing immutable commit tag is reused without a Docker login or push'
     throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
   };
   try {
-    const { manifest } = publishCheckpointImages({ env: environment(output), run });
+    const { manifest } = publishCheckpointImages({ env: environment(output), run, readReference });
     assert.equal(
       calls.filter(([command, args]) => command === 'docker' && ['login', 'tag', 'push'].includes(args[0])).length,
       0,
@@ -204,6 +240,8 @@ test('an existing immutable commit tag is reused without a Docker login or push'
       ]);
     }
     assert.equal(manifest.images.gateway.digest, digest('1'));
+    assert.equal(manifest.account, '123456789012');
+    assert.match(manifest.buildManifestSha256, /^[a-f0-9]{64}$/);
     assert.equal(manifest.images.gateway.tag, `git-${commitSha}-${'a'.repeat(64)}`);
     assert.equal(JSON.parse(readFileSync(output.manifest, 'utf8')).commitSha, commitSha);
     assert.match(readFileSync(output.summary, 'utf8'), /Checkpoint image publication/);
@@ -231,7 +269,7 @@ test('an existing immutable tag with different tested content fails before login
   };
   try {
     assert.throws(
-      () => publishCheckpointImages({ env: environment(output), run }),
+      () => publishCheckpointImages({ env: environment(output), run, readReference }),
       /does not match the tested local image configuration/,
     );
     assert.equal(
@@ -258,7 +296,10 @@ test('only missing images are authenticated, pushed, and resolved again', () => 
     if (command === 'aws' && args[1] === 'batch-get-image') {
       const repository = args[args.indexOf('--repository-name') + 1];
       if (repository === 'opsreplay/monitor' && monitorPushed) {
-        values[repository] = { digest: digest('4'), configDigest: localConfigDigests['opsreplay/monitor:dev'] };
+        values[repository] = {
+          digest: digest('4'),
+          configDigest: localConfigDigests['opsreplay/monitor-reference:dev'],
+        };
       }
       return batchResponse(repository, values);
     }
@@ -275,7 +316,7 @@ test('only missing images are authenticated, pushed, and resolved again', () => 
     throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
   };
   try {
-    const { manifest } = publishCheckpointImages({ env: environment(output), run });
+    const { manifest } = publishCheckpointImages({ env: environment(output), run, readReference });
     assert.equal(manifest.images.monitor.digest, digest('4'));
     assert.equal(calls.filter(([command, args]) => command === 'docker' && args[0] === 'push').length, 1);
     assert.match(

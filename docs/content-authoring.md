@@ -91,6 +91,20 @@ from publication until its workload produces the stated fault, fix, and job-work
 7. Publish a new immutable version with pinned image digests. Existing sessions keep
    their old version.
 
+For the reference Challenge, the image workflow saves the tested reference Monitor
+target and records the manifest hash that is actually embedded in that image. Use
+`npm run content:publish -- --prepare CONFIG RELEASE` to inspect the ECR digests and
+registered task and create a private release file for review. The command does not write
+AWS state. After the evidence file and release are reviewed, an approved operator can
+use `--apply CONFIG RELEASE EVIDENCE`. Apply conditionally stores the private manifest
+before its admission snapshot. An identical retry is safe; conflicting bytes for the
+same version fail. Do not upload the release file because it contains private content.
+
+The configuration supplies the digest-manifest path, exact task and execution-role
+ARNs, Monitor log group, content table, and explicit Pro time limit. It does not infer an
+undecided Pro limit. Publication stays separate from image push, task registration,
+deployment, and runtime activation.
+
 ## Learn
 
 A Learn entry is Markdown with metadata: title, category, access plan, summary,

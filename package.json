@@ -31,6 +31,8 @@
     "check": "node scripts/check.mjs && node --import tsx --test packages/contracts/private/*.test.ts && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs && prettier --write packages/contracts/openapi.json",
     "typecheck": "tsc --noEmit",
+    "content:test": "node --import tsx --test packages/content/test/*.test.ts",
+    "content:publish": "node --import tsx scripts/publish-reference-release.ts",
     "api:build": "node scripts/build-start-session.mjs",
     "api:test": "npm run api:build && node --import tsx --test apps/api/test/*.test.ts",
     "infra:test": "npm run api:build && node --import tsx --test infra/*.test.ts",
