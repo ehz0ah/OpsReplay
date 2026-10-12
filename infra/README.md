@@ -101,14 +101,45 @@ cleanup. Their roles add private manifest `GetItem`, session `Query`, and `GetOb
 only for `sessions/*/metrics/*/sealed/*`. They cannot list or delete recording objects,
 read captures/raw PTY pages, or invoke another Lambda. Both remain disabled.
 
-The stack does not create an environment task definition. Content publication must
-apply [the watched-volume helper](environment-watched-volume.ts) to each published
-revision: one ephemeral per-task volume, Challenge writable, Monitor read-only,
-Challenge-only `OPSREPLAY_WATCHED_FILES=1`, and no secrets in that volume. The reference
-image refuses the option without a mount. The helper is synthesised in a local test,
-not attached to an assumed resource. Image/volume safety is tested locally; Fargate
-volume layout, private content/bootstrap delivery, and activation need the approved
-AWS checkpoint.
+The application stack does not create an environment task definition. The separate
+[`ReferenceEnvironmentStack`](reference-environment-stack.ts), synthesised as
+`OpsReplayReferenceEnvironment`, defines only a candidate
+`opsreplay-wrong-upstream-port` task revision. It creates no service, task launch,
+publication record, IAM role, or network resources and changes no activation flags.
+See the [reference task decision](../docs/decisions/reference-environment-task.md).
+
+Its required parameters have no defaults:
+
+| Parameter                     | Input                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| `EnvironmentExecutionRoleArn` | Existing foundation execution role, with application bootstrap-bucket access       |
+| `EnvironmentLogGroupName`     | Existing foundation environment log group                                          |
+| `ChallengeImageDigest`        | Tested SHA-256 digest in `opsreplay/challenge-wrong-upstream-port`                 |
+| `ReferenceMonitorImageDigest` | Tested **reference target** digest in `opsreplay/monitor`, not the generic runtime |
+
+Images must be in the deployment account and Region. `ReferenceTaskDefinitionArn`
+is a candidate revision, not evidence of publication or permission to admit sessions.
+The task has 1024 CPU units and 2048 MiB memory. Challenge/Monitor receive 768/256
+relative CPU shares and 1536/512 MiB hard memory limits. CPU shares are not independent
+hard CPU quotas. Both containers are essential, use an init process, and have a
+30-second stop timeout. There is no task role, shared PID namespace, or service
+health check that would restart a learner's intentionally broken services.
+
+The definition applies [the watched-volume helper](environment-watched-volume.ts):
+one ephemeral per-task volume, Challenge writable, Monitor read-only, Challenge-only
+`OPSREPLAY_WATCHED_FILES=1`, and no secrets in that volume. Monitor runs non-root
+with no capabilities and a read-only root. Its private manifest is baked into the
+reference image; bounded recording state stays in process memory. The existing
+start action supplies only Monitor's encrypted S3 environment-file override.
+`START` ordering does not establish readiness; Monitor's existing initial-state checks
+and the recording lifecycle still gate learner access.
+
+Only Monitor's fixed-code process logs use bounded, non-blocking CloudWatch delivery.
+Challenge stdout is not a recording path; terminal evidence still comes from the PTY.
+Private subnets, security groups, public-IP disabling, ECS Exec disabling, and Fargate
+platform `1.4.0` remain launch/application configuration, not task-definition fields.
+Local synthesis and Docker tests do not prove Fargate isolation, IAM/bootstrap
+delivery, startup timing, or resource enforcement. These need the approved AWS checkpoint.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated
@@ -126,6 +157,12 @@ all three registry digests. The content-specific suffix avoids collisions when a
 package source produces different bytes during a later build of the same commit.
 Repeated runs reuse only tags that match the tested archive. The workflow does not
 package Lambda code, deploy a stack, or start a task.
+
+That existing workflow still publishes the **generic** Monitor target, which lacks
+`/app/challenge.json`. It cannot supply `ReferenceMonitorImageDigest`. Publishing the
+tested reference target and binding its digest and task revision to an immutable
+content version belong to the separate publication PR. The authored Challenge stays
+draft with null image digests in this increment.
 
 The table and secret-file bucket use `Retain` by default. Stack deletion would keep
 their data and storage charges. DynamoDB TTL removes expired terminal-ticket items by

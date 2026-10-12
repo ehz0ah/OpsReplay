@@ -1,4 +1,5 @@
 import type { MetricFrame, PublicFrame } from './types.js';
+import timers from 'node:timers/promises';
 import type { FileCaptures } from './captures.js';
 import type { CaptureBaseline, CaptureRequest, FileCapture } from '../../../packages/contracts/private/file-capture.js';
 import { MonitorError, limits } from './types.js';
@@ -58,6 +59,7 @@ export class MonitorControl {
   private sealedAt: number | undefined;
   private sealing: Promise<SealResult> | undefined;
   private sealed = false;
+  private readonly startupAbort = new AbortController();
 
   constructor(
     private readonly monitor: ControlledMonitor,
@@ -81,15 +83,32 @@ export class MonitorControl {
 
   initialise(): Promise<void> {
     if (this.initialising) return this.initialising;
-    this.initialising = this.monitor
-      .verifyInitialState()
-      .then((ready) => {
-        this.healthState = ready ? 'ready' : 'failed';
-      })
-      .catch(() => {
-        this.healthState = 'failed';
-      });
+    this.initialising = this.prepare();
     return this.initialising;
+  }
+
+  private async prepare(): Promise<void> {
+    const deadline = this.monitor.now() + 30_000;
+    try {
+      // ECS START does not imply application readiness. No learner measurements
+      // start during this bounded, serial bootstrap verification.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (this.startupAbort.signal.aborted || this.monitor.failure || this.monitor.now() >= deadline) break;
+        const ready = await this.monitor.verifyInitialState();
+        if (this.startupAbort.signal.aborted || this.monitor.failure || this.monitor.now() >= deadline) break;
+        if (ready) {
+          this.healthState = 'ready';
+          return;
+        }
+        if (attempt < 29)
+          await timers.setTimeout(Math.min(1000, deadline - this.monitor.now()), undefined, {
+            signal: this.startupAbort.signal,
+          });
+      }
+    } catch {
+      // Configuration/transport exceptions and shutdown are not retryable.
+    }
+    this.healthState = 'failed';
   }
 
   start(): MonitorControlStartResponse {
@@ -132,6 +151,7 @@ export class MonitorControl {
   }
 
   async close(): Promise<void> {
+    this.startupAbort.abort();
     if (this.sealing) {
       try {
         await this.sealing;

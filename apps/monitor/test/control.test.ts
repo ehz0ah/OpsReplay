@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { EventEmitter, once } from 'node:events';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import type { AddressInfo } from 'node:net';
 import { connect as connectTls } from 'node:tls';
 import test from 'node:test';
@@ -96,6 +97,7 @@ function fixture(ready = true, currentTime = () => Date.parse('2026-10-07T00:01:
   const control = new MonitorControl(monitor, scheduler);
   return {
     control,
+    monitor,
     get ticks() {
       return ticks;
     },
@@ -143,12 +145,122 @@ test('control initialises, starts once, pages frames, and seals one immutable cu
 });
 
 test('control fails closed before readiness and when stopped without a lifecycle cutoff', async () => {
-  const f = fixture(false);
+  let now = 0;
+  const f = fixture(false, () => now);
+  f.monitor.verifyInitialState = async () => {
+    now = 30_000;
+    return false;
+  };
   await f.control.initialise();
   assert.equal(f.control.health(), 'failed');
   assert.throws(() => f.control.start(), /invalid_boundary/);
   await f.control.close();
   assert.equal(f.failed, 'monitor_failed');
+});
+
+test('startup retries serially, shares initialization, and admits only verified readiness', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  t.after(() => f.control.close());
+  let calls = 0;
+  f.monitor.verifyInitialState = async () => ++calls === 3;
+  const pending = f.control.initialise();
+  assert.equal(f.control.initialise(), pending);
+  await nextTurn();
+  assert.equal(calls, 1);
+  assert.equal(f.control.health(), 'starting');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
+  assert.equal(f.ticks, 0);
+  t.mock.timers.tick(1000);
+  await nextTurn();
+  assert.equal(calls, 2);
+  assert.equal(f.control.health(), 'starting');
+  t.mock.timers.tick(1000);
+  await pending;
+  assert.equal(calls, 3);
+  assert.equal(f.control.health(), 'ready');
+  assert.equal(f.ticks, 0);
+  f.control.start();
+  assert.equal(f.ticks, 2);
+  await f.control.close();
+});
+
+test('startup stops after thirty attempts even if the injected clock does not advance', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(false);
+  t.after(() => f.control.close());
+  let calls = 0;
+  f.monitor.verifyInitialState = async () => {
+    calls++;
+    return false;
+  };
+  const pending = f.control.initialise();
+  for (let attempt = 1; attempt < 30; attempt++) {
+    await nextTurn();
+    assert.equal(calls, attempt);
+    t.mock.timers.tick(1000);
+  }
+  await pending;
+  assert.equal(calls, 30);
+  assert.equal(f.control.health(), 'failed');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
+  assert.equal(f.control.initialise(), pending);
+});
+
+test('startup rejects a successful check that completes at the deadline', async () => {
+  let now = 0;
+  const f = fixture(true, () => now);
+  f.monitor.verifyInitialState = async () => {
+    now = 30_000;
+    return true;
+  };
+  await f.control.initialise();
+  assert.equal(f.control.health(), 'failed');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
+});
+
+test('startup exceptions fail closed without retry or private error propagation', async () => {
+  const f = fixture();
+  let calls = 0;
+  f.monitor.verifyInitialState = async () => {
+    calls++;
+    throw new Error('private transport details');
+  };
+  await f.control.initialise();
+  assert.equal(calls, 1);
+  assert.equal(f.control.health(), 'failed');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
+});
+
+test('shutdown cancels a pending startup delay without further checks', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(false);
+  let calls = 0;
+  f.monitor.verifyInitialState = async () => {
+    calls++;
+    return false;
+  };
+  const pending = f.control.initialise();
+  await nextTurn();
+  await f.control.close();
+  await pending;
+  t.mock.timers.tick(30_000);
+  await nextTurn();
+  assert.equal(calls, 1);
+  assert.equal(f.control.health(), 'failed');
+});
+
+test('shutdown fences an in-flight successful startup result', async () => {
+  const f = fixture();
+  let finish!: (ready: boolean) => void;
+  f.monitor.verifyInitialState = () => new Promise<boolean>((resolve) => (finish = resolve));
+  const pending = f.control.initialise();
+  await f.control.close();
+  finish(true);
+  await pending;
+  assert.equal(f.control.health(), 'failed');
+  assert.throws(() => f.control.start(), /invalid_boundary/);
+  assert.equal(f.ticks, 0);
 });
 
 test('control does not accept start after sealing fails', async () => {

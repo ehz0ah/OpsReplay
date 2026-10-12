@@ -6,8 +6,9 @@ HTTPS endpoint now controls the local monitor and serves sequenced public frames
 Monitor now supports bounded allowlisted file captures with duplicate-safe intervals,
 config before/after blocks, new log lines, and metric samples. Linux image tests use
 a read-only watched volume and reject links and non-regular files. Gateway recording
-and readiness are integrated locally. CPU/memory and full AWS integration remain
-unimplemented or unvalidated. This increment does not publish a Challenge.
+and readiness are integrated locally. A candidate reference Fargate task definition
+now supplies resource budgets and isolation settings. CPU/memory measurements and
+full AWS integration remain unimplemented or unvalidated. This does not publish a Challenge.
 
 The TypeScript core uses Node 22 and measures real HTTP results independently of the
 learner's services. It aggregates its bounded request records directly because this
@@ -46,7 +47,7 @@ reaches it, and seals at the exact supplied time. A monitor restart or loss of i
 buffer is an incomplete recording, not a new zero-valued measurement stream.
 
 The core does not write DynamoDB, decide session outcomes, or upload recordings.
-The future gateway will save the records and relay only public payloads.
+The Gateway saves the records and relays only public payloads.
 
 ## HTTPS control
 
@@ -55,7 +56,8 @@ certificate before it sends the 32-byte base64url session secret. The monitor re
 certificate, private key, and secret from its own environment. The Challenge container
 does not receive them. Production must deliver all three values through the encrypted
 per-session S3 environment file, never through a plaintext `RunTask` override. Certificate
-issuance and production delivery are not implemented.
+issuance and environment-file delivery are implemented in the lifecycle code but
+remain unvalidated on Fargate.
 
 | Operation                         | Result                                                                       |
 | --------------------------------- | ---------------------------------------------------------------------------- |
@@ -69,6 +71,13 @@ fixed JSON errors and never return manifests, validator definitions, probe defin
 credentials, or internal errors. The server caps request bodies at 1 KiB, headers at
 2 KiB, active connections and concurrent requests at 16, authenticated requests at 32 per second, and
 unauthenticated requests at 8 per second. Requests time out after six seconds.
+
+Control remains `starting` during bounded initial-state retries, because container
+`START` does not imply service readiness. It permits at most 30 serial attempts,
+up to one second apart, with a 30-second monotonic readiness deadline. An in-flight
+check keeps its transport timeout, but late success is rejected. Exceptions fail
+immediately, and shutdown cancels waits and fences late results. No learner
+measurements start until verification succeeds.
 
 ## Measurements
 
@@ -131,13 +140,19 @@ npm run monitor:test
 npm run challenge:build
 npm run monitor:image:build
 npm run monitor:image:test
+npm run monitor:reference:image:build
+npm run monitor:reference:image:test
 ```
 
 The image suite starts the existing shop, a separate monitor container, and a bounded
 gateway-like client. They share only the shop's network namespace. The monitor uses a
-read-only root, no capabilities, a non-root user, 0.5 CPU, 128 MiB memory with swap
-disabled, 64 PIDs, and a bounded private temporary filesystem. No host port, Docker
-socket, or internet route is available.
+read-only root, no capabilities, and a non-root user. The suite reads resource and
+capability settings from the synthesised reference task: Monitor has 256 CPU shares
+and 512 MiB; Challenge has 768 CPU shares and 1536 MiB. Memory swap is disabled.
+Monitor has no writable temporary mount. Additional local PID limits and
+`no-new-privileges` are test restrictions, not Fargate definition claims. Docker CPU
+shares do not emulate Fargate's task-level one-vCPU limit. No host port, Docker socket,
+or internet route is available.
 All are removed after testing, including failures. The existing standalone Challenge
 runner and service image are unchanged.
 
@@ -148,9 +163,16 @@ rejection, cursor reads, immutable sealing, and access from the learner network 
 credentials. Unit tests use real loopback HTTP servers for malformed and slow responses,
 and controlled clocks for scheduler and cutoff races.
 
-The Dockerfile's default `runtime` target contains only `runtime.cjs`. The local image
-command selects a separate `test` target that adds the private reference manifest and
-gateway substitute. `dist/monitor/core.cjs` remains a reusable build artifact outside the
+The Dockerfile's default `runtime` target contains only `runtime.cjs`. The separate
+`reference` target adds the private reference manifest at `/app/challenge.json`, owned
+by the non-root runtime user and read-only. It contains no test clients or credentials.
+The local `test` target adds that manifest and gateway substitute.
+`monitor:reference:image:test` runs the actual reference target with a separate
+test-client image, including immediate container startup without waiting for shop
+listeners, private process/environment checks, and rejected Monitor writes.
+The existing checkpoint publisher still selects the generic target; reference image
+publication and immutable content binding are a separate PR.
+`dist/monitor/core.cjs` remains a reusable build artifact outside the
 runtime image. The gateway substitute starts measurement, polls and resumes by sequence,
 and seals on SIGTERM. It exists only for integration tests and is not the real gateway or
 cloud lifecycle.
