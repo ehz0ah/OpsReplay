@@ -47,10 +47,11 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 6;
+const terminalTicketApiDeploymentVersion = 7;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
+const hintReleaseConcurrency = 4;
 const resultReadConcurrency = 4;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
@@ -1125,6 +1126,42 @@ export class SessionStartStack extends Stack {
       ) as unknown as number,
     });
 
+    const hintLogs = new LogGroup(this, 'ReleaseHintLogs', {
+      retention: RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const hintRole = new Role(this, 'ReleaseHintRole', { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
+    hintLogs.grantWrite(hintRole);
+    hintRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:ConditionCheckItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
+      }),
+    );
+    hintRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#challenge#*'] } },
+      }),
+    );
+    const releaseHint = new Function(this, 'ReleaseHint', {
+      runtime: Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: Code.fromAsset(fileURLToPath(new URL('../dist/release-hint/', import.meta.url))),
+      role: hintRole,
+      logGroup: hintLogs,
+      environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      reservedConcurrentExecutions: Fn.conditionIf(
+        gatewayEnabled.logicalId,
+        hintReleaseConcurrency,
+        0,
+      ) as unknown as number,
+    });
+
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
       name: 'opsreplay-terminal-ticket',
       description: 'Authenticated session actions for the bounded checkpoint path.',
@@ -1389,6 +1426,53 @@ export class SessionStartStack extends Stack {
       ]),
     });
     endPermission.cfnOptions.condition = gatewayEnabled;
+    const hintResource = new ApiGatewayResource(this, 'SessionHintResource', {
+      restApiId: terminalApi.ref,
+      parentId: terminalApiSession.ref,
+      pathPart: 'hints',
+    });
+    hintResource.cfnOptions.condition = gatewayEnabled;
+    const hintMethod = new CfnMethod(this, 'ReleaseHintMethod', {
+      restApiId: terminalApi.ref,
+      resourceId: hintResource.ref,
+      httpMethod: 'POST',
+      authorizationType: 'COGNITO_USER_POOLS',
+      authorizerId: terminalAuthorizer.ref,
+      apiKeyRequired: false,
+      operationName: 'releaseHint',
+      integration: {
+        type: 'AWS_PROXY',
+        integrationHttpMethod: 'POST',
+        timeoutInMillis: 8_000,
+        uri: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':apigateway:',
+          Aws.REGION,
+          ':lambda:path/2015-03-31/functions/',
+          releaseHint.functionArn,
+          '/invocations',
+        ]),
+      },
+    });
+    hintMethod.cfnOptions.condition = gatewayEnabled;
+    const hintPermission = new CfnPermission(this, 'ReleaseHintApiPermission', {
+      action: 'lambda:InvokeFunction',
+      functionName: releaseHint.functionArn,
+      principal: 'apigateway.amazonaws.com',
+      sourceArn: Fn.join('', [
+        'arn:',
+        Aws.PARTITION,
+        ':execute-api:',
+        Aws.REGION,
+        ':',
+        Aws.ACCOUNT_ID,
+        ':',
+        terminalApi.ref,
+        '/*/POST/v1/sessions/*/hints',
+      ]),
+    });
+    hintPermission.cfnOptions.condition = gatewayEnabled;
     const terminalApiTickets = new ApiGatewayResource(this, 'TerminalTicketApiTickets', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSession.ref,
@@ -1473,6 +1557,7 @@ export class SessionStartStack extends Stack {
       corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
       corsPreflight('Session', terminalApiSession, ['GET', 'OPTIONS']),
       corsPreflight('SessionEnd', endResource, ['OPTIONS', 'POST']),
+      corsPreflight('SessionHints', hintResource, ['OPTIONS', 'POST']),
       corsPreflight('TerminalTickets', terminalApiTickets, ['OPTIONS', 'POST']),
       ...resultCorsResources.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
     ];
@@ -1555,6 +1640,7 @@ export class SessionStartStack extends Stack {
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
     terminalTicketDeployment.addResourceDependency(endMethod);
+    terminalTicketDeployment.addResourceDependency(hintMethod);
     for (const method of resultMethods) terminalTicketDeployment.addResourceDependency(method);
     for (const method of corsMethods) terminalTicketDeployment.addResourceDependency(method);
     for (const response of terminalTicketGatewayResponses) {
@@ -1591,6 +1677,15 @@ export class SessionStartStack extends Stack {
           metricsEnabled: true,
           throttlingBurstLimit: 8,
           throttlingRateLimit: 4,
+        },
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1sessions~1{id}~1hints',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 4,
+          throttlingRateLimit: 2,
         },
         {
           httpMethod: 'GET',

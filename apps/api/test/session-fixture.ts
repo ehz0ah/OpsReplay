@@ -30,6 +30,10 @@ export function sessionRecord(id: string): SessionRecord {
       recording: { status: 'pending', reason: null },
     },
     accessGrant: { plan: 'free', admittedAt: '2026-10-10T07:58:00.000Z', timeLimitSeconds: 1200 },
+    hintPlan: [
+      { id: 'read-proxy-error', minElapsedMinutes: 3 },
+      { id: 'compare-listeners', minElapsedMinutes: 6 },
+    ],
     pins: {
       taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
       challengeImageDigest: `sha256:${'a'.repeat(64)}`,

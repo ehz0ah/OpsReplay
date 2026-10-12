@@ -265,7 +265,7 @@ function projectAdmission(
     },
     alert: structuredClone(manifest.alert),
     dashboard: manifest.dashboard.map(({ id, label, unit }) => ({ id, label, unit })),
-    hintCount: manifest.hints.length,
+    hintPlan: manifest.hints.map(({ id, minElapsedMinutes }) => ({ id, minElapsedMinutes })),
     timeLimits: { free: manifest.environment.timeLimitMinutes * 60, pro: proTimeLimitSeconds },
     pins: {
       taskDefinitionArn: arn,

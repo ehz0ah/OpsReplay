@@ -149,6 +149,7 @@ test('readiness saves measurement origin under the current lease and requires co
   const results = await Promise.all([f.ready(), f.ready()]);
   assert.equal(results[0]!.view.readyAt, at(1));
   assert.equal(results[0]!.view.endsAt, at(1201));
+  assert.equal(results[0]!.view.hints.nextAvailableAt, at(181));
   assert.deepEqual(results[0], results[1]);
   assert.equal((await f.store.lifecycle(f.id))?.lastSeenAt, at(1));
 });
@@ -1117,6 +1118,18 @@ test('malformed public and private session relationships are rejected before eff
   for (const value of [
     { ...f.session, view: { ...f.session.view, statusReason: 'time_limit' } },
     { ...f.session, accessGrant: { ...f.session.accessGrant, timeLimitSeconds: 1800 } },
+    { ...f.session, view: { ...f.session.view, hints: { ...f.session.view.hints, remaining: 1 } } },
+    {
+      ...f.session,
+      view: { ...f.session.view, assistance: { ...f.session.view.assistance, hintsReleased: 1 } },
+    },
+    {
+      ...f.session,
+      hintPlan: [
+        { id: 'read-proxy-error', minElapsedMinutes: 6 },
+        { id: 'compare-listeners', minElapsedMinutes: 3 },
+      ],
+    },
     { ...f.session, taskAddress: 'not-an-ip' },
     ...(
       [

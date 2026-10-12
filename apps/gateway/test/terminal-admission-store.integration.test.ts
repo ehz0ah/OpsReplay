@@ -153,6 +153,7 @@ test('production admission liveness checks generation and translates terminal se
   session.view.status = 'ready';
   session.view.readyAt = now;
   session.view.endsAt = '2026-10-10T08:20:00.000Z';
+  session.view.hints.nextAvailableAt = '2026-10-10T08:03:00.000Z';
   session.view.recording.status = 'recording';
   session.view.recovery = lifecycle.recovery as typeof session.view.recovery;
   session.taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/test/1234';

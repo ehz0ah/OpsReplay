@@ -14,6 +14,7 @@ import type {
 } from './types.js';
 import { launchFailureReasons } from './types.js';
 import { validMonitorCertificate } from '../session-lifecycle/monitor-certificate-validation.js';
+import { hintAvailableAt, isHintPlan } from '../../../../packages/session/src/hints.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
@@ -51,8 +52,18 @@ const pins = object({
   monitorImageDigest: digest,
   manifestSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
 });
+const hintPlan = {
+  type: 'array',
+  maxItems: 20,
+  items: object({
+    id: { type: 'string', minLength: 1, maxLength: 60, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' },
+    minElapsedMinutes: { type: 'integer', minimum: 0, maximum: 120 },
+  }),
+};
 
 export const validRequest = ajv.compile<StartRequest>(ref('StartSessionRequest'));
+export const validMutationRequest = ajv.compile<{ requestId: string }>(ref('MutationRequest'));
+export const validHint = ajv.compile<SessionView['hints']['released'][number]>(ref('Hint'));
 export const validView = ajv.compile<SessionView>(ref('SessionView'));
 export const validTerminalTicket = ajv.compile<TerminalTicket>(ref('TerminalTicket'));
 export const validOwner = ajv.compile<string>(owner);
@@ -66,7 +77,7 @@ export const validContent = ajv.compile<ContentVersion>(
     challenge: ref('ChallengeRef'),
     alert: ref('Alert'),
     dashboard: { $ref: `${publicSchema.$id}#/$defs/SessionView/properties/dashboard` },
-    hintCount: { type: 'integer', minimum: 0, maximum: 20 },
+    hintPlan,
     timeLimits: object({ free: limit, pro: { anyOf: [limit, { type: 'null' }] } }),
     pins,
   }),
@@ -78,6 +89,7 @@ export type StartableContent = ContentVersion & {
 export function isStartableContent(content: ContentVersion | undefined): content is StartableContent {
   return (
     content?.status === 'published' &&
+    isHintPlan(content.hintPlan) &&
     /^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:task-definition\/opsreplay-[A-Za-z0-9_-]+:[1-9][0-9]*$/.test(
       content.pins.taskDefinitionArn,
     ) &&
@@ -164,6 +176,7 @@ export const validSession = ajv.compile<SessionRecord>(
       ownerId: owner,
       view: ref('SessionView'),
       accessGrant: object({ plan: ref('Plan'), admittedAt: timestamp, timeLimitSeconds: limit }),
+      hintPlan,
       pins,
       launchArguments,
       monitorSecret,
@@ -198,8 +211,13 @@ export const validSession = ajv.compile<SessionRecord>(
 );
 
 export function validSessionRelations(session: SessionRecord): boolean {
+  if (!isHintPlan(session.hintPlan)) return false;
   const launch = session.launchArguments;
   const environment = launch.overrides.containerOverrides[0]?.environment;
+  const released = session.view.hints.released;
+  const nextHint = session.hintPlan[released.length];
+  const expectedNext =
+    session.view.readyAt && nextHint ? hintAvailableAt(session.view.readyAt, nextHint.minElapsedMinutes) : null;
   return (
     launch.clientToken === session.view.id &&
     launch.startedBy === session.view.id &&
@@ -212,6 +230,10 @@ export function validSessionRelations(session: SessionRecord): boolean {
     (session.taskAddress === null || session.taskArn !== null) &&
     (session.launchFailure === null ||
       (session.view.status === 'error' && session.view.statusReason === 'start_failed')) &&
+    released.length + session.view.hints.remaining === session.hintPlan.length &&
+    released.every((hint, index) => hint.id === session.hintPlan[index]?.id) &&
+    session.view.assistance.hintsReleased === released.length &&
+    session.view.hints.nextAvailableAt === expectedNext &&
     session.scheduleName === `session-${session.view.id}` &&
     Date.parse(session.provisioningDeadline) > Date.parse(session.view.createdAt) &&
     Date.parse(session.launchRecoveryDeadline) > Date.parse(session.provisioningDeadline)

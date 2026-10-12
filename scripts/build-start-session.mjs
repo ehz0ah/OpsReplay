@@ -13,6 +13,7 @@ for (const [entryPoint, outfile] of [
   ['apps/api/src/expire-provisioning/index.ts', 'dist/expire-provisioning/index.cjs'],
   ['apps/api/src/publish-recording-work/index.ts', 'dist/publish-recording-work/index.cjs'],
   ['apps/api/src/end-session/index.ts', 'dist/end-session/index.cjs'],
+  ['apps/api/src/release-hint/index.ts', 'dist/release-hint/index.cjs'],
   ['apps/api/src/reconcile-session/index.ts', 'dist/reconcile-session/index.cjs'],
   ['apps/api/src/sweep-sessions/index.ts', 'dist/sweep-sessions/index.cjs'],
 ]) {

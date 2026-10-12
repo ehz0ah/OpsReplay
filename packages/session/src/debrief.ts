@@ -8,6 +8,7 @@ import type { SessionRecord, SessionView } from '../../../apps/api/src/start-ses
 export interface DebriefManifest {
   id: string;
   version: string;
+  hints: { id: string; text: string; minElapsedMinutes: number }[];
   provenance: { sources: { title: string; url: string }[] };
   healthProbes: { id: string; publicLabel: string }[];
   traps: { id: string; description: string; probe: string; commandPatterns: string[]; withinSeconds: number }[];

@@ -94,6 +94,7 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
       'ListTimeline',
       'GetPlayback',
       'EndSession',
+      'ReleaseHint',
       'ReconcileSession',
       'SweepSessions',
       'PublishRecordingWork',

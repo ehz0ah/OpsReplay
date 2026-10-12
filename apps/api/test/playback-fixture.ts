@@ -36,6 +36,7 @@ export function playbackFixture(complete = false, pages = 2) {
     readyAt: playbackAt,
     endsAt: '2026-10-12T00:20:00.000Z',
     endedAt: playbackEnd,
+    hints: { ...session.view.hints, nextAvailableAt: '2026-10-12T00:03:00.000Z' },
     recovery: { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
     recording: { status: complete ? 'complete' : 'incomplete', reason: complete ? null : 'data_gap' },
   });

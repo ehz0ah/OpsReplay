@@ -106,7 +106,8 @@ npm run infra:cdk -- deploy OpsReplaySessionStart --profile opsreplay --region a
 
 Verify that StartSession reserved concurrency is zero. Verify the Gateway targets are
 healthy and private, the recording publisher and lifecycle triggers are enabled, and
-ExpireProvisioning remains at zero. Inspect CloudFormation events, ECS service events,
+ExpireProvisioning remains at zero. Verify that the existing-session hint action is enabled
+with its reviewed concurrency and throttle limits. Inspect CloudFormation events, ECS service events,
 Lambda configurations, EventBridge rules, the DynamoDB stream mapping, alarms, dead
 letters, and logs. Do not create a learner session yet.
 
@@ -129,8 +130,8 @@ time limit without manually editing session state.
 ## 5. Close, drain, and remove
 
 First change only `EnableSessionAdmission` back to `false`. Confirm that StartSession is
-zero while Gateway, terminal tickets, owner end, reconciliation, sweep, recording, and
-result reads remain enabled.
+zero while Gateway, terminal tickets, hint release, owner end, reconciliation, sweep,
+recording, and result reads remain enabled.
 
 Wait until every approved attempt has a terminal outcome, task stop is confirmed,
 recording work is terminal, required finalisation is saved, playback export is complete

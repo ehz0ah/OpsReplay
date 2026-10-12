@@ -44,8 +44,10 @@ locally. Finalisation saves the debrief, highlights and progress, and releases t
 lock without waiting for playback exports. Pending exports use the existing lifecycle
 work index and transition hints. Playback returns its own pending response. Read Lambdas
 gain bounded concurrency only with the complete runtime. New-session admission has a
-separate default-off switch. Content publication,
-environment task definitions, remaining API, and the web application are not implemented.
+separate default-off switch. Authored hint release is implemented as another isolated,
+runtime-gated action. It releases only the next due hint from the pinned private manifest
+and records the hint, assistance event, counter, and idempotency receipt atomically.
+Content publication, environment task definitions, remaining API, and the web application are not implemented.
 No checkpoint image is currently published in AWS,
 and no public route is deployed.
 
