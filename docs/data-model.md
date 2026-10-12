@@ -203,7 +203,12 @@ hash pins, confirmed cleanup, and matching session/recording/lifecycle snapshots
 Live parser and command receipts commit with terminal pages. Sealed parser and receipts
 commit with cutoff pages. Capture uploads precede atomic reference/cursor writes under
 the same lease. Combined completion rejects parser loss, incomplete controls/UTF-8,
-and missing required captures. Incomplete finalisation uses safe saved command and
+and missing required captures or unavailable capture evidence. Capture objects,
+baselines, and `CAPTURE_STATE` distinguish the `incomplete` excerpt warning from
+`unavailable` missing or unsafe evidence. Both summaries are sticky, but only
+availability gates completion. References retain the warning for playback. These
+unpublished private fields require compatible Monitor and Gateway versions.
+Incomplete finalisation uses safe saved command and
 Monitor event projections, never invented final counters. See the
 [evidence/debrief decision](decisions/evidence-debrief.md).
 The export cap remains independent of the source's encoded-byte cap.

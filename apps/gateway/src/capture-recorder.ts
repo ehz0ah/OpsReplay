@@ -102,6 +102,7 @@ export class CaptureRecorder {
       sequence: 0,
       retainedBytes: 0,
       incomplete: baseline.incomplete,
+      unavailable: baseline.unavailable,
     };
     try {
       await sendDynamoWrite(
@@ -343,9 +344,10 @@ export class CaptureRecorder {
           ...state,
           cursor: command.seq,
           sequence: capture.sequence,
-          baseline: { baselineAt: capture.startedAt, incomplete: state.baseline.incomplete },
+          baseline: { ...state.baseline, baselineAt: capture.startedAt },
           retainedBytes: state.retainedBytes + body.length,
-          incomplete: state.incomplete || capture.incomplete || command.seq !== state.cursor + 1,
+          incomplete: state.incomplete || capture.incomplete,
+          unavailable: state.unavailable || capture.unavailable,
         };
         const reference = {
           schemaVersion: 1,

@@ -10,7 +10,12 @@ import type {
   MonitorControlStartResponse,
 } from '../../../packages/contracts/private/monitor-control.js';
 import { monitorControlSchema } from '../../../packages/contracts/private/monitor-control.js';
-import { isFileCapture, type FileCapture } from '../../../packages/contracts/private/file-capture.js';
+import {
+  isFileCapture,
+  isCaptureBaseline,
+  type CaptureBaseline,
+  type FileCapture,
+} from '../../../packages/contracts/private/file-capture.js';
 import { randomUUID } from 'node:crypto';
 
 const endpoint = 'https://127.0.0.1:9443';
@@ -93,8 +98,9 @@ async function main(): Promise<number> {
     const timeout = Number(process.env.OPSREPLAY_MONITOR_CLIENT_START_TIMEOUT_MS ?? '30000');
     if (!Number.isInteger(timeout) || timeout < 100 || timeout > 30_000) throw new MonitorError('invalid_config');
     await waitUntilReady(timeout);
-    const baseline = await call<{ baselineAt: string; incomplete: boolean }>('/v1/captures/baseline', 'POST');
-    if (baseline.status !== 200 || baseline.value.incomplete) throw new MonitorError('initial_state_failed');
+    const baseline = await call<CaptureBaseline>('/v1/captures/baseline', 'POST');
+    if (baseline.status !== 200 || !isCaptureBaseline(baseline.value) || baseline.value.unavailable)
+      throw new MonitorError('initial_state_failed');
     const startRoute = monitorControlSchema.routes.start;
     const started = await call<MonitorControlStartResponse>(startRoute.path, startRoute.method);
     if (started.status !== startRoute.successStatus) throw new MonitorError('monitor_failed');

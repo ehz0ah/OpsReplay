@@ -253,12 +253,18 @@ change a file before it is read. `commandSeq` identifies the capture request, no
 cause of every change. Show the interval and do not label a diff as changes made by that
 command. The interval begins at the prior read start because files can change while a
 capture is in progress. Serialize captures, not shell input. Establish the initial
-watched-file baseline before readiness. Truncated or missing captures carry the recording's
-missing-data notice. Log rotation/truncation also marks an interval incomplete.
+watched-file baseline before readiness. Byte, line, and aggregate excerpt bounds,
+or log rotation/truncation, mark the capture interval `incomplete` without making
+the whole recording unscorable. The next log interval starts at the observed file
+end, so omitted backlog is not attributed to a later request. Missing, unsafe,
+unreadable, invalid-UTF8, or expired reads and missing metrics set `unavailable`.
+This also sets `incomplete` and prevents complete recording. Both summaries remain
+sticky in saved capture state.
 Final drain paginates the sealed commands and requests one capture for a command
 still open at cutoff. Captures can complete after cutoff and retain their full
-interval. They are not atomic or exact-cutoff snapshots and do not decide scores
-or observed evidence. A missing required capture prevents complete recording.
+interval. They are not atomic or exact-cutoff snapshots and do not enter score
+calculations or observed-evidence matching. A missing required capture or an
+unavailable evidence summary prevents complete recording.
 
 **Control port.** Because the learner's shell shares the network namespace, it can reach
 the monitor's port. Use TLS with the monitor's task identity verified by the gateway and

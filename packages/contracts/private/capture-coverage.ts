@@ -27,8 +27,8 @@ export function isCaptureCoverage(value: unknown): value is CaptureCoverage {
     v.parser.lossAt === null &&
     v.parser.mode === 'text' &&
     v.parser.utf8Tail === '' &&
-    !v.captures.incomplete &&
-    !v.captures.baseline.incomplete &&
+    !v.captures.unavailable &&
+    !v.captures.baseline.unavailable &&
     v.captures.cursor >= v.parser.count &&
     v.captures.cursor === v.captures.sequence
   );

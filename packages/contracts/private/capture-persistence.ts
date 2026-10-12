@@ -9,6 +9,7 @@ export interface CaptureState {
   sequence: number;
   retainedBytes: number;
   incomplete: boolean;
+  unavailable: boolean;
 }
 export interface CaptureReference {
   schemaVersion: 1;
@@ -31,14 +32,18 @@ const count = (v: unknown, maximum: number) =>
 export function isCaptureState(value: unknown): value is CaptureState {
   return (
     record(value) &&
-    exact(value, ['schemaVersion', 'baseline', 'cursor', 'sequence', 'retainedBytes', 'incomplete']) &&
+    exact(value, ['schemaVersion', 'baseline', 'cursor', 'sequence', 'retainedBytes', 'incomplete', 'unavailable']) &&
     value.schemaVersion === 1 &&
     isCaptureBaseline(value.baseline) &&
     count(value.cursor, captureLimits.maximumCaptures) &&
     count(value.sequence, captureLimits.maximumCaptures) &&
     (value.sequence as number) <= (value.cursor as number) &&
     count(value.retainedBytes, captureLimits.maximumRetainedBytes) &&
-    typeof value.incomplete === 'boolean'
+    typeof value.incomplete === 'boolean' &&
+    typeof value.unavailable === 'boolean' &&
+    (!value.unavailable || value.incomplete) &&
+    (!value.baseline.incomplete || value.incomplete) &&
+    (!value.baseline.unavailable || value.unavailable)
   );
 }
 export function isCaptureReference(value: unknown, sessionId: string): value is CaptureReference {

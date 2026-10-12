@@ -20,11 +20,11 @@ export interface WatchedFiles {
 export interface Observation {
   text: string | null;
   incomplete: boolean;
+  unavailable: boolean;
   identity: string | null;
   size: number;
   observedSize: number;
 }
-const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** Walk each directory by a held descriptor. NOFOLLOW on the final file alone
  * would still let a learner replace an ancestor with a link to Monitor secrets.
@@ -63,32 +63,42 @@ export async function readWatchedFile(
     checkDeadline();
     const stat = await file.stat();
     checkDeadline();
-    if (!stat.isFile()) return { text: null, incomplete: true, identity: null, size: 0, observedSize: 0 };
+    if (!stat.isFile())
+      return { text: null, incomplete: true, unavailable: true, identity: null, size: 0, observedSize: 0 };
     const position = offset > stat.size ? 0 : offset;
     const bytes = Buffer.alloc(bounds.maximumFileBytes + 1);
     const { bytesRead } = await file.read(bytes, 0, bytes.length, position);
     checkDeadline();
+    const observedSize = Math.max(stat.size, position + bytesRead);
+    const size = position + Math.min(bytesRead, bounds.maximumFileBytes);
     let text: string;
     try {
-      text = decoder.decode(bytes.subarray(0, Math.min(bytesRead, bounds.maximumFileBytes)));
+      // A byte bound can split a valid UTF-8 character. Omit only that trailing
+      // fragment. Invalid bytes inside the excerpt still make it unavailable.
+      text = new TextDecoder('utf-8', { fatal: true }).decode(
+        bytes.subarray(0, Math.min(bytesRead, bounds.maximumFileBytes)),
+        { stream: bytesRead > bounds.maximumFileBytes },
+      );
     } catch {
       return {
         text: null,
         incomplete: true,
+        unavailable: true,
         identity: `${stat.dev}:${stat.ino}`,
-        size: stat.size,
-        observedSize: stat.size,
+        size: observedSize,
+        observedSize,
       };
     }
     return {
       text,
-      incomplete: bytesRead > bounds.maximumFileBytes,
+      incomplete: size < observedSize,
+      unavailable: false,
       identity: `${stat.dev}:${stat.ino}`,
-      size: position + Math.min(bytesRead, bounds.maximumFileBytes),
-      observedSize: stat.size,
+      size,
+      observedSize,
     };
   } catch {
-    return { text: null, incomplete: true, identity: null, size: 0, observedSize: 0 };
+    return { text: null, incomplete: true, unavailable: true, identity: null, size: 0, observedSize: 0 };
   } finally {
     for (const file of handles.reverse()) await file.close();
   }
@@ -126,20 +136,23 @@ export class FileCaptures {
       const baselineAt = this.now();
       const deadline = performance.now() + bounds.maximumReadMs;
       let incomplete = false;
+      let unavailable = false;
       for (const path of this.watched.configs) {
         const value = await readWatchedFile(this.root, path, 0, deadline);
         this.configs.set(path, value);
         incomplete ||= value.incomplete;
+        unavailable ||= value.unavailable;
       }
       for (const path of this.watched.logs) {
         const value = await readWatchedFile(this.root, path, 0, deadline);
         // Existing log history is not a missing post-read interval. Start new-log
         // capture at the observed end, rather than replaying a truncated prefix.
         this.logs.set(path, { ...value, size: value.observedSize });
-        incomplete ||= value.identity === null;
+        incomplete ||= value.unavailable;
+        unavailable ||= value.unavailable;
       }
       this.previousAt = baselineAt;
-      this.baselineResult = { baselineAt, incomplete };
+      this.baselineResult = { baselineAt, incomplete, unavailable };
       return structuredClone(this.baselineResult);
     });
   }
@@ -170,17 +183,20 @@ export class FileCaptures {
         logs: [],
         metrics: null,
         incomplete: this.baselineResult.incomplete,
+        unavailable: this.baselineResult.unavailable,
       };
       for (const path of this.watched.configs) {
         const before = this.configs.get(path)!;
         const after = await readWatchedFile(this.root, path, 0, deadline);
         if (before.text !== after.text) result.files.push({ path, before: before.text, after: after.text });
-        result.incomplete ||= after.incomplete;
+        result.incomplete ||= before.incomplete || after.incomplete;
+        result.unavailable ||= before.unavailable || after.unavailable;
         nextConfigs.set(path, after);
       }
       for (const path of this.watched.logs) {
         const before = this.logs.get(path)!;
         let after = await readWatchedFile(this.root, path, before.size, deadline);
+        result.unavailable ||= before.unavailable || after.unavailable;
         if (after.identity !== before.identity) {
           // Rotation can remove unread lines. Keep the new file, but do not
           // claim that the interval is complete.
@@ -193,14 +209,18 @@ export class FileCaptures {
         if (lines.length > bounds.maximumLogLines) result.incomplete = true;
         if (lines.length) result.logs.push({ path, lines: lines.slice(0, bounds.maximumLogLines) });
         result.incomplete ||= after.incomplete;
-        nextLogs.set(path, after);
+        result.unavailable ||= after.unavailable;
+        // The omitted tail belongs to this warned interval. Do not replay its
+        // backlog as if it occurred after the next command.
+        nextLogs.set(path, { ...after, size: after.observedSize });
       }
       try {
         result.metrics = structuredClone(this.metric());
       } catch {
-        result.incomplete = true;
+        result.unavailable = true;
       }
-      result.incomplete ||= result.metrics === null;
+      result.unavailable ||= result.metrics === null;
+      result.incomplete ||= result.unavailable;
       result.completedAt = this.now();
       // Retain bounded before/after blocks, not an unbounded diff algorithm. A
       // renderer can display these blocks as a diff without changing attribution.

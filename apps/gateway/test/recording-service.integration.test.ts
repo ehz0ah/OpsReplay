@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, mkdir, appendFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { captureLimits } from '../../../packages/contracts/private/file-capture.js';
 import { RecordedEvidenceReader } from '../../../packages/session/src/recorded-evidence.js';
 import { readManifest, manifestHash, manifestKey } from '../../../packages/session/src/manifest.js';
 import { createFinaliseSession } from '../../../packages/session/src/finalise.js';
@@ -52,10 +56,26 @@ async function eventually(check: () => Promise<boolean>, message: string) {
   assert.fail(message);
 }
 
+// Descriptor-anchored file reads use Linux /proc. The same composed flow on
+// macOS checks network and persistence without claiming watched-file coverage.
+const growingLog = process.platform === 'linux';
 test(
-  'production composition collects both network sources, seals durable pages, and retires combined work',
+  growingLog
+    ? 'bounded growing-log captures permit combined completion and a scored debrief'
+    : 'production composition collects both network sources, seals durable pages, and retires combined work',
   { timeout: 30_000 },
   async (t) => {
+    const watchedRoot = await mkdtemp(join(tmpdir(), 'opsreplay-composed-captures-'));
+    t.after(() => rm(watchedRoot, { recursive: true, force: true }));
+    await mkdir(join(watchedRoot, 'var'));
+    const logPath = join(watchedRoot, 'var/access.log');
+    await appendFile(logPath, 'existing history\n');
+    const logBurst = () => appendFile(logPath, ('request ' + 'x'.repeat(100) + '\n').repeat(300));
+    const commands: ReturnType<typeof terminalOutput>[] = [];
+    const completeCommand = () => {
+      const marker = `\x1b]133;C;${Buffer.from('true').toString('base64')}\x07ok\n\x1b]133;D;0\x07`;
+      commands.push(terminalOutput(2 + commands.length, new Date().toISOString(), Buffer.from(marker)));
+    };
     const sessionId = randomUUID();
     const table = `test-${randomUUID()}`;
     const startedAt = new Date(Date.now() - 2_000).toISOString();
@@ -89,8 +109,8 @@ test(
       monitor,
       undefined,
       new FileCaptures(
-        { configs: [], logs: [] },
-        undefined,
+        { configs: [], logs: growingLog ? ['/var/access.log'] : [] },
+        watchedRoot,
         () => new Date(monitor.now()).toISOString(),
         () => monitor.snapshot().sample,
       ),
@@ -114,11 +134,12 @@ test(
         while ((newline = buffer.indexOf('\n')) >= 0) {
           const request = JSON.parse(buffer.slice(0, newline)) as { type: string; after: number };
           buffer = buffer.slice(newline + 1);
+          const latestSequence = growingLog ? 1 + commands.length : 2;
           const metadata = {
             source,
             startedAt,
-            observedAt: new Date(Date.now() + 2_000).toISOString(),
-            latestSequence: 2,
+            observedAt: new Date(Date.now() + (growingLog ? 0 : 2_000)).toISOString(),
+            latestSequence,
           };
           if (request.type === 'attach') {
             socket.write(JSON.stringify(terminalReady(metadata)) + '\n');
@@ -126,9 +147,9 @@ test(
             assert.equal(request.type, 'read');
             const events = [
               { type: 'dimensions' as const, sequence: 1, recordedAt: startedAt, columns: 80, rows: 24 },
-              terminalOutput(2, startedAt),
+              ...(growingLog ? commands : [terminalOutput(2, startedAt)]),
             ].filter((event) => event.sequence > request.after);
-            socket.write(JSON.stringify(terminalPage(events, { ...metadata, nextSequence: 2 })) + '\n');
+            socket.write(JSON.stringify(terminalPage(events, { ...metadata, nextSequence: latestSequence })) + '\n');
           }
         }
       });
@@ -189,7 +210,12 @@ test(
     savedSession.monitorCertificate = tls.cert;
     savedSession.taskAddress = '127.0.0.1';
     savedSession.taskArn = 'arn:aws:ecs:ap-southeast-1:123456789012:task/test/1234';
-    const item = { ...key, WorkPK: 'RECORDING', WorkSK: recordingWorkOrder(startedAt, sessionId), data: savedSession };
+    const item = {
+      ...key,
+      WorkPK: 'RECORDING',
+      WorkSK: recordingWorkOrder(startedAt, sessionId),
+      data: savedSession,
+    };
     await database.document.send(new PutCommand({ TableName: table, Item: item }));
     await database.document.send(
       new PutCommand({ TableName: table, Item: lifecycleWorkItem(initialSessionLifecycle(sessionId, startedAt)) }),
@@ -246,7 +272,8 @@ test(
     const terminals = new DynamoTerminalRecordingStore(database.document, table);
     await eventually(
       async () =>
-        ((await recordings.get(sessionId))?.cursor ?? 0) > 0 && (await terminals.get(sessionId))?.cursor === 2,
+        ((await recordings.get(sessionId))?.cursor ?? 0) > 0 &&
+        (await terminals.get(sessionId))?.cursor === (growingLog ? 1 : 2),
       'Both durable collectors must advance',
     );
     const attempts = new DynamoAttemptStore(database.document, table);
@@ -257,6 +284,24 @@ test(
     const ready = await attempts.session(sessionId);
     assert.equal(ready?.view.readyAt, (await recordings.get(sessionId))?.startedAt);
     assert.equal(ready?.view.recovery?.requiredSeconds, 60);
+    if (growingLog) {
+      for (let seq = 1; seq <= 2; seq++) {
+        await logBurst();
+        completeCommand();
+        await eventually(async () => {
+          const state = (
+            await database.document.send(
+              new GetCommand({
+                TableName: table,
+                Key: { PK: `SESSION#${sessionId}`, SK: 'CAPTURE_STATE' },
+                ConsistentRead: true,
+              }),
+            )
+          ).Item?.data;
+          return state?.cursor === seq;
+        }, 'Each completed command must publish its bounded capture');
+      }
+    }
     const cutoffAt = new Date().toISOString();
     await attempts.outcome(
       sessionId,
@@ -275,7 +320,19 @@ test(
     );
     const sealed = await new DynamoTerminalSealingStore(database.document, table).get(sessionId);
     assert.equal(sealed?.complete, true);
-    assert.equal(sealed?.cursor, 2);
+    assert.equal(sealed?.cursor, growingLog ? 3 : 2);
+    if (growingLog) {
+      const captures = [...objects]
+        .filter(([key]) => key.includes('/captures/'))
+        .map(([, value]) => JSON.parse(value.bytes.toString()));
+      assert.equal(captures.length, 2);
+      assert.ok(captures.every((capture) => capture.incomplete && !capture.unavailable));
+      assert.ok(
+        captures.every(
+          (capture) => Buffer.byteLength(capture.logs[0].lines.join('\n')) <= captureLimits.maximumFileBytes,
+        ),
+      );
+    }
     assert.equal(sealed?.cutoffAt, cutoffAt);
     assert.ok(
       [...objects].some(
@@ -317,7 +374,7 @@ test(
     );
     const evidenceReader = new RecordedEvidenceReader(database.document, table, s3, 'opsreplay-recordings-test');
     const evidence = await evidenceReader.read(finalSession);
-    assert.equal(evidence.commands.length, 0);
+    assert.equal(evidence.commands.length, growingLog ? 2 : 0);
     assert.ok(evidence.counters);
     await attempts.cleanup(sessionId, new Date().toISOString(), true);
     const store = new DynamoFinaliseStore(database.document, table);
@@ -329,7 +386,7 @@ test(
     await finalise(finalSession);
     const debrief = await store.saved(sessionId);
     assert.equal(debrief?.outcome, 'ended');
-    assert.equal(debrief?.score?.commandCount, 0);
+    assert.equal(debrief?.score?.commandCount, growingLog ? 2 : 0);
     assert.equal(debrief?.score?.failedRequests, evidence.counters?.failedRequests);
     assert.deepEqual(
       debrief?.keyEvidence.map((v) => v.status),
