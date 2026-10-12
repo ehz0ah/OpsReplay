@@ -7,7 +7,16 @@ import type { HttpResponse, Transport } from '../src/types.js';
 
 function fixture() {
   let at = Date.parse('2026-10-06T00:00:00Z');
-  const state = { healthy: false, probeUp: true, requests: 0, holdCheckout: false, crash: false, hang: false };
+  const state = {
+    healthy: false,
+    probeUp: true,
+    requests: 0,
+    holdCheckout: false,
+    crash: false,
+    hang: false,
+    closedPorts: new Set<number>(),
+    tcpPorts: [] as number[],
+  };
   const orders = new Map<string, object>();
   let release: (() => void) | undefined;
   const transport: Transport = {
@@ -39,14 +48,16 @@ function fixture() {
       }
       return result;
     },
-    async tcp() {
-      return state.probeUp;
+    async tcp(_host, port) {
+      state.tcpPorts.push(port);
+      return state.probeUp && !state.closedPorts.has(port);
     },
   };
   const monitor = new Monitor(parseConfig(JSON.stringify(manifest)), transport, { now: () => at });
   return {
     monitor,
     state,
+    transport,
     release: () => release?.(),
     advance: async (ms: number) => {
       at += ms;
@@ -58,6 +69,66 @@ function fixture() {
     },
   };
 }
+
+for (const port of [8080, 5432]) {
+  test(`startup refuses missing ${port} despite proxy availability and failing recovery`, async () => {
+    const f = fixture();
+    f.state.closedPorts.add(port);
+    assert.equal(await f.monitor.verifyInitialState(), false);
+    assert.equal(f.monitor.startedAt, null);
+    assert.equal(f.state.requests, 0, 'Recovery traffic must wait for startup prerequisites');
+    assert.deepEqual(f.monitor.read(), []);
+    assert.throws(() => f.monitor.start(), /initial_state_failed/);
+    f.state.closedPorts.delete(port);
+    assert.equal(await f.monitor.verifyInitialState(), true);
+    f.monitor.start();
+    assert.deepEqual(f.monitor.snapshot().counters, { totalRequests: 0, failedRequests: 0 });
+    await f.monitor.seal();
+  });
+}
+
+test('startup-only listeners do not constrain recovery or emit outages after readiness', async () => {
+  const f = fixture();
+  assert.equal(await f.monitor.verifyInitialState(), true);
+  f.state.closedPorts.add(8080);
+  f.state.closedPorts.add(5432);
+  f.state.tcpPorts.length = 0;
+  assert.equal(await f.monitor.verifyInitialState(), true);
+  assert.deepEqual(f.state.tcpPorts, []);
+  f.monitor.start();
+  f.state.healthy = true;
+  await f.advance(0);
+  for (let second = 0; second < 60; second++) await f.advance(1000);
+  assert.equal(f.monitor.snapshot().recovery.state, 'met');
+  assert.ok(f.state.tcpPorts.length > 0);
+  assert.ok(f.state.tcpPorts.every((port) => port === 80));
+  assert.equal(
+    f.monitor
+      .read()
+      .filter((frame) => frame.payload.type === 'timeline' && frame.payload.event.signal === 'outage_started').length,
+    0,
+  );
+  await f.monitor.seal();
+});
+
+test('shutdown fences shared in-flight startup checks without running recovery traffic', async () => {
+  const f = fixture();
+  const pending: { signal: AbortSignal; finish: (ready: boolean) => void }[] = [];
+  f.transport.tcp = (_host, _port, _timeout, signal) =>
+    new Promise<boolean>((finish) => pending.push({ signal, finish }));
+  const first = f.monitor.verifyInitialState();
+  const second = f.monitor.verifyInitialState();
+  assert.equal(pending.length, 2, 'Concurrent callers share one startup verification');
+  f.monitor.fail('monitor_failed');
+  for (const check of pending) {
+    assert.equal(check.signal.aborted, true);
+    check.finish(true);
+  }
+  assert.deepEqual(await Promise.all([first, second]), [false, false]);
+  assert.equal(f.state.requests, 0);
+  assert.equal(f.monitor.startedAt, null);
+  assert.throws(() => f.monitor.start(), /initial_state_failed/);
+});
 
 test('startup requires the fault and healthy probes, and warm-up is excluded', async () => {
   const f = fixture();

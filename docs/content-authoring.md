@@ -40,6 +40,15 @@ the alert, validators, health probes, the planted fault, the reference fix, trap
 and the debrief.
 
 - The alert and probe labels describe symptoms, never the cause.
+- Optional private `startupChecks` declare TCP prerequisites that distinguish the
+  authored fault from unrelated service startup failures. If present, provide 1-10
+  distinct canonical `127.0.0.x` host/port targets, ports 1-65535, with `kind: tcp`
+  and `timeoutMs` 100-1000. They run before initial incident verification, within
+  Monitor's bounded startup process, and are never polled after readiness.
+  They are not recovery validators, outage probes, or ECS liveness checks.
+  For the reference Challenge, require shop 8080 and database 5432; do not require
+  the intentionally wrong upstream 8081. Omission preserves older manifests.
+  TCP acceptance establishes listener presence, not full application correctness.
 - Validators state the minimum behaviour that proves recovery. The fixed `checkout`
   check verifies creation and a follow-up read with a fresh reference, in addition to
   journey availability. Implement its API in the image and test missing orders, stale

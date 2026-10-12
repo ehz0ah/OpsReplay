@@ -19,14 +19,20 @@ web application.
 ## Core interface
 
 `parseConfig()` validates the private manifest and retains only journeys, validators,
-and probes. This increment supports HTTP journey steps, journey/checkout validators,
+probes, optional initial-only TCP `startupChecks`, and watched paths.
+This increment supports HTTP journey steps, journey/checkout validators,
 and TCP probes. Unknown kinds, duplicate IDs, unknown references, and excessive request
 load fail admission. It never checks a Challenge ID or requires reference fix commands.
 
 `Monitor` accepts a validated config and transport. Its lifecycle is:
 
-1. `verifyInitialState()` confirms at least one validator fails while all probes pass.
-   These startup checks do not contribute to the learner's counters.
+1. `verifyInitialState()` first requires all startup TCP prerequisites, then confirms
+   at least one validator fails while all probes pass. Startup prerequisites are
+   optional for older manifests, bounded to 10 distinct loopback targets with
+   100-1000 ms timeouts, and run separately from validators/probes. The reference
+   requires shop 8080 and database 5432. None of this startup traffic contributes
+   to the learner's counters. Prerequisites are never polled after readiness, so
+   moving the shop listener remains a valid repair and creates no false outage.
 2. `start()` fixes the measurement origin. Repeating it returns the original time. The
    lifecycle must call it after recording ownership is acknowledged and use that origin
    as `readyAt`.
@@ -158,7 +164,9 @@ runner and service image are unchanged.
 
 Tests verify the real fault, failed reload, unsafe restart, reference repair, and an
 alternative repair that moves the application listener. Both repairs wait the actual
-60-second sustain period. They also verify TLS identity, bearer authentication, plaintext
+60-second sustain period. They disable shop/database autostart before launch to
+verify refused readiness, deadline failure, and no late revival; a delayed shop
+before the deadline must still become ready. They also verify TLS identity, bearer authentication, plaintext
 rejection, cursor reads, immutable sealing, and access from the learner network without
 credentials. Unit tests use real loopback HTTP servers for malformed and slow responses,
 and controlled clocks for scheduler and cutoff races.

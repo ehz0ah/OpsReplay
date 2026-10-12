@@ -11,6 +11,7 @@ interface Manifest {
   traffic: { journeys: Journey[] };
   validators: Validator[];
   healthProbes: Probe[];
+  startupChecks?: Probe['check'][];
   environment: { services: { configFiles: string[]; logFiles: string[] }[] };
 }
 const validate = ajv.compile<Manifest>(schema);
@@ -66,8 +67,10 @@ export function parseConfig(text: string): MonitorConfig {
     } else if (check.kind === 'checkout') endpoint(check.baseUrl);
     else invalid();
   }
-  for (const probe of raw.healthProbes) {
-    if (probe.check.kind !== 'tcp' || !validHost(probe.check.host)) invalid();
+  const startupChecks = raw.startupChecks ?? [];
+  unique(startupChecks.map((check) => `${check.host}:${check.port}`));
+  for (const check of [...raw.healthProbes.map((probe) => probe.check), ...startupChecks]) {
+    if (check.kind !== 'tcp' || !validHost(check.host)) invalid();
   }
   // Admission is bounded by the worst-case journey duration, not normal latency.
   const concurrency = journeys.reduce(
@@ -97,5 +100,5 @@ export function parseConfig(text: string): MonitorConfig {
   const paths = [...watched.configs, ...watched.logs];
   unique(paths);
   if (paths.length > captureLimits.maximumPaths || !paths.every(isWatchedPath)) invalid();
-  return structuredClone({ journeys, validators: raw.validators, probes: raw.healthProbes, watched });
+  return structuredClone({ journeys, validators: raw.validators, probes: raw.healthProbes, startupChecks, watched });
 }

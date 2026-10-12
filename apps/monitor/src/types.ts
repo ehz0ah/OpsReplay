@@ -28,6 +28,7 @@ export interface MonitorConfig {
   journeys: Journey[];
   validators: Validator[];
   probes: Probe[];
+  startupChecks?: Probe['check'][];
   watched?: import('./captures.js').WatchedFiles;
 }
 export interface HttpResponse {

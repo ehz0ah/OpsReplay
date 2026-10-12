@@ -222,13 +222,12 @@ test('Linux capture reader rejects links, directories, and FIFOs with bounded re
   );
 });
 
-async function fresh(t, waitForListeners = true) {
+async function fresh(t, waitForListeners = true, disabledService) {
   const volume = 'opsreplay-watched-' + randomUUID();
   success(docker('volume', 'create', volume));
   const id = success(
     docker(
-      'run',
-      '--detach',
+      'create',
       '--name',
       'opsreplay-monitor-shop-' + randomUUID(),
       '--hostname',
@@ -255,10 +254,133 @@ async function fresh(t, waitForListeners = true) {
     // Other after-hooks can still own Monitor mounts. Remove the volume only
     // after all containers in this test process have been removed.
   });
+  if (disabledService) {
+    const directory = mkdtempSync(join(tmpdir(), 'opsreplay-disabled-service-'));
+    const config = join(directory, 'supervisord.conf');
+    try {
+      success(docker('cp', id + ':/etc/supervisor/supervisord.conf', config));
+      const source = readFileSync(config, 'utf8');
+      const section = `[program:${disabledService}]\n`;
+      assert.ok(source.includes(section));
+      writeFileSync(config, source.replace(section, section + 'autostart=false\n'));
+      success(docker('cp', config, id + ':/etc/supervisor/supervisord.conf'));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  success(docker('start', id));
   if (waitForListeners)
     await eventually(() => exec(id, 'opsreplay-check-startup').status === 0, 'Shop listeners did not start', 30_000);
   return id;
 }
+
+function control(monitor, path = '/healthz', method = 'GET') {
+  return JSON.parse(
+    success(
+      exec(
+        monitor.id,
+        'node',
+        '-e',
+        `const https = require('node:https');
+const req = https.request({
+  host: '127.0.0.1', port: 9443, path: process.argv[1], method: process.argv[2],
+  ca: Buffer.from(process.env.OPSREPLAY_MONITOR_TLS_CERT_B64, 'base64'),
+  headers: {Authorization: 'Bearer ' + process.env.OPSREPLAY_MONITOR_SECRET},
+  timeout: 2000
+}, res => {
+  let body = '';
+  res.on('data', chunk => body += chunk);
+  res.on('end', () => console.log(JSON.stringify({status: res.statusCode, body: JSON.parse(body)})));
+});
+req.on('error', () => process.exit(1));
+req.on('timeout', () => req.destroy());
+req.end();`,
+        path,
+        method,
+      ),
+    ),
+  );
+}
+
+async function startingWithMissingService(t, service, port) {
+  const shop = await fresh(t, false, service);
+  await eventually(
+    () => exec(shop, 'curl', '--silent', '--output', '/dev/null', 'http://127.0.0.1/').status === 0,
+    'Proxy did not start with its planted fault',
+  );
+  const otherPorts = [80, 8080, 5432, 7681].filter((candidate) => candidate !== port);
+  await eventually(
+    () =>
+      exec(
+        shop,
+        'python3',
+        '-c',
+        `import socket\nfor port in ${JSON.stringify(otherPorts)}:\n with socket.create_connection(("127.0.0.1", port), timeout=1): pass`,
+      ).status === 0,
+    'Unrelated service listeners did not start',
+  );
+  const startup = exec(shop, 'opsreplay-check-startup');
+  assert.notEqual(startup.status, 0);
+  assert.match(startup.stderr, new RegExp(`port ${port} is not ready`));
+  const monitor = startMonitor(t, shop);
+  await eventually(
+    () => success(docker('logs', monitor.id)).includes('control_listening'),
+    'Monitor control listener did not start',
+  );
+  assert.deepEqual(control(monitor), { status: 503, body: { status: 'starting' } });
+  assert.equal(control(monitor, '/v1/start', 'POST').status, 409);
+  assert.equal(
+    monitor.all().some((record) => record.type === 'monitor_started'),
+    false,
+  );
+  return { shop, monitor };
+}
+
+for (const [service, port] of [
+  ['shop', 8080],
+  ['postgres', 5432],
+]) {
+  test(
+    `missing ${service} at launch cannot pass readiness or recover after the startup deadline`,
+    { timeout: 60_000 },
+    async (t) => {
+      const { shop, monitor } = await startingWithMissingService(t, service, port);
+      await eventually(
+        () => control(monitor).body.status === 'failed',
+        'Missing startup listener did not fail closed at the readiness deadline',
+        35_000,
+      );
+      assert.deepEqual(control(monitor), { status: 503, body: { status: 'failed' } });
+      const expectedError = '{"type":"monitor_error","code":"initial_state_failed"}\n';
+      await eventually(
+        () => monitor.errors() === expectedError,
+        'Client did not report the expected startup rejection',
+      );
+      assert.equal(success(docker('wait', monitor.clientId)), '1');
+      assert.deepEqual(monitor.all(expectedError), []);
+      success(exec(shop, 'service', service, 'start'));
+      await eventually(() => exec(shop, 'opsreplay-check-startup').status === 0, 'Late listener did not start');
+      assert.deepEqual(control(monitor), { status: 503, body: { status: 'failed' } });
+      assert.equal(control(monitor, '/v1/start', 'POST').status, 409);
+    },
+  );
+}
+
+test(
+  'a delayed shop listener permits readiness only after startup prerequisites pass',
+  { timeout: 60_000 },
+  async (t) => {
+    const { shop, monitor } = await startingWithMissingService(t, 'shop', 8080);
+    success(exec(shop, 'service', 'shop', 'start'));
+    await eventually(
+      () => monitor.metrics().some((frame) => frame.counters.failedRequests > 0),
+      'Delayed shop never became ready',
+    );
+    success(exec(shop, 'opsreplay-check-startup'));
+    assert.deepEqual(control(monitor), { status: 200, body: { status: 'ready' } });
+    await stopMonitor(monitor);
+  },
+);
 
 function startMonitor(t, challenge, startTimeoutMs = 30_000) {
   const cleanup = [];
@@ -375,9 +497,9 @@ function startMonitor(t, challenge, startTimeoutMs = 30_000) {
   follow.on('error', (error) => {
     parseError = error.message;
   });
-  const all = () => {
+  const all = (expectedError = '') => {
     assert.equal(parseError, undefined);
-    assert.equal(stderr, '', stderr);
+    assert.equal(stderr, expectedError, stderr);
     return records;
   };
   return {

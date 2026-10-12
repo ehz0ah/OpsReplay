@@ -138,9 +138,14 @@ stateDiagram-v2
   ready --> error: platform stopped the task
 ```
 
-1. **Provisioning.** The monitor verifies the initial state: aggregate recovery fails
+1. **Provisioning.** The monitor first requires every optional private `startupChecks`
+   TCP prerequisite to pass, then verifies the initial state: aggregate recovery fails
    (at least one validator fails) and every health probe passes. These checks are not
    learner measurements. Only then does its health check pass.
+   Startup prerequisites are never polled after readiness and never affect recovery
+   or emit outage events. For the reference Challenge, shop 8080 and database 5432
+   must listen before the failing checkout can establish the authored incident;
+   proxy 80 remains covered by its health probe and the Gateway verifies the terminal.
    A failed verification is an image defect. The session ends as `error` with
    `start_failed` and is logged for authors. One lifecycle routine owns launch,
    readiness, schedules, and cleanup. API calls, session stream events, ECS events,
