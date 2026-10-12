@@ -46,6 +46,15 @@ after the timer is due. Expired measurement cannot publish readiness. Ending bef
 monitor start fences the unused recorder as incomplete without inventing a
 measurement origin.
 
+Outcome reads use the existing three-attempt budget for both conditional-write
+conflicts and session/recording status mismatches. Separate strongly consistent
+reads can straddle an atomic recorder claim or outcome transaction. A mismatch
+restarts the full read cycle, including ownership and request-receipt checks;
+it never writes from mixed snapshots. Persistent mismatches still fail closed.
+Exact transaction conditions, cutoff validation, and recorder lease checks remain
+unchanged. Deterministic DynamoDB Local tests cover these read boundaries and
+the existing transaction-conflict recovery path.
+
 Browser heartbeat and manual input update learner liveness, with a 15-second
 write interval and current terminal generation. Each connection caches only successful
 liveness calls. Every operation still checks current authorization. Heartbeat writes

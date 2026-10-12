@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, after, test } from 'node:test';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+  type DynamoDBDocumentClient,
+} from '@aws-sdk/lib-dynamodb';
+import { createEndSessionHandler } from '../src/end-session/handler.js';
+import { DynamoMonitorRecordingStore } from '../../gateway/src/monitor-recording-store.js';
 import { createReconcileSession } from '../src/session-lifecycle/reconcile.js';
 import { startLocalDatabase } from './local-dynamodb.js';
 import { sessionRecord } from './session-fixture.js';
@@ -106,6 +115,25 @@ async function fixture() {
   return { id, table, key, put, get, session, recording, observation, terminal, store, lease, ready };
 }
 
+function withReadHook(
+  f: Awaited<ReturnType<typeof fixture>>,
+  afterRead: (key: string) => Promise<void> = async () => {},
+) {
+  const reads: string[] = [];
+  const writes: TransactWriteCommand[] = [];
+  const client = {
+    send: async (command: unknown, options: unknown) => {
+      if (command instanceof TransactWriteCommand) writes.push(command);
+      if (command instanceof GetCommand) reads.push(command.input.Key!.SK);
+      const result = await database.document.send(command as TransactWriteCommand, options as never);
+      // Let a real competing transaction commit after this read has captured its snapshot.
+      if (command instanceof GetCommand) await afterRead(command.input.Key!.SK);
+      return result;
+    },
+  } as unknown as DynamoDBDocumentClient;
+  return { store: new DynamoAttemptStore(client, f.table), reads, writes };
+}
+
 test('readiness saves measurement origin under the current lease and requires committed terminal evidence', async () => {
   const f = await fixture();
   await assert.rejects(
@@ -175,6 +203,184 @@ test('competing outcomes fix one cutoff and drain without releasing the active l
     f.store.outcome(f.id, 'ended', 'learner_ended', at(5), undefined, 'other-user'),
     (error) => error instanceof AttemptStoreError && error.code === 'not_found',
   );
+});
+
+test('owner end replays outcomes committed during reads or before its transaction', async (t) => {
+  for (const read of ['STATE', 'LIFECYCLE', 'RECORDING']) {
+    for (const [status, reason] of [
+      ['ended', 'learner_ended'],
+      ['failed', 'environment_exited'],
+    ] as const) {
+      await t.test(`${status} commits after ${read}`, async () => {
+        const f = await fixture();
+        await f.ready();
+        let committed = false;
+        const hooked = withReadHook(f, async (key) => {
+          if (key === read && !committed) {
+            committed = true;
+            await f.store.outcome(f.id, status, reason, at(3));
+          }
+        });
+        const requestId = randomUUID();
+        const handler = createEndSessionHandler({ store: hooked.store, now: () => new Date(at(4)) });
+        const response = await handler(
+          {
+            httpMethod: 'POST',
+            resource: '/v1/sessions/{id}/end',
+            pathParameters: { id: f.id },
+            requestContext: { authorizer: { claims: { sub: 'learner-1' } } },
+            body: JSON.stringify({ requestId }),
+            isBase64Encoded: false,
+          } as unknown as APIGatewayProxyEvent,
+          { awsRequestId: randomUUID(), getRemainingTimeInMillis: () => 30_000 },
+        );
+        assert.equal(response.statusCode, 200, response.body);
+        const saved = (await f.store.session(f.id))!;
+        assert.equal(saved.view.status, status);
+        assert.equal(saved.view.statusReason, reason);
+        assert.equal(saved.view.endedAt, at(3));
+        assert.deepEqual(JSON.parse(response.body), { session: saved.view });
+        assert.equal(hooked.reads.filter((key) => key === 'STATE').length, 2);
+        assert.deepEqual(await f.get(`REQUEST#${requestId}`), {
+          schemaVersion: 1,
+          operation: 'end_session',
+          ownerId: 'learner-1',
+          requestId,
+          sessionId: f.id,
+        });
+        const expectedWrites = read === 'RECORDING' ? 2 : 1;
+        assert.equal(hooked.writes.length, expectedWrites);
+        const receiptWrite = hooked.writes.at(-1)!;
+        assert.equal(receiptWrite.input.TransactItems?.length, 2);
+        assert.equal(receiptWrite.input.TransactItems?.[1]?.Put?.Item?.SK, `REQUEST#${requestId}`);
+        const recording = await f.get('RECORDING');
+        assert.equal(recording.status, 'draining');
+        assert.equal(recording.cutoffAt, at(3));
+        assert.equal(recording.drainDeadlineAt, at(33));
+        const retry = await hooked.store.outcome(
+          f.id,
+          'ended',
+          'learner_ended',
+          at(5),
+          undefined,
+          'learner-1',
+          undefined,
+          at(5),
+          requestId,
+        );
+        assert.deepEqual(retry, saved);
+        assert.equal(hooked.writes.length, expectedWrites);
+        const lock = await database.document.send(
+          new GetCommand({ TableName: f.table, Key: { PK: 'USER#learner-1', SK: 'ACTIVE' } }),
+        );
+        assert.equal(lock.Item?.data.sessionId, f.id);
+      });
+    }
+  }
+});
+
+test('outcome retries recorder initialization between reads and fences the unstarted recorder', async () => {
+  const f = await fixture();
+  await f.put('STATE', {
+    ...f.session,
+    view: { ...f.session.view, recording: { status: 'pending', reason: null } },
+  });
+  await database.document.send(new DeleteCommand({ TableName: f.table, Key: f.key('RECORDING') }));
+  const recorder = new DynamoMonitorRecordingStore(database.document, f.table);
+  let committed = false;
+  const hooked = withReadHook(f, async (key) => {
+    if (key === 'STATE' && !committed) {
+      committed = true;
+      await recorder.claim({ sessionId: f.id, recorderId: 'gateway-1', now: at(3) });
+    }
+  });
+  const saved = await hooked.store.outcome(f.id, 'ended', 'learner_ended', at(4), undefined, 'learner-1');
+  assert.equal(saved.view.status, 'ended');
+  assert.equal(saved.view.endedAt, at(4));
+  assert.deepEqual(saved.view.recording, { status: 'incomplete', reason: 'recorder_lost' });
+  assert.equal(hooked.reads.filter((key) => key === 'RECORDING').length, 2);
+  assert.equal(hooked.writes.length, 1);
+  assert.equal((await f.get('RECORDING')).reason, 'recorder_lost');
+  assert.equal((await f.get('RECORDING')).recorderId, null);
+  assert.equal((await f.get('RECORDING')).startedAt, null);
+});
+
+test('persistent session and recording mismatches exhaust three reads without writes', async (t) => {
+  for (const mismatch of ['pending-with-recorder', 'recording-without-recorder']) {
+    await t.test(mismatch, async () => {
+      const f = await fixture();
+      if (mismatch === 'pending-with-recorder') {
+        await f.put('STATE', {
+          ...f.session,
+          view: { ...f.session.view, recording: { status: 'pending', reason: null } },
+        });
+      } else {
+        await database.document.send(new DeleteCommand({ TableName: f.table, Key: f.key('RECORDING') }));
+      }
+      const before = await f.get('STATE');
+      const hooked = withReadHook(f);
+      await assert.rejects(
+        hooked.store.outcome(f.id, 'ended', 'learner_ended', at(3), undefined, 'learner-1'),
+        (error) => error instanceof AttemptStoreError && error.code === 'conflict',
+      );
+      assert.equal(hooked.reads.filter((key) => key === 'STATE').length, 3);
+      assert.equal(hooked.reads.filter((key) => key === 'RECORDING').length, 3);
+      assert.equal(hooked.writes.length, 0);
+      assert.deepEqual(await f.get('STATE'), before);
+    });
+  }
+});
+
+test('mixed snapshot retries preserve cancellation, read errors, and receipt conflicts', async (t) => {
+  for (const failure of ['abort', 'read-error', 'receipt-conflict']) {
+    await t.test(failure, async () => {
+      const f = await fixture();
+      await f.ready();
+      const requestId = randomUUID();
+      const controller = new AbortController();
+      const unavailable = new Error('Storage unavailable');
+      let sessionReads = 0;
+      const hooked = withReadHook(f, async (key) => {
+        if (key === 'STATE') {
+          sessionReads++;
+          if (sessionReads === 1) {
+            await f.store.outcome(f.id, 'failed', 'environment_exited', at(3));
+          } else if (failure === 'read-error') {
+            throw unavailable;
+          }
+        }
+        if (key === 'RECORDING' && failure === 'abort') controller.abort();
+        if (key === 'RECORDING' && failure === 'receipt-conflict')
+          await f.put(`REQUEST#${requestId}`, { schemaVersion: 1, operation: 'other' });
+      });
+      await assert.rejects(
+        hooked.store.outcome(
+          f.id,
+          'ended',
+          'learner_ended',
+          at(4),
+          controller.signal,
+          'learner-1',
+          undefined,
+          at(4),
+          requestId,
+        ),
+        (error) =>
+          failure === 'abort'
+            ? error instanceof Error && error.name === 'AbortError'
+            : failure === 'read-error'
+              ? error === unavailable
+              : error instanceof AttemptStoreError && error.code === 'conflict',
+      );
+      assert.equal(hooked.writes.length, 0);
+      assert.equal((await f.store.session(f.id))?.view.status, 'failed');
+      assert.equal((await f.store.session(f.id))?.view.endedAt, at(3));
+      if (failure === 'receipt-conflict') {
+        assert.equal(sessionReads, 2);
+        assert.equal((await f.get(`REQUEST#${requestId}`)).operation, 'other');
+      }
+    });
+  }
 });
 
 test('stale timers cannot fail a ready session before its saved time limit', async () => {

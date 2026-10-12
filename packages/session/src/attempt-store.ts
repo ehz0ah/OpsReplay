@@ -475,8 +475,10 @@ export class DynamoAttemptStore {
       if (
         (session.view.recording.status === 'pending' && recording !== undefined) ||
         (session.view.recording.status !== 'pending' && session.view.recording.status !== recording?.status)
-      )
-        throw new AttemptStoreError('conflict');
+      ) {
+        // Separate reads can straddle an atomic recording transition. Re-read within the shared retry bound.
+        continue;
+      }
       if (recording?.startedAt !== null && recording?.startedAt !== undefined && cutoffAt < recording.startedAt)
         throw new AttemptStoreError('conflict');
       const draining = session.view.recording.status === 'recording' && recording?.startedAt !== null;
