@@ -38,6 +38,7 @@ import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import { CfnWebACL, CfnWebACLAssociation } from 'aws-cdk-lib/aws-wafv2';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
+import { lifecycleHintPrefix } from '../packages/contracts/private/lifecycle-hint.js';
 import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
 import { terminalTicketTtlAttribute } from '../packages/contracts/private/terminal-access.js';
 
@@ -617,7 +618,7 @@ export class SessionStartStack extends Stack {
           {
             pattern: JSON.stringify({
               eventName: ['INSERT', 'MODIFY'],
-              dynamodb: { Keys: { SK: { S: ['STATE', 'LIFECYCLE', 'RECORDING', 'MONITOR_OBSERVATION'] } } },
+              dynamodb: { Keys: { SK: { S: [{ prefix: lifecycleHintPrefix }] } } },
             }),
           },
         ],

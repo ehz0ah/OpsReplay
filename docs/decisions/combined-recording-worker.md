@@ -60,9 +60,12 @@ isolated to its session. Keep uploads outside these retries. No per-session writ
 added: it would not prevent cross-process conflicts and could delay lease renewal behind
 slow work.
 
-The fixed drain window still includes page copying in this increment. PR #51 must separate
-short task coverage from durable sealing before activation. Large-page delayed tests belong
-with that lifecycle change. This is an open merge blocker for the complete series.
+The lifecycle follow-up separates the 30-second task-coverage deadline from durable page
+copying. `RECORDING_COVERAGE` freezes the exact covered terminal checkpoint, sealed monitor
+reference, and final metric. It extends only the recording write deadline to a bounded
+24-hour sealing window. Cleanup can stop the task after this receipt. Takeover resumes from
+storage without contacting either task source. Delayed 3,000-page and coverage-takeover
+regressions belong to that lifecycle change. Managed AWS timing remains unverified.
 
 No additional AWS service or lease is added. Gateway IAM gains base-table `Query` restricted
 to session keys and `s3:GetObject` restricted to live terminal pages. It cannot list or delete

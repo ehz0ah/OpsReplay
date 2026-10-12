@@ -88,7 +88,8 @@ test('manual input and browser heartbeat record liveness but private keepalive d
   await session.input(Buffer.from('pwd\n'));
   await session.heartbeat();
   await session.learnerHeartbeat();
-  assert.deepEqual(f.calls, ['seen', 'input:pwd\n', 'heartbeat', 'seen']);
+  assert.deepEqual(f.calls, ['seen', 'input:pwd\n', 'heartbeat']);
+  assert.equal(f.authorizations.length, 3);
 });
 
 test('a liveness failure occurs before PTY input and must not cause a resend', async () => {
@@ -99,6 +100,52 @@ test('a liveness failure occurs before PTY input and must not cause a resend', a
   const { session } = await GatewayTerminalSession.open(options, f.dependencies);
   await assert.rejects(session.input(Buffer.from('pwd\n')));
   assert.deepEqual(f.calls, []);
+});
+
+test('liveness cache is connection-local and starts only after a successful store call', async () => {
+  const f = fixture();
+  let at = Date.parse('2026-10-10T08:00:00.000Z');
+  f.dependencies.now = () => new Date(at);
+  let writes = 0;
+  let fail = true;
+  f.store.recordLearnerSeen = async (_request, now) => {
+    assert.equal(now, new Date(at).toISOString());
+    writes++;
+    if (fail) throw new TerminalAdmissionError('unavailable');
+  };
+  const { session } = await GatewayTerminalSession.open(options, f.dependencies);
+  await assert.rejects(session.learnerHeartbeat());
+  fail = false;
+  await session.learnerHeartbeat();
+  at += 14_999;
+  await session.input(Buffer.from('pwd\n'));
+  assert.equal(writes, 2);
+  at++;
+  await session.learnerHeartbeat();
+  assert.equal(writes, 3);
+  const second = await GatewayTerminalSession.open(options, f.dependencies);
+  await second.session.learnerHeartbeat();
+  assert.equal(writes, 4);
+  f.failAuthorization(new TerminalAdmissionError('replaced'));
+  await assert.rejects(session.input(Buffer.from('must-not-run\n')));
+  assert.equal(writes, 4);
+  assert.equal(f.authorizations.length, 6);
+});
+
+test('a backward clock change does not extend the connection liveness cache', async () => {
+  const f = fixture();
+  let at = Date.parse('2026-10-10T08:00:00.000Z');
+  f.dependencies.now = () => new Date(at);
+  let calls = 0;
+  f.store.recordLearnerSeen = async () => {
+    calls++;
+  };
+  const { session } = await GatewayTerminalSession.open(options, f.dependencies);
+  await session.learnerHeartbeat();
+  at -= 1000;
+  await session.learnerHeartbeat();
+  assert.equal(calls, 2);
+  assert.equal(f.authorizations.length, 2);
 });
 
 test('admits before connecting and exposes readiness only after terminal attachment', async () => {

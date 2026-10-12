@@ -172,7 +172,13 @@ export function isMonitorRecordingState(value: unknown, sessionId: string): valu
     ? state.reason === null &&
         state.completedAt < state.drainDeadlineAt &&
         state.retainUntil === recordingRetainUntil(state.cutoffAt, 'sealed') &&
-        isStoredMonitorChunkReference(state.sealed, sessionId, state.generation, 'sealed') &&
+        isStoredMonitorChunkReference(
+          state.sealed,
+          sessionId,
+          typeof state.sealed?.objectKey === 'string' ? Number(state.sealed.objectKey.split('/')[3]) : NaN,
+          'sealed',
+        ) &&
+        Number(state.sealed.objectKey.split('/')[3]) <= state.generation &&
         state.sealed.source === state.source &&
         state.sealed.nextSequence === state.cursor &&
         state.sealed.frameCount === state.cursor

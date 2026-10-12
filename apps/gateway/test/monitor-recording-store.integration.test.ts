@@ -233,6 +233,29 @@ test('retries renewal and append contention without replacing the recorder gener
   assert.equal((await f.store.get(f.sessionId))?.cursor, 1);
 });
 
+test('renewal tolerates the same owner entering drain after its initial read', async () => {
+  const f = await fixture();
+  const lease = (await claim(f)).lease;
+  await f.store.begin(lease, startedAt, startedAt);
+  let transition = true;
+  const racing = new DynamoMonitorRecordingStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof UpdateCommand && transition) {
+          transition = false;
+          await setDraining(f, lease);
+        }
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  const renewed = await racing.renew(lease, '2026-10-07T00:00:04.000Z', 10_000);
+  assert.equal(renewed.status, 'draining');
+  assert.equal(renewed.generation, lease.generation);
+  assert.equal(renewed.leaseExpiresAt, '2026-10-07T00:00:14.000Z');
+});
+
 test('fenced incomplete publication rejects an old recorder after takeover', async () => {
   const f = await fixture();
   const lease = (await claim(f)).lease;

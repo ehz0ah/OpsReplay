@@ -107,6 +107,91 @@ test('cancellation after a sealed upload does not advance the durable cursor or 
   assert.equal(f.state().complete, false);
 });
 
+test('seals three thousand delayed pages after task drain and resumes a bounded interrupted pass', async () => {
+  const count = 3000;
+  const events = Array.from({ length: count }, (_, index) =>
+    index === 0 ? terminalPage().events[0]! : terminalOutput(index + 1, cutoffAt),
+  );
+  const start = terminalReady();
+  let terminal = initialTerminalCheckpoint(start);
+  const pagesBySequence = events.map((event, index) => {
+    const value = terminalPage([event], { latestSequence: count, nextSequence: index + 1, observedAt: cutoffAt });
+    terminal = advanceTerminalCheckpoint(terminal, value);
+    return value;
+  });
+  terminal = { ...terminal, metadata: { ...terminal.metadata, observedAt: '2026-10-12T00:00:02.000Z' } };
+  let elapsedMs = 0;
+  let state: TerminalSealState = {
+    schemaVersion: 1,
+    cutoffAt,
+    checkpoint: terminal,
+    cursor: 0,
+    pageCount: 0,
+    recordedBytes: 0,
+    lastAt: null,
+    excludedAt: null,
+    complete: false,
+  };
+  const reads = new Set<number>();
+  const controller = new AbortController();
+  let interrupt = true;
+  const delay = () => {
+    elapsedMs += 50;
+  };
+  const seals: TerminalSealingStore = {
+    get: async () => state,
+    begin: async () => {
+      delay();
+      return structuredClone(state);
+    },
+    nextPage: async (_id, _source, after) => {
+      delay();
+      return encodeTerminalPage(lease.sessionId, 1, after, pagesBySequence[after]!).reference;
+    },
+    append: async (_lease, previous, reference, bytes) => {
+      delay();
+      delay();
+      state = {
+        ...previous,
+        cursor: reference.nextSequence,
+        pageCount: previous.pageCount + 1,
+        recordedBytes: previous.recordedBytes + bytes,
+        lastAt: reference.lastAt,
+      };
+      if (interrupt && state.cursor === 1000) controller.abort();
+      return state;
+    },
+    finish: async (_lease, previous) => {
+      delay();
+      state = { ...previous, complete: true };
+      return state;
+    },
+  };
+  const archive: TerminalPageArchive = {
+    readLive: async (_id, reference) => {
+      delay();
+      reads.add(reference.after);
+      return pagesBySequence[reference.after]!;
+    },
+    putSealed: async (id, generation, source, after, values) => {
+      delay();
+      return encodeSealedTerminalPage(id, generation, source, after, values).reference;
+    },
+  };
+  const first = new TerminalSealer({ lease, pages: archive, seals });
+  await assert.rejects(first.seal(terminal, cutoffAt, controller.signal), { name: 'AbortError' });
+  assert.equal(state.cursor, 1000);
+  assert.equal(state.complete, false);
+  interrupt = false;
+  const second = new TerminalSealer({ lease: { ...lease, generation: 2 }, pages: archive, seals });
+  const result = await second.seal(terminal, cutoffAt);
+  assert.equal(result.complete, true);
+  assert.equal(result.cursor, count);
+  assert.equal(reads.size, count);
+  assert.ok(elapsedMs > 30_000);
+  assert.ok(elapsedMs < 24 * 60 * 60 * 1000);
+});
+
 test('missing committed references and failed uploads cannot mark the terminal seal complete', async () => {
   const f = fixture();
   f.seals.nextPage = async () => undefined;

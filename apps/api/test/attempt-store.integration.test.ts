@@ -278,6 +278,86 @@ test('heartbeat checks input generation, cannot move backward, and does not shar
   assert.equal((await f.store.session(f.id))?.view.status, 'ready');
 });
 
+test('heartbeat retries pure transaction contention with the same request and preserves generation checks', async () => {
+  const f = await fixture();
+  await f.ready();
+  const input = { schemaVersion: 1, sessionId: f.id, connectionId: randomUUID(), generation: 1, claimedAt: at(2) };
+  await f.put('INPUT', input);
+  const requests: TransactWriteCommand[] = [];
+  const client = {
+    send: async (command: unknown, options: unknown) => {
+      if (command instanceof TransactWriteCommand) {
+        requests.push(command);
+        if (requests.length < 3)
+          throw Object.assign(new Error('Conflict'), {
+            name: 'TransactionCanceledException',
+            CancellationReasons: [{ Code: 'None' }, { Code: 'TransactionConflict' }, { Code: 'None' }],
+          });
+      }
+      return database.document.send(command as TransactWriteCommand, options as never);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const store = new DynamoAttemptStore(client, f.table);
+  await store.heartbeat(input, at(20));
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0], requests[1]);
+  assert.equal(requests[1], requests[2]);
+  assert.equal((await f.store.lifecycle(f.id))?.lastSeenAt, at(20));
+  await assert.rejects(store.heartbeat({ ...input, generation: 2 }, at(40)));
+  assert.equal(requests.length, 3);
+});
+
+test('unchanged failing recovery uses the durable observation without rewriting lifecycle or public state', async () => {
+  const f = await fixture();
+  await f.ready();
+  const previous = await f.store.lifecycle(f.id);
+  let writes = 0;
+  const client = {
+    send: async (command: unknown, options: unknown) => {
+      if (command instanceof TransactWriteCommand) writes++;
+      return database.document.send(command as TransactWriteCommand, options as never);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const store = new DynamoAttemptStore(client, f.table);
+  for (let sequence = 2; sequence <= 10; sequence++) {
+    await f.put('RECORDING', { ...f.recording, cursor: sequence, leaseExpiresAt: at(400) });
+    await f.put('MONITOR_OBSERVATION', { ...f.observation, cursor: sequence, sequence, at: at(sequence * 10) });
+    await store.observe(f.id, at(sequence * 10), undefined, f.lease);
+  }
+  assert.equal(writes, 0);
+  assert.deepEqual(await f.store.lifecycle(f.id), previous);
+  assert.equal(await reconcileFixture(f, 101).reconcile(f.id), 'active');
+  assert.equal((await f.store.session(f.id))?.view.status, 'ready');
+});
+
+test('recorder absence and lease churn allow recovery without falsely reporting environment exit', async () => {
+  const f = await fixture();
+  await f.ready();
+  const lifecycle = (await f.store.lifecycle(f.id))!;
+  await f.put('LIFECYCLE', { ...lifecycle, lastSeenAt: at(300) });
+  for (const seconds of [32, 90, 299]) {
+    await f.put('RECORDING', { ...f.recording, generation: seconds, leaseExpiresAt: at(seconds - 1) });
+    assert.equal(await reconcileFixture(f, seconds).reconcile(f.id), 'active');
+    assert.equal((await f.store.session(f.id))?.view.status, 'ready');
+  }
+  await f.put('RECORDING', { ...f.recording, generation: 300, leaseExpiresAt: at(400) });
+  assert.equal(await reconcileFixture(f, 301).reconcile(f.id), 'draining');
+  assert.equal((await f.store.session(f.id))?.view.statusReason, 'recorder_unavailable');
+});
+
+test('a recovered observation fences a stale recorder-unavailable outcome', async () => {
+  const f = await fixture();
+  await f.ready();
+  const lifecycle = (await f.store.lifecycle(f.id))!;
+  await f.put('LIFECYCLE', { ...lifecycle, lastSeenAt: at(300) });
+  await f.put('RECORDING', { ...f.recording, cursor: 2, leaseExpiresAt: at(400) });
+  await f.put('MONITOR_OBSERVATION', { ...f.observation, cursor: 2, sequence: 2, at: at(300) });
+  await f.store.outcome(f.id, 'error', 'recorder_unavailable', at(301), undefined, undefined, undefined, at(301));
+  assert.equal((await f.store.session(f.id))?.view.status, 'ready');
+  assert.equal(await reconcileFixture(f, 301).reconcile(f.id), 'active');
+  assert.equal((await f.store.lifecycle(f.id))?.lastMonitorAt, at(1));
+});
+
 test('sustained monitor recovery fixes an outcome while data gaps keep score unavailable', async () => {
   const f = await fixture();
   await f.ready();
@@ -480,6 +560,52 @@ test('drain timeout precedes task stop and ready cleanup keeps the active lock',
   );
   assert.equal(lock.Item?.data.sessionId, f.id);
   assert.equal(await stopped.reconcile(f.id), 'cleaned');
+});
+
+test('durable coverage permits task cleanup during sealing and survives task stop', async () => {
+  const f = await fixture();
+  await f.ready();
+  await f.store.outcome(f.id, 'ended', 'learner_ended', at(3));
+  const coveredAt = at(4);
+  const coverage = {
+    schemaVersion: 1,
+    sessionId: f.id,
+    cutoffAt: at(3),
+    coveredAt,
+    taskDrainDeadlineAt: at(33),
+    sealingDeadlineAt: at(86_404),
+    terminal: { ...f.terminal, metadata: { ...f.terminal.metadata, observedAt: coveredAt } },
+    monitor: {
+      phase: 'sealed',
+      source: null,
+      after: 0,
+      nextSequence: 0,
+      frameCount: 0,
+      sha256: 'a'.repeat(64),
+      objectKey: `sessions/${f.id}/metrics/000000001/sealed/empty/000000-000000-${'a'.repeat(64)}.json`,
+    },
+    final: {
+      type: 'metrics',
+      sample: { at: at(3), values: { request_rate: 1 } },
+      counters: { totalRequests: 1, failedRequests: 1 },
+      recovery: { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+    },
+  };
+  await f.put('RECORDING_COVERAGE', coverage);
+  await f.put('RECORDING', { ...(await f.get('RECORDING')), drainDeadlineAt: coverage.sealingDeadlineAt });
+  const stopping = reconcileFixture(f, 5);
+  assert.equal(await stopping.reconcile(f.id), 'cleanup_pending');
+  assert.deepEqual(stopping.calls, ['stop']);
+  const stopped = reconcileFixture(f, 40, 'STOPPED');
+  assert.equal(await stopped.reconcile(f.id), 'draining');
+  assert.deepEqual(stopped.calls, ['delete']);
+  assert.equal((await f.store.lifecycle(f.id))?.taskStoppedAt, at(40));
+  assert.equal((await f.store.session(f.id))?.view.recording.status, 'draining');
+  await f.store.incomplete(f.id, 'task_lost', at(41));
+  assert.equal((await f.store.session(f.id))?.view.recording.status, 'draining');
+  await assert.rejects(f.store.incomplete(f.id, 'drain_timeout', at(43)));
+  assert.equal(await reconcileFixture(f, 86_404, 'STOPPED').reconcile(f.id), 'cleaned');
+  assert.equal((await f.store.session(f.id))?.view.recording.reason, 'drain_timeout');
 });
 
 test('a missing known task is not confirmed cleanup', async () => {

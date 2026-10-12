@@ -51,7 +51,7 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
     assert.equal(stream.Properties.BatchSize, 25);
     assert.equal(stream.Properties.MaximumRetryAttempts, 3);
     const pattern = JSON.parse(stream.Properties.FilterCriteria.Filters[0].Pattern);
-    assert.deepEqual(pattern.dynamodb.Keys.SK.S, ['STATE', 'LIFECYCLE', 'RECORDING', 'MONITOR_OBSERVATION']);
+    assert.deepEqual(pattern.dynamodb.Keys.SK.S, [{ prefix: 'LIFECYCLE_HINT#' }]);
     for (const [id, value] of Object.entries(resources).filter(
       ([id, value]) => id.startsWith('Lifecycle') && value.Type === 'AWS::Events::Rule',
     ))

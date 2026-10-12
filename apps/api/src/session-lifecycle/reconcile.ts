@@ -20,7 +20,16 @@ export function createReconcileSession({
   sessions: Pick<LifecycleStorePort, 'session' | 'saveTask'>;
   attempts: Pick<
     DynamoAttemptStore,
-    'session' | 'lifecycle' | 'outcome' | 'observe' | 'incomplete' | 'cleanup' | 'completeNeverReady'
+    | 'session'
+    | 'lifecycle'
+    | 'recording'
+    | 'observation'
+    | 'coverage'
+    | 'outcome'
+    | 'observe'
+    | 'incomplete'
+    | 'cleanup'
+    | 'completeNeverReady'
   >;
   environment: Pick<EnvironmentPort, 'findActive' | 'describe' | 'stop'>;
   schedules: SessionDeadlinePort;
@@ -67,9 +76,16 @@ export function createReconcileSession({
       if (!session) return 'ignored';
     }
     if (session.view.status === 'ready') {
-      const state = await attempts.lifecycle(id, signal);
-      if (!state || !state.lastSeenAt || !state.lastMonitorAt || !session.view.endsAt)
+      const [state, observation, recording] = await Promise.all([
+        attempts.lifecycle(id, signal),
+        attempts.observation(id, signal),
+        attempts.recording(id, signal),
+      ]);
+      if (!state || !state.lastSeenAt || !state.lastMonitorAt || !session.view.endsAt || !observation || !recording)
         throw new Error('Ready lifecycle state is invalid.');
+      if (observation.source !== recording.source || observation.cursor > recording.cursor || observation.at > at)
+        throw new Error('Monitor observation is invalid.');
+      const lastMonitorAt = observation.at;
       const task = session.taskArn
         ? await environment.describe(session.launchArguments.cluster, session.taskArn, signal)
         : undefined;
@@ -90,11 +106,12 @@ export function createReconcileSession({
           undefined,
           state,
         );
-      } else if (Date.parse(at) - Date.parse(state.lastMonitorAt) >= sessionLifecycle.monitorTimeoutMs) {
+      } else if (Date.parse(at) - Date.parse(lastMonitorAt) >= sessionLifecycle.recorderRecoveryTimeoutMs) {
+        // Silence does not prove environment exit. Lease churn cannot reset this bound.
         await attempts.outcome(
           id,
           'error',
-          'environment_exited',
+          'recorder_unavailable',
           at,
           signal,
           undefined,
@@ -120,18 +137,36 @@ export function createReconcileSession({
       if (session.provisioningCleanup.status === 'complete') return 'cleaned';
       throw new Error('Lifecycle discovery state is missing.');
     }
+    const coverage = await attempts.coverage(id, signal);
     if (session.view.recording.status === 'draining') {
-      const task = session.taskArn
-        ? await environment.describe(session.launchArguments.cluster, session.taskArn, signal)
-        : undefined;
-      if (task?.lastStatus === 'STOPPED') await attempts.incomplete(id, 'task_lost', at, signal);
-      else if (lifecycle.drainDeadlineAt !== null && at >= lifecycle.drainDeadlineAt)
-        await attempts.incomplete(id, 'drain_timeout', at, signal);
-      else return 'draining';
+      if (coverage) {
+        const recording = await attempts.recording(id, signal);
+        if (
+          coverage.cutoffAt !== session.view.endedAt ||
+          coverage.taskDrainDeadlineAt !== lifecycle.drainDeadlineAt ||
+          !recording ||
+          recording.cutoffAt !== coverage.cutoffAt ||
+          recording.drainDeadlineAt !== coverage.sealingDeadlineAt
+        )
+          throw new Error('Recording coverage state is invalid.');
+        if (at >= coverage.sealingDeadlineAt) await attempts.incomplete(id, 'drain_timeout', at, signal);
+      } else {
+        const task = session.taskArn
+          ? await environment.describe(session.launchArguments.cluster, session.taskArn, signal)
+          : undefined;
+        if (task?.lastStatus === 'STOPPED') await attempts.incomplete(id, 'task_lost', at, signal);
+        else if (lifecycle.drainDeadlineAt !== null && at >= lifecycle.drainDeadlineAt)
+          await attempts.incomplete(id, 'drain_timeout', at, signal);
+        else return 'draining';
+      }
       session = await sessions.session(id, signal);
       if (!session) return 'ignored';
     }
-    if (session.view.readyAt !== null && !['complete', 'incomplete'].includes(session.view.recording.status))
+    if (
+      session.view.readyAt !== null &&
+      !['complete', 'incomplete'].includes(session.view.recording.status) &&
+      !coverage
+    )
       throw new Error('Terminal recording state is invalid.');
     if (lifecycle.taskStoppedAt === null) {
       const active = await environment.findActive(
@@ -163,6 +198,6 @@ export function createReconcileSession({
     await schedules.delete(session, signal);
     await attempts.cleanup(id, at, true, signal);
     if (session.view.readyAt === null) await attempts.completeNeverReady(id, at, signal);
-    return 'cleaned';
+    return session.view.recording.status === 'draining' ? 'draining' : 'cleaned';
   };
 }

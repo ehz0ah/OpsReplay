@@ -35,7 +35,7 @@ process-local. The composed recorder now collects terminal pages and monitor mea
 under one lease. It copies the exact terminal prefix into sealed retention and requires
 both streams before publishing recording completion. These paths are tested locally,
 not deployed. The lifecycle adds committed readiness, owner end, saved outcomes, learner
-liveness, deadline repair, bounded drain, and confirmed task cleanup. Its three separate
+liveness, deadline repair, bounded task coverage, task-independent sealing, and confirmed task cleanup. Its three separate
 Lambda actions and triggers remain disabled. Ready-attempt locks still require atomic
 debrief finalisation. Playback, command evidence, captures, remaining API, and the web
 application are not implemented. No checkpoint image is currently published in AWS,

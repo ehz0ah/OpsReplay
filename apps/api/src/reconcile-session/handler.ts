@@ -3,6 +3,7 @@ import type { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import type { ReconcileResult } from '../session-lifecycle/reconcile.js';
 import { validUuid, validTaskArn } from '../start-session/validation.js';
 import { sessionLifecycle } from '../../../../packages/contracts/private/session-lifecycle.js';
+import { lifecycleHintPrefix } from '../../../../packages/contracts/private/lifecycle-hint.js';
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 export interface ReconcileLog {
@@ -34,8 +35,8 @@ export function createReconcileHandler({
         if (
           item.eventSource !== 'aws:dynamodb' ||
           !PK?.startsWith('SESSION#') ||
-          !['STATE', 'LIFECYCLE', 'RECORDING', 'MONITOR_OBSERVATION'].includes(SK ?? '') ||
-          item.eventName === 'REMOVE'
+          !SK?.startsWith(lifecycleHintPrefix) ||
+          !['INSERT', 'MODIFY'].includes(item.eventName ?? '')
         )
           continue;
         const id = PK.slice(8);

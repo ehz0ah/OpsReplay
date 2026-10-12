@@ -21,8 +21,10 @@ test('stream reconciliation is bounded, deduplicated, and ignores unrelated reco
     dynamodb: { Keys: { PK: { S: `SESSION#${id}` }, SK: { S: SK } } },
   });
   await handler({ Records: [entry('STATE'), entry('RECORDING'), entry('LIFECYCLE'), entry('INPUT')] }, context);
+  assert.deepEqual(ids, []);
+  await handler({ Records: [entry('LIFECYCLE_HINT#ready'), entry('LIFECYCLE_HINT#outcome')] }, context);
   assert.deepEqual(ids, [id]);
-  await assert.rejects(handler({ Records: Array.from({ length: 26 }, () => entry('STATE')) }, context));
+  await assert.rejects(handler({ Records: Array.from({ length: 26 }, () => entry('LIFECYCLE_HINT#ready')) }, context));
 });
 test('timer callbacks use only session identity and stopped-task callbacks must match stored task ownership', async () => {
   const id = randomUUID();

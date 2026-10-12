@@ -11,6 +11,11 @@ import {
 import { generate } from 'selfsigned';
 import { recordingWorkOrder, unfinishedWorkIndex } from '../../../packages/contracts/private/recording-work.js';
 import { DynamoRecordingWorkSource, RecordingWorkSourceError } from '../src/recording-work-source.js';
+import {
+  advanceTerminalCheckpoint,
+  initialTerminalCheckpoint,
+} from '../../../packages/contracts/private/terminal-persistence.js';
+import { terminalPage, terminalReady } from '../../../packages/contracts/private/test-support/terminal-fixture.js';
 
 const now = '2026-10-08T00:00:10.000Z';
 const createdAt = '2026-10-08T00:00:00.000Z';
@@ -91,6 +96,64 @@ function recording(sessionId: string, recorderId: string, leaseExpiresAt: string
   };
 }
 
+test('covered drain remains discoverable after its task certificate expires', async () => {
+  const id = randomUUID();
+  const cert = await certificate();
+  const terminal = advanceTerminalCheckpoint(
+    initialTerminalCheckpoint(terminalReady({ startedAt: createdAt, observedAt: createdAt })),
+    terminalPage(undefined, {
+      startedAt: createdAt,
+      observedAt: now,
+      events: [{ type: 'dimensions', sequence: 1, recordedAt: createdAt, columns: 80, rows: 24 }],
+    }),
+  );
+  const coverage = {
+    schemaVersion: 1,
+    sessionId: id,
+    cutoffAt: '2026-10-08T00:00:05.000Z',
+    coveredAt: now,
+    taskDrainDeadlineAt: '2026-10-08T00:00:35.000Z',
+    sealingDeadlineAt: '2026-10-09T00:00:10.000Z',
+    terminal,
+    monitor: {
+      phase: 'sealed',
+      source: null,
+      after: 0,
+      nextSequence: 0,
+      frameCount: 0,
+      sha256: 'a'.repeat(64),
+      objectKey: `sessions/${id}/metrics/000000001/sealed/empty/000000-000000-${'a'.repeat(64)}.json`,
+    },
+    final: {
+      type: 'metrics',
+      sample: { at: '2026-10-08T00:00:05.000Z', values: { request_rate: 1 } },
+      counters: { totalRequests: 1, failedRequests: 1 },
+      recovery: { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+    },
+  };
+  const client = {
+    send: async (command: unknown) => {
+      if (command instanceof QueryCommand) return { Items: [identity(id)] };
+      assert.ok(command instanceof BatchGetCommand);
+      return {
+        Responses: {
+          'test-sessions': [
+            session(id, cert, { status: 'ended', recordingStatus: 'draining' }),
+            { PK: `SESSION#${id}`, SK: 'RECORDING_COVERAGE', data: coverage },
+          ],
+        },
+      };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const result = await new DynamoRecordingWorkSource(client, 'test-sessions', 'gateway-1').discover({
+    limit: 1,
+    excludedSessionIds: [],
+    now: '2026-10-09T00:00:01.000Z',
+  });
+  assert.equal(result.invalidEntries, 0);
+  assert.equal(result.work[0]?.sessionId, id);
+});
+
 test('uses the sparse index as a hint and strongly reads one authoritative session', async () => {
   const activeSessionId = randomUUID();
   const sessionId = randomUUID();
@@ -110,6 +173,7 @@ test('uses the sparse index as a hint and strongly reads one authoritative sessi
       assert.deepEqual(command.input.RequestItems?.['test-sessions']?.Keys, [
         { PK: `SESSION#${sessionId}`, SK: 'STATE' },
         { PK: `SESSION#${sessionId}`, SK: 'RECORDING' },
+        { PK: `SESSION#${sessionId}`, SK: 'RECORDING_COVERAGE' },
       ]);
       return { Responses: { 'test-sessions': [session(sessionId, cert)] } };
     },

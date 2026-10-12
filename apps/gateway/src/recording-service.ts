@@ -79,6 +79,11 @@ export function createGatewayRecordingSupervisor(
         client: monitor,
         chunks,
         recordings,
+        coverage: {
+          get: (id, signal) => recordings.coverage(id, signal),
+          commit: (...args) => recordings.cover(...args),
+          finish: (...args) => recordings.finishCovered(...args),
+        },
         terminal: {
           connect: async (signal) => {
             const checkpoint = await terminalRecordings.get(work.sessionId, signal);

@@ -263,7 +263,11 @@ It checks Cognito ownership and saves `ended/learner_ended` with an atomic recei
 fixed recording cutoff. A request at or after the saved time limit returns
 `failed/time_limit` at that deadline. Ending an attempt that already has an outcome
 returns it and saves the receipt. Retries cannot change the outcome. The Gateway drains
-before lifecycle cleanup stops the task, with a fixed deadline. Fixed errors expose no
+before lifecycle cleanup stops the task, with a fixed 30-second coverage deadline.
+A saved coverage receipt permits cleanup while task-independent sealing continues under
+a separate 24-hour bound. Missing recorder observations allow a five-minute recovery
+window, then use `error/recorder_unavailable`. This is not evidence of environment exit.
+Fixed errors expose no
 private state. See [the lifecycle](challenges.md#lifecycle).
 
 ### Hints
@@ -321,12 +325,11 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
 3. The client can send `resize` with columns and rows, and `heartbeat` as a liveness
    signal. While no private operation is active, the gateway sends a terminal heartbeat
    and a WebSocket Ping every 20 seconds. This keeps both relay legs active when browser
-   timers are throttled. At most every 30 seconds, the gateway will update the session's
-   `lastSeenAt` through a write that is conditional on the session still being active.
-   A failed condition means the session has an outcome, so the gateway sends `status`
-   and closes. Browser heartbeat and manual input now update `lastSeenAt` under the
-   current input generation, with a 15-second write interval. Private keepalive and
-   recorder renewal do not update learner liveness.
+   timers are throttled. Browser heartbeat and manual input update `lastSeenAt` under the
+   current input generation, with a 15-second write interval. Each connection skips
+   liveness calls within that interval after success, but still authorizes every input.
+   Pure transaction contention has bounded retries. Other storage failures fail closed
+   before PTY input. Private keepalive and recorder renewal do not update learner liveness.
 4. The gateway sends `metrics` every five seconds (proposed) with the latest sample,
    cumulative request counters, and the aggregate recovery state. It sends `timeline`
    when a command completes or a monitor signal occurs, and `status` when the session
