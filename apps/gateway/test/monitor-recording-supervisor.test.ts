@@ -298,6 +298,28 @@ test('isolates transient AWS failures but stops on AWS permission failures', asy
   assert.equal(fatalRunners.get(fatalItems[1]!.sessionId)![0]!.closed, true);
 });
 
+for (const error of [
+  Object.assign(new Error('Contention'), { name: 'TransactionConflictException' }),
+  Object.assign(new Error('Cancelled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'TransactionConflict' }],
+  }),
+])
+  test(`isolates exhausted ${error.name} from other session runners`, async () => {
+    const items = [work(), work()];
+    const source = new MemoryWorkSource(items);
+    const runners = new Map<string, ControlledRunner[]>();
+    const events: MonitorRecordingSupervisorEvent[] = [];
+    const controller = new AbortController();
+    const running = supervisor(source, runners, { events }).run(controller.signal);
+    await until(() => runners.size === 2, 'Runners did not start');
+    runners.get(items[0]!.sessionId)![0]!.fail(error);
+    await until(() => events.some((e) => e.type === 'runner_failed'), 'Contention was not isolated');
+    assert.equal(runners.get(items[1]!.sessionId)![0]!.closed, false);
+    controller.abort();
+    await running;
+  });
+
 test('retries lease contention after the bounded cooldown', async () => {
   const item = work();
   const source = new MemoryWorkSource([item]);

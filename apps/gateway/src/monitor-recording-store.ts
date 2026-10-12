@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
 import { GetCommand, TransactWriteCommand, UpdateCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   isMonitorControlSource,
@@ -90,6 +91,7 @@ export interface MonitorRecordingLifecycleStore {
     reason: MonitorRecordingIncompleteReason,
     completedAt: string,
     signal?: AbortSignal,
+    expectedLease?: MonitorRecorderLease,
   ): Promise<void>;
 }
 
@@ -530,7 +532,8 @@ export class DynamoMonitorRecordingStore
             },
           ];
     try {
-      await this.client.send(
+      await sendDynamoWrite(
+        this.client,
         new TransactWriteCommand({ ClientRequestToken: randomUUID(), TransactItems: items }),
         sendOptions(signal),
       );
@@ -615,7 +618,7 @@ export class DynamoMonitorRecordingStore
       ReturnValues: 'ALL_NEW',
     });
     try {
-      const result = await this.client.send(command, sendOptions(signal));
+      const result = await sendDynamoWrite(this.client, command, sendOptions(signal));
       if (!isMonitorRecordingState(result.Attributes?.data, lease.sessionId)) {
         throw new MonitorRecordingStoreError('invalid_store');
       }
@@ -670,7 +673,7 @@ export class DynamoMonitorRecordingStore
       },
     });
     try {
-      await this.client.send(command, sendOptions(signal));
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
       const saved = await this.get(lease.sessionId, signal);
@@ -756,7 +759,7 @@ export class DynamoMonitorRecordingStore
       ],
     });
     try {
-      await this.client.send(command, sendOptions(signal));
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
       if (await this.appendWasCommitted(lease.sessionId, lease.generation, reference, signal)) return;
@@ -921,7 +924,7 @@ export class DynamoMonitorRecordingStore
       ],
     });
     try {
-      await this.client.send(command, sendOptions(signal));
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
       const [saved, publicStatus] = await Promise.all([
@@ -949,12 +952,29 @@ export class DynamoMonitorRecordingStore
     reason: MonitorRecordingIncompleteReason,
     completedAt: string,
     signal?: AbortSignal,
+    expectedLease?: MonitorRecorderLease,
   ): Promise<void> {
-    if (!validSessionId(sessionId) || !validIncompleteReason(reason) || !isMonitorControlTimestamp(completedAt)) {
+    if (
+      !validSessionId(sessionId) ||
+      !validIncompleteReason(reason) ||
+      !isMonitorControlTimestamp(completedAt) ||
+      (expectedLease && (!validLease(expectedLease) || expectedLease.sessionId !== sessionId))
+    ) {
       throw new MonitorRecordingStoreError('invalid_input');
     }
+    expectedLease = expectedLease ? { ...expectedLease } : undefined;
     const current = await this.get(sessionId, signal);
     if (!current) throw new MonitorRecordingStoreError('invalid_state');
+    if (
+      expectedLease &&
+      (!validLease(expectedLease) ||
+        expectedLease.sessionId !== sessionId ||
+        current.recorderId !== expectedLease.recorderId ||
+        current.generation !== expectedLease.generation ||
+        current.leaseExpiresAt === null ||
+        current.leaseExpiresAt <= completedAt)
+    )
+      throw new MonitorRecordingStoreError('stale_lease');
     if (current.status === 'incomplete') {
       const publicRecording = await this.sessionRecordingState(sessionId, signal);
       if (current.reason === reason && publicRecording?.status === 'incomplete' && publicRecording.reason === reason) {
@@ -1037,7 +1057,7 @@ export class DynamoMonitorRecordingStore
       ],
     });
     try {
-      await this.client.send(command, sendOptions(signal));
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
     } catch (error) {
       if (signal?.aborted) throw error;
       const [saved, publicRecording] = await Promise.all([

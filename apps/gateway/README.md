@@ -227,7 +227,10 @@ Monitor sealing stops measurement at the saved cutoff, but publication waits for
 sealing. The final transaction checks both terminal snapshots so concurrent changes cannot
 bypass combined completion. A durable covered drain resumes without reopening the terminal
 source. Shutdown and lease loss cancel both collectors and close their clients. The runner
-does not choose an outcome, cutoff, incomplete reason, or score.
+does not choose an outcome, cutoff, or score. Source loss keeps Monitor collection alive
+until cutoff, then publishes the source's incomplete reason under the same generation.
+Unchanged idle terminal observations do not write before cutoff. Pure DynamoDB contention
+retries the exact write up to four times, without retrying failed conditions.
 
 `DynamoRecordingWorkSource` queries the sparse recording-work index as an eventually
 consistent hint. It uses bounded, strongly consistent batch reads to confirm base

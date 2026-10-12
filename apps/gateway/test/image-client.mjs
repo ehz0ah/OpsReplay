@@ -60,6 +60,10 @@ class RunnerRecordingStore {
     this.sealCount = 0;
   }
 
+  async markIncomplete() {
+    assert.fail('This image test requires a complete recording');
+  }
+
   async get() {
     return structuredClone(this.state);
   }

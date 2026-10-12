@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
 import { GetCommand, QueryCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   encodeTerminalPage,
@@ -164,7 +165,8 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
       return current;
     }
     try {
-      await this.client.send(
+      await sendDynamoWrite(
+        this.client,
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [
@@ -334,7 +336,8 @@ export class DynamoTerminalSealingStore implements TerminalSealingStore {
             SK: `TERMINAL_SEALED_CHUNK#${reference.source}#${String(reference.nextSequence).padStart(6, '0')}`,
           };
     try {
-      await this.client.send(
+      await sendDynamoWrite(
+        this.client,
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [

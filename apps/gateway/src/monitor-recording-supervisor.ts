@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { isDynamoTransactionConflict } from '../../../packages/dynamodb/src/conflict-retry.js';
 import { MonitorChunkStoreError } from './monitor-chunk-store.js';
 import { MonitorClientError } from './monitor-client.js';
 import { MonitorRecorderError } from './monitor-recorder.js';
@@ -78,6 +79,7 @@ function expectedCancellation(error: unknown, signal: AbortSignal): boolean {
 }
 
 const transientAwsNames = new Set([
+  'TransactionConflictException',
   'InternalServerError',
   'ProvisionedThroughputExceededException',
   'RequestLimitExceeded',
@@ -130,7 +132,7 @@ function operationalFailure(error: unknown): boolean {
   if (error instanceof MonitorRecorderError) return ['invalid_stream', 'recording_limit'].includes(error.code);
   if (error instanceof RecordingWorkSourceError) return ['invalid_store', 'unavailable'].includes(error.code);
   if (error instanceof MonitorRecordingRunnerError) return false;
-  if (transientAwsFailure(error)) return true;
+  if (isDynamoTransactionConflict(error) || transientAwsFailure(error)) return true;
   return error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
 }
 
@@ -284,7 +286,7 @@ export class MonitorRecordingSupervisor {
     try {
       const result = await runner.run(signal);
       this.safeReport({ type: 'runner_finished', sessionId: work.sessionId, ...result });
-      if (result.status === 'complete' || result.status === 'not_recordable') {
+      if (result.status === 'complete' || result.status === 'incomplete' || result.status === 'not_recordable') {
         try {
           const retirement = await this.source.retire(work, signal);
           if (retirement === 'not_terminal') retry(work.sessionId);

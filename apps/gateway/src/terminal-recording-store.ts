@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sendDynamoWrite } from '../../../packages/dynamodb/src/conflict-retry.js';
 import { GetCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   advanceTerminalCheckpoint,
@@ -147,7 +148,8 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
     }
     const initial = initialTerminalCheckpoint(snapshot);
     try {
-      await this.client.send(
+      await sendDynamoWrite(
+        this.client,
         new TransactWriteCommand({
           ClientRequestToken: randomUUID(),
           TransactItems: [
@@ -205,7 +207,6 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
     }
     const savedReference = reference === null ? null : structuredClone(reference);
     const snapshot = structuredClone(previous);
-    await this.requireLease(lease, now, signal);
     const items = [
       this.leaseCheck(lease, now),
       {
@@ -236,7 +237,7 @@ export class DynamoTerminalRecordingStore implements TerminalRecordingStateStore
       ],
     });
     try {
-      await this.client.send(command, sendOptions(signal));
+      await sendDynamoWrite(this.client, command, sendOptions(signal));
       return structuredClone(next);
     } catch (error) {
       if (signal?.aborted) throw error;
