@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
-test('lifecycle has separate disabled action bundles, bounded triggers, narrow roles, and no direct Lambda calls', () => {
+test('lifecycle has separate runtime-gated action bundles, bounded triggers, narrow roles, and no direct Lambda calls', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-lifecycle-cdk-'));
   try {
     const template = Template.fromStack(new SessionStartStack(new App({ outdir: directory }), 'TestStart'));
@@ -16,7 +16,9 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
         ([id, value]) => id.startsWith(name) && value.Type === 'AWS::Lambda::Function',
       );
       assert.ok(fn);
-      assert.equal(fn[1].Properties.ReservedConcurrentExecutions, 0);
+      assert.deepEqual(fn[1].Properties.ReservedConcurrentExecutions, {
+        'Fn::If': ['GatewayPathEnabled', name === 'SweepSessions' ? 1 : 4, 0],
+      });
       assert.equal(fn[1].Properties.Runtime, 'nodejs22.x');
       assert.equal(fn[1].Properties.VpcConfig, undefined);
       assert.equal(
@@ -58,7 +60,7 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
     }
     const stream = Object.values(resources).find((value) => value.Type === 'AWS::Lambda::EventSourceMapping');
     assert.ok(stream);
-    assert.equal(stream.Properties.Enabled, false);
+    assert.deepEqual(stream.Properties.Enabled, { 'Fn::If': ['GatewayPathEnabled', true, false] });
     assert.equal(stream.Properties.BatchSize, 25);
     assert.equal(stream.Properties.MaximumRetryAttempts, 3);
     const pattern = JSON.parse(stream.Properties.FilterCriteria.Filters[0].Pattern);
@@ -66,7 +68,7 @@ test('lifecycle has separate disabled action bundles, bounded triggers, narrow r
     for (const [id, value] of Object.entries(resources).filter(
       ([id, value]) => id.startsWith('Lifecycle') && value.Type === 'AWS::Events::Rule',
     ))
-      assert.equal(value.Properties.State, 'DISABLED', id);
+      assert.deepEqual(value.Properties.State, { 'Fn::If': ['GatewayPathEnabled', 'ENABLED', 'DISABLED'] }, id);
     const end = Object.values(resources).find(
       (value) => value.Type === 'AWS::ApiGateway::Method' && value.Properties.OperationName === 'endSession',
     );

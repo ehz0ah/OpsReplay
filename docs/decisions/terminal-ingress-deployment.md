@@ -4,6 +4,11 @@ Status: implemented and tested locally, AWS validation pending
 Date: 11 October 2026
 Owner: Cloud and Gateway contributors
 
+The later [checkpoint activation decision](checkpoint-activation.md) extends
+`EnableGatewayPath` to the complete existing-session runtime and adds a separate
+default-closed StartSession admission gate. The ingress and network boundaries below
+remain unchanged.
+
 ## Context
 
 The Gateway process can relay a browser WebSocket to the private Challenge terminal and

@@ -18,8 +18,8 @@ defines precedence for later refinements. This repository contains design docume
 validation tools, three synthetic draft Challenge manifests, and a
 [runnable local reference image](content/challenges/wrong-upstream-port/README.md).
 The [API](apps/api/README.md) has a session-start Lambda, a separate provisioning-expiry
-Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep both
-session actions disabled. The [monitor](apps/monitor/README.md) measures traffic, checkout
+Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep the
+complete runtime and new-session admission disabled by default. The [monitor](apps/monitor/README.md) measures traffic, checkout
 recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
 a production monitor client, private interactive and recording terminal clients, an authenticated terminal
 admission core, a browser terminal relay, a bounded recording controller, durable
@@ -30,20 +30,21 @@ event action, combined private Gateway service, public ALB, terminal-ticket rout
 the checkpoint network, endpoints, cluster, and image repositories. The API also defines
 an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
 verified all three images and ran the private gateway service from its exact digest. The
-complete Gateway path remains disabled and has not run in AWS. The terminal source is
+complete Gateway path remains disabled by default and has not run in AWS. The terminal source is
 process-local. The composed recorder now collects terminal pages and monitor measurements
 under one lease. It copies the exact terminal prefix into sealed retention and requires
 both streams before publishing recording completion. These paths are tested locally,
 not deployed. The lifecycle adds committed readiness, owner end, saved outcomes, learner
 liveness, deadline repair, bounded task coverage, task-independent sealing, and confirmed task cleanup. Its three separate
-Lambda actions and triggers remain disabled. Command receipts, safe interval captures, pinned private manifests, and deterministic
+Lambda actions and triggers are wired behind the default-off complete-runtime switch. Command receipts, safe interval captures, pinned private manifests, and deterministic
 debrief finalisation are now implemented locally. Finalisation commits the result,
 progress, and matching ready-attempt lock release together after confirmed cleanup.
 Bounded resumable playback exports and three separate owner read APIs are implemented
 locally. Finalisation saves the debrief, highlights and progress, and releases the matching
 lock without waiting for playback exports. Pending exports use the existing lifecycle
-work index and transition hints. Playback returns its own pending response. All new read
-Lambdas have zero reserved concurrency. Content publication,
+work index and transition hints. Playback returns its own pending response. Read Lambdas
+gain bounded concurrency only with the complete runtime. New-session admission has a
+separate default-off switch. Content publication,
 environment task definitions, remaining API, and the web application are not implemented.
 No checkpoint image is currently published in AWS,
 and no public route is deployed.

@@ -7,7 +7,7 @@ import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
-test('the stack preserves separate disabled lifecycle, session-status, and terminal-ticket actions', () => {
+test('the stack preserves separate inactive lifecycle, session-status, and terminal-ticket actions', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-cdk-'));
   try {
     const app = new App({ outdir: directory });
@@ -175,8 +175,16 @@ test('the stack preserves separate disabled lifecycle, session-status, and termi
       resources.filter(
         (item) => item.Type === 'AWS::Lambda::Function' && item.Properties?.ReservedConcurrentExecutions === 0,
       ).length,
-      8,
+      1,
     );
+    for (const fn of resources.filter(
+      (item) =>
+        item.Type === 'AWS::Lambda::Function' && typeof item.Properties?.ReservedConcurrentExecutions === 'object',
+    )) {
+      const concurrency = fn.Properties?.ReservedConcurrentExecutions;
+      assert.ok(concurrency && typeof concurrency === 'object');
+      assert.equal((concurrency as { 'Fn::If': unknown[] })['Fn::If'].at(-1), 0);
+    }
     for (const role of resources.filter((item) => item.Type === 'AWS::IAM::Role')) {
       assert.equal(role.Properties?.ManagedPolicyArns, undefined);
     }

@@ -48,6 +48,10 @@ const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
 const terminalTicketApiDeploymentVersion = 6;
+const reconcileSessionConcurrency = 4;
+const sweepSessionsConcurrency = 1;
+const ownerEndConcurrency = 4;
+const resultReadConcurrency = 4;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
 const terminalOriginPortPattern =
@@ -241,9 +245,22 @@ export class SessionStartStack extends Stack {
       type: 'String',
       default: 'false',
       allowedValues: ['false', 'true'],
+      description: 'Enable the complete checkpoint runtime while keeping new-session admission separately gated.',
+    });
+    const sessionAdmissionEnabled = new CfnParameter(this, 'EnableSessionAdmission', {
+      type: 'String',
+      default: 'false',
+      allowedValues: ['false', 'true'],
+      description: 'Permit new session starts only after the complete checkpoint runtime is enabled and verified.',
     });
     const gatewayEnabled = new CfnCondition(this, 'GatewayPathEnabled', {
       expression: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+    });
+    const admissionEnabled = new CfnCondition(this, 'SessionAdmissionEnabled', {
+      expression: Fn.conditionAnd(
+        Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+        Fn.conditionEquals(sessionAdmissionEnabled.valueAsString, 'true'),
+      ),
     });
     const managedIdentity = new CfnCondition(this, 'ManagedCognitoIdentity', {
       expression: Fn.conditionEquals(cognitoIdentityMode.valueAsString, 'managed'),
@@ -292,6 +309,15 @@ export class SessionStartStack extends Stack {
         {
           assert: Fn.conditionNot(Fn.conditionEquals(browserLogoutUrl.valueAsString, '')),
           assertDescription: 'BrowserLogoutUrl is required when EnableGatewayPath is true.',
+        },
+      ],
+    });
+    new CloudFormationRule(this, 'SessionAdmissionRequiresGatewayPath', {
+      ruleCondition: Fn.conditionEquals(sessionAdmissionEnabled.valueAsString, 'true'),
+      assertions: [
+        {
+          assert: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+          assertDescription: 'EnableGatewayPath must be true before EnableSessionAdmission can be true.',
         },
       ],
     });
@@ -681,7 +707,7 @@ export class SessionStartStack extends Stack {
       assumedBy: new ServicePrincipal('scheduler.amazonaws.com'),
     });
     const lifecycleRoles: Role[] = [];
-    const lifecycleFunction = (id: string, bundle: string, timeout: number) => {
+    const lifecycleFunction = (id: string, bundle: string, timeout: number, concurrency: number) => {
       const functionLogs = new LogGroup(this, `${id}Logs`, {
         retention: RetentionDays.ONE_WEEK,
         removalPolicy: RemovalPolicy.DESTROY,
@@ -750,11 +776,16 @@ export class SessionStartStack extends Stack {
         // Sweep can finalise five bounded evidence sets concurrently.
         memorySize: id === 'SweepSessions' ? 1024 : 512,
         timeout: Duration.seconds(timeout),
-        reservedConcurrentExecutions: 0,
+        reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, concurrency, 0) as unknown as number,
       });
     };
-    const reconcileSession = lifecycleFunction('ReconcileSession', 'reconcile-session', 30);
-    const sweepSessions = lifecycleFunction('SweepSessions', 'sweep-sessions', 60);
+    const reconcileSession = lifecycleFunction(
+      'ReconcileSession',
+      'reconcile-session',
+      30,
+      reconcileSessionConcurrency,
+    );
+    const sweepSessions = lifecycleFunction('SweepSessions', 'sweep-sessions', 60, sweepSessionsConcurrency);
     for (const action of [reconcileSession, sweepSessions]) {
       action.addEnvironment('RECORDING_BUCKET_NAME', recordings.bucketName);
       action.addToRolePolicy(
@@ -847,7 +878,7 @@ export class SessionStartStack extends Stack {
       bisectBatchOnFunctionError: true,
       maximumRetryAttempts: 3,
       maximumRecordAgeInSeconds: 3600,
-      enabled: false,
+      enabled: Fn.conditionIf(gatewayEnabled.logicalId, true, false) as unknown as boolean,
       filterCriteria: {
         filters: [
           {
@@ -863,6 +894,8 @@ export class SessionStartStack extends Stack {
       schedule: Schedule.rate(Duration.minutes(1)),
       enabled: false,
     });
+    const lifecycleSweepCfnRule = lifecycleSweepRule.node.defaultChild as CfnRule;
+    lifecycleSweepCfnRule.state = Fn.conditionIf(gatewayEnabled.logicalId, 'ENABLED', 'DISABLED') as unknown as string;
     lifecycleSweepRule.addTarget(
       new LambdaFunction(sweepSessions, { retryAttempts: 0, maxEventAge: Duration.minutes(2) }),
     );
@@ -874,6 +907,12 @@ export class SessionStartStack extends Stack {
         detail: { clusterArn: [clusterArn.valueAsString], lastStatus: ['STOPPED'] },
       },
     });
+    const lifecycleStoppedCfnRule = lifecycleStoppedRule.node.defaultChild as CfnRule;
+    lifecycleStoppedCfnRule.state = Fn.conditionIf(
+      gatewayEnabled.logicalId,
+      'ENABLED',
+      'DISABLED',
+    ) as unknown as string;
     lifecycleStoppedRule.addTarget(
       new LambdaFunction(reconcileSession, { retryAttempts: 2, maxEventAge: Duration.hours(1) }),
     );
@@ -984,8 +1023,11 @@ export class SessionStartStack extends Stack {
       },
       memorySize: 256,
       timeout: Duration.seconds(20),
-      // Admission is incomplete without task launch and cleanup. Do not enable it yet.
-      reservedConcurrentExecutions: 0,
+      reservedConcurrentExecutions: Fn.conditionIf(
+        admissionEnabled.logicalId,
+        startSessionBurstLimit.valueAsNumber,
+        0,
+      ) as unknown as number,
     });
 
     const terminalTicketLogs = new LogGroup(this, 'TerminalTicketLogs', {
@@ -1076,7 +1118,11 @@ export class SessionStartStack extends Stack {
       environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
       memorySize: 256,
       timeout: Duration.seconds(10),
-      reservedConcurrentExecutions: 0,
+      reservedConcurrentExecutions: Fn.conditionIf(
+        gatewayEnabled.logicalId,
+        ownerEndConcurrency,
+        0,
+      ) as unknown as number,
     });
 
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
@@ -1240,7 +1286,11 @@ export class SessionStartStack extends Stack {
         },
         memorySize: memory,
         timeout: Duration.seconds(path === 'debrief' ? 10 : 25),
-        reservedConcurrentExecutions: 0,
+        reservedConcurrentExecutions: Fn.conditionIf(
+          gatewayEnabled.logicalId,
+          resultReadConcurrency,
+          0,
+        ) as unknown as number,
       });
       const resource = new ApiGatewayResource(this, `${id}Resource`, {
         restApiId: terminalApi.ref,
