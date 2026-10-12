@@ -3,8 +3,8 @@
 Status: proposed `/v1` contract, version 0.2. [OpenAPI](../packages/contracts/openapi.json)
 owns REST routes and wire schemas. [Public schemas](../packages/contracts/schemas/public.schema.json)
 also define the terminal gateway frames. This document owns stateful behaviour, the
-gateway protocol, and error semantics. Session-start admission has a local-tested
-Lambda handler. No public endpoint or gateway is connected or deployed.
+gateway protocol, and error semantics. Session-start admission has a locally tested
+Lambda handler and a disabled CDK route. No public API or Gateway is deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
 engine with typed actions. Nothing depended on 0.1. This pre-release revision adds
@@ -21,10 +21,19 @@ gateway frame, requires capture interval timestamps in playback, and defines
 ## Common rules
 
 The REST API is a Regional API Gateway REST API with Lambda handlers. Authenticated
-routes require a Cognito-issued bearer token. The server derives the user ID from the
-verified token, never from a request body. Ownership failures use `404` so the API does
+routes require a Cognito-issued ID token. API Gateway verifies the configured user pool;
+the action wrapper also requires `token_use=id` and the exact configured app-client
+`aud`. The server derives the user ID only from the verified `sub`, never from a request
+body. The browser uses authorization code with PKCE S256 and a public client with no
+secret. Ownership failures use `404` so the API does
 not reveal another learner's session. Missing identity uses `401`. Content outside the
 learner's plan uses `403 ACCESS_DENIED`.
+
+The checkpoint API permits one exact HTTPS browser origin, or one exact localhost HTTP
+origin for local development. Proxy responses, gateway-generated errors, and
+unauthenticated preflight responses return only that configured origin. They do not use a
+wildcard, reflect the request Origin, or enable credentialed CORS. The bearer token is sent
+in the `Authorization` header.
 
 Mutations that create, end, or release something carry `requestId` as a UUID. A request
 ID identifies one logical request, not a transport attempt. Clients keep it until the
@@ -110,7 +119,8 @@ the Free plan. Entry HTML is rendered and sanitised at build time.
 The current implementation covers admission, launch, committed readiness, outcomes,
 learner liveness, deadline repair, bounded drain, and confirmed cleanup. It is tested
 locally through DynamoDB Local and fake ECS and Scheduler ports. New lifecycle actions
-and triggers remain disabled. No public route is deployed. Shared lifecycle routines
+and triggers remain disabled. The authenticated route is defined, but StartSession still
+has zero reserved concurrency. Shared lifecycle routines
 are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
 now has local debrief/finalisation code, bounded playback exports, and separate owner
 read routes. These routes remain disabled. An approved AWS checkpoint is still required.
@@ -208,9 +218,9 @@ a computed outcome. Responses use `Cache-Control: no-store`. Invalid requests re
 The Lambda uses bounded DynamoDB requests and reserves one second for its response.
 Its CDK route shares the existing Cognito API, but has a separate read-only role,
 bundle, log group, timeout, and configurable concurrency and method-throttling limits.
-The routes remain absent, and the function has zero reserved concurrency, while
-`EnableGatewayPath=false`. Readiness writers are locally implemented. CORS and AWS
-validation remain separate.
+The routes are absent, and the function has zero reserved concurrency, while
+`EnableGatewayPath=false`. Readiness writers are locally implemented. CORS is defined for
+one exact origin; managed Cognito and CORS behaviour still require AWS validation.
 
 The client polls `GET /v1/sessions/{id}` with capped backoff and jitter until the status
 leaves `provisioning`. After `429 LIMIT_EXCEEDED`, it retries with capped exponential

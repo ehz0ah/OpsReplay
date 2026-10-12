@@ -104,18 +104,29 @@ transaction. Never-ready attempts have no debrief.
 See the [lifecycle decision](../../docs/decisions/session-lifecycle.md) for authority,
 recovery replay, heartbeat rules, failure handling, and activation limits.
 
-The deployed handler has no development identity or local endpoint switch. A future
-API Gateway route must require a Cognito authorizer and restrict Lambda invocation to
-that route. Tests construct the authorizer context directly.
+The deployed handlers have no development identity or local endpoint switch. API
+Gateway defines Cognito-authorized methods for start, status, terminal-ticket, owner
+end, debrief, timeline, and playback actions. Each action has an exact route invocation
+permission. Tests construct the authorizer context directly.
 
-The terminal-ticket action has no deployed AWS route. The definition depends on an ACM
-certificate, public terminal URL, exact web origin, and existing Cognito user pool at
-activation. DNS, Cognito creation, and browser CORS remain separate work.
-The owner end route and lifecycle actions are defined but remain disabled.
-The start and expiry Lambda definitions have zero reserved concurrency, and the start
-Lambda has no trigger. The recording-work action, session-status and terminal-ticket routes, and combined
-Gateway service are also inactive by default. Do not enable the flow until its AWS
-integration checks pass.
+The stack can create one retained Cognito user pool, public authorization-code client,
+and AWS-managed login domain, or it can use an explicitly supplied existing pool,
+client, and AWS-managed login hostname. The browser client has no secret and must use
+PKCE S256. API Gateway validates the pool token; the action entry wrapper additionally
+accepts only ID tokens for the configured app-client audience and derives ownership
+only from the verified `sub`.
+
+Every API proxy response and gateway-generated error allows one configured exact web
+origin. Unauthenticated `OPTIONS` methods advertise only the methods and headers for
+their route. The configuration rejects wildcard and non-origin values and does not
+enable credentialed CORS or reflect request origins.
+
+All routes and lifecycle actions remain inactive by default. The start Lambda has an
+authenticated route definition but retains zero reserved concurrency, so this PR does
+not admit sessions. The recording-work action and combined Gateway service are also
+inactive. Terminal access still depends on the approved ACM certificate, public WSS
+URL, network inputs, and Gateway image. Do not enable the flow until its AWS integration
+checks pass.
 Do not seed the draft repository Challenge as published content.
 
 The separate [debrief](src/get-debrief/index.ts), [timeline](src/list-timeline/index.ts),

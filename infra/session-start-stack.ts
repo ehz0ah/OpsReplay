@@ -21,6 +21,7 @@ import {
   CfnRestApi,
   CfnStage,
 } from 'aws-cdk-lib/aws-apigateway';
+import { CfnUserPool, CfnUserPoolClient, CfnUserPoolDomain } from 'aws-cdk-lib/aws-cognito';
 import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { CfnSecurityGroup, CfnSecurityGroupEgress, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
@@ -46,13 +47,17 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 5;
+const terminalTicketApiDeploymentVersion = 6;
 const terminalOriginHostPattern =
   '(?:localhost|[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)';
 const terminalOriginPortPattern =
   '(?::(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?';
 const terminalOriginPattern = `https?://${terminalOriginHostPattern}${terminalOriginPortPattern}`;
 const terminalAllowedOriginsPattern = `^(?:${terminalOriginPattern}(?:,${terminalOriginPattern}){0,15})?$`;
+const publicApiOriginPattern = `^(?:https://${terminalOriginHostPattern}${terminalOriginPortPattern}|http://localhost${terminalOriginPortPattern})$`;
+const browserRedirectPattern = `(?:https://${terminalOriginHostPattern}${terminalOriginPortPattern}|http://localhost${terminalOriginPortPattern})(?:/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?`;
+const cognitoLoginHostnamePattern =
+  '^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\\.auth\\.[a-z0-9-]+\\.amazoncognito\\.com$';
 
 export class SessionStartStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -148,6 +153,20 @@ export class SessionStartStack extends Stack {
       maxValue: 256,
       description: 'Sustained session-status requests per second.',
     });
+    const startSessionBurstLimit = new CfnParameter(this, 'StartSessionBurstLimit', {
+      type: 'Number',
+      default: 8,
+      minValue: 1,
+      maxValue: 64,
+      description: 'Session-start API burst limit. Lambda admission remains disabled until runtime activation.',
+    });
+    const startSessionRateLimit = new CfnParameter(this, 'StartSessionRateLimit', {
+      type: 'Number',
+      default: 4,
+      minValue: 1,
+      maxValue: 64,
+      description: 'Sustained session-start requests per second.',
+    });
     const terminalCertificateArn = new CfnParameter(this, 'TerminalCertificateArn', {
       type: 'String',
       default: '',
@@ -171,6 +190,53 @@ export class SessionStartStack extends Stack {
       default: '',
       allowedPattern: '(|arn:aws[a-z-]*:cognito-idp:[a-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+)',
     });
+    const cognitoIdentityMode = new CfnParameter(this, 'CognitoIdentityMode', {
+      type: 'String',
+      default: 'external',
+      allowedValues: ['external', 'managed'],
+      description: 'Use an existing user pool and client, or create checkpoint-owned Cognito resources.',
+    });
+    const cognitoUserPoolClientId = new CfnParameter(this, 'CognitoUserPoolClientId', {
+      type: 'String',
+      default: '',
+      allowedPattern: '^(?:|[A-Za-z0-9]{1,128})$',
+    });
+    const cognitoLoginHostname = new CfnParameter(this, 'CognitoLoginHostname', {
+      type: 'String',
+      default: '',
+      maxLength: 253,
+      allowedPattern: `^(?:|${cognitoLoginHostnamePattern.slice(1, -1)})$`,
+      description: 'Existing AWS-managed Cognito login hostname, without scheme or path.',
+    });
+    const cognitoDomainPrefix = new CfnParameter(this, 'CognitoDomainPrefix', {
+      type: 'String',
+      default: '',
+      minLength: 0,
+      maxLength: 63,
+      allowedPattern: '^(?:|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)$',
+      description: 'Unique AWS-managed Cognito domain prefix when CognitoIdentityMode is managed.',
+    });
+    const publicApiAllowedOrigin = new CfnParameter(this, 'PublicApiAllowedOrigin', {
+      type: 'String',
+      default: '',
+      maxLength: 300,
+      allowedPattern: `^(?:|${publicApiOriginPattern.slice(1, -1)})$`,
+      description: 'One exact browser origin allowed to read the public API.',
+    });
+    const browserCallbackUrl = new CfnParameter(this, 'BrowserCallbackUrl', {
+      type: 'String',
+      default: '',
+      maxLength: 1024,
+      allowedPattern: `^(?:|${browserRedirectPattern})$`,
+      description: 'Exact authorization-code callback URL for the browser client.',
+    });
+    const browserLogoutUrl = new CfnParameter(this, 'BrowserLogoutUrl', {
+      type: 'String',
+      default: '',
+      maxLength: 1024,
+      allowedPattern: `^(?:|${browserRedirectPattern})$`,
+      description: 'Exact post-logout URL for the browser client.',
+    });
     const gatewayPathEnabled = new CfnParameter(this, 'EnableGatewayPath', {
       type: 'String',
       default: 'false',
@@ -178,6 +244,15 @@ export class SessionStartStack extends Stack {
     });
     const gatewayEnabled = new CfnCondition(this, 'GatewayPathEnabled', {
       expression: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+    });
+    const managedIdentity = new CfnCondition(this, 'ManagedCognitoIdentity', {
+      expression: Fn.conditionEquals(cognitoIdentityMode.valueAsString, 'managed'),
+    });
+    const externalIdentityEnabled = new CfnCondition(this, 'ExternalCognitoIdentityEnabled', {
+      expression: Fn.conditionAnd(
+        Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+        Fn.conditionEquals(cognitoIdentityMode.valueAsString, 'external'),
+      ),
     });
     new CloudFormationRule(this, 'EnvironmentSecurityGroupsIncludeMonitor', {
       assertions: [
@@ -207,11 +282,115 @@ export class SessionStartStack extends Stack {
           assertDescription: 'TerminalGatewayUrl is required when EnableGatewayPath is true.',
         },
         {
-          assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolArn.valueAsString, '')),
-          assertDescription: 'CognitoUserPoolArn is required when EnableGatewayPath is true.',
+          assert: Fn.conditionNot(Fn.conditionEquals(publicApiAllowedOrigin.valueAsString, '')),
+          assertDescription: 'PublicApiAllowedOrigin is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(browserCallbackUrl.valueAsString, '')),
+          assertDescription: 'BrowserCallbackUrl is required when EnableGatewayPath is true.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(browserLogoutUrl.valueAsString, '')),
+          assertDescription: 'BrowserLogoutUrl is required when EnableGatewayPath is true.',
         },
       ],
     });
+    new CloudFormationRule(this, 'ExternalCognitoConfigurationRequired', {
+      ruleCondition: Fn.conditionAnd(
+        Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+        Fn.conditionEquals(cognitoIdentityMode.valueAsString, 'external'),
+      ),
+      assertions: [
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolArn.valueAsString, '')),
+          assertDescription: 'CognitoUserPoolArn is required for external Cognito identity.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolClientId.valueAsString, '')),
+          assertDescription: 'CognitoUserPoolClientId is required for external Cognito identity.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(cognitoLoginHostname.valueAsString, '')),
+          assertDescription: 'CognitoLoginHostname is required for external Cognito identity.',
+        },
+        {
+          assert: Fn.conditionEquals(cognitoDomainPrefix.valueAsString, ''),
+          assertDescription: 'CognitoDomainPrefix is valid only for managed Cognito identity.',
+        },
+      ],
+    });
+    new CloudFormationRule(this, 'ManagedCognitoConfigurationRequired', {
+      ruleCondition: Fn.conditionEquals(cognitoIdentityMode.valueAsString, 'managed'),
+      assertions: [
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(cognitoDomainPrefix.valueAsString, '')),
+          assertDescription: 'CognitoDomainPrefix is required for managed Cognito identity.',
+        },
+        {
+          assert: Fn.conditionEquals(cognitoUserPoolArn.valueAsString, ''),
+          assertDescription: 'CognitoUserPoolArn must be empty for managed Cognito identity.',
+        },
+        {
+          assert: Fn.conditionEquals(cognitoUserPoolClientId.valueAsString, ''),
+          assertDescription: 'CognitoUserPoolClientId must be empty for managed Cognito identity.',
+        },
+        {
+          assert: Fn.conditionEquals(cognitoLoginHostname.valueAsString, ''),
+          assertDescription: 'CognitoLoginHostname must be empty for managed Cognito identity.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(browserCallbackUrl.valueAsString, '')),
+          assertDescription: 'BrowserCallbackUrl is required for managed Cognito identity.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(browserLogoutUrl.valueAsString, '')),
+          assertDescription: 'BrowserLogoutUrl is required for managed Cognito identity.',
+        },
+      ],
+    });
+    const managedUserPool = new CfnUserPool(this, 'CheckpointUserPool', {
+      userPoolName: 'opsreplay-checkpoint',
+      adminCreateUserConfig: { allowAdminCreateUserOnly: true },
+      autoVerifiedAttributes: ['email'],
+      usernameAttributes: ['email'],
+      usernameConfiguration: { caseSensitive: false },
+      accountRecoverySetting: { recoveryMechanisms: [{ name: 'verified_email', priority: 1 }] },
+    });
+    managedUserPool.cfnOptions.condition = managedIdentity;
+    managedUserPool.applyRemovalPolicy(RemovalPolicy.RETAIN);
+    const managedUserPoolClient = new CfnUserPoolClient(this, 'CheckpointUserPoolClient', {
+      userPoolId: managedUserPool.ref,
+      clientName: 'opsreplay-browser',
+      generateSecret: false,
+      allowedOAuthFlowsUserPoolClient: true,
+      allowedOAuthFlows: ['code'],
+      allowedOAuthScopes: ['openid', 'email', 'profile'],
+      callbackUrLs: [browserCallbackUrl.valueAsString],
+      logoutUrLs: [browserLogoutUrl.valueAsString],
+      supportedIdentityProviders: ['COGNITO'],
+      enableTokenRevocation: true,
+      preventUserExistenceErrors: 'ENABLED',
+    });
+    managedUserPoolClient.cfnOptions.condition = managedIdentity;
+    const managedUserPoolDomain = new CfnUserPoolDomain(this, 'CheckpointUserPoolDomain', {
+      domain: cognitoDomainPrefix.valueAsString,
+      userPoolId: managedUserPool.ref,
+    });
+    managedUserPoolDomain.cfnOptions.condition = managedIdentity;
+    const effectiveUserPoolArn = Fn.conditionIf(
+      managedIdentity.logicalId,
+      managedUserPool.attrArn,
+      cognitoUserPoolArn.valueAsString,
+    ).toString();
+    const effectiveUserPoolClientId = Fn.conditionIf(
+      managedIdentity.logicalId,
+      managedUserPoolClient.ref,
+      cognitoUserPoolClientId.valueAsString,
+    ).toString();
+    const publicApiEnvironment = {
+      PUBLIC_API_ALLOWED_ORIGIN: publicApiAllowedOrigin.valueAsString,
+      COGNITO_USER_POOL_CLIENT_ID: effectiveUserPoolClientId,
+    };
     const table = new Table(this, 'Sessions', {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
@@ -783,13 +962,14 @@ export class SessionStartStack extends Stack {
         }),
       );
     }
-    new Function(this, 'StartSession', {
+    const startSession = new Function(this, 'StartSession', {
       runtime: Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: Code.fromAsset(fileURLToPath(new URL('../dist/start-session/', import.meta.url))),
       role,
       logGroup: logs,
       environment: {
+        ...publicApiEnvironment,
         SESSION_TABLE_NAME: table.tableName,
         ECS_CLUSTER_ARN: clusterArn.valueAsString,
         ECS_SUBNET_IDS: Fn.join(',', subnetIds.valueAsList),
@@ -829,6 +1009,7 @@ export class SessionStartStack extends Stack {
       role: terminalTicketRole,
       logGroup: terminalTicketLogs,
       environment: {
+        ...publicApiEnvironment,
         SESSION_TABLE_NAME: table.tableName,
         TERMINAL_GATEWAY_URL: terminalGatewayUrl.valueAsString,
       },
@@ -862,7 +1043,7 @@ export class SessionStartStack extends Stack {
       code: Code.fromAsset(fileURLToPath(new URL('../dist/get-session/', import.meta.url))),
       role: sessionStatusRole,
       logGroup: sessionStatusLogs,
-      environment: { SESSION_TABLE_NAME: table.tableName },
+      environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
       memorySize: 256,
       timeout: Duration.seconds(10),
       reservedConcurrentExecutions: Fn.conditionIf(
@@ -891,7 +1072,7 @@ export class SessionStartStack extends Stack {
       code: Code.fromAsset(fileURLToPath(new URL('../dist/end-session/', import.meta.url))),
       role: endRole,
       logGroup: endLogs,
-      environment: { SESSION_TABLE_NAME: table.tableName },
+      environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
       memorySize: 256,
       timeout: Duration.seconds(10),
       reservedConcurrentExecutions: 0,
@@ -899,7 +1080,7 @@ export class SessionStartStack extends Stack {
 
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
       name: 'opsreplay-terminal-ticket',
-      description: 'Authenticated session-status and terminal-ticket actions for the bounded Gateway path.',
+      description: 'Authenticated session actions for the bounded checkpoint path.',
       endpointConfiguration: { types: ['REGIONAL'] },
     });
     terminalApi.cfnOptions.condition = gatewayEnabled;
@@ -908,7 +1089,7 @@ export class SessionStartStack extends Stack {
       restApiId: terminalApi.ref,
       type: 'COGNITO_USER_POOLS',
       identitySource: 'method.request.header.Authorization',
-      providerArns: [cognitoUserPoolArn.valueAsString],
+      providerArns: [effectiveUserPoolArn],
       authorizerResultTtlInSeconds: 300,
     });
     terminalAuthorizer.cfnOptions.condition = gatewayEnabled;
@@ -924,6 +1105,47 @@ export class SessionStartStack extends Stack {
       pathPart: 'sessions',
     });
     terminalApiSessions.cfnOptions.condition = gatewayEnabled;
+    const startSessionMethod = new CfnMethod(this, 'StartSessionMethod', {
+      restApiId: terminalApi.ref,
+      resourceId: terminalApiSessions.ref,
+      httpMethod: 'POST',
+      authorizationType: 'COGNITO_USER_POOLS',
+      authorizerId: terminalAuthorizer.ref,
+      apiKeyRequired: false,
+      operationName: 'startSession',
+      integration: {
+        type: 'AWS_PROXY',
+        integrationHttpMethod: 'POST',
+        timeoutInMillis: 21_000,
+        uri: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':apigateway:',
+          Aws.REGION,
+          ':lambda:path/2015-03-31/functions/',
+          startSession.functionArn,
+          '/invocations',
+        ]),
+      },
+    });
+    startSessionMethod.cfnOptions.condition = gatewayEnabled;
+    const startSessionPermission = new CfnPermission(this, 'StartSessionApiPermission', {
+      action: 'lambda:InvokeFunction',
+      functionName: startSession.functionArn,
+      principal: 'apigateway.amazonaws.com',
+      sourceArn: Fn.join('', [
+        'arn:',
+        Aws.PARTITION,
+        ':execute-api:',
+        Aws.REGION,
+        ':',
+        Aws.ACCOUNT_ID,
+        ':',
+        terminalApi.ref,
+        '/*/POST/v1/sessions',
+      ]),
+    });
+    startSessionPermission.cfnOptions.condition = gatewayEnabled;
     const terminalApiSession = new ApiGatewayResource(this, 'TerminalTicketApiSession', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSessions.ref,
@@ -972,6 +1194,7 @@ export class SessionStartStack extends Stack {
     });
     getSessionPermission.cfnOptions.condition = gatewayEnabled;
     const resultMethods: CfnMethod[] = [];
+    const resultCorsResources: { id: string; resource: ApiGatewayResource }[] = [];
     for (const [id, action, path, memory] of [
       ['GetDebrief', 'get-debrief', 'debrief', 256],
       ['ListTimeline', 'list-timeline', 'timeline', 512],
@@ -1010,6 +1233,7 @@ export class SessionStartStack extends Stack {
         role,
         logGroup: logs,
         environment: {
+          ...publicApiEnvironment,
           SESSION_TABLE_NAME: table.tableName,
           ...(path === 'debrief' ? {} : { RECORDING_BUCKET_NAME: recordings.bucketName }),
         },
@@ -1023,6 +1247,7 @@ export class SessionStartStack extends Stack {
         pathPart: path,
       });
       resource.cfnOptions.condition = gatewayEnabled;
+      resultCorsResources.push({ id, resource });
       const method = new CfnMethod(this, `${id}Method`, {
         restApiId: terminalApi.ref,
         resourceId: resource.ref,
@@ -1160,6 +1385,46 @@ export class SessionStartStack extends Stack {
       ]),
     });
     terminalTicketPermission.cfnOptions.condition = gatewayEnabled;
+    const corsPreflight = (id: string, resource: ApiGatewayResource, methods: string[]) => {
+      const responseParameters = {
+        'method.response.header.Access-Control-Allow-Headers': "'Authorization,Content-Type'",
+        'method.response.header.Access-Control-Allow-Methods': `'${methods.join(',')}'`,
+        'method.response.header.Access-Control-Allow-Origin': Fn.join('', [
+          "'",
+          publicApiAllowedOrigin.valueAsString,
+          "'",
+        ]),
+        'method.response.header.Cache-Control': "'no-store'",
+        'method.response.header.Vary': "'Origin'",
+      };
+      const method = new CfnMethod(this, `${id}OptionsMethod`, {
+        restApiId: terminalApi.ref,
+        resourceId: resource.ref,
+        httpMethod: 'OPTIONS',
+        authorizationType: 'NONE',
+        apiKeyRequired: false,
+        integration: {
+          type: 'MOCK',
+          requestTemplates: { 'application/json': '{"statusCode":204}' },
+          integrationResponses: [{ statusCode: '204', responseParameters }],
+        },
+        methodResponses: [
+          {
+            statusCode: '204',
+            responseParameters: Object.fromEntries(Object.keys(responseParameters).map((key) => [key, true])),
+          },
+        ],
+      });
+      method.cfnOptions.condition = gatewayEnabled;
+      return method;
+    };
+    const corsMethods = [
+      corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
+      corsPreflight('Session', terminalApiSession, ['GET', 'OPTIONS']),
+      corsPreflight('SessionEnd', endResource, ['OPTIONS', 'POST']),
+      corsPreflight('TerminalTickets', terminalApiTickets, ['OPTIONS', 'POST']),
+      ...resultCorsResources.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
+    ];
     const terminalTicketGatewayResponse = (
       id: string,
       responseType: string,
@@ -1172,8 +1437,14 @@ export class SessionStartStack extends Stack {
         responseType,
         statusCode,
         responseParameters: {
+          'gatewayresponse.header.Access-Control-Allow-Origin': Fn.join('', [
+            "'",
+            publicApiAllowedOrigin.valueAsString,
+            "'",
+          ]),
           'gatewayresponse.header.Cache-Control': "'no-store'",
           'gatewayresponse.header.Content-Type': "'application/json'",
+          'gatewayresponse.header.Vary': "'Origin'",
         },
         responseTemplates: {
           'application/json': JSON.stringify({ code, message, requestId: '$context.requestId' }),
@@ -1225,14 +1496,16 @@ export class SessionStartStack extends Stack {
       `TerminalTicketApiDeploymentV${terminalTicketApiDeploymentVersion}`,
       {
         restApiId: terminalApi.ref,
-        description: `Session-status and terminal-ticket routes version ${terminalTicketApiDeploymentVersion}.`,
+        description: `Authenticated session routes version ${terminalTicketApiDeploymentVersion}.`,
       },
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
+    terminalTicketDeployment.addResourceDependency(startSessionMethod);
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
     terminalTicketDeployment.addResourceDependency(endMethod);
     for (const method of resultMethods) terminalTicketDeployment.addResourceDependency(method);
+    for (const method of corsMethods) terminalTicketDeployment.addResourceDependency(method);
     for (const response of terminalTicketGatewayResponses) {
       terminalTicketDeployment.addResourceDependency(response);
     }
@@ -1241,6 +1514,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1sessions',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: startSessionBurstLimit.valueAsNumber,
+          throttlingRateLimit: startSessionRateLimit.valueAsNumber,
+        },
         ...['debrief', 'timeline', 'playback'].map((path) => ({
           httpMethod: 'GET',
           resourcePath: `/~1v1~1sessions~1{id}~1${path}`,
@@ -1645,6 +1927,32 @@ export class SessionStartStack extends Stack {
       ]),
       condition: gatewayEnabled,
     });
+    for (const [id, value] of [
+      ['PublicApiAllowedOrigin', publicApiAllowedOrigin.valueAsString],
+      ['BrowserCallbackUrl', browserCallbackUrl.valueAsString],
+      ['BrowserLogoutUrl', browserLogoutUrl.valueAsString],
+    ] as const) {
+      const output = new CfnOutput(this, `${id}Output`, { value, condition: gatewayEnabled });
+      output.overrideLogicalId(id);
+    }
+    for (const [id, value, condition] of [
+      ['ManagedCognitoUserPoolId', managedUserPool.ref, managedIdentity],
+      ['ManagedCognitoUserPoolClientId', managedUserPoolClient.ref, managedIdentity],
+      [
+        'ManagedCognitoLoginHostname',
+        Fn.join('', [cognitoDomainPrefix.valueAsString, '.auth.', Aws.REGION, '.amazoncognito.com']),
+        managedIdentity,
+      ],
+      [
+        'ExternalCognitoUserPoolId',
+        Fn.select(1, Fn.split('/', cognitoUserPoolArn.valueAsString)),
+        externalIdentityEnabled,
+      ],
+      ['ExternalCognitoUserPoolClientId', cognitoUserPoolClientId.valueAsString, externalIdentityEnabled],
+      ['ExternalCognitoLoginHostname', cognitoLoginHostname.valueAsString, externalIdentityEnabled],
+    ] as const) {
+      new CfnOutput(this, id, { value, condition });
+    }
     new CfnOutput(this, 'EnvironmentMonitorSecurityGroup', {
       value: environmentMonitorSecurityGroupId.valueAsString,
     });

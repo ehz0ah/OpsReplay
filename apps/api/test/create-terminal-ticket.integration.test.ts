@@ -400,9 +400,13 @@ test('configuration, generation, deadlines, and storage failures fail closed', a
 test('the bundled Lambda validates identity before AWS access', async () => {
   const previousTable = process.env.SESSION_TABLE_NAME;
   const previousGateway = process.env.TERMINAL_GATEWAY_URL;
+  const previousOrigin = process.env.PUBLIC_API_ALLOWED_ORIGIN;
+  const previousClient = process.env.COGNITO_USER_POOL_CLIENT_ID;
   try {
     process.env.SESSION_TABLE_NAME = 'test-unused';
     process.env.TERMINAL_GATEWAY_URL = gatewayUrl;
+    process.env.PUBLIC_API_ALLOWED_ORIGIN = 'https://app.opsreplay.test';
+    process.env.COGNITO_USER_POOL_CLIENT_ID = 'client123';
     const bundled = createRequire(import.meta.url)('../../../dist/create-terminal-ticket/index.cjs');
     const result = await bundled.handler(event(randomUUID(), null), context);
     assert.equal(result.statusCode, 401);
@@ -411,5 +415,9 @@ test('the bundled Lambda validates identity before AWS access', async () => {
     else process.env.SESSION_TABLE_NAME = previousTable;
     if (previousGateway === undefined) delete process.env.TERMINAL_GATEWAY_URL;
     else process.env.TERMINAL_GATEWAY_URL = previousGateway;
+    if (previousOrigin === undefined) delete process.env.PUBLIC_API_ALLOWED_ORIGIN;
+    else process.env.PUBLIC_API_ALLOWED_ORIGIN = previousOrigin;
+    if (previousClient === undefined) delete process.env.COGNITO_USER_POOL_CLIENT_ID;
+    else process.env.COGNITO_USER_POOL_CLIENT_ID = previousClient;
   }
 });
