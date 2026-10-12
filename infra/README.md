@@ -52,7 +52,7 @@ per-session bootstrap file through the bucket policy.
 
 [SessionStartStack](session-start-stack.ts) defines an on-demand DynamoDB table with the
 keys-only `unfinished-work` index and ticket TTL, separate start, provisioning-expiry,
-recording-work, session-status, and terminal-ticket Lambdas, an EventBridge Scheduler group, a private S3
+recording-work, session-status, terminal-ticket, and hint-release Lambdas, an EventBridge Scheduler group, a private S3
 secret-file bucket, a separate private recording bucket, failure alarms, and narrow
 roles.
 The start action can read and update session records, create its two named callbacks,
@@ -63,18 +63,19 @@ The Scheduler role can invoke the expiry action. Both functions stay outside the
 
 The stack also defines an ECS task-state rule, encrypted dead-letter queue, combined
 Gateway task and service, TLS ALB listener, WAF rate limit, target health check, and the
-authenticated session-status and terminal-ticket API routes. It does not create the ECS
-cluster, VPC, VPC endpoints, ECR repositories, certificate, DNS record, or web app. It
-uses an existing Cognito user pool and client by default. The explicit managed mode
-instead creates a retained checkpoint user pool, public client, and AWS-managed login
-domain.
+authenticated session-status, terminal-ticket, and hint-release API routes. It does not
+create the ECS cluster, VPC, VPC endpoints, ECR repositories, certificate, DNS record,
+or web app. It uses an existing Cognito user pool and client by default. The explicit
+managed mode instead creates a retained checkpoint user pool, public client, and
+AWS-managed login domain.
 
 `EnableGatewayPath` defaults to `false`. In this state all runtime actions have zero
 reserved concurrency, all runtime event paths are disabled, and the ALB, WAF, shared
 session API, Gateway task, and Gateway service are omitted. Enabling it activates the
 recording publisher, filtered lifecycle stream, minute sweep, RUNNING and STOPPED task
 events, reconciliation, owner end, result reads, status, terminal tickets, and one
-Gateway service with the configured desired count. ExpireProvisioning stays disabled
+Gateway service with the configured desired count. It also enables authored hint release
+for existing sessions. ExpireProvisioning stays disabled
 because current schedules target ReconcileSession.
 
 `EnableSessionAdmission` also defaults to `false` and cannot be true unless

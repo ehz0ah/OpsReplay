@@ -242,6 +242,7 @@ test('active, pending and never-ready debrief states are explicit', async () => 
       readyAt: null,
       endsAt: null,
       recovery: null,
+      hints: { ...f.session.view.hints, nextAvailableAt: null },
       recording: { status: 'incomplete', reason: 'task_lost' },
     },
   });
@@ -289,6 +290,50 @@ test('final timeline cursors reject a changed result snapshot', async () => {
   const response = await f.call('timeline', { cursor });
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).code, 'INVALID_CURSOR');
+});
+
+test('a delayed recovery cutoff does not remove an assistance action that already occurred', async () => {
+  const f = await fixture();
+  const assistance = { hintsReleased: 1, assistantTurns: 0, proposalsRun: 0 };
+  const releasedAt = '2026-10-12T00:01:10.000Z';
+  const session = await f.store.owned(f.id, f.session.ownerId, AbortSignal.timeout(1000));
+  await Promise.all([
+    f.put('STATE', {
+      ...session,
+      view: {
+        ...session.view,
+        hints: {
+          released: [{ id: 'read-proxy-error', text: 'Inspect the proxy error log.', releasedAt }],
+          remaining: 1,
+          nextAvailableAt: '2026-10-12T00:06:00.000Z',
+        },
+        assistance,
+      },
+    }),
+    f.put('DEBRIEF', { ...f.debrief, assisted: true, assistance }),
+    f.put('EVENT#1791763270000#hint#late', {
+      id: 'hint:late',
+      at: releasedAt,
+      kind: 'assistance',
+      action: 'hint_released',
+      refId: 'read-proxy-error',
+    }),
+    f.put('EVENT#1791764460000#hint#after-deadline', {
+      id: 'hint:after-deadline',
+      at: '2026-10-12T00:21:00.000Z',
+      kind: 'assistance',
+      action: 'hint_released',
+      refId: 'invalid-late-hint',
+    }),
+  ]);
+  const response = await f.call('timeline');
+  assert.equal(response.statusCode, 200, response.body);
+  const page = JSON.parse(response.body);
+  assert.ok(page.items.some((item: { id: string; at: string }) => item.id === 'hint:late' && item.at > playbackEnd));
+  assert.equal(
+    page.items.some((item: { id: string }) => item.id === 'hint:after-deadline'),
+    false,
+  );
 });
 
 test('expired recording creates no links, while the saved debrief and grant remain readable', async () => {

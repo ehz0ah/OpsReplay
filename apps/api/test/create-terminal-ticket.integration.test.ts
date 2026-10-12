@@ -56,6 +56,7 @@ function withStatus(id: string, status: SessionView['status']): SessionRecord {
     session.taskAddress = '10.0.1.42';
     session.view.readyAt = '2026-10-10T07:59:00.000Z';
     session.view.endsAt = '2026-10-10T08:19:00.000Z';
+    session.view.hints.nextAvailableAt = '2026-10-10T08:02:00.000Z';
     session.view.recording.status = status === 'ready' ? 'recording' : 'draining';
   }
   session.view.status = status;

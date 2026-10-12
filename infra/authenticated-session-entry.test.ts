@@ -88,11 +88,11 @@ test('authenticated session entry has one exact browser policy and optional mana
     ]);
 
     const methods = ofType('AWS::ApiGateway::Method');
-    assert.equal(methods.length, 14);
+    assert.equal(methods.length, 16);
     const actions = methods.filter(([, value]) => value.Properties?.HttpMethod !== 'OPTIONS');
     const options = methods.filter(([, value]) => value.Properties?.HttpMethod === 'OPTIONS');
-    assert.equal(actions.length, 7);
-    assert.equal(options.length, 7);
+    assert.equal(actions.length, 8);
+    assert.equal(options.length, 8);
     for (const [, method] of actions) {
       assert.equal(method.Condition, 'GatewayPathEnabled');
       assert.equal(method.Properties?.AuthorizationType, 'COGNITO_USER_POOLS');
@@ -133,14 +133,22 @@ test('authenticated session entry has one exact browser policy and optional mana
     const permissions = ofType('AWS::Lambda::Permission').filter(
       ([, value]) => value.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(permissions.length, 7);
+    assert.equal(permissions.length, 8);
     const startPermission = permissions.find(([, value]) =>
       JSON.stringify(value.Properties?.SourceArn).includes('/*/POST/v1/sessions'),
     );
     assert.ok(startPermission);
     assert.equal(startPermission[1].Condition, 'GatewayPathEnabled');
 
-    const apiFunctions = ['StartSession', 'GetSession', 'GetDebrief', 'ListTimeline', 'GetPlayback', 'EndSession'];
+    const apiFunctions = [
+      'StartSession',
+      'GetSession',
+      'GetDebrief',
+      'ListTimeline',
+      'GetPlayback',
+      'EndSession',
+      'ReleaseHint',
+    ];
     for (const prefix of apiFunctions) {
       const fn = Object.entries(resources).find(
         ([id, value]) => id.startsWith(prefix) && value.Type === 'AWS::Lambda::Function',
@@ -180,7 +188,7 @@ test('authenticated session entry has one exact browser policy and optional mana
     );
     const [deployment] = ofType('AWS::ApiGateway::Deployment');
     assert.ok(deployment);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV6');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV7');
     const dependencies = [deployment[1].DependsOn].flat();
     for (const [id] of methods) assert.ok(dependencies.includes(id));
 

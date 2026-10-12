@@ -41,6 +41,7 @@ import {
   type TerminalRecordingCheckpoint,
 } from '../../contracts/private/terminal-persistence.js';
 import { recordingRetainUntil } from '../../contracts/private/recording-retention.js';
+import { hintAvailableAt, isHintPlan, type HintPlanItem } from './hints.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
 addFormats(ajv);
@@ -65,12 +66,19 @@ export interface AttemptView {
   endsAt: string | null;
   endedAt: string | null;
   timeLimitSeconds: number;
+  hints: {
+    released: { id: string; text: string; releasedAt: string }[];
+    remaining: number;
+    nextAvailableAt: string | null;
+  };
+  assistance: { hintsReleased: number; assistantTurns: number; proposalsRun: number };
   recording: { status: 'pending' | 'recording' | 'draining' | 'complete' | 'incomplete'; reason: string | null };
   recovery: LifecycleRecovery | null;
 }
 export interface AttemptSnapshot {
   ownerId: string;
   view: AttemptView;
+  hintPlan: HintPlanItem[];
   provisioningDeadline: string;
   taskArn: string | null;
   taskAddress: string | null;
@@ -111,7 +119,7 @@ const same = (a: unknown, b: unknown) =>
 function snapshot(data: unknown, id: string): AttemptSnapshot {
   if (!record(data) || !isTerminalOwnerId(data.ownerId) || !record(data.view) || !validView(data.view))
     throw new AttemptStoreError('invalid_store');
-  const view = data.view;
+  const view = data.view as unknown as AttemptView;
   if (
     view.id !== id ||
     !['provisioning', 'ready', 'resolved', 'failed', 'ended', 'abandoned', 'error'].includes(view.status as string) ||
@@ -136,11 +144,20 @@ function snapshot(data: unknown, id: string): AttemptSnapshot {
     ended: 'learner_ended',
     abandoned: 'heartbeat_missed',
   };
+  const hintPlan = data.hintPlan;
+  if (!isHintPlan(hintPlan)) throw new AttemptStoreError('invalid_store');
+  const released = view.hints.released;
+  const nextHint = hintPlan[released.length];
+  const nextAvailableAt = view.readyAt && nextHint ? hintAvailableAt(view.readyAt, nextHint.minElapsedMinutes) : null;
   if (
     !record(data.accessGrant) ||
     !['free', 'pro'].includes(data.accessGrant.plan as string) ||
     data.accessGrant.admittedAt !== view.createdAt ||
     data.accessGrant.timeLimitSeconds !== view.timeLimitSeconds ||
+    released.length + view.hints.remaining !== hintPlan.length ||
+    released.some((hint, index) => hint.id !== hintPlan[index]?.id) ||
+    view.assistance.hintsReleased !== released.length ||
+    view.hints.nextAvailableAt !== nextAvailableAt ||
     data.provisioningDeadline <= view.createdAt ||
     (data.taskAddress !== null &&
       (typeof data.taskAddress !== 'string' || isIP(data.taskAddress) !== 4 || data.taskArn === null)) ||
@@ -299,6 +316,8 @@ export class DynamoAttemptStore {
         lastMonitorAt: now,
         recovery,
       };
+      const firstHint = session.hintPlan[0];
+      const nextAvailableAt = firstHint ? hintAvailableAt(startedAt, firstHint.minElapsedMinutes) : null;
       const recording = await this.recording(identity.sessionId, signal);
       if (
         !recording ||
@@ -336,7 +355,7 @@ export class DynamoAttemptStore {
                   TableName: this.table,
                   Key: stateKey(identity.sessionId),
                   UpdateExpression:
-                    'SET #data.#view.#status = :ready, #data.#view.#readyAt = :startedAt, #data.#view.#endsAt = :endsAt, #data.#view.#recovery = :recovery',
+                    'SET #data.#view.#status = :ready, #data.#view.#readyAt = :startedAt, #data.#view.#endsAt = :endsAt, #data.#view.#recovery = :recovery, #data.#view.#hints.#nextAvailableAt = :nextAvailableAt',
                   ConditionExpression: '#data = :session',
                   ExpressionAttributeNames: {
                     '#data': 'data',
@@ -345,6 +364,8 @@ export class DynamoAttemptStore {
                     '#readyAt': 'readyAt',
                     '#endsAt': 'endsAt',
                     '#recovery': 'recovery',
+                    '#hints': 'hints',
+                    '#nextAvailableAt': 'nextAvailableAt',
                   },
                   ExpressionAttributeValues: {
                     ':session': session,
@@ -352,6 +373,7 @@ export class DynamoAttemptStore {
                     ':startedAt': startedAt,
                     ':endsAt': new Date(Date.parse(startedAt) + session.view.timeLimitSeconds * 1000).toISOString(),
                     ':recovery': recovery,
+                    ':nextAvailableAt': nextAvailableAt,
                   },
                 },
               },

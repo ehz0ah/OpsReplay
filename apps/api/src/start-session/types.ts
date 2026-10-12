@@ -1,3 +1,5 @@
+import type { HintPlanItem } from '../../../../packages/session/src/hints.js';
+
 export interface StartRequest {
   requestId: string;
   challengeId: string;
@@ -69,7 +71,7 @@ export interface ContentVersion {
   challenge: ChallengeRef;
   alert: Alert;
   dashboard: Metric[];
-  hintCount: number;
+  hintPlan: HintPlanItem[];
   timeLimits: { free: number; pro: number | null };
   pins: { taskDefinitionArn: string; challengeImageDigest: string; monitorImageDigest: string; manifestSha256: string };
 }
@@ -123,6 +125,7 @@ export interface SessionRecord {
   ownerId: string;
   view: SessionView;
   accessGrant: { plan: PlanName; admittedAt: string; timeLimitSeconds: number };
+  hintPlan: HintPlanItem[];
   pins: ContentVersion['pins'];
   launchArguments: EcsLaunchArguments;
   monitorSecret: string;

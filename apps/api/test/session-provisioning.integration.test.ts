@@ -72,6 +72,10 @@ function newSession(): SessionRecord {
       recording: { status: 'pending', reason: null },
     },
     accessGrant: { plan: 'free', admittedAt: '2026-10-06T02:00:00.000Z', timeLimitSeconds: 1200 },
+    hintPlan: [
+      { id: 'read-proxy-error', minElapsedMinutes: 3 },
+      { id: 'compare-listeners', minElapsedMinutes: 6 },
+    ],
     pins: {
       taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
       challengeImageDigest: `sha256:${'a'.repeat(64)}`,
@@ -492,6 +496,7 @@ test('an early or stale expiry event cannot end an active session', async () => 
   readyRecord.view.status = 'ready';
   readyRecord.view.readyAt = '2026-10-06T02:02:00.000Z';
   readyRecord.view.endsAt = '2026-10-06T02:22:00.000Z';
+  readyRecord.view.hints.nextAvailableAt = '2026-10-06T02:05:00.000Z';
   const ready = await fixture(readyRecord);
   const expireReady = createExpireProvisioning({
     store: ready.store,

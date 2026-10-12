@@ -94,7 +94,10 @@ function content(): ContentVersion {
     },
     alert: { title: 'Checkout errors', summary: 'Checkout requests fail.', severity: 'critical' },
     dashboard: [{ id: 'error_rate', label: 'Errors', unit: 'percent' }],
-    hintCount: 2,
+    hintPlan: [
+      { id: 'read-proxy-error', minElapsedMinutes: 3 },
+      { id: 'compare-listeners', minElapsedMinutes: 6 },
+    ],
     timeLimits: { free: 1200, pro: 1800 },
     // Synthetic publication pins for tests only. The repository Challenge remains a draft.
     pins: {

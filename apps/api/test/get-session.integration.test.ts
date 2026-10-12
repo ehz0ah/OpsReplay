@@ -41,6 +41,7 @@ function withStatus(id: string, status: SessionView['status']): SessionRecord {
     session.taskAddress = '10.0.1.42';
     session.view.readyAt = '2026-10-10T07:59:00.000Z';
     session.view.endsAt = '2026-10-10T08:19:00.000Z';
+    session.view.hints.nextAvailableAt = '2026-10-10T08:02:00.000Z';
     session.view.recovery = {
       state: status === 'resolved' ? 'met' : 'failing',
       sustainedSeconds: status === 'resolved' ? 60 : 0,
@@ -147,9 +148,9 @@ test('reads the saved Pro grant after plan expiry or content withdrawal, without
   f.session.accessGrant.plan = 'pro';
   f.session.view.attempt = { kind: 'retry', number: 2 };
   f.session.view.hints = {
-    released: [{ id: 'hint-1', text: 'Inspect proxy logs.', releasedAt: '2026-10-10T07:59:30.000Z' }],
+    released: [{ id: 'read-proxy-error', text: 'Inspect proxy logs.', releasedAt: '2026-10-10T07:59:30.000Z' }],
     remaining: 1,
-    nextAvailableAt: '2026-10-10T08:02:00.000Z',
+    nextAvailableAt: '2026-10-10T08:05:00.000Z',
   };
   f.session.view.assistance = { hintsReleased: 1, assistantTurns: 2, proposalsRun: 1 };
   await f.put(f.session);

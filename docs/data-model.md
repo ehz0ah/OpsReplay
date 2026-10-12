@@ -43,7 +43,7 @@ names are a storage convention, not part of the HTTP contract.
 | `USER#<id>`              | `START#<requestId>`                                        | Session start receipt                                                                     |
 | `USER#<id>`              | `REVIEWREQ#<requestId>`                                    | Review submission receipt                                                                 |
 | `CONTENT#<id>`           | `VERSION#<version>`                                        | Server-only published Challenge admission snapshot                                        |
-| `SESSION#<id>`           | `STATE`                                                    | Private session record                                                                    |
+| `SESSION#<id>`           | `STATE`                                                    | Private session record, admitted hint IDs/delays, and public view                         |
 | `SESSION#<id>`           | `RECORDING`                                                | Lease, cursors, references, and nullable `retainUntil`                                    |
 | `SESSION#<id>`           | `CHUNK#<source>#<generation>#<sequence>`                   | One immutable provisional monitor object reference and its sequence range                 |
 | `SESSION#<id>`           | `TERMINAL_RECORDING`                                       | Terminal source metadata, cursor, last committed event, and encoded event bytes; no lease |

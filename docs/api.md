@@ -288,7 +288,13 @@ private state. See [the lifecycle](challenges.md#lifecycle).
 `POST /v1/sessions/{id}/hints` releases the next authored hint and records an
 assistance event. It returns `409 HINT_NOT_AVAILABLE` with `retryAfterSeconds` before
 the hint's delay has passed, and `422 NO_HINTS_REMAINING` after the last hint. The same
-request ID returns the same hint. Hints are released in authored order.
+request ID returns the same saved response, even after the session ends or the current
+plan expires. The learner supplies no hint ID. The action uses the admitted private hint
+schedule and immutable pinned manifest, then commits the released hint, assistance event,
+session counter, and request receipt in one transaction. Hints are released in authored
+order. A new request is refused after the saved deadline, a terminal outcome, or a durable
+recovery observation. The separate Lambda and route have zero reserved concurrency while
+`EnableGatewayPath=false`.
 
 ### Timeline, debrief, and playback
 
@@ -299,7 +305,10 @@ Responses are `no-store`; logs contain only operation, correlation ID, result, a
 
 The timeline lists events in time order, during and after the attempt. It contains the
 learner's own command text and bounded output excerpts, Monitor signals, and lifecycle
-events. The reserved assistance-event reader has no hint or assistant writer yet. It
+events. Hint release writes one durable assistance event in the same transaction as the
+hint. Assistance actions remain in the final timeline at their actual timestamps if a
+delayed recovery observation later establishes an earlier measurement cutoff. This does
+not move command, Monitor, outage, or score measurements beyond the cutoff. The timeline
 never contains validator or probe definitions. Live pages are provisional. Their cursors
 bind the session, readiness and source identity, then seek after the last `(at, id)`.
 Ordinary appends and lease changes do not invalidate them. Empty polls retain the cursor.

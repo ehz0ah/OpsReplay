@@ -199,7 +199,7 @@ export function createStartHandler({
           readyAt: null,
           endsAt: null,
           endedAt: null,
-          hints: { released: [], remaining: content.hintCount, nextAvailableAt: null },
+          hints: { released: [], remaining: content.hintPlan.length, nextAvailableAt: null },
           assistance: { hintsReleased: 0, assistantTurns: 0, proposalsRun: 0 },
           debriefAvailable: false,
           recording: { status: 'pending', reason: null },
@@ -208,6 +208,7 @@ export function createStartHandler({
           ownerId: owner,
           view,
           accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
+          hintPlan: structuredClone(content.hintPlan),
           pins: { ...content.pins },
           launchArguments: {
             cluster: launchConfiguration.clusterArn,

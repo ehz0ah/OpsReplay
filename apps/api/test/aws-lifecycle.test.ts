@@ -85,6 +85,7 @@ function session(): SessionRecord {
       recording: { status: 'pending', reason: null },
     },
     accessGrant: { plan: 'free', admittedAt: '2026-10-06T02:00:00.000Z', timeLimitSeconds: 1200 },
+    hintPlan: [],
     pins: {
       taskDefinitionArn: 'arn:aws:ecs:ap-southeast-1:123456789012:task-definition/opsreplay-test:1',
       challengeImageDigest: `sha256:${'a'.repeat(64)}`,

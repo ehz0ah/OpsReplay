@@ -43,6 +43,13 @@ test('release completion changes only status and image digests and derives the p
   assert.equal(release.admission.pins.taskDefinitionArn, release.taskDefinitionArn);
   assert.equal(release.admission.timeLimits.free, 1200);
   assert.equal(release.admission.timeLimits.pro, 1800);
+  assert.deepEqual(
+    release.admission.hintPlan,
+    build.hints.map(({ id, minElapsedMinutes }: { id: string; minElapsedMinutes: number }) => ({
+      id,
+      minElapsedMinutes,
+    })),
+  );
   assert.equal('hints' in release.admission, false);
   assert.equal('debrief' in release.admission, false);
 });

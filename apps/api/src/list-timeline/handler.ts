@@ -52,10 +52,11 @@ export function createListTimelineHandler(
             ]
           : []),
       ];
-      // Reserved durable assistance events. No hint/assistant action exists yet.
+      // Assistance is committed while the session is ready. A delayed recovery observation can later
+      // establish an earlier measurement cutoff, but it must not erase the action that already occurred.
       items.push(
         ...(await store.assistance(id, signal)).filter(
-          (v) => v.at >= session.view.createdAt && (live || v.at <= session.view.endedAt!),
+          (v) => v.at >= session.view.createdAt && (session.view.endsAt === null || v.at < session.view.endsAt),
         ),
       );
       const compare = (a: { at: string; id: string }, b: { at: string; id: string }) =>
