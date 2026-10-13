@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
-import { PutCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, TransactGetCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { startLocalDatabase } from '../../api/test/local-dynamodb.js';
 import {
   commandId,
@@ -218,6 +218,12 @@ function telemetryError(code: GatewayLiveTelemetryError['code']): (error: unknow
   return (error) => error instanceof GatewayLiveTelemetryError && error.code === code;
 }
 
+const transactionConflict = () =>
+  Object.assign(new Error('Transaction conflicted.'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'None' }, { Code: 'TransactionConflict' }],
+  });
+
 test('recorder Gateway A publishes telemetry that browser Gateway B reads as bounded deltas', async () => {
   const f = await fixture();
   const attached = await f.telemetry.read(f.binding);
@@ -373,4 +379,42 @@ test('live telemetry distinguishes invalid durable data, authorization failure, 
   const controller = new AbortController();
   controller.abort(new Error('closed'));
   await assert.rejects(f.telemetry.read(f.binding, undefined, controller.signal), telemetryError('cancelled'));
+});
+
+test('live telemetry retries transaction contention and keeps unread snapshots non-authoritative', async () => {
+  const f = await fixture();
+  let reads = 0;
+  const retrying = new DynamoGatewayLiveTelemetryStore(
+    {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactGetCommand && ++reads === 1) throw transactionConflict();
+        return f.client.send(command as never, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient,
+    f.table,
+  );
+  assert.equal((await retrying.read(f.binding)).type, 'telemetry');
+  assert.equal(reads, 2);
+
+  for (const [failure, expectedReads] of [
+    [transactionConflict(), 4],
+    [Object.assign(new Error('Throttled.'), { name: 'ThrottlingException' }), 1],
+    [Object.assign(new Error('Timed out.'), { name: 'TimeoutError' }), 1],
+  ] as const) {
+    reads = 0;
+    const unavailable = new DynamoGatewayLiveTelemetryStore(
+      {
+        send: async (command: unknown) => {
+          if (command instanceof TransactGetCommand) {
+            reads++;
+            throw failure;
+          }
+          throw new Error('Unexpected command.');
+        },
+      } as unknown as DynamoDBDocumentClient,
+      f.table,
+    );
+    await assert.rejects(unavailable.read(f.binding), telemetryError('telemetry_unavailable'));
+    assert.equal(reads, expectedReads);
+  }
 });

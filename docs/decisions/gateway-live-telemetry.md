@@ -33,10 +33,12 @@ one-second send deadline. Browser closure, Gateway shutdown, or input replacemen
 the active read. A terminal session status stops live work.
 
 After authorization succeeds, a transient evidence-read failure sends one fixed
-`TELEMETRY_UNAVAILABLE` error per outage and retries on the normal interval. Failure to
-verify authorization closes the connection. The timeline API remains authoritative for
-history and reconnect catch-up. This design does not promise durable WebSocket replay or
-exactly-once delivery.
+`TELEMETRY_UNAVAILABLE` error per outage and retries on the normal interval. A successfully
+read snapshot that fails authorization checks closes the connection. The atomic snapshot
+retries pure DynamoDB transaction contention at most four times. If no snapshot can be
+read, it is telemetry unavailability, not evidence of failed authorization. The timeline
+API remains authoritative for history and reconnect catch-up. This design does not
+promise durable WebSocket replay or exactly-once delivery.
 
 ## Reason
 
