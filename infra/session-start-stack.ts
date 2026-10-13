@@ -364,6 +364,7 @@ export class SessionStartStack extends Stack {
       generateSecret: false,
       allowedOAuthFlowsUserPoolClient: true,
       allowedOAuthFlows: ['code'],
+      explicitAuthFlows: ['ALLOW_REFRESH_TOKEN_AUTH'],
       allowedOAuthScopes: ['openid', 'email', 'profile'],
       callbackUrLs: [browserCallbackUrl.valueAsString],
       logoutUrLs: [browserLogoutUrl.valueAsString],

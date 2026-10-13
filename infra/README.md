@@ -63,8 +63,11 @@ The Scheduler role can invoke the expiry action. Both functions stay outside the
 
 The stack also defines an ECS task-state rule, encrypted dead-letter queue, combined
 Gateway task and service, TLS ALB listener, WAF rate limit, target health check, and the
-authenticated session-status and terminal-ticket API routes. It does not create the ECS cluster, VPC, VPC
-endpoints, ECR repositories, certificate, DNS record, Cognito user pool, or web app.
+authenticated session-status and terminal-ticket API routes. It does not create the ECS
+cluster, VPC, VPC endpoints, ECR repositories, certificate, DNS record, or web app. It
+uses an existing Cognito user pool and client by default. The explicit managed mode
+instead creates a retained checkpoint user pool, public client, and AWS-managed login
+domain.
 
 `EnableGatewayPath` defaults to `false`. In this state the recording publisher,
 session-status action, and terminal-ticket action have zero reserved concurrency, the
@@ -73,13 +76,17 @@ Gateway service are omitted. Start and expiry remain disabled independently. Ena
 the path sets the publisher concurrency to four and each API action's concurrency to
 its configured burst limit, enables task-state publication, and creates one Gateway
 service with the configured desired count. Both API burst limits default to sixteen.
+The public API bundles validate the exact browser origin and Cognito app-client ID when
+they initialise. The default disabled configuration leaves those values empty, so an
+accidental invocation fails closed during initialisation. This is expected until the
+Gateway path is configured and enabled.
 
 Activation requires a pinned Gateway image digest, ACM certificate ARN, exact allowed
-web origins, WSS Gateway URL, and existing Cognito user-pool ARN. Deployment inputs also
-identify the public and private subnets, cluster, VPC, environment security groups,
-execution role, private endpoint destinations, VPC DNS resolver, service count, and
-per-process recording capacity. The image must exist in the same account and Region
-under `opsreplay-gateway`, addressed by digest.
+web origins, WSS Gateway URL, and a complete external or checkpoint-managed Cognito
+configuration. Deployment inputs also identify the public and private subnets, cluster,
+VPC, environment security groups, execution role, private endpoint destinations, VPC DNS
+resolver, service count, and per-process recording capacity. The image must exist in the
+same account and Region under `opsreplay-gateway`, addressed by digest.
 
 The ALB can reach only Gateway TCP 8080. Gateway can reach environment TCP 7681 for the
 terminal and TCP 9443 for Monitor control. Gateway has no public address or internet
