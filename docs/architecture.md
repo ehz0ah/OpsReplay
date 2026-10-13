@@ -7,7 +7,7 @@ have separate disabled Lambda definitions. Monitor traffic, recovery, outage che
 authenticated HTTPS control run locally. The gateway monitor client, bounded recording
 controller, durable recording adapters, work source, supervisor, browser terminal relay,
 and composed process are implemented and tested locally. CDK defines an inactive Gateway
-path with a public ALB, private network edges, and terminal-ticket route, plus the
+path with CloudFront, an internal ALB, private network edges, and terminal-ticket route, plus the
 disposable foundation used for its checkpoint. It also defines optional checkpoint-owned
 Cognito resources, one exact browser origin, and an inactive authenticated session-start
 route. The temporary resources were removed. DNS and the web application are not
@@ -81,7 +81,8 @@ flowchart TB
   Lambda --> DDB[DynamoDB: sessions and events]
   Lambda --> Private[Private S3: content and recordings]
   Lambda --> Provider[External LLM API]
-  Browser -->|Terminal WebSocket| ALB[Application Load Balancer, HTTPS]
+  Browser -->|Terminal WebSocket| TCF[CloudFront terminal distribution]
+  TCF -->|VPC origin, HTTP| ALB[Internal Application Load Balancer]
   ALB --> Relay
   subgraph Cluster[ECS cluster on Fargate]
     subgraph Gateway[Gateway service: one task and process]
@@ -100,10 +101,13 @@ flowchart TB
 These figures show component relationships, not every request and response. Route 53
 resolves names. Application traffic goes directly to the resolved entry point.
 
-**Entry and web tier.** Route 53 hosts the domain and maps each subdomain to its entry
-point with alias records: the web app to CloudFront, the API to API Gateway, terminals
-to the ALB, and sign-in to Cognito. Route 53 health checks can fail over to a static
-maintenance endpoint. CloudFront serves the web app and free Learn pages from S3. Cognito
+**Entry and web tier.** The current MVP terminal definition uses the default CloudFront
+hostname and certificate. It needs no Route 53 registration. CloudFront reaches an
+internal ALB through a VPC origin. Its separate edge WAF is owned in `us-east-1`.
+The [ingress decision](decisions/cloudfront-terminal-ingress.md) records the default
+certificate policy and private HTTP transport limits. Static web and free Learn hosting
+through CloudFront and S3 remain planned. The Regional REST API and Cognito retain
+their AWS-managed hostnames. Custom domain names remain a separate choice. Cognito
 identifies users. The backend checks session ownership and plan entitlement on every
 request.
 
@@ -138,9 +142,9 @@ own small WebSocket proxy, run as one ECS service in the same Fargate cluster as
 environment tasks. One process contains the terminal relay and recording supervisor.
 These are internal modules, not separate ECS services. The relay validates a short-lived
 ticket, looks up the learner's task address, and proxies the terminal. The recording
-supervisor saves monitor data outside the learner's reach. Dashboard relay and terminal
-recording remain planned. The ALB only terminates HTTPS and spreads connections across
-gateway copies. It does not balance environment tasks. The ALB idle timeout stays above
+supervisor saves terminal and monitor data outside the learner's reach. CloudFront
+terminates viewer TLS. The internal HTTP ALB spreads connections across
+Gateway copies. It does not balance environment tasks. The ALB idle timeout stays above
 the heartbeat interval. See the [gateway protocol](api.md#terminal-gateway-protocol).
 
 **Warm pool.** A small pool of started, unassigned tasks can hide start-up time before a
@@ -153,7 +157,7 @@ and follows the first milestone.
 
 | Placement       | Resources         | Inbound                                             | Outbound                                       |
 | --------------- | ----------------- | --------------------------------------------------- | ---------------------------------------------- |
-| Public subnets  | ALB               | HTTPS from the internet                             | Gateway service                                |
+| Private subnets | Internal ALB      | HTTP from the CloudFront origin-facing prefix list  | Gateway service                                |
 | Private subnets | Gateway service   | ALB only                                            | Environment tasks, VPC endpoints               |
 | Private subnets | Environment tasks | Gateway service only, on terminal and monitor ports | VPC endpoints for image pulls and monitor logs |
 

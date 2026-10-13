@@ -112,8 +112,9 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
       'AWS::ElasticLoadBalancingV2::ListenerRule',
       'AWS::ElasticLoadBalancingV2::LoadBalancer',
       'AWS::ElasticLoadBalancingV2::TargetGroup',
-      'AWS::WAFv2::WebACL',
-      'AWS::WAFv2::WebACLAssociation',
+      'AWS::CloudFront::Distribution',
+      'AWS::CloudFront::VpcOrigin',
+      'AWS::CloudFront::OriginRequestPolicy',
     ]);
     for (const resource of resources) assert.ok(allowed.has(resource.Type), `Unexpected resource: ${resource.Type}`);
     const actions = new Set<string>();

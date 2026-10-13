@@ -4,6 +4,10 @@ Status: implemented and tested locally, AWS validation pending
 Date: 11 October 2026
 Owner: Cloud and Gateway contributors
 
+The later [CloudFront terminal ingress decision](cloudfront-terminal-ingress.md)
+replaces the public HTTPS ALB with CloudFront and an internal HTTP ALB, moves WAF to
+the edge, and derives the terminal URL. This document records the earlier ingress.
+
 The later [checkpoint activation decision](checkpoint-activation.md) extends
 `EnableGatewayPath` to the complete existing-session runtime and adds a separate
 default-closed StartSession admission gate. The ingress and network boundaries below

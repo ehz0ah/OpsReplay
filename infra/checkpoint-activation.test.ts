@@ -150,9 +150,9 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
     const required: Parameters = {
       ...runtimeOnly,
       GatewayImageDigest: `sha256:${'a'.repeat(64)}`,
-      TerminalCertificateArn: 'arn:aws:acm:ap-southeast-1:111111111111:certificate/test',
+      CloudFrontOriginPrefixListId: 'pl-12345678',
       TerminalAllowedOrigins: 'https://app.opsreplay.test',
-      TerminalGatewayUrl: 'wss://terminal.opsreplay.test/v1/terminal',
+      TerminalEdgeWebAclArn: 'arn:aws:wafv2:us-east-1:111111111111:global/webacl/test/12345678',
       PublicApiAllowedOrigin: 'https://app.opsreplay.test',
       BrowserCallbackUrl: 'https://app.opsreplay.test/auth/callback',
       BrowserLogoutUrl: 'https://app.opsreplay.test/',
@@ -167,9 +167,9 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
     assert.equal(rulePasses(runtimeRule, rendered.Conditions, required), true);
     for (const parameter of [
       'GatewayImageDigest',
-      'TerminalCertificateArn',
+      'CloudFrontOriginPrefixListId',
       'TerminalAllowedOrigins',
-      'TerminalGatewayUrl',
+      'TerminalEdgeWebAclArn',
       'PublicApiAllowedOrigin',
       'BrowserCallbackUrl',
       'BrowserLogoutUrl',

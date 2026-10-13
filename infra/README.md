@@ -3,7 +3,7 @@
 Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
 session start, provisioning-expiry cleanup, recording-work publication, terminal-ticket
 issuance, session-status reads, owner end, session reconciliation, bounded sweep,
-and the combined Gateway path behind a public ALB. One complete-runtime switch now gates
+and the combined Gateway path behind CloudFront and an internal ALB. One complete-runtime switch now gates
 the actions and triggers required to finish existing sessions. A separate admission
 switch gates only new session starts. Both default to inactive. See the
 [lifecycle decision](../docs/decisions/session-lifecycle.md). The first disposable
@@ -19,6 +19,15 @@ Use the [architecture](../docs/architecture.md) and
 
 ## Current definitions
 
+`TerminalEdgeProtectionStack` defines only the default-off CloudFront-scope Web ACL
+in `us-east-1`. It uses viewer source IP, not a forwarded header. Deploy it before runtime
+activation and pass its `TerminalEdgeWebAclArn` output explicitly to the workload stack.
+See [the edge parameters](terminal-edge-parameters.example.json) and
+[CloudFront ingress decision](../docs/decisions/cloudfront-terminal-ingress.md).
+There are no automatic cross-Region exports. Remove the distribution before disabling
+edge protection. The default CloudFront certificate cannot enforce a custom TLS minimum,
+and the private origin hop is HTTP. Review these limits before approving AWS validation.
+
 `GitHubOidcProviderStack` defines one optional account prerequisite. Deploy it only when
 the account does not already contain the GitHub Actions provider. Keeping this provider
 outside the disposable foundation gives it one stable owner across foundation updates.
@@ -27,7 +36,7 @@ outside the disposable foundation gives it one stable owner across foundation up
 
 - one VPC with two public ingress subnets and two isolated workload subnets across two
   Availability Zones;
-- one internet gateway for the public ALB subnets and no NAT gateway;
+- one internet gateway required by CloudFront VPC origins and no NAT gateway;
 - ECR API, ECR Docker, and CloudWatch Logs interface endpoints;
 - S3 and DynamoDB gateway endpoints;
 - separate environment and interface-endpoint security groups;
@@ -39,8 +48,8 @@ outside the disposable foundation gives it one stable owner across foundation up
   three repositories;
 - one environment execution role and one seven-day environment log group.
 
-The ALB requires public subnets in two Availability Zones. Gateway and environment tasks
-remain in isolated subnets. Interface endpoints exist in both workload subnets and incur
+The internal ALB uses the two isolated workload subnets. The existing public subnets
+remain foundation resources. Gateway and environment tasks also remain isolated. Interface endpoints exist in both workload subnets and incur
 hourly charges while the stack exists. The stack outputs the network, cluster, role,
 prefix-list, and repository values needed by later deployment steps. It does not define
 a task, service, Lambda activation, or load balancer.
@@ -62,7 +71,8 @@ describe, and stop tasks in the configured cluster and release the matching acti
 The Scheduler role can invoke the expiry action. Both functions stay outside the VPC.
 
 The stack also defines an ECS task-state rule, encrypted dead-letter queue, combined
-Gateway task and service, TLS ALB listener, WAF rate limit, target health check, and the
+Gateway task and service, internal HTTP ALB listener, CloudFront VPC origin and
+distribution, target health check, and the
 authenticated session-status, terminal-ticket, and hint-release API routes. It does not
 create the ECS cluster, VPC, VPC endpoints, ECR repositories, certificate, DNS record,
 or web app. It uses an existing Cognito user pool and client by default. The explicit
@@ -70,7 +80,7 @@ managed mode instead creates a retained checkpoint user pool, public client, and
 AWS-managed login domain.
 
 `EnableGatewayPath` defaults to `false`. In this state all runtime actions have zero
-reserved concurrency, all runtime event paths are disabled, and the ALB, WAF, shared
+reserved concurrency, all runtime event paths are disabled, and the ALB, CloudFront resources, shared
 session API, Gateway task, and Gateway service are omitted. Enabling it activates the
 recording publisher, filtered lifecycle stream, minute sweep, RUNNING and STOPPED task
 events, reconciliation, owner end, result reads, status, terminal tickets, and one
@@ -89,19 +99,20 @@ they initialise. The default disabled configuration leaves those values empty, s
 accidental invocation fails closed during initialisation. This is expected until the
 Gateway path is configured and enabled.
 
-Activation requires a pinned Gateway image digest, ACM certificate ARN, exact allowed
-web origins, WSS Gateway URL, and a complete external or checkpoint-managed Cognito
-configuration. Deployment inputs also identify the public and private subnets, cluster,
+Activation requires a pinned Gateway image digest, verified CloudFront origin-facing
+prefix-list ID, edge Web ACL ARN, exact allowed web origins, and a complete external or
+checkpoint-managed Cognito configuration. The terminal URL is generated from the
+distribution. Deployment inputs also identify the isolated workload subnets, cluster,
 VPC, environment security groups, execution role, private endpoint destinations, VPC DNS
 resolver, service count, and per-process recording capacity. The image must exist in the
 same account and Region under `opsreplay-gateway`, addressed by digest.
 
 The ALB can reach only Gateway TCP 8080. Gateway can reach environment TCP 7681 for the
 terminal and TCP 9443 for Monitor control. Gateway has no public address or internet
-route. Environment tasks have no task role. WAF limits `/v1/terminal` upgrades to 300
-per source IP per minute. The ticket method uses Cognito, a burst limit of 16, a rate of
-8 requests per second, and fixed pre-Lambda public error responses. These three limits
-are stack parameters. Their defaults target the first 50-learner checkpoint and must be
+route. Environment tasks have no task role. Edge WAF limits `/v1/terminal` requests to
+300 per viewer source IP per minute, approximately. The ticket method uses Cognito, a burst limit of 16, a rate of
+8 requests per second, and fixed pre-Lambda public error responses. The ticket limits are workload stack parameters. The upgrade limit belongs to the
+edge stack. Their defaults target the first 50-learner checkpoint and must be
 validated under shared-IP and mass-reconnect load. A browser that receives `429` must
 retry with capped exponential backoff and full jitter.
 
@@ -361,7 +372,7 @@ No full-stack AWS run is required for each small PR. Local checks do not prove l
 changes. Repeat a bounded checkpoint when a change affects a managed-service contract or
 runtime behavior that local tests cannot verify.
 
-Before a pilot, add Route 53, choose and validate the managed or external Cognito path,
+Before a pilot, choose and validate the managed or external Cognito path,
 connect the browser to the exact-origin REST API, add any required streaming route, add separate environment
 configuration, budgets and alarms including Fargate vCPU use, the reconciliation sweep,
 backup and restore validation, and rollback. Do not add a NAT gateway, Redis, or
