@@ -65,6 +65,7 @@ test('authenticated session entry has one exact browser policy and optional mana
       CallbackURLs: [{ Ref: 'BrowserCallbackUrl' }],
       ClientName: 'opsreplay-browser',
       EnableTokenRevocation: true,
+      ExplicitAuthFlows: ['ALLOW_REFRESH_TOKEN_AUTH'],
       GenerateSecret: false,
       LogoutURLs: [{ Ref: 'BrowserLogoutUrl' }],
       PreventUserExistenceErrors: 'ENABLED',
