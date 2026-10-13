@@ -38,6 +38,23 @@ aws service-quotas list-service-quotas --service-code fargate --profile opsrepla
 aws service-quotas list-service-quotas --service-code elasticloadbalancing --profile opsreplay --region ap-southeast-1
 ```
 
+Lambda keeps 100 executions unreserved. With the default parameters, this stack reserves
+57 executions in runtime-only mode: 4 for reconciliation, 1 for sweep, 4 for owner end,
+12 across the three result reads, 4 for recording-work publication, 16 for terminal
+tickets, and 16 for session status. Opening admission adds 8 for StartSession, for a total
+of 65. The account quota must therefore be at least 157 before runtime activation and 165
+before admission, plus reserved concurrency already assigned to other functions in the
+Region. If a burst parameter changes, recalculate the requirement as follows:
+
+```text
+runtime only = 100 + other reservations + 25 + TerminalTicketBurstLimit + SessionStatusBurstLimit
+admission open = runtime only + StartSessionBurstLimit
+```
+
+Stop if the confirmed account quota does not satisfy the applicable total. Do not reduce
+cleanup concurrency only to fit the quota. Request a quota increase or keep the runtime
+disabled. See [AWS Lambda concurrency](https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html).
+
 Confirm that each pinned image exists and review its current scan result. Use the exact
 Gateway, reference Monitor, and Challenge repository digests from the publication
 evidence.

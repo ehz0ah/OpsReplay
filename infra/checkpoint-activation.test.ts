@@ -109,6 +109,21 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
     for (const action of runtimeActions)
       assert.equal(functionConcurrency(action, open), functionConcurrency(action, runtimeOnly), action);
 
+    const totalReservedConcurrency = (parameters: Parameters) =>
+      ['StartSession', ...runtimeActions, 'ExpireProvisioning'].reduce(
+        (total, action) => total + Number(functionConcurrency(action, parameters)),
+        0,
+      );
+    const defaultRuntime = {
+      EnableGatewayPath: 'true',
+      EnableSessionAdmission: 'false',
+      StartSessionBurstLimit: rendered.Parameters.StartSessionBurstLimit!.Default as number,
+      TerminalTicketBurstLimit: rendered.Parameters.TerminalTicketBurstLimit!.Default as number,
+      SessionStatusBurstLimit: rendered.Parameters.SessionStatusBurstLimit!.Default as number,
+    };
+    assert.equal(totalReservedConcurrency(defaultRuntime), 57);
+    assert.equal(totalReservedConcurrency({ ...defaultRuntime, EnableSessionAdmission: 'true' }), 65);
+
     const stream = Object.values(rendered.Resources).find(
       (resource) => resource.Type === 'AWS::Lambda::EventSourceMapping',
     );
