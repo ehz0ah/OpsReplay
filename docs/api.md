@@ -355,8 +355,10 @@ attempt's session, debrief, or first-attempt progress.
 
 ## Terminal gateway protocol
 
-The browser connects to `wss://terminal.<domain>/v1/terminal`. The ALB terminates HTTPS
-and forwards the WebSocket to any gateway copy. Binary frames carry raw terminal bytes
+The browser connects to the WSS URL returned by terminal-ticket issuance. The current
+deployment definition derives `wss://<distribution>.cloudfront.net/v1/terminal` from
+CloudFront. CloudFront terminates viewer TLS and uses a VPC origin to reach an internal
+HTTP ALB, which forwards the WebSocket to any Gateway copy. Binary frames carry raw terminal bytes
 in both directions. Text frames carry JSON that matches `GatewayClientMessage` or
 `GatewayServerMessage`.
 
@@ -440,7 +442,9 @@ It keeps at most one 8 KiB terminal output frame pending and closes both directi
 browser delivery does not complete within one second. The relay is connected to the
 Gateway process when its complete terminal configuration is present. The same listener
 serves `GET /healthz`; other ordinary HTTP routes return 404. The conditional AWS
-definition routes only `/v1/terminal` through a TLS ALB and keeps Gateway tasks private.
+definition routes only `/v1/terminal` through CloudFront and an internal HTTP ALB,
+and keeps Gateway tasks private. See the [ingress decision](decisions/cloudfront-terminal-ingress.md)
+for the edge WAF, uncached terminal traffic, and explicit TLS limits.
 It has not been deployed or validated on AWS.
 
 ## Assistant turns

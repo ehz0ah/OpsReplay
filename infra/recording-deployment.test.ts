@@ -47,14 +47,12 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
       Description: 'Enable the complete checkpoint runtime while keeping new-session admission separately gated.',
     });
     assert.ok(rendered.Conditions.GatewayPathEnabled);
-    assert.deepEqual(rendered.Parameters.PublicIngressSubnetIds, {
+    assert.deepEqual(rendered.Parameters.EnvironmentSubnetIds, {
       Type: 'List<AWS::EC2::Subnet::Id>',
     });
     assert.equal(rendered.Parameters.GatewayDesiredCount?.Default, 1);
     assert.equal(rendered.Parameters.GatewayMaximumConcurrentRecordings?.Default, 16);
     assert.equal(rendered.Parameters.GatewayMaximumConcurrentRecordings?.MaxValue, 64);
-    assert.equal(rendered.Parameters.TerminalUpgradeRateLimitPerIp?.Default, 300);
-    assert.equal(rendered.Parameters.TerminalUpgradeRateLimitPerIp?.MinValue, 10);
     assert.equal(rendered.Parameters.TerminalTicketBurstLimit?.Default, 16);
     assert.equal(rendered.Parameters.TerminalTicketBurstLimit?.MaxValue, 256);
     assert.equal(rendered.Parameters.TerminalTicketRateLimit?.Default, 8);
@@ -87,16 +85,16 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
           AssertDescription: 'GatewayImageDigest is required when EnableGatewayPath is true.',
         },
         {
-          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'TerminalCertificateArn' }, ''] }] },
-          AssertDescription: 'TerminalCertificateArn is required when EnableGatewayPath is true.',
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'CloudFrontOriginPrefixListId' }, ''] }] },
+          AssertDescription: 'CloudFrontOriginPrefixListId is required when EnableGatewayPath is true.',
         },
         {
           Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'TerminalAllowedOrigins' }, ''] }] },
           AssertDescription: 'TerminalAllowedOrigins is required when EnableGatewayPath is true.',
         },
         {
-          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'TerminalGatewayUrl' }, ''] }] },
-          AssertDescription: 'TerminalGatewayUrl is required when EnableGatewayPath is true.',
+          Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'TerminalEdgeWebAclArn' }, ''] }] },
+          AssertDescription: 'TerminalEdgeWebAclArn is required when EnableGatewayPath is true.',
         },
         {
           Assert: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'PublicApiAllowedOrigin' }, ''] }] },
@@ -122,16 +120,14 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
         { Key: 'idle_timeout.timeout_seconds', Value: '60' },
         { Key: 'routing.http.drop_invalid_header_fields.enabled', Value: 'true' },
       ],
-      Scheme: 'internet-facing',
+      Scheme: 'internal',
       SecurityGroups: [Match.anyValue()],
-      Subnets: { Ref: 'PublicIngressSubnetIds' },
+      Subnets: { Ref: 'EnvironmentSubnetIds' },
       Type: 'application',
     });
     template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
-      Port: 443,
-      Protocol: 'HTTPS',
-      SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
-      Certificates: [{ CertificateArn: { Ref: 'TerminalCertificateArn' } }],
+      Port: 80,
+      Protocol: 'HTTP',
       DefaultActions: [
         {
           Type: 'fixed-response',
@@ -154,29 +150,8 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
       Matcher: { HttpCode: '200' },
       TargetGroupAttributes: Match.arrayWith([{ Key: 'deregistration_delay.timeout_seconds', Value: '30' }]),
     });
-    template.hasResourceProperties('AWS::WAFv2::WebACL', {
-      Scope: 'REGIONAL',
-      Rules: [
-        Match.objectLike({
-          Action: { Block: {} },
-          Statement: {
-            RateBasedStatement: Match.objectLike({
-              AggregateKeyType: 'IP',
-              EvaluationWindowSec: 60,
-              Limit: { Ref: 'TerminalUpgradeRateLimitPerIp' },
-              ScopeDownStatement: {
-                ByteMatchStatement: Match.objectLike({
-                  FieldToMatch: { UriPath: {} },
-                  PositionalConstraint: 'EXACTLY',
-                  SearchString: '/v1/terminal',
-                }),
-              },
-            }),
-          },
-        }),
-      ],
-    });
-    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
+    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
 
     const securityGroups = ofType(rendered.Resources, 'AWS::EC2::SecurityGroup');
     assert.equal(securityGroups.length, 2);
@@ -184,7 +159,8 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
       ([, group]) => group.Properties?.GroupDescription === 'Private OpsReplay Gateway tasks.',
     );
     const loadBalancerGroup = securityGroups.find(
-      ([, group]) => group.Properties?.GroupDescription === 'Public HTTPS ingress for the OpsReplay terminal Gateway.',
+      ([, group]) =>
+        group.Properties?.GroupDescription === 'Private CloudFront origin for the OpsReplay terminal Gateway.',
     );
     assert.ok(gatewayGroup);
     assert.ok(loadBalancerGroup);
@@ -242,10 +218,10 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
     assert.deepEqual(loadBalancerGroup[1].Properties?.SecurityGroupIngress, [
       {
         IpProtocol: 'tcp',
-        FromPort: 443,
-        ToPort: 443,
-        CidrIp: '0.0.0.0/0',
-        Description: 'Public terminal HTTPS and WebSocket traffic',
+        FromPort: 80,
+        ToPort: 80,
+        SourcePrefixListId: { Ref: 'CloudFrontOriginPrefixListId' },
+        Description: 'CloudFront VPC origin HTTP and WebSocket traffic',
       },
     ]);
     assert.deepEqual(loadBalancerGroup[1].Properties?.SecurityGroupEgress, [
@@ -343,7 +319,15 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
       Environment: {
         Variables: Match.objectLike({
           SESSION_TABLE_NAME: Match.anyValue(),
-          TERMINAL_GATEWAY_URL: { Ref: 'TerminalGatewayUrl' },
+          TERMINAL_GATEWAY_URL: {
+            'Fn::If': [
+              'GatewayPathEnabled',
+              {
+                'Fn::Join': ['', ['wss://', { 'Fn::GetAtt': ['TerminalDistribution', 'DomainName'] }, '/v1/terminal']],
+              },
+              '',
+            ],
+          },
         }),
       },
       ReservedConcurrentExecutions: {

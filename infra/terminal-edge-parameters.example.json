@@ -1,0 +1,4 @@
+{
+  "EnableTerminalEdgeProtection": "true",
+  "TerminalUpgradeRateLimitPerIp": 300
+}

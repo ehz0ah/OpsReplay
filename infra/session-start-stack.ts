@@ -22,6 +22,7 @@ import {
   CfnStage,
 } from 'aws-cdk-lib/aws-apigateway';
 import { CfnUserPool, CfnUserPoolClient, CfnUserPoolDomain } from 'aws-cdk-lib/aws-cognito';
+import { CachePolicy, CfnDistribution, CfnOriginRequestPolicy, CfnVpcOrigin } from 'aws-cdk-lib/aws-cloudfront';
 import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { CfnSecurityGroup, CfnSecurityGroupEgress, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
@@ -36,7 +37,6 @@ import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { CfnScheduleGroup } from 'aws-cdk-lib/aws-scheduler';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
-import { CfnWebACL, CfnWebACLAssociation } from 'aws-cdk-lib/aws-wafv2';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
 import { lifecycleHintPrefix } from '../packages/contracts/private/lifecycle-hint.js';
@@ -74,8 +74,11 @@ export class SessionStartStack extends Stack {
     const subnetIds = new CfnParameter(this, 'EnvironmentSubnetIds', {
       type: 'List<AWS::EC2::Subnet::Id>',
     });
-    const publicIngressSubnetIds = new CfnParameter(this, 'PublicIngressSubnetIds', {
-      type: 'List<AWS::EC2::Subnet::Id>',
+    const cloudFrontPrefixListId = new CfnParameter(this, 'CloudFrontOriginPrefixListId', {
+      type: 'String',
+      default: '',
+      allowedPattern: '(|pl-[0-9a-f]+)',
+      description: 'AWS-managed com.amazonaws.global.cloudfront.origin-facing prefix list in the workload Region.',
     });
     const securityGroupIds = new CfnParameter(this, 'EnvironmentSecurityGroupIds', {
       type: 'List<AWS::EC2::SecurityGroup::Id>',
@@ -123,12 +126,11 @@ export class SessionStartStack extends Stack {
       minValue: 1,
       maxValue: 64,
     });
-    const terminalUpgradeRateLimit = new CfnParameter(this, 'TerminalUpgradeRateLimitPerIp', {
-      type: 'Number',
-      default: 300,
-      minValue: 10,
-      maxValue: 2_000_000_000,
-      description: 'Maximum terminal WebSocket upgrade requests per source IP in each 60-second WAF window.',
+    const terminalEdgeWebAclArn = new CfnParameter(this, 'TerminalEdgeWebAclArn', {
+      type: 'String',
+      default: '',
+      allowedPattern: '(|arn:aws:wafv2:us-east-1:[0-9]{12}:global/webacl/[A-Za-z0-9_-]+/[a-f0-9-]+)',
+      description: 'CloudFront-scope Web ACL ARN from OpsReplayTerminalEdgeProtection in us-east-1.',
     });
     const terminalTicketBurstLimit = new CfnParameter(this, 'TerminalTicketBurstLimit', {
       type: 'Number',
@@ -172,23 +174,12 @@ export class SessionStartStack extends Stack {
       maxValue: 64,
       description: 'Sustained session-start requests per second.',
     });
-    const terminalCertificateArn = new CfnParameter(this, 'TerminalCertificateArn', {
-      type: 'String',
-      default: '',
-      allowedPattern: '(|arn:aws[a-z-]*:acm:[a-z0-9-]+:[0-9]{12}:certificate/[A-Za-z0-9-]+)',
-    });
     const terminalAllowedOrigins = new CfnParameter(this, 'TerminalAllowedOrigins', {
       type: 'String',
       default: '',
       maxLength: 4096,
       allowedPattern: terminalAllowedOriginsPattern,
       description: 'Comma-separated exact HTTP or HTTPS web origins accepted by the Gateway.',
-    });
-    const terminalGatewayUrl = new CfnParameter(this, 'TerminalGatewayUrl', {
-      type: 'String',
-      default: '',
-      maxLength: 500,
-      allowedPattern: '(|wss://[^/?#]+/v1/terminal)',
     });
     const cognitoUserPoolArn = new CfnParameter(this, 'CognitoUserPoolArn', {
       type: 'String',
@@ -288,16 +279,16 @@ export class SessionStartStack extends Stack {
           assertDescription: 'GatewayImageDigest is required when EnableGatewayPath is true.',
         },
         {
-          assert: Fn.conditionNot(Fn.conditionEquals(terminalCertificateArn.valueAsString, '')),
-          assertDescription: 'TerminalCertificateArn is required when EnableGatewayPath is true.',
+          assert: Fn.conditionNot(Fn.conditionEquals(cloudFrontPrefixListId.valueAsString, '')),
+          assertDescription: 'CloudFrontOriginPrefixListId is required when EnableGatewayPath is true.',
         },
         {
           assert: Fn.conditionNot(Fn.conditionEquals(terminalAllowedOrigins.valueAsString, '')),
           assertDescription: 'TerminalAllowedOrigins is required when EnableGatewayPath is true.',
         },
         {
-          assert: Fn.conditionNot(Fn.conditionEquals(terminalGatewayUrl.valueAsString, '')),
-          assertDescription: 'TerminalGatewayUrl is required when EnableGatewayPath is true.',
+          assert: Fn.conditionNot(Fn.conditionEquals(terminalEdgeWebAclArn.valueAsString, '')),
+          assertDescription: 'TerminalEdgeWebAclArn is required when EnableGatewayPath is true.',
         },
         {
           assert: Fn.conditionNot(Fn.conditionEquals(publicApiAllowedOrigin.valueAsString, '')),
@@ -512,15 +503,15 @@ export class SessionStartStack extends Stack {
       ],
     });
     const loadBalancerSecurityGroup = new CfnSecurityGroup(this, 'TerminalLoadBalancerSecurityGroup', {
-      groupDescription: 'Public HTTPS ingress for the OpsReplay terminal Gateway.',
+      groupDescription: 'Private CloudFront origin for the OpsReplay terminal Gateway.',
       vpcId: vpcId.valueAsString,
       securityGroupIngress: [
         {
           ipProtocol: 'tcp',
-          fromPort: 443,
-          toPort: 443,
-          cidrIp: '0.0.0.0/0',
-          description: 'Public terminal HTTPS and WebSocket traffic',
+          fromPort: 80,
+          toPort: 80,
+          sourcePrefixListId: cloudFrontPrefixListId.valueAsString,
+          description: 'CloudFront VPC origin HTTP and WebSocket traffic',
         },
       ],
       securityGroupEgress: [
@@ -1055,7 +1046,6 @@ export class SessionStartStack extends Stack {
       environment: {
         ...publicApiEnvironment,
         SESSION_TABLE_NAME: table.tableName,
-        TERMINAL_GATEWAY_URL: terminalGatewayUrl.valueAsString,
       },
       memorySize: 256,
       timeout: Duration.seconds(10),
@@ -1863,9 +1853,9 @@ export class SessionStartStack extends Stack {
 
     const terminalLoadBalancer = new CfnLoadBalancer(this, 'TerminalLoadBalancer', {
       type: 'application',
-      scheme: 'internet-facing',
+      scheme: 'internal',
       ipAddressType: 'ipv4',
-      subnets: publicIngressSubnetIds.valueAsList,
+      subnets: subnetIds.valueAsList,
       securityGroups: [loadBalancerSecurityGroup.attrGroupId],
       loadBalancerAttributes: [
         { key: 'idle_timeout.timeout_seconds', value: '60' },
@@ -1895,12 +1885,10 @@ export class SessionStartStack extends Stack {
       ],
     });
     terminalTargetGroup.cfnOptions.condition = gatewayEnabled;
-    const terminalListener = new CfnListener(this, 'TerminalHttpsListener', {
+    const terminalListener = new CfnListener(this, 'TerminalHttpListener', {
       loadBalancerArn: terminalLoadBalancer.ref,
-      port: 443,
-      protocol: 'HTTPS',
-      sslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
-      certificates: [{ certificateArn: terminalCertificateArn.valueAsString }],
+      port: 80,
+      protocol: 'HTTP',
       defaultActions: [
         {
           type: 'fixed-response',
@@ -1917,48 +1905,81 @@ export class SessionStartStack extends Stack {
     });
     terminalListenerRule.cfnOptions.condition = gatewayEnabled;
 
-    const terminalWebAcl = new CfnWebACL(this, 'TerminalWebAcl', {
-      scope: 'REGIONAL',
-      defaultAction: { allow: {} },
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: 'opsreplay-terminal-web-acl',
-        sampledRequestsEnabled: true,
+    const terminalVpcOrigin = new CfnVpcOrigin(this, 'TerminalVpcOrigin', {
+      vpcOriginEndpointConfig: {
+        arn: terminalLoadBalancer.ref,
+        name: Fn.join('-', [Aws.STACK_NAME, 'terminal']),
+        httpPort: 80,
+        httpsPort: 443,
+        originProtocolPolicy: 'http-only',
       },
-      rules: [
-        {
-          name: 'terminal-connection-rate-limit',
-          priority: 0,
-          action: { block: {} },
-          statement: {
-            rateBasedStatement: {
-              aggregateKeyType: 'IP',
-              evaluationWindowSec: 60,
-              limit: terminalUpgradeRateLimit.valueAsNumber,
-              scopeDownStatement: {
-                byteMatchStatement: {
-                  fieldToMatch: { uriPath: {} },
-                  positionalConstraint: 'EXACTLY',
-                  searchString: '/v1/terminal',
-                  textTransformations: [{ priority: 0, type: 'NONE' }],
-                },
-              },
+    });
+    terminalVpcOrigin.cfnOptions.condition = gatewayEnabled;
+    // CloudFront requires an active origin. Create its listener and route first.
+    terminalVpcOrigin.addResourceDependency(terminalListenerRule);
+    const terminalOriginRequestPolicy = new CfnOriginRequestPolicy(this, 'TerminalOriginRequestPolicy', {
+      originRequestPolicyConfig: {
+        name: Fn.join('-', [Aws.STACK_NAME, 'terminal-websocket']),
+        headersConfig: {
+          headerBehavior: 'whitelist',
+          headers: [
+            'Origin',
+            'Sec-WebSocket-Key',
+            'Sec-WebSocket-Version',
+            'Sec-WebSocket-Protocol',
+            'Sec-WebSocket-Accept',
+            'Sec-WebSocket-Extensions',
+          ],
+        },
+        cookiesConfig: { cookieBehavior: 'none' },
+        // Preserve query strings so the Gateway can reject URLs that contain them.
+        queryStringsConfig: { queryStringBehavior: 'all' },
+      },
+    });
+    terminalOriginRequestPolicy.cfnOptions.condition = gatewayEnabled;
+    const terminalDistribution = new CfnDistribution(this, 'TerminalDistribution', {
+      distributionConfig: {
+        enabled: true,
+        comment: 'OpsReplay private terminal ingress',
+        httpVersion: 'http1.1',
+        ipv6Enabled: true,
+        viewerCertificate: { cloudFrontDefaultCertificate: true },
+        webAclId: terminalEdgeWebAclArn.valueAsString,
+        origins: [
+          {
+            id: 'terminal-gateway',
+            domainName: terminalLoadBalancer.attrDnsName,
+            connectionAttempts: 1,
+            connectionTimeout: 10,
+            vpcOriginConfig: {
+              vpcOriginId: terminalVpcOrigin.attrId,
+              originReadTimeout: 30,
+              originKeepaliveTimeout: 5,
             },
           },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'opsreplay-terminal-connection-rate-limit',
-            sampledRequestsEnabled: true,
-          },
+        ],
+        defaultCacheBehavior: {
+          targetOriginId: 'terminal-gateway',
+          viewerProtocolPolicy: 'https-only',
+          allowedMethods: ['GET', 'HEAD'],
+          cachedMethods: ['GET', 'HEAD'],
+          cachePolicyId: CachePolicy.CACHING_DISABLED.cachePolicyId,
+          originRequestPolicyId: terminalOriginRequestPolicy.ref,
+          compress: false,
         },
-      ],
+        customErrorResponses: [400, 403, 404, 405, 414, 416, 500, 501, 502, 503, 504].map((errorCode) => ({
+          errorCode,
+          errorCachingMinTtl: 0,
+        })),
+      },
     });
-    terminalWebAcl.cfnOptions.condition = gatewayEnabled;
-    const terminalWebAclAssociation = new CfnWebACLAssociation(this, 'TerminalWebAclAssociation', {
-      resourceArn: terminalLoadBalancer.ref,
-      webAclArn: terminalWebAcl.attrArn,
-    });
-    terminalWebAclAssociation.cfnOptions.condition = gatewayEnabled;
+    terminalDistribution.cfnOptions.condition = gatewayEnabled;
+    const terminalGatewayUrl = Fn.join('', ['wss://', terminalDistribution.attrDomainName, '/v1/terminal']);
+    // Do not reference an absent conditional distribution when the runtime is disabled.
+    terminalTicket.addEnvironment(
+      'TERMINAL_GATEWAY_URL',
+      Fn.conditionIf(gatewayEnabled.logicalId, terminalGatewayUrl, '').toString(),
+    );
 
     const gatewayImage = Fn.join('', [
       Aws.ACCOUNT_ID,
@@ -2062,6 +2083,13 @@ export class SessionStartStack extends Stack {
       value: terminalLoadBalancer.attrDnsName,
       condition: gatewayEnabled,
     });
+    new CfnOutput(this, 'TerminalDistributionId', { value: terminalDistribution.ref, condition: gatewayEnabled });
+    new CfnOutput(this, 'TerminalDistributionDomainName', {
+      value: terminalDistribution.attrDomainName,
+      condition: gatewayEnabled,
+    });
+    new CfnOutput(this, 'TerminalGatewayUrl', { value: terminalGatewayUrl, condition: gatewayEnabled });
+    new CfnOutput(this, 'TerminalVpcOriginId', { value: terminalVpcOrigin.attrId, condition: gatewayEnabled });
     new CfnOutput(this, 'TerminalTicketApiUrl', {
       value: Fn.join('', [
         'https://',
