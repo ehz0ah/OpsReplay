@@ -1,4 +1,5 @@
 import { QueryCommand, TransactGetCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { retryDynamoConflict } from '../../../packages/dynamodb/src/conflict-retry.js';
 import {
   commandEvidenceLimits,
   isCommandParserCheckpoint,
@@ -202,33 +203,31 @@ export class DynamoGatewayLiveTelemetryStore implements GatewayLiveTelemetryStor
     const cancelled = stopped(signal);
     if (cancelled) throw cancelled;
     const operationSignal = signal ?? new AbortController().signal;
+    const snapshot = new TransactGetCommand({
+      TransactItems: [
+        {
+          Get: {
+            TableName: this.table,
+            Key: terminalSessionKey(binding.sessionId),
+            ProjectionExpression: '#data.#view',
+            ExpressionAttributeNames: { '#data': 'data', '#view': 'view' },
+          },
+        },
+        { Get: { TableName: this.table, Key: terminalInputKey(binding.sessionId) } },
+        { Get: { TableName: this.table, Key: { PK: `SESSION#${binding.sessionId}`, SK: 'RECORDING' } } },
+        { Get: { TableName: this.table, Key: { PK: `SESSION#${binding.sessionId}`, SK: 'COMMAND_PARSER' } } },
+        { Get: { TableName: this.table, Key: monitorLiveTelemetryKey(binding.sessionId) } },
+      ],
+    });
     let responses;
     try {
       responses = (
-        await this.client.send(
-          new TransactGetCommand({
-            TransactItems: [
-              {
-                Get: {
-                  TableName: this.table,
-                  Key: terminalSessionKey(binding.sessionId),
-                  ProjectionExpression: '#data.#view',
-                  ExpressionAttributeNames: { '#data': 'data', '#view': 'view' },
-                },
-              },
-              { Get: { TableName: this.table, Key: terminalInputKey(binding.sessionId) } },
-              { Get: { TableName: this.table, Key: { PK: `SESSION#${binding.sessionId}`, SK: 'RECORDING' } } },
-              { Get: { TableName: this.table, Key: { PK: `SESSION#${binding.sessionId}`, SK: 'COMMAND_PARSER' } } },
-              { Get: { TableName: this.table, Key: monitorLiveTelemetryKey(binding.sessionId) } },
-            ],
-          }),
-          { abortSignal: operationSignal },
-        )
+        await retryDynamoConflict(() => this.client.send(snapshot, { abortSignal: operationSignal }), operationSignal)
       ).Responses;
     } catch (cause) {
       const cancelledAfterRead = stopped(signal, cause);
       if (cancelledAfterRead) throw cancelledAfterRead;
-      throw new GatewayLiveTelemetryError('authorization_failed', { cause });
+      throw telemetryFailure(cause);
     }
 
     const session = parseSession(responses?.[0]?.Item?.data, binding.sessionId);
