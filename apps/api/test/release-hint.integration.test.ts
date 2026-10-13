@@ -291,6 +291,43 @@ test('a recovery observation racing the transaction prevents the hint and assist
   assert.equal((await f.rows('REQUEST#')).length, 0);
 });
 
+test('a benign observation race retries the full snapshot and commits one hint', async () => {
+  let beforeTransaction: (() => Promise<void>) | undefined;
+  let transactionAttempts = 0;
+  const client = {
+    send: async (command: unknown, options?: { abortSignal?: AbortSignal }) => {
+      if (command instanceof TransactWriteCommand) {
+        transactionAttempts += 1;
+        if (beforeTransaction) {
+          const update = beforeTransaction;
+          beforeTransaction = undefined;
+          await update();
+        }
+      }
+      return database.document.send(command as never, options);
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const f = await fixture(client);
+  beforeTransaction = async () => {
+    await f.put(f.sessionKey('MONITOR_OBSERVATION'), {
+      ...f.observation,
+      sequence: 2,
+      cursor: 2,
+      at: at(1),
+    });
+  };
+
+  const result = await f.store.release(f.id, f.owner, randomUUID(), at(180), AbortSignal.timeout(10_000));
+
+  assert.equal(result.replayed, false);
+  assert.equal(transactionAttempts, 2);
+  assert.equal((await f.rows('HINT#')).length, 1);
+  assert.equal((await f.rows('EVENT#')).length, 1);
+  assert.equal((await f.rows('REQUEST#')).length, 1);
+  const saved = await f.get('STATE');
+  assert.equal(saved.view.assistance.hintsReleased, 1);
+});
+
 test('an unknown transaction response reconciles the committed request receipt', async () => {
   let inject = true;
   const client = {
