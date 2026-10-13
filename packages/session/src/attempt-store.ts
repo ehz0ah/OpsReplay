@@ -108,6 +108,26 @@ const conditional = (error: unknown) =>
   ['TransactionCanceledException', 'ConditionalCheckFailedException', 'TransactionConflictException'].includes(
     error.name,
   );
+
+// Readiness owns these snapshot conditions. Unknown cancellation reasons must
+// retain their SDK error instead of becoming an operational retry.
+function readinessContention(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (['ConditionalCheckFailedException', 'TransactionConflictException'].includes(error.name)) return true;
+  if (error.name !== 'TransactionCanceledException') return false;
+  const reasons: unknown = (error as Error & { CancellationReasons?: unknown }).CancellationReasons;
+  return (
+    Array.isArray(reasons) &&
+    reasons.some(
+      (reason) => record(reason) && (reason.Code === 'ConditionalCheckFailed' || reason.Code === 'TransactionConflict'),
+    ) &&
+    reasons.every(
+      (reason) =>
+        record(reason) &&
+        (reason.Code === 'None' || reason.Code === 'ConditionalCheckFailed' || reason.Code === 'TransactionConflict'),
+    )
+  );
+}
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a, (_key, value: unknown) =>
     record(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value,
@@ -386,7 +406,7 @@ export class DynamoAttemptStore {
         if (signal?.aborted) throw error;
         const saved = await this.session(identity.sessionId, signal);
         if (saved && saved.view.readyAt === startedAt) return saved;
-        if (!conditional(error) || attempt === 2) throw error;
+        if (!readinessContention(error)) throw error;
       }
     }
     throw new AttemptStoreError('conflict');

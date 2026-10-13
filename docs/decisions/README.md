@@ -92,6 +92,12 @@ timeline API and do not claim durable or exactly-once WebSocket delivery.
 default-closed `EnableSessionAdmission` gate for StartSession. Close admission before
 draining; do not use disabled cleanup actions as a shutdown mechanism.
 
+14 October 2026: [Session lifecycle](session-lifecycle.md) readiness now returns the
+existing domain conflict after known snapshot contention exhausts its three attempts.
+Reuse recorder supervision and cooldown. Preserve exact evidence conditions, lease
+fencing, and unknown SDK failures. Local controlled renewals reproduce the failure;
+the original CI timeout has insufficient diagnostics to confirm the same cause.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

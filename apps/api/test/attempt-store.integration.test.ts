@@ -154,6 +154,237 @@ test('readiness saves measurement origin under the current lease and requires co
   assert.equal((await f.store.lifecycle(f.id))?.lastSeenAt, at(1));
 });
 
+test('readiness retries one real lease renewal and reports exhausted renewals as a domain conflict', async (t) => {
+  for (const count of [1, 3]) {
+    await t.test(`${count} renewals`, async () => {
+      const f = await fixture();
+      const recordings = new DynamoMonitorRecordingStore(database.document, f.table);
+      const lifecycle = await f.store.lifecycle(f.id);
+      let renewals = 0;
+      const hooked = withReadHook(f, async (key) => {
+        if (key === 'RECORDING' && renewals < count) await recordings.renew(f.lease, at(70 + renewals++), 30_000);
+      });
+      const ready = () =>
+        hooked.store.ready(
+          f.lease,
+          at(1),
+          f.terminal,
+          { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+          at(74),
+        );
+      if (count === 1) {
+        assert.equal((await ready()).view.status, 'ready');
+        assert.equal(hooked.writes.length, 2);
+      } else {
+        await assert.rejects(
+          ready(),
+          (error: unknown) => error instanceof AttemptStoreError && error.code === 'conflict',
+        );
+        assert.equal(hooked.writes.length, 3);
+        assert.equal((await f.store.session(f.id))?.view.status, 'provisioning');
+        assert.deepEqual(await f.store.lifecycle(f.id), lifecycle);
+        assert.equal((await ready()).view.status, 'ready');
+        assert.equal(hooked.writes.length, 4);
+      }
+      assert.equal(renewals, count);
+    });
+  }
+});
+
+test('readiness rechecks takeover, end, and deadlines after contention', async (t) => {
+  for (const change of ['takeover', 'end', 'provisioning-deadline', 'measurement-deadline'] as const) {
+    await t.test(change, async () => {
+      const f = await fixture();
+      const recordings = new DynamoMonitorRecordingStore(database.document, f.table);
+      let changed = false;
+      const hooked = withReadHook(f, async (key) => {
+        if (key !== 'RECORDING' || changed) return;
+        changed = true;
+        if (change === 'takeover') {
+          await recordings.claim({ sessionId: f.id, recorderId: 'gateway-2', now: at(91) });
+        } else if (change === 'end') {
+          await f.store.outcome(f.id, 'ended', 'learner_ended', at(3));
+        } else {
+          await f.put(
+            'STATE',
+            change === 'provisioning-deadline'
+              ? { ...f.session, provisioningDeadline: at(2) }
+              : {
+                  ...f.session,
+                  view: { ...f.session.view, timeLimitSeconds: 60 },
+                  accessGrant: { ...f.session.accessGrant, timeLimitSeconds: 60 },
+                },
+          );
+        }
+      });
+      const ready = () =>
+        hooked.store.ready(
+          f.lease,
+          at(1),
+          f.terminal,
+          { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+          at(change === 'measurement-deadline' ? 61 : 2),
+        );
+      if (change === 'end') {
+        assert.equal((await ready()).view.status, 'ended');
+      } else {
+        await assert.rejects(
+          ready(),
+          (error: unknown) =>
+            error instanceof AttemptStoreError && error.code === (change === 'takeover' ? 'stale_lease' : 'conflict'),
+        );
+      }
+      assert.equal(changed, true);
+      assert.equal(hooked.writes.length, 1);
+      assert.equal((await f.store.lifecycle(f.id))?.readyAt, null);
+      assert.equal((await f.store.session(f.id))?.view.readyAt, null);
+    });
+  }
+});
+
+test('readiness keeps exact terminal evidence conditions after retry exhaustion', async () => {
+  const f = await fixture();
+  await database.document.send(new DeleteCommand({ TableName: f.table, Key: f.key('TERMINAL_RECORDING') }));
+  const hooked = withReadHook(f);
+  await assert.rejects(
+    hooked.store.ready(
+      f.lease,
+      at(1),
+      f.terminal,
+      { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+      at(2),
+    ),
+    (error: unknown) => error instanceof AttemptStoreError && error.code === 'conflict',
+  );
+  assert.equal(hooked.writes.length, 3);
+  assert.equal((await f.store.session(f.id))?.view.status, 'provisioning');
+  assert.equal((await f.store.lifecycle(f.id))?.readyAt, null);
+  await f.put('TERMINAL_RECORDING', f.terminal);
+  assert.equal((await f.ready()).view.status, 'ready');
+});
+
+test('readiness retries only known contention and preserves cancellation and storage errors', async (t) => {
+  const failures = [
+    { name: 'ConditionalCheckFailedException', retry: true },
+    { name: 'TransactionConflictException', retry: true },
+    {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'TransactionConflict' }, { Code: 'None' }],
+      retry: true,
+    },
+    {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, { Code: 'TransactionConflict' }],
+      retry: true,
+    },
+    { name: 'TransactionCanceledException', retry: false },
+    { name: 'TransactionCanceledException', CancellationReasons: [], retry: false },
+    { name: 'TransactionCanceledException', CancellationReasons: 'ConditionalCheckFailed', retry: false },
+    { name: 'TransactionCanceledException', CancellationReasons: [{ Code: 'None' }], retry: false },
+    {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, { Code: 'ValidationError' }],
+      retry: false,
+    },
+    { name: 'TransactionCanceledException', CancellationReasons: [null], retry: false },
+    {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, {}],
+      retry: false,
+    },
+    { name: 'AccessDeniedException', retry: false },
+    { name: 'ValidationException', retry: false },
+    { name: 'AbortError', retry: false },
+  ];
+  for (const [index, failure] of failures.entries()) {
+    await t.test(`${index}: ${failure.name}`, async () => {
+      const f = await fixture();
+      const error = Object.assign(new Error('Injected storage failure'), failure);
+      let writes = 0;
+      const client = {
+        send: async (command: unknown, options: unknown) => {
+          if (command instanceof TransactWriteCommand) {
+            writes++;
+            throw error;
+          }
+          return database.document.send(command as GetCommand, options as never);
+        },
+      } as unknown as DynamoDBDocumentClient;
+      await assert.rejects(
+        new DynamoAttemptStore(client, f.table).ready(
+          f.lease,
+          at(1),
+          f.terminal,
+          { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+          at(2),
+        ),
+        (value: unknown) =>
+          failure.retry ? value instanceof AttemptStoreError && value.code === 'conflict' : value === error,
+      );
+      assert.equal(writes, failure.retry ? 3 : 1);
+      assert.equal((await f.store.session(f.id))?.view.status, 'provisioning');
+      assert.equal((await f.store.lifecycle(f.id))?.readyAt, null);
+    });
+  }
+  await t.test('caller abort during contention', async () => {
+    const f = await fixture();
+    const controller = new AbortController();
+    const error = Object.assign(new Error('Contended write'), { name: 'TransactionConflictException' });
+    let writes = 0;
+    const client = {
+      send: async (command: unknown, options: unknown) => {
+        if (command instanceof TransactWriteCommand) {
+          writes++;
+          controller.abort();
+          throw error;
+        }
+        return database.document.send(command as GetCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    await assert.rejects(
+      new DynamoAttemptStore(client, f.table).ready(
+        f.lease,
+        at(1),
+        f.terminal,
+        { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+        at(2),
+        controller.signal,
+      ),
+      (value: unknown) => value === error,
+    );
+    assert.equal(writes, 1);
+    assert.equal((await f.store.lifecycle(f.id))?.readyAt, null);
+  });
+});
+
+test('readiness returns a committed snapshot after response loss without another write', async () => {
+  const f = await fixture();
+  const error = new Error('Lost response');
+  let writes = 0;
+  const client = {
+    send: async (command: unknown, options: unknown) => {
+      const result = await database.document.send(command as TransactWriteCommand, options as never);
+      if (command instanceof TransactWriteCommand) {
+        writes++;
+        throw error;
+      }
+      return result;
+    },
+  } as unknown as DynamoDBDocumentClient;
+  const saved = await new DynamoAttemptStore(client, f.table).ready(
+    f.lease,
+    at(1),
+    f.terminal,
+    { state: 'failing', sustainedSeconds: 0, requiredSeconds: 60 },
+    at(2),
+  );
+  assert.equal(saved.view.status, 'ready');
+  assert.equal(saved.view.readyAt, at(1));
+  assert.equal(writes, 1);
+  assert.deepEqual(await f.ready(), saved);
+  assert.equal((await f.store.lifecycle(f.id))?.readyAt, at(1));
+});
+
 test('a leading Monitor clock defers lifecycle decisions without rejecting durable evidence', async () => {
   const f = await fixture();
   await assert.rejects(

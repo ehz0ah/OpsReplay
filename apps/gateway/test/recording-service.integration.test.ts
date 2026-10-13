@@ -23,7 +23,7 @@ import { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
 import { CreateTableCommand, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -45,7 +45,7 @@ import { FileCaptures } from '../../monitor/src/captures.js';
 import { createControlServer } from '../../monitor/src/server.js';
 import type { MonitorConfig } from '../../monitor/src/types.js';
 import { createGatewayRecordingSupervisor } from '../src/recording-service.js';
-import { DynamoMonitorRecordingStore } from '../src/monitor-recording-store.js';
+import { DynamoMonitorRecordingStore, monitorRecorderLease } from '../src/monitor-recording-store.js';
 import { DynamoTerminalRecordingStore } from '../src/terminal-recording-store.js';
 import { DynamoTerminalSealingStore } from '../src/terminal-sealing-store.js';
 import { DynamoAttemptStore } from '../../../packages/session/src/attempt-store.js';
@@ -61,10 +61,13 @@ before(
 );
 after(() => database?.close());
 
-async function eventually(check: () => Promise<boolean>, message: string) {
+async function eventually(check: () => Promise<boolean>, message: string, signal?: AbortSignal) {
   const end = Date.now() + 10_000;
   while (Date.now() < end) {
-    if (await check()) return;
+    signal?.throwIfAborted();
+    const done = await check();
+    signal?.throwIfAborted();
+    if (done) return;
     await delay(20);
   }
   assert.fail(message);
@@ -75,8 +78,8 @@ async function eventually(check: () => Promise<boolean>, message: string) {
 const growingLog = process.platform === 'linux';
 test(
   growingLog
-    ? 'bounded growing-log captures permit combined completion and a scored debrief'
-    : 'production composition collects both network sources, seals durable pages, and retires combined work',
+    ? 'bounded growing-log captures permit completion, debrief, and playback after readiness contention'
+    : 'production composition retries readiness contention, seals durable pages, and retires combined work',
   { timeout: 30_000 },
   async (t) => {
     const watchedRoot = await mkdtemp(join(tmpdir(), 'opsreplay-composed-captures-'));
@@ -173,6 +176,7 @@ test(
     const terminalAddress = terminal.address();
     assert.ok(terminalAddress && typeof terminalAddress === 'object');
     const controller = new AbortController();
+    const waitFor = (check: () => Promise<boolean>, message: string) => eventually(check, message, controller.signal);
     let running: Promise<void> | undefined;
     const cancel = () => controller.abort();
     t.signal.addEventListener('abort', cancel, { once: true });
@@ -265,6 +269,34 @@ test(
     } as unknown as S3Client;
     const reports: string[] = [];
     const failures: unknown[] = [];
+    const recordings = new DynamoMonitorRecordingStore(database.document, table);
+    const readinessWrites: TransactWriteCommand[] = [];
+    let renewals = 0;
+    const dynamo = {
+      send: async (command: unknown, options: unknown) => {
+        if (
+          command instanceof TransactWriteCommand &&
+          command.input.TransactItems?.some((item) => item.Update?.ExpressionAttributeValues?.[':ready'] === 'ready')
+        ) {
+          readinessWrites.push(command);
+          if (renewals < 3) {
+            const saved = await recordings.get(sessionId);
+            assert.ok(saved?.leaseExpiresAt);
+            // A real renewal commits after ready() has read its exact snapshot.
+            const now = new Date(
+              Math.max(Date.now(), Date.parse(saved.leaseExpiresAt) - monitorRecorderLease.defaultDurationMs + 1),
+            ).toISOString();
+            const next = await recordings.renew(
+              { sessionId, recorderId: saved.recorderId!, generation: saved.generation },
+              now,
+            );
+            assert.notEqual(next.leaseExpiresAt, saved.leaseExpiresAt);
+            renewals++;
+          }
+        }
+        return database.document.send(command as TransactWriteCommand, options as never);
+      },
+    } as unknown as DynamoDBDocumentClient;
     const supervisor = createGatewayRecordingSupervisor(
       {
         sessionTableName: table,
@@ -274,29 +306,30 @@ test(
         monitorPort: monitorAddress.port,
         terminalPort: terminalAddress.port,
         pollIntervalMs: 100,
-        renewalIntervalMs: 100,
+        // Use the production interval. Three renewals are forced at the exact
+        // readiness boundary, without depending on timer or storage latency.
+        renewalIntervalMs: 5_000,
         monitorPollIntervalMs: 100,
         report: (event) => {
           reports.push(event.type);
           if (event.type === 'runner_failed') failures.push(event.error);
         },
       },
-      { dynamo: database.document, s3 },
+      { dynamo, s3 },
     );
     running = supervisor.run(controller.signal);
     // Observe rejection immediately. Cleanup still awaits and reports the failure,
     // but an early rejection must not bypass socket cleanup or leak the Monitor timer.
-    void running.catch(() => controller.abort());
-    const recordings = new DynamoMonitorRecordingStore(database.document, table);
+    void running.catch((error: unknown) => controller.abort(error));
     const terminals = new DynamoTerminalRecordingStore(database.document, table);
-    await eventually(
+    await waitFor(
       async () =>
         ((await recordings.get(sessionId))?.cursor ?? 0) > 0 &&
         (await terminals.get(sessionId))?.cursor === (growingLog ? 1 : 2),
       'Both durable collectors must advance',
     );
     const attempts = new DynamoAttemptStore(database.document, table);
-    await eventually(
+    await waitFor(
       async () => (await attempts.session(sessionId))?.view.status === 'ready',
       'Ready requires both committed collectors',
     );
@@ -307,7 +340,7 @@ test(
       for (let seq = 1; seq <= 2; seq++) {
         await logBurst();
         completeCommand();
-        await eventually(async () => {
+        await waitFor(async () => {
           const state = (
             await database.document.send(
               new GetCommand({
@@ -323,9 +356,9 @@ test(
     }
     const cutoffAt = new Date().toISOString();
     const endRequestId = randomUUID();
-    // The 100 ms fixture renewals can exhaust one call's three CAS attempts.
+    // Concurrent lease renewal can exhaust one call's three CAS attempts.
     // Retry the same decision within the existing deadline, without relaxing CAS.
-    await eventually(async () => {
+    await waitFor(async () => {
       try {
         await attempts.outcome(
           sessionId,
@@ -350,7 +383,7 @@ test(
         throw error;
       }
     }, 'End did not commit within the bounded contention retry window');
-    await eventually(
+    await waitFor(
       async () => (await recordings.get(sessionId))?.status === 'complete',
       'Combined recording did not complete',
     );
@@ -379,13 +412,23 @@ test(
     assert.ok(
       [...objects].some(([key, value]) => key.includes('/metrics/') && value.tag === 'opsreplay-retention=sealed'),
     );
-    await eventually(
+    await waitFor(
       async () =>
         !(await database.document.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))).Item
           ?.WorkPK,
       'Completed combined work was not retired',
     );
-    assert.deepEqual(failures, []);
+    assert.deepEqual(failures, [{ name: 'AttemptStoreError', code: 'conflict' }]);
+    assert.equal(renewals, 3);
+    // Scheduled renewal can add contention on a slow runner. The store tests
+    // check the exact per-call budget; this flow checks eventual recovery.
+    assert.ok(readinessWrites.length >= 4);
+    assert.equal(reports.filter((type) => type === 'runner_started').length, 2);
+    const expected = readinessWrites.map(
+      (write) => write.input.TransactItems![0]!.ConditionCheck!.ExpressionAttributeValues![':expected'],
+    );
+    assert.ok(expected.every((value) => value.generation === expected[0]!.generation));
+    assert.ok(new Set(expected.map((value) => value.leaseExpiresAt)).size >= 4);
     assert.ok(await recordings.coverage(sessionId));
     const content = JSON.parse(
       readFileSync(new URL('../../../content/challenges/wrong-upstream-port/challenge.json', import.meta.url), 'utf8'),

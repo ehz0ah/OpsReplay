@@ -37,6 +37,14 @@ never rejects a Monitor page. Readiness returns a retryable conflict until local
 time reaches its origin and initial observation. Recovery replay defers a future
 sample until local time catches up, so outcomes do not acquire future cutoffs.
 
+Readiness retries known conditional and transaction contention with fresh snapshots,
+within the existing three-attempt limit. Exhaustion returns the domain `conflict`
+error so the recording supervisor can retry through its existing cooldown and
+discovery path. Lease renewal can change an exact recording snapshot without
+invalidating collector evidence. Every retry still checks identity, live lease,
+deadlines, and exact collector snapshots. Unknown or malformed cancellation reasons
+retain their SDK error. A saved committed readiness still handles response loss.
+
 The first valid outcome atomically changes the session and recording to drain,
 with one cutoff and a 30-second task-coverage deadline. Later outcome requests return the saved
 outcome. Owner end requests save a receipt. Repeated requests cannot apply a
