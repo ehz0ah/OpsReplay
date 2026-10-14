@@ -18,7 +18,10 @@ import {
   monitorLiveTelemetryKey,
   type LiveMetricMessage,
 } from '../../../packages/contracts/private/live-telemetry.js';
-import { isMonitorRecordingState } from '../../../packages/contracts/private/monitor-persistence.js';
+import {
+  isMonitorRecordingState,
+  monitorRecordingLimits,
+} from '../../../packages/contracts/private/monitor-persistence.js';
 import {
   isTerminalConnectionId,
   isTerminalGeneration,
@@ -162,13 +165,13 @@ function validCursor(value: GatewayLiveTelemetryCursor, binding: GatewayLiveTele
     (value.source === null || isMonitorControlSource(value.source)) &&
     Number.isSafeInteger(value.monitorSequence) &&
     value.monitorSequence >= 0 &&
-    value.monitorSequence <= 10_000 &&
+    value.monitorSequence <= monitorRecordingLimits.maximumFrames &&
     Number.isSafeInteger(value.commandSequence) &&
     value.commandSequence >= 0 &&
     value.commandSequence <= commandEvidenceLimits.maximumCommands &&
     Number.isSafeInteger(value.metricSequence) &&
     value.metricSequence >= 0 &&
-    value.metricSequence <= value.monitorSequence &&
+    value.metricSequence <= monitorRecordingLimits.maximumFrames &&
     isTerminalSessionId(binding.sessionId)
   );
 }

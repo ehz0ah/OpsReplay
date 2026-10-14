@@ -14,6 +14,7 @@ import {
   monitorLiveTelemetryKey,
   type MonitorLiveTelemetry,
 } from '../../../packages/contracts/private/live-telemetry.js';
+import { monitorRecordingLimits } from '../../../packages/contracts/private/monitor-persistence.js';
 import { terminalInputKey } from '../../../packages/contracts/private/terminal-access.js';
 import {
   DynamoGatewayLiveTelemetryStore,
@@ -275,6 +276,50 @@ test('recorder Gateway A publishes telemetry that browser Gateway B reads as bou
   assert.deepEqual(empty, { type: 'telemetry', cursor: delta.cursor, metric: null, events: [] });
 });
 
+test('live telemetry advances metrics independently while draining monitor pages', async () => {
+  const f = await fixture();
+  const attached = await f.telemetry.read(f.binding);
+  assert.equal(attached.type, 'telemetry');
+  if (attached.type !== 'telemetry') return;
+
+  for (let sequence = 2; sequence <= 3; sequence++) {
+    await f.recorder.append(
+      f.lease,
+      startedAt,
+      reference(f, sequence - 1, sequence),
+      at(sequence),
+      undefined,
+      undefined,
+      monitorEvidence(f, sequence - 1, sequence),
+      live(f, sequence),
+    );
+  }
+
+  const first = await f.telemetry.read(f.binding, attached.cursor);
+  assert.equal(first.type, 'telemetry');
+  if (first.type !== 'telemetry') return;
+  assert.deepEqual(first.metric, live(f, 3).metric);
+  assert.deepEqual(first.events, [monitorEvidence(f, 1, 2).events[0]!.event]);
+  assert.deepEqual(first.cursor, {
+    ...attached.cursor,
+    monitorSequence: 2,
+    metricSequence: 3,
+  });
+
+  const second = await f.telemetry.read(f.binding, first.cursor);
+  assert.equal(second.type, 'telemetry');
+  if (second.type !== 'telemetry') return;
+  assert.equal(second.metric, null);
+  assert.deepEqual(second.events, [monitorEvidence(f, 2, 3).events[0]!.event]);
+  assert.deepEqual(second.cursor, {
+    ...first.cursor,
+    monitorSequence: 3,
+  });
+
+  const empty = await f.telemetry.read(f.binding, second.cursor);
+  assert.deepEqual(empty, { type: 'telemetry', cursor: second.cursor, metric: null, events: [] });
+});
+
 test('live telemetry pages command deltas without dropping the remaining commands', async () => {
   const f = await fixture();
   const attached = await f.telemetry.read(f.binding);
@@ -352,6 +397,13 @@ test('live telemetry distinguishes invalid durable data, authorization failure, 
   const attached = await f.telemetry.read(f.binding);
   assert.equal(attached.type, 'telemetry');
   if (attached.type !== 'telemetry') return;
+  await assert.rejects(
+    f.telemetry.read(f.binding, {
+      ...attached.cursor,
+      metricSequence: monitorRecordingLimits.maximumFrames + 1,
+    }),
+    telemetryError('invalid_config'),
+  );
   await assert.rejects(
     f.telemetry.read(f.binding, {
       ...attached.cursor,
