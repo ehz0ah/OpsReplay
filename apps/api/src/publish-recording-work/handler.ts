@@ -39,7 +39,7 @@ function observation(event: unknown): RecordableTaskObservation | undefined {
   if (!Array.isArray(detail.attachments)) throw new Error('Invalid ECS task-state event');
   const addresses = new Set<string>();
   for (const attachment of detail.attachments) {
-    if (!record(attachment) || attachment.type !== 'ElasticNetworkInterface' || !Array.isArray(attachment.details)) {
+    if (!record(attachment) || attachment.type !== 'eni' || !Array.isArray(attachment.details)) {
       continue;
     }
     for (const item of attachment.details) {
