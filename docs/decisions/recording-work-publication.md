@@ -29,9 +29,10 @@ and TLS private key. A saved certificate must match the tags on every retry. Def
 S3 failures remain failures.
 
 A separate action consumes ECS `RUNNING` task-state events. It accepts one private IPv4
-address from the task ENI, strongly reads the session, checks the saved cluster and task
-identity, and rejects expired or terminal provisioning work. One conditional DynamoDB
-write stores the task ARN and address and adds these top-level sparse-index keys:
+address from an EventBridge attachment whose type is `eni`, strongly reads the session,
+checks the saved cluster and task identity, and rejects expired or terminal provisioning
+work. One conditional DynamoDB write stores the task ARN and address and adds these
+top-level sparse-index keys:
 
 ```text
 WorkPK = RECORDING
@@ -65,3 +66,8 @@ identity conflicts, expired and terminal sessions, uncertain DynamoDB responses,
 validation, and bundled-handler loading. DynamoDB Local verifies the atomic session and
 work-key update. These tests do not prove EventBridge delivery, Fargate event contents,
 IAM, S3, DynamoDB global secondary index behavior, or private network connectivity.
+
+The 14 October 2026 AWS checkpoint confirmed that EventBridge uses `eni` for this
+attachment. ECS `DescribeTasks` uses `ElasticNetworkInterface`; its separate adapter
+keeps that value. A further admission-closed AWS run must confirm the corrected event
+path before learner admission opens.

@@ -19,15 +19,20 @@ function event(lastStatus = 'RUNNING', addresses = ['10.0.1.42']) {
       lastStatus,
       attachments: [
         {
-          type: 'ElasticNetworkInterface',
-          details: addresses.map((value) => ({ name: 'privateIPv4Address', value })),
+          type: 'eni',
+          status: 'ATTACHED',
+          details: [
+            { name: 'subnetId', value: 'subnet-0123456789abcdef0' },
+            { name: 'networkInterfaceId', value: 'eni-0123456789abcdef0' },
+            ...addresses.map((value) => ({ name: 'privateIPv4Address', value })),
+          ],
         },
       ],
     },
   };
 }
 
-test('the task-state handler publishes one validated private address with a bounded deadline', async () => {
+test('the task-state handler publishes one validated EventBridge ENI address with a bounded deadline', async () => {
   const calls: unknown[] = [];
   const logs: unknown[] = [];
   const handler = createPublishRecordingWorkHandler({
