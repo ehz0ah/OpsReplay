@@ -3,7 +3,11 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import type { AddressInfo } from 'node:net';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { createGatewayAwsClients, type GatewayAwsClients } from './aws.js';
-import { GatewayBrowserTerminalRelay, type GatewayBrowserTerminalRelayOptions } from './browser-terminal-relay.js';
+import {
+  GatewayBrowserTerminalRelay,
+  type GatewayBrowserTerminalRelayOptions,
+  type GatewayTerminalConnectionFailureEvent,
+} from './browser-terminal-relay.js';
 import { DynamoGatewayLiveTelemetryStore, type GatewayLiveTelemetryStore } from './live-telemetry-store.js';
 import {
   createGatewayRecordingSupervisor,
@@ -46,7 +50,8 @@ export type GatewayRuntimeEvent =
       listenPort: number | null;
     }
   | { type: 'service_stopped'; recorderId: string }
-  | MonitorRecordingSupervisorEvent;
+  | MonitorRecordingSupervisorEvent
+  | GatewayTerminalConnectionFailureEvent;
 
 interface RecordingSupervisor {
   run(signal: AbortSignal): Promise<void>;
@@ -323,6 +328,7 @@ export async function runGatewayRuntime(
         maxConnections: configuration.terminal.maximumConnections,
         maxPendingAuthentications: configuration.terminal.maximumPendingAuthentications,
         terminalPort: configuration.terminal.terminalPort,
+        report: (event) => safeReport(dependencies.report, event),
       });
       await listen(server, configuration.terminal.listenPort, lifetime.signal);
       ready = true;

@@ -11,6 +11,7 @@ import {
   type BrowserTerminalSession,
   type BrowserTerminalSessionOpener,
   type GatewayBrowserPeer,
+  type GatewayTerminalConnectionFailureEvent,
 } from '../src/browser-terminal-relay.js';
 import { TerminalAdmissionError, type TerminalAdmissionStore } from '../src/terminal-admission-store.js';
 import { TerminalClientError, type TerminalClientEnd } from '../src/terminal-client.js';
@@ -194,6 +195,7 @@ async function relayFixture(
     heartbeatIntervalMs?: number;
     maxConnections?: number;
     maxPendingAuthentications?: number;
+    report?: (event: GatewayTerminalConnectionFailureEvent) => void;
   } = {},
 ): Promise<{ server: Server; relay: GatewayBrowserTerminalRelay; url: string; close(): Promise<void> }> {
   const server = createServer((_request, response) => {
@@ -453,9 +455,13 @@ test('maps admission failures to bounded public errors', async (t) => {
     ['session_terminal', 'SESSION_TERMINAL', 'The terminal session has ended.'],
     ['unavailable', 'INTERNAL_ERROR', 'The terminal connection failed.'],
   ] as const) {
-    const runtime = await relayFixture(async () => {
-      throw new TerminalAdmissionError(privateCode);
-    });
+    const failures: GatewayTerminalConnectionFailureEvent[] = [];
+    const runtime = await relayFixture(
+      async () => {
+        throw new TerminalAdmissionError(privateCode);
+      },
+      { report: (event) => failures.push(event) },
+    );
     t.after(() => runtime.close());
     const socket = await openClient(runtime.url);
     const inbox = new ClientInbox(socket);
@@ -465,6 +471,19 @@ test('maps admission failures to bounded public errors', async (t) => {
     assert.equal(error.code, publicCode);
     assert.equal(error.message, message);
     assert.equal((await closed).code, publicCode === 'INTERNAL_ERROR' ? 1011 : 1008);
+    assert.deepEqual(
+      failures,
+      publicCode === 'INTERNAL_ERROR'
+        ? [
+            {
+              type: 'terminal_connection_failed',
+              sessionId,
+              stage: 'authentication',
+              error: { name: 'TerminalAdmissionError', code: privateCode },
+            },
+          ]
+        : [],
+    );
   }
 });
 
@@ -586,6 +605,35 @@ class AutoPeer extends FakePeer {
   }
 }
 
+test('sanitizes unexpected terminal failures and ignores reporting failures', async () => {
+  const peer = new AutoPeer();
+  const secret = `${ticket}:private failure detail`;
+  const failure = Object.assign(new Error(secret), { name: secret, code: secret });
+  const reports: GatewayTerminalConnectionFailureEvent[] = [];
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: async () => Promise.reject(failure),
+    report: (event) => {
+      reports.push(event);
+      throw new Error('Reporter failed.');
+    },
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await connection.closed;
+
+  assert.deepEqual(reports, [
+    {
+      type: 'terminal_connection_failed',
+      sessionId,
+      stage: 'authentication',
+      error: { name: 'Error', code: null },
+    },
+  ]);
+  assert.equal(JSON.stringify(reports).includes(secret), false);
+  assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
+});
+
 const telemetryCursor: GatewayLiveTelemetryCursor = {
   startedAt: '2026-10-13T00:00:00.000Z',
   source: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -700,9 +748,11 @@ test('reports one nonfatal telemetry error per outage and resumes delivery', asy
 test('fails the connection when live telemetry authorization cannot be verified', async () => {
   const peer = new AutoPeer();
   const f = sessionFixture();
+  const failures: GatewayTerminalConnectionFailureEvent[] = [];
   const connection = new GatewayBrowserTerminalConnection(peer, {
     openSession: f.opener,
     telemetry: { read: async () => Promise.reject(new GatewayLiveTelemetryError('authorization_failed')) },
+    report: (event) => failures.push(event),
     authTimeoutMs: 100,
     sendTimeoutMs: 100,
   });
@@ -716,6 +766,84 @@ test('fails the connection when live telemetry authorization cannot be verified'
   });
   assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
   assert.ok(f.calls.includes('close'));
+  assert.deepEqual(failures, [
+    {
+      type: 'terminal_connection_failed',
+      sessionId,
+      stage: 'telemetry',
+      error: { name: 'GatewayLiveTelemetryError', code: 'authorization_failed' },
+    },
+  ]);
+});
+
+for (const stage of ['input', 'resize', 'learner_heartbeat', 'private_heartbeat'] as const) {
+  test(`reports an internal ${stage} failure with its operation stage`, async () => {
+    const peer = new AutoPeer();
+    const base = sessionFixture();
+    const failure = new TerminalClientError('operation_timeout');
+    const reports: GatewayTerminalConnectionFailureEvent[] = [];
+    const opener: BrowserTerminalSessionOpener = async (options, signal) => {
+      const opened = await base.opener(options, signal);
+      if (stage === 'input') opened.session.input = async () => Promise.reject(failure);
+      if (stage === 'resize') opened.session.resize = async () => Promise.reject(failure);
+      if (stage === 'learner_heartbeat') opened.session.learnerHeartbeat = async () => Promise.reject(failure);
+      if (stage === 'private_heartbeat') opened.session.heartbeat = async () => Promise.reject(failure);
+      return opened;
+    };
+    const connection = new GatewayBrowserTerminalConnection(peer, {
+      openSession: opener,
+      report: (event) => reports.push(event),
+      heartbeatIntervalMs: stage === 'private_heartbeat' ? 5 : 1_000,
+      authTimeoutMs: 100,
+      sendTimeoutMs: 100,
+    });
+    peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+    await waitFor(() => peerJson(peer).some((message) => message.type === 'ready'));
+
+    if (stage === 'input') peer.message(Buffer.from('pwd\n'), true);
+    if (stage === 'resize') peer.message(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }));
+    if (stage === 'learner_heartbeat') peer.message(JSON.stringify({ type: 'heartbeat' }));
+    if (stage === 'private_heartbeat') await waitFor(() => reports.length === 1);
+    await connection.closed;
+
+    assert.deepEqual(reports, [
+      {
+        type: 'terminal_connection_failed',
+        sessionId,
+        stage,
+        error: { name: 'TerminalClientError', code: 'operation_timeout' },
+      },
+    ]);
+    assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
+  });
+}
+
+test('reports an internal private-terminal failure', async () => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  const reports: GatewayTerminalConnectionFailureEvent[] = [];
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    report: (event) => reports.push(event),
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peerJson(peer).some((message) => message.type === 'ready'));
+  const terminalEnd = f.terminalEnds[0];
+  assert.ok(terminalEnd);
+  terminalEnd.resolve({ reason: 'error', error: new TerminalClientError('transport_failed') });
+  await connection.closed;
+
+  assert.deepEqual(reports, [
+    {
+      type: 'terminal_connection_failed',
+      sessionId,
+      stage: 'terminal',
+      error: { name: 'TerminalClientError', code: 'transport_failed' },
+    },
+  ]);
+  assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
 });
 
 test('keeps telemetry reads non-overlapping and cancels the active read on shutdown', async () => {

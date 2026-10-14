@@ -247,7 +247,19 @@ test('runs the recording supervisor and terminal listener in one process', async
     maxConnections: 256,
     maxPendingAuthentications: 32,
     terminalPort: 7681,
+    report: f.relayOptions()?.report,
   });
+  const terminalFailure = {
+    type: 'terminal_connection_failed' as const,
+    sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    stage: 'telemetry' as const,
+    error: { name: 'GatewayLiveTelemetryError', code: 'authorization_failed' },
+  };
+  f.relayOptions()?.report?.(terminalFailure);
+  assert.deepEqual(
+    f.events.find((event) => event.type === 'terminal_connection_failed'),
+    terminalFailure,
+  );
   assert.equal(f.supervisorOptions()?.recorderId, 'gateway-test');
   assert.equal(f.supervisorOptions()?.maximumConcurrentRecordings, 16);
   assert.equal(f.supervisorOptions()?.terminalPort, 7681);
