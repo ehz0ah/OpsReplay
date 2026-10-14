@@ -51,6 +51,19 @@ type GatewayErrorCode =
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
 
+export type GatewayTerminalFailureStage =
+  'authentication' | 'input' | 'resize' | 'learner_heartbeat' | 'private_heartbeat' | 'terminal' | 'telemetry';
+
+export interface GatewayTerminalConnectionFailureEvent {
+  type: 'terminal_connection_failed';
+  sessionId: string | null;
+  stage: GatewayTerminalFailureStage;
+  error: {
+    name: string;
+    code: string | null;
+  };
+}
+
 const errorMessages: Record<GatewayErrorCode, string> = {
   AUTH_FAILED: 'Terminal authentication failed.',
   TICKET_EXPIRED: 'The terminal ticket expired.',
@@ -100,6 +113,7 @@ export interface GatewayBrowserPeer {
 
 export interface GatewayBrowserTerminalConnectionOptions {
   openSession: BrowserTerminalSessionOpener;
+  report?: (event: GatewayTerminalConnectionFailureEvent) => void;
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
   heartbeatIntervalMs?: number;
@@ -122,6 +136,24 @@ class BrowserSendError extends Error {
     super('Browser terminal send failed.');
     this.name = 'BrowserSendError';
   }
+}
+
+function terminalFailureError(error: unknown): GatewayTerminalConnectionFailureEvent['error'] {
+  if (error instanceof TerminalAdmissionError) return { name: 'TerminalAdmissionError', code: error.code };
+  if (error instanceof TerminalClientError) return { name: 'TerminalClientError', code: error.code };
+  if (error instanceof GatewayLiveTelemetryError) return { name: 'GatewayLiveTelemetryError', code: error.code };
+  if (error instanceof BrowserSendError) return { name: 'BrowserSendError', code: null };
+  if (error instanceof TypeError) return { name: 'TypeError', code: null };
+  if (error instanceof Error) return { name: 'Error', code: null };
+  return { name: 'UnknownError', code: null };
+}
+
+function operationFailureStage(pending: PendingBrowserMessage): GatewayTerminalFailureStage {
+  if (pending.kind === 'input') return 'input';
+  if (pending.kind === 'keepalive') return 'private_heartbeat';
+  if (pending.message.type === 'heartbeat') return 'learner_heartbeat';
+  if (pending.message.type === 'resize') return 'resize';
+  return 'terminal';
 }
 
 function boundedMilliseconds(value: number | undefined, fallback: number, name: string, maximum = 60_000): number {
@@ -368,15 +400,15 @@ export class GatewayBrowserTerminalConnection {
       if (this.state !== 'authenticating') return;
       if (error instanceof TerminalAdmissionError) {
         const code = admissionErrorCode(error);
-        this.fail(code, code === 'INTERNAL_ERROR' ? 1011 : 1008);
+        this.failFromError(code, 'authentication', error, message.sessionId);
         return;
       }
       if (error instanceof TerminalClientError) {
         const code = terminalErrorCode(error);
-        this.fail(code, code === 'INTERNAL_ERROR' ? 1011 : 1008);
+        this.failFromError(code, 'authentication', error, message.sessionId);
         return;
       }
-      this.fail('INTERNAL_ERROR', 1011);
+      this.failInternal('authentication', error, message.sessionId);
     }
   }
 
@@ -389,7 +421,7 @@ export class GatewayBrowserTerminalConnection {
         try {
           await this.dispatch(pending);
         } catch (error) {
-          this.handleOperationError(error);
+          this.handleOperationError(error, pending);
         } finally {
           this.pendingBytes = Math.max(0, this.pendingBytes - pending.bytes);
         }
@@ -431,19 +463,20 @@ export class GatewayBrowserTerminalConnection {
     }
   }
 
-  private handleOperationError(error: unknown): void {
+  private handleOperationError(error: unknown, pending: PendingBrowserMessage): void {
     if (this.state !== 'ready') return;
+    const stage = operationFailureStage(pending);
     if (error instanceof TerminalAdmissionError) {
       const code = admissionErrorCode(error);
-      this.fail(code, code === 'INTERNAL_ERROR' ? 1011 : 1008);
+      this.failFromError(code, stage, error);
       return;
     }
     if (error instanceof TerminalClientError) {
       const code = terminalErrorCode(error);
-      this.fail(code, code === 'INTERNAL_ERROR' ? 1011 : 1008);
+      this.failFromError(code, stage, error);
       return;
     }
-    this.fail('INTERNAL_ERROR', 1011);
+    this.failInternal(stage, error);
   }
 
   private async deliverOutput(data: Buffer): Promise<void> {
@@ -477,10 +510,10 @@ export class GatewayBrowserTerminalConnection {
     }
     if (result.reason === 'error') {
       const code = terminalErrorCode(result.error);
-      this.fail(code, code === 'INTERNAL_ERROR' ? 1011 : 1008);
+      this.failFromError(code, 'terminal', result.error);
       return;
     }
-    this.fail('INTERNAL_ERROR', 1011);
+    this.failInternal('terminal', new TerminalClientError('closed'));
   }
 
   private async streamTelemetry(): Promise<void> {
@@ -523,11 +556,11 @@ export class GatewayBrowserTerminalConnection {
               unavailableReported = true;
             }
           } else {
-            this.fail('INTERNAL_ERROR', 1011);
+            this.failInternal('telemetry', error);
             return;
           }
         } else {
-          this.fail('INTERNAL_ERROR', 1011);
+          this.failInternal('telemetry', error);
           return;
         }
       }
@@ -601,6 +634,42 @@ export class GatewayBrowserTerminalConnection {
 
   private fail(code: GatewayErrorCode, closeCode: number): void {
     if (!this.beginClose()) return;
+    this.sendFailure(code, closeCode);
+  }
+
+  private failFromError(
+    code: GatewayErrorCode,
+    stage: GatewayTerminalFailureStage,
+    error: unknown,
+    sessionId = this.session?.sessionId ?? null,
+  ): void {
+    if (code === 'INTERNAL_ERROR') {
+      this.failInternal(stage, error, sessionId);
+      return;
+    }
+    this.fail(code, 1008);
+  }
+
+  private failInternal(
+    stage: GatewayTerminalFailureStage,
+    error: unknown,
+    sessionId = this.session?.sessionId ?? null,
+  ): void {
+    if (!this.beginClose()) return;
+    try {
+      this.options.report?.({
+        type: 'terminal_connection_failed',
+        sessionId,
+        stage,
+        error: terminalFailureError(error),
+      });
+    } catch {
+      /* Reporting must not change terminal behavior. */
+    }
+    this.sendFailure('INTERNAL_ERROR', 1011);
+  }
+
+  private sendFailure(code: GatewayErrorCode, closeCode: number): void {
     void this.sendJson(publicError(code)).then(
       () => this.closePeer(closeCode, code),
       () => this.terminatePeer(),
@@ -707,6 +776,7 @@ export interface GatewayBrowserTerminalRelayOptions {
   admissions: TerminalAdmissionStore;
   maxConnections: number;
   maxPendingAuthentications: number;
+  report?: (event: GatewayTerminalConnectionFailureEvent) => void;
   path?: string;
   authTimeoutMs?: number;
   sendTimeoutMs?: number;
@@ -913,6 +983,7 @@ export class GatewayBrowserTerminalRelay {
   private accept(socket: WebSocket): void {
     const connection = new GatewayBrowserTerminalConnection(adaptWebSocket(socket), {
       openSession: this.openSession,
+      ...(this.options.report === undefined ? {} : { report: this.options.report }),
       ...(this.options.authTimeoutMs === undefined ? {} : { authTimeoutMs: this.options.authTimeoutMs }),
       ...(this.options.sendTimeoutMs === undefined ? {} : { sendTimeoutMs: this.options.sendTimeoutMs }),
       ...(this.options.heartbeatIntervalMs === undefined
