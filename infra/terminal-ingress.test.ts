@@ -154,8 +154,10 @@ test('edge WAF is default-off in us-east-1 and rate limits viewer IP without tru
     assert.equal(rendered.Resources.TerminalWebAcl.Condition, 'TerminalEdgeProtectionEnabled');
     const acl = rendered.Resources.TerminalWebAcl.Properties;
     assert.equal(acl.Scope, 'CLOUDFRONT');
+    assert.deepEqual(acl.DefaultAction, { Allow: {} });
     assert.equal(acl.VisibilityConfig.SampledRequestsEnabled, false);
     assert.equal(acl.Rules.length, 1);
+    assert.deepEqual(acl.Rules[0].Action, { Block: {} });
     assert.deepEqual(acl.Rules[0].Statement.RateBasedStatement, {
       AggregateKeyType: 'IP',
       EvaluationWindowSec: 60,
