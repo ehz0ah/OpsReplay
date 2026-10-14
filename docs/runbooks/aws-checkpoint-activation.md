@@ -87,6 +87,12 @@ is 55 against the inbound security-group rule quota. Confirm available private I
 addresses and the attached VPC internet gateway. Workload subnets must have no internet
 or NAT route. Do not edit the AWS-owned CloudFront service security group.
 
+Record `AvailabilityZoneId` for both workload subnets and check each ID against the
+[supported Regions and AZ exceptions for VPC origins](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html).
+Use AZ IDs, not account-specific AZ names. Stop before deployment if either AZ is
+unsupported. The current AWS table lists `ap-southeast-1` without an AZ exception;
+recheck it for the approved test window.
+
 Confirm the candidate task, identity client, network ownership, and absence
 of unintended public routes. The task definition must have no task role and must use the
 reviewed digest-only images.
@@ -95,7 +101,8 @@ reviewed digest-only images.
 aws ecs describe-task-definition --task-definition <reference-task-definition-arn> --profile opsreplay --region ap-southeast-1
 aws cognito-idp describe-user-pool --user-pool-id <user-pool-id> --profile opsreplay --region ap-southeast-1
 aws cognito-idp describe-user-pool-client --user-pool-id <user-pool-id> --client-id <public-client-id> --profile opsreplay --region ap-southeast-1
-aws ec2 describe-subnets --subnet-ids <workload-a> <workload-b> --profile opsreplay --region ap-southeast-1
+aws ec2 describe-subnets --subnet-ids <workload-a> <workload-b> --profile opsreplay --region ap-southeast-1 \
+  --query 'Subnets[].{SubnetId:SubnetId,VpcId:VpcId,AvailabilityZone:AvailabilityZone,AvailabilityZoneId:AvailabilityZoneId,AvailableIpAddressCount:AvailableIpAddressCount}' --output table
 aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=<vpc-id> --profile opsreplay --region ap-southeast-1
 aws ec2 describe-route-tables --filters Name=vpc-id,Values=<vpc-id> --profile opsreplay --region ap-southeast-1
 aws ec2 describe-security-groups --group-ids <environment-sg> <endpoint-sg> --profile opsreplay --region ap-southeast-1
@@ -151,9 +158,20 @@ Record the generated `TerminalGatewayUrl`, distribution ID, VPC origin ID, and i
 ALB DNS output. Confirm the ALB is internal and its only ingress is the reviewed
 CloudFront prefix list on TCP 80. Confirm the target remains private on TCP 8080.
 Test the public HTTPS/WSS path, negotiated TLS, wrong Origin, missing or reused ticket,
-query rejection, blocked ordinary paths, and no direct public ALB access. Leave a terminal
-connected for more than 10 minutes, with Gateway Ping enabled, and test reconnects. Test
-the WAF threshold with an approved bounded request load, including spoofed
+query rejection, blocked ordinary paths, and no direct public ALB access.
+
+Leave the same terminal socket connected for more than 10 minutes with no typing,
+commands, resizing, or terminal output. Keep Gateway Ping and normal learner-presence
+heartbeats active; protocol traffic is expected. Use an attempt whose remaining time
+limit exceeds the test duration. Disable automatic reconnect during this check so a
+replacement socket cannot hide a disconnect. Record the start and end times, whether
+the original socket survives, and any close time and code. Test reconnects separately.
+Record the configured Gateway Ping interval (currently 20 seconds), CloudFront origin
+read timeout (30 seconds), and ALB idle timeout (60 seconds). Keep the Ping interval below
+the origin read timeout. Do not infer established-socket timeout behaviour from a busy
+terminal or from local tests.
+
+Test the WAF threshold with an approved bounded request load, including spoofed
 `X-Forwarded-For` values. Expect approximate enforcement. Record handshake latency and
 terminal responsiveness. Keep browser credentials and terminal output out of logs.
 
