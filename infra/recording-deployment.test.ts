@@ -369,7 +369,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const gatewayResponses = ofType(rendered.Resources, 'AWS::ApiGateway::GatewayResponse');
     assert.ok(deployment);
     assert.ok(method);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV7');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV8');
     assert.equal(gatewayResponses.length, 5);
     const deploymentDependencies = [deployment[1].DependsOn].flat();
     assert.ok(deploymentDependencies.includes(method[0]));
@@ -458,7 +458,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     const apiPermissions = ofType(rendered.Resources, 'AWS::Lambda::Permission').filter(
       ([, resource]) => resource.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(apiPermissions.length, 8);
+    assert.equal(apiPermissions.length, 10);
     const ticketPermission = apiPermissions.find(([, resource]) =>
       JSON.stringify(resource.Properties?.SourceArn).includes('POST/v1/sessions/*/terminal-tickets'),
     );

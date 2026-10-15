@@ -1,3 +1,4 @@
+import { effectivePlan } from '../shared/plan.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { setTimeout } from 'node:timers/promises';
@@ -169,11 +170,7 @@ export function createStartHandler({
         )
           return await rejectNew('VERSION_UNAVAILABLE');
         const clock = now();
-        const plan =
-          snapshot.plan?.plan === 'pro' &&
-          (snapshot.plan.expiresAt === null || Date.parse(snapshot.plan.expiresAt) > clock.getTime())
-            ? 'pro'
-            : 'free';
+        const { plan } = effectivePlan(snapshot.plan, clock.getTime());
         if (content.plan === 'pro' && plan !== 'pro') return await rejectNew('ACCESS_DENIED');
         const timeLimitSeconds = content.timeLimits[plan];
         const completed = snapshot.progress?.completedAttempts ?? 0;

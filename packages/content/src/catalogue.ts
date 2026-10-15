@@ -24,3 +24,5 @@ export const cataloguePartition = 'CATALOG#PUBLIC';
 export function catalogueKey(entry: Pick<CatalogEntry, 'mode' | 'id' | 'version'>) {
   return { PK: cataloguePartition, SK: `ENTRY#${entry.mode}#${entry.id}#${entry.version}` };
 }
+
+export const validCatalog = ajv.compile({ $ref: `${publicSchema.$id}#/$defs/Catalog` });

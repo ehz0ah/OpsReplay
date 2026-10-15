@@ -116,6 +116,10 @@ The table and user pool have service-level deletion protection enabled.
 public partition and atomically publishes metadata with immutable admission records.
 No table scan, secondary index, or runtime activation is added.
 
+16 October 2026: [Learner bootstrap reads](learner-bootstrap.md) adds public catalogue
+queries and Cognito account reads, sharing the current-plan resolver with admission.
+Both remain action-scoped and default-off.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |
