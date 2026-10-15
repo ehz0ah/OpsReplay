@@ -3,8 +3,8 @@
 No OpsReplay runtime is deployed. Both disposable AWS checkpoints were removed after
 validation. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
 contain checkpoint session or identity data. The selected retained resources are owned
-by `OpsReplayDurableResources`. Its template enables service-level deletion protection
-for the session table and learner user pool. The CDK bootstrap stacks in
+by `OpsReplayDurableResources`. The session table and learner user pool have
+service-level deletion protection enabled. The CDK bootstrap stacks in
 `ap-southeast-1` and `us-east-1` and the account-level GitHub OIDC provider also remain,
 but they do not run the application.
 Before the pilot, verify the controls in

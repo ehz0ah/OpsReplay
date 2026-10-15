@@ -110,8 +110,7 @@ session start, the unimplemented browser application, or concurrent learner load
 the retained session table, Monitor bootstrap bucket, recording bucket, and learner user
 pool into one long-lived stack. Disposable foundation and runtime stacks consume explicit
 identifiers. The selected retained resources were imported with zero reported drift.
-The durable owner template enables service-level deletion protection for the table and
-user pool.
+The table and user pool have service-level deletion protection enabled.
 
 ## Product decisions
 

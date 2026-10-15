@@ -1,6 +1,6 @@
 # Durable AWS resource ownership
 
-Status: selected checkpoint resources imported; deletion protection declared in IaC
+Status: implemented; selected resources imported and deletion protection deployed
 Date: 15 October 2026
 Owner: Cloud contributors
 
@@ -22,9 +22,8 @@ another retained set instead of reusing the first set.
 
 All four resources retain their data on stack deletion or replacement. The two buckets
 keep S3-managed encryption, public-access blocking, and a policy that denies insecure
-transport. The durable owner template enables service-level deletion protection for the
-table and user pool. DynamoDB point-in-time recovery remains a separate cost and
-restore-policy decision.
+transport. The table and user pool use service-level deletion protection. DynamoDB
+point-in-time recovery remains a separate cost and restore-policy decision.
 
 `OpsReplaySessionStart` is disposable. It derives the table from its stream ARN and
 accepts explicit bucket and user-pool identifiers. It creates no durable resource. It can still create a temporary
@@ -56,5 +55,6 @@ resource unchanged until its owner approves a separate disposition.
 
 Template tests verify ownership, retention, storage controls, explicit runtime inputs,
 and the execution-role permission. The AWS adoption verified import, policy creation,
-and CloudFormation drift. It did not test IAM enforcement, Cognito authentication, S3
-lifecycle timing, or a deployed runtime.
+and CloudFormation drift. The protection deployment verified both live protection
+settings and a subsequent zero-drift result. It did not test IAM enforcement, Cognito
+authentication, S3 lifecycle timing, or a deployed runtime.
