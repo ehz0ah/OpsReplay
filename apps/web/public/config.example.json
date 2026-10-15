@@ -1,0 +1,8 @@
+{
+  "apiBaseUrl": "https://example.execute-api.ap-southeast-1.amazonaws.com/checkpoint",
+  "cognitoAuthority": "https://cognito-idp.ap-southeast-1.amazonaws.com/pool_example",
+  "cognitoClientId": "example",
+  "cognitoLoginUrl": "https://example.auth.ap-southeast-1.amazoncognito.com",
+  "callbackUrl": "http://localhost:3000/auth/callback",
+  "logoutUrl": "http://localhost:3000/"
+}

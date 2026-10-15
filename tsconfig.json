@@ -14,7 +14,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "aws-lambda"]
+    "types": ["node", "aws-lambda"],
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": [
     "apps/api/**/*.ts",
@@ -24,6 +26,9 @@
     "packages/contracts/private/**/*.ts",
     "packages/session/**/*.ts",
     "packages/content/**/*.ts",
-    "scripts/publish-reference-release.ts"
+    "scripts/publish-reference-release.ts",
+    "apps/web/**/*.ts",
+    "apps/web/**/*.tsx",
+    "packages/contracts/public*.ts"
   ]
 }
