@@ -242,6 +242,7 @@ export class TerminalAttachment {
             this.callbacks.frame(frame);
           })
           .catch(() => {
+            if (done || this.lifetime.signal.aborted) return;
             this.state('error', 'The terminal protocol could not be read safely.');
             finish(false);
           })
