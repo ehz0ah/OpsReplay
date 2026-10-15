@@ -5,6 +5,8 @@ import { TransactGetCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dy
 import { createGetAccountHandler } from '../src/get-account/handler.js';
 const event = {
   httpMethod: 'GET',
+  body: null,
+  isBase64Encoded: false,
   resource: '/v1/me',
   requestContext: { authorizer: { claims: { sub: 'learner' } } },
   queryStringParameters: null,
