@@ -1,3 +1,4 @@
+import { AuthProvider } from './auth/provider.js';
 import { ConfigContext } from './config-context.js';
 import { Component, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -29,7 +30,9 @@ loadConfig()
     root.render(
       <Boundary>
         <ConfigContext value={config}>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </ConfigContext>
       </Boundary>,
     ),

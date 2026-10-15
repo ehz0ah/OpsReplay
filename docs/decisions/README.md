@@ -124,6 +124,11 @@ Both remain action-scoped and default-off.
 generated from the current schema. Selected validators are precompiled for a strict
 CSP without runtime evaluation. No new backend or authentication service is added.
 
+16 October 2026: browser identity uses `oidc-client-ts` for code flow, S256 PKCE,
+state and nonce validation. Tokens and authorization state stay in tab-scoped session
+storage. HTTP requests use ID tokens; backend Cognito validation remains authoritative.
+Refresh is bounded and shared within the tab. No iframe or local login fallback is added.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |
