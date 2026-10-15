@@ -7,10 +7,10 @@ CloudFront terminal ingress, the Gateway, durable recording, hints, deterministi
 debrief, timeline, and playback. An operator-seeded terminal-to-result AWS checkpoint
 passed on 15 October 2026. It did not exercise Cognito, API Gateway, or session start.
 Its disposable resources were removed, and every runtime gate remains default-off.
-The retained table, buckets, and user pools remain unmanaged until the selected set is
-imported into the new durable-resource stack.
-The web application, catalogue and account bootstrap APIs, additional Challenges, and
-hosted deployment are not implemented. See the
+The selected retained table, buckets and learner identity are now owned by the durable
+resource stack. The static browser and catalogue/account APIs are implemented locally.
+Normal browser entry and playback on AWS remain unverified. Additional Challenges are
+planned. See the
 [checkpoint report](checkpoints/2026-10-15-terminal.md).
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
@@ -109,8 +109,9 @@ resolves names. Application traffic goes directly to the resolved entry point.
 hostname and certificate. It needs no Route 53 registration. CloudFront reaches an
 internal ALB through a VPC origin. Its separate edge WAF is owned in `us-east-1`.
 The [ingress decision](decisions/cloudfront-terminal-ingress.md) records the default
-certificate policy and private HTTP transport limits. Static web and free Learn hosting
-through CloudFront and S3 remain planned. The Regional REST API and Cognito retain
+certificate policy and private HTTP transport limits. Static browser hosting uses a separate private S3 origin and CloudFront distribution.
+Its exact connection origins and recording CORS setup are described in
+[browser deployment](browser-deployment.md). Free Learn hosting remains planned. The Regional REST API and Cognito retain
 their AWS-managed hostnames. Custom domain names remain a separate choice. Cognito
 identifies users. The backend checks session ownership and plan entitlement on every
 request.
