@@ -21,27 +21,26 @@ import {
   CfnRestApi,
   CfnStage,
 } from 'aws-cdk-lib/aws-apigateway';
-import { CfnUserPool, CfnUserPoolClient, CfnUserPoolDomain } from 'aws-cdk-lib/aws-cognito';
+import { CfnUserPoolClient, CfnUserPoolDomain } from 'aws-cdk-lib/aws-cognito';
 import { CachePolicy, CfnDistribution, CfnOriginRequestPolicy, CfnVpcOrigin } from 'aws-cdk-lib/aws-cloudfront';
-import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Alarm, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { CfnSecurityGroup, CfnSecurityGroupEgress, CfnSecurityGroupIngress } from 'aws-cdk-lib/aws-ec2';
 import { CfnService, CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { CfnListener, CfnListenerRule, CfnLoadBalancer, CfnTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { CfnRule, Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
-import { ArnPrincipal, Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { CfnPermission, CfnEventSourceMapping, Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { SqsDestination } from 'aws-cdk-lib/aws-lambda-destinations';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { CfnScheduleGroup } from 'aws-cdk-lib/aws-scheduler';
-import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
 import { lifecycleHintPrefix } from '../packages/contracts/private/lifecycle-hint.js';
 import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
-import { terminalTicketTtlAttribute } from '../packages/contracts/private/terminal-access.js';
 
 const gatewayPort = 8080;
 const terminalPort = 7681;
@@ -108,6 +107,23 @@ export class SessionStartStack extends Stack {
     const executionRoleArn = new CfnParameter(this, 'EnvironmentExecutionRoleArn', {
       type: 'String',
       allowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+',
+    });
+    const sessionTableStreamArn = new CfnParameter(this, 'SessionTableStreamArn', {
+      type: 'String',
+      allowedPattern: 'arn:aws[a-z-]*:dynamodb:[a-z0-9-]+:[0-9]{12}:table/[A-Za-z0-9_.-]+/stream/[A-Za-z0-9:_.-]+',
+      description: 'Existing durable session table stream ARN.',
+    });
+    const monitorSecretBucketArn = new CfnParameter(this, 'MonitorBootstrapBucketArn', {
+      type: 'String',
+      allowedPattern: 'arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]*[a-z0-9]',
+      description: 'Existing durable Monitor bootstrap-file bucket ARN.',
+    });
+    const recordingBucketName = new CfnParameter(this, 'RecordingBucketName', {
+      type: 'String',
+      minLength: 3,
+      maxLength: 63,
+      allowedPattern: '[a-z0-9][a-z0-9.-]*[a-z0-9]',
+      description: 'Existing durable recording bucket name.',
     });
     const gatewayImageDigest = new CfnParameter(this, 'GatewayImageDigest', {
       type: 'String',
@@ -183,14 +199,14 @@ export class SessionStartStack extends Stack {
     });
     const cognitoUserPoolArn = new CfnParameter(this, 'CognitoUserPoolArn', {
       type: 'String',
-      default: '',
-      allowedPattern: '(|arn:aws[a-z-]*:cognito-idp:[a-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+)',
+      allowedPattern: 'arn:aws[a-z-]*:cognito-idp:[a-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+',
+      description: 'Existing durable learner user pool ARN.',
     });
     const cognitoIdentityMode = new CfnParameter(this, 'CognitoIdentityMode', {
       type: 'String',
       default: 'external',
       allowedValues: ['external', 'managed'],
-      description: 'Use an existing user pool and client, or create checkpoint-owned Cognito resources.',
+      description: 'Use an existing client and login domain, or create disposable checkpoint-owned values.',
     });
     const cognitoUserPoolClientId = new CfnParameter(this, 'CognitoUserPoolClientId', {
       type: 'String',
@@ -320,10 +336,6 @@ export class SessionStartStack extends Stack {
       ),
       assertions: [
         {
-          assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolArn.valueAsString, '')),
-          assertDescription: 'CognitoUserPoolArn is required for external Cognito identity.',
-        },
-        {
           assert: Fn.conditionNot(Fn.conditionEquals(cognitoUserPoolClientId.valueAsString, '')),
           assertDescription: 'CognitoUserPoolClientId is required for external Cognito identity.',
         },
@@ -345,10 +357,6 @@ export class SessionStartStack extends Stack {
           assertDescription: 'CognitoDomainPrefix is required for managed Cognito identity.',
         },
         {
-          assert: Fn.conditionEquals(cognitoUserPoolArn.valueAsString, ''),
-          assertDescription: 'CognitoUserPoolArn must be empty for managed Cognito identity.',
-        },
-        {
           assert: Fn.conditionEquals(cognitoUserPoolClientId.valueAsString, ''),
           assertDescription: 'CognitoUserPoolClientId must be empty for managed Cognito identity.',
         },
@@ -366,18 +374,9 @@ export class SessionStartStack extends Stack {
         },
       ],
     });
-    const managedUserPool = new CfnUserPool(this, 'CheckpointUserPool', {
-      userPoolName: 'opsreplay-checkpoint',
-      adminCreateUserConfig: { allowAdminCreateUserOnly: true },
-      autoVerifiedAttributes: ['email'],
-      usernameAttributes: ['email'],
-      usernameConfiguration: { caseSensitive: false },
-      accountRecoverySetting: { recoveryMechanisms: [{ name: 'verified_email', priority: 1 }] },
-    });
-    managedUserPool.cfnOptions.condition = managedIdentity;
-    managedUserPool.applyRemovalPolicy(RemovalPolicy.RETAIN);
+    const userPoolId = Fn.select(1, Fn.split('/', cognitoUserPoolArn.valueAsString));
     const managedUserPoolClient = new CfnUserPoolClient(this, 'CheckpointUserPoolClient', {
-      userPoolId: managedUserPool.ref,
+      userPoolId,
       clientName: 'opsreplay-browser',
       generateSecret: false,
       allowedOAuthFlowsUserPoolClient: true,
@@ -393,14 +392,9 @@ export class SessionStartStack extends Stack {
     managedUserPoolClient.cfnOptions.condition = managedIdentity;
     const managedUserPoolDomain = new CfnUserPoolDomain(this, 'CheckpointUserPoolDomain', {
       domain: cognitoDomainPrefix.valueAsString,
-      userPoolId: managedUserPool.ref,
+      userPoolId,
     });
     managedUserPoolDomain.cfnOptions.condition = managedIdentity;
-    const effectiveUserPoolArn = Fn.conditionIf(
-      managedIdentity.logicalId,
-      managedUserPool.attrArn,
-      cognitoUserPoolArn.valueAsString,
-    ).toString();
     const effectiveUserPoolClientId = Fn.conditionIf(
       managedIdentity.logicalId,
       managedUserPoolClient.ref,
@@ -410,49 +404,14 @@ export class SessionStartStack extends Stack {
       PUBLIC_API_ALLOWED_ORIGIN: publicApiAllowedOrigin.valueAsString,
       COGNITO_USER_POOL_CLIENT_ID: effectiveUserPoolClientId,
     };
-    const table = new Table(this, 'Sessions', {
-      partitionKey: { name: 'PK', type: AttributeType.STRING },
-      sortKey: { name: 'SK', type: AttributeType.STRING },
-      billingMode: BillingMode.PAY_PER_REQUEST,
-      stream: StreamViewType.KEYS_ONLY,
-      timeToLiveAttribute: terminalTicketTtlAttribute,
-      // Safe default. A disposable deployment must explicitly decide what data to remove.
-      removalPolicy: RemovalPolicy.RETAIN,
+    const sessionTableArn = Fn.select(0, Fn.split('/stream/', sessionTableStreamArn.valueAsString));
+    const table = Table.fromTableAttributes(this, 'Sessions', {
+      tableArn: sessionTableArn,
+      tableStreamArn: sessionTableStreamArn.valueAsString,
+      globalIndexes: [unfinishedWorkIndex.name],
     });
-    table.addGlobalSecondaryIndex({
-      indexName: unfinishedWorkIndex.name,
-      partitionKey: { name: unfinishedWorkIndex.partitionKey, type: AttributeType.STRING },
-      sortKey: { name: unfinishedWorkIndex.sortKey, type: AttributeType.STRING },
-      projectionType: ProjectionType.KEYS_ONLY,
-    });
-    const secretFiles = new Bucket(this, 'MonitorSecretFiles', {
-      encryption: BucketEncryption.S3_MANAGED,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      // Each file bootstraps one task. ECS downloads it before starting the monitor.
-      lifecycleRules: [{ prefix: 'sessions/', expiration: Duration.days(1) }],
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
-    const recordings = new Bucket(this, 'Recordings', {
-      encryption: BucketEncryption.S3_MANAGED,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      lifecycleRules: [
-        {
-          id: 'ExpireProvisionalRecordings',
-          prefix: 'sessions/',
-          tagFilters: { [recordingRetention.tagKey]: recordingRetention.provisionalTagValue },
-          expiration: Duration.days(recordingRetention.provisionalDays),
-        },
-        {
-          id: 'ExpireSealedRecordings',
-          prefix: 'sessions/',
-          tagFilters: { [recordingRetention.tagKey]: recordingRetention.sealedTagValue },
-          expiration: Duration.days(recordingRetention.sealedDays),
-        },
-      ],
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
+    const secretFiles = Bucket.fromBucketArn(this, 'MonitorSecretFiles', monitorSecretBucketArn.valueAsString);
+    const recordings = Bucket.fromBucketName(this, 'Recordings', recordingBucketName.valueAsString);
 
     const gatewaySecurityGroup = new CfnSecurityGroup(this, 'GatewaySecurityGroup', {
       groupDescription: 'Private OpsReplay Gateway tasks.',
@@ -568,21 +527,6 @@ export class SessionStartStack extends Stack {
       toPort: 443,
       description: 'Gateway to private AWS interface endpoints',
     });
-    // The ECS agent uses the execution role. Neither container receives AWS credentials.
-    secretFiles.addToResourcePolicy(
-      new PolicyStatement({
-        principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
-        actions: ['s3:GetObject'],
-        resources: [secretFiles.arnForObjects('sessions/*')],
-      }),
-    );
-    secretFiles.addToResourcePolicy(
-      new PolicyStatement({
-        principals: [new ArnPrincipal(executionRoleArn.valueAsString)],
-        actions: ['s3:GetBucketLocation'],
-        resources: [secretFiles.bucketArn],
-      }),
-    );
     const logs = new LogGroup(this, 'StartLogs', {
       retention: RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -1163,7 +1107,7 @@ export class SessionStartStack extends Stack {
       restApiId: terminalApi.ref,
       type: 'COGNITO_USER_POOLS',
       identitySource: 'method.request.header.Authorization',
-      providerArns: [effectiveUserPoolArn],
+      providerArns: [cognitoUserPoolArn.valueAsString],
       authorizerResultTtlInSeconds: 300,
     });
     terminalAuthorizer.cfnOptions.condition = gatewayEnabled;
@@ -2072,9 +2016,17 @@ export class SessionStartStack extends Stack {
     gatewayService.addResourceDependency(terminalIngress);
     gatewayService.addResourceDependency(awsEndpointIngress);
 
-    new CfnOutput(this, 'RecordingBucketName', { value: recordings.bucketName });
-    new CfnOutput(this, 'SessionTableName', { value: table.tableName });
-    new CfnOutput(this, 'SessionTableArn', { value: table.tableArn });
+    for (const [id, value] of [
+      ['RecordingBucketName', recordings.bucketName],
+      ['MonitorBootstrapBucketName', secretFiles.bucketName],
+      ['SessionTableName', table.tableName],
+      ['SessionTableArn', table.tableArn],
+      ['SessionTableStreamArn', table.tableStreamArn!],
+      ['CognitoUserPoolId', userPoolId],
+    ] as const) {
+      const output = new CfnOutput(this, `${id}Output`, { value });
+      output.overrideLogicalId(id);
+    }
     new CfnOutput(this, 'GatewayServiceName', {
       value: gatewayService.attrName,
       condition: gatewayEnabled,
@@ -2111,7 +2063,6 @@ export class SessionStartStack extends Stack {
       output.overrideLogicalId(id);
     }
     for (const [id, value, condition] of [
-      ['ManagedCognitoUserPoolId', managedUserPool.ref, managedIdentity],
       ['ManagedCognitoUserPoolClientId', managedUserPoolClient.ref, managedIdentity],
       [
         'ManagedCognitoLoginHostname',

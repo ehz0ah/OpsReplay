@@ -10,10 +10,11 @@ Expose the existing StartSession action as `POST /v1/sessions` on the existing R
 REST API. Keep it as its own Lambda, role, bundle, permission, timeout, and method limit.
 Its reserved concurrency remains zero until the complete runtime is activated.
 
-Use a Cognito user-pool authorizer. A deployment can supply an existing pool, public app
-client, and AWS-managed login hostname, or explicitly create checkpoint-owned Cognito
-resources. The managed client has no secret and enables only the authorization-code OAuth
-flow. The browser must use PKCE with `code_challenge_method=S256`; no implicit flow,
+Use a Cognito user-pool authorizer. A deployment supplies an existing durable user pool.
+It can also supply an existing public app client and AWS-managed login hostname, or
+create a disposable checkpoint client and login domain. The managed client has no secret
+and enables only the authorization-code OAuth flow. The browser must use PKCE with
+`code_challenge_method=S256`; no implicit flow,
 identity pool, browser AWS credentials, social provider, or custom authentication service
 is added.
 

@@ -106,6 +106,11 @@ drivers invoked the ticket and result handlers. It did not exercise Cognito, API
 session start, the unimplemented browser application, or concurrent learner load. See the
 [checkpoint report](../checkpoints/2026-10-15-terminal.md).
 
+15 October 2026: [Durable AWS resource ownership](durable-resource-ownership.md) moves
+the retained session table, Monitor bootstrap bucket, recording bucket, and learner user
+pool into one long-lived stack. Disposable foundation and runtime stacks consume explicit
+identifiers. Existing retained resources require a reviewed import before deployment.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

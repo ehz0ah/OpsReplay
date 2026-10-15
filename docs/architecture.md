@@ -7,6 +7,8 @@ CloudFront terminal ingress, the Gateway, durable recording, hints, deterministi
 debrief, timeline, and playback. An operator-seeded terminal-to-result AWS checkpoint
 passed on 15 October 2026. It did not exercise Cognito, API Gateway, or session start.
 Its disposable resources were removed, and every runtime gate remains default-off.
+The retained table, buckets, and user pools remain unmanaged until the selected set is
+imported into the new durable-resource stack.
 The web application, catalogue and account bootstrap APIs, additional Challenges, and
 hosted deployment are not implemented. See the
 [checkpoint report](checkpoints/2026-10-15-terminal.md).
@@ -67,8 +69,10 @@ environment tasks. Lambda handlers stay outside the VPC.
 ## AWS deployment design
 
 The deployment uses CDK with TypeScript, one workload Region, and a CloudFront-scope WAF
-in `us-east-1`. The permanent workload Region remains open. The MVP uses the default
-CloudFront hostname and does not require a custom domain.
+in `us-east-1`. One long-lived stack owns the session table, private application buckets,
+and learner user pool. Disposable foundation and runtime stacks consume explicit
+identifiers from that owner. The permanent workload Region remains open. The MVP uses
+the default CloudFront hostname and does not require a custom domain.
 
 ```mermaid
 flowchart TB
@@ -185,7 +189,7 @@ configurations never forward to an upstream resolver.
 | Session handlers           | `ecs:RunTask` on Challenge task definition families, `iam:PassRole` for the environment execution role only, `ecs:StopTask`, `DescribeTasks`, and `ListTasks` on the cluster, Scheduler operations on session schedules, table access, content reads, pre-signed reads of session objects |
 | LLM handler                | Table access for turns and proposals, the provider credential                                                                                                                                                                                                                             |
 | Gateway task role          | Session items and tickets in the table, `PutObject` under `sessions/`                                                                                                                                                                                                                     |
-| Environment execution role | Image pulls and monitor log delivery                                                                                                                                                                                                                                                      |
+| Environment execution role | Image pulls, monitor log delivery, and reads under `sessions/*` in the selected Monitor bootstrap bucket                                                                                                                                                                                  |
 | Environment task role      | None                                                                                                                                                                                                                                                                                      |
 
 The challenge container's output is not shipped to CloudWatch by default, because the

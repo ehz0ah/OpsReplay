@@ -186,7 +186,7 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
     const externalIdentityRule = rendered.Rules.ExternalCognitoConfigurationRequired;
     assert.ok(externalIdentityRule);
     assert.equal(rulePasses(externalIdentityRule, rendered.Conditions, required), true);
-    for (const parameter of ['CognitoUserPoolArn', 'CognitoUserPoolClientId', 'CognitoLoginHostname']) {
+    for (const parameter of ['CognitoUserPoolClientId', 'CognitoLoginHostname']) {
       assert.equal(
         rulePasses(externalIdentityRule, rendered.Conditions, {
           ...required,
@@ -196,6 +196,18 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
         parameter,
       );
     }
+    const managedIdentityRule = rendered.Rules.ManagedCognitoConfigurationRequired;
+    assert.ok(managedIdentityRule);
+    assert.equal(
+      rulePasses(managedIdentityRule, rendered.Conditions, {
+        ...required,
+        CognitoIdentityMode: 'managed',
+        CognitoUserPoolClientId: '',
+        CognitoLoginHostname: '',
+        CognitoDomainPrefix: 'opsreplay-checkpoint',
+      }),
+      true,
+    );
 
     const admissionReferences = JSON.stringify(rendered.Resources).match(/SessionAdmissionEnabled/g) ?? [];
     assert.equal(admissionReferences.length, 1, 'Admission must control only the start Lambda.');

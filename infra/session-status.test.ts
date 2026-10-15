@@ -23,9 +23,8 @@ test('session status shares the Cognito API but has a separate bounded read-only
     const resources = rendered.Resources as Record<string, Resource>;
     const get = (type: string) => Object.entries(resources).filter(([, resource]) => resource.Type === type);
     const fn = get('AWS::Lambda::Function').find(([id]) => id.startsWith('GetSession'));
-    const table = get('AWS::DynamoDB::Table')[0];
     const authorizer = get('AWS::ApiGateway::Authorizer')[0];
-    assert.ok(fn && table && authorizer);
+    assert.ok(fn && authorizer);
     const [functionId, functionResource] = fn;
     assert.equal(functionResource.Properties?.VpcConfig, undefined);
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -33,7 +32,31 @@ test('session status shares the Cognito API but has a separate bounded read-only
       Handler: 'index.handler',
       Timeout: 10,
       MemorySize: 256,
-      Environment: { Variables: Match.objectLike({ SESSION_TABLE_NAME: { Ref: table[0] } }) },
+      Environment: {
+        Variables: Match.objectLike({
+          SESSION_TABLE_NAME: {
+            'Fn::Select': [
+              1,
+              {
+                'Fn::Split': [
+                  '/',
+                  {
+                    'Fn::Select': [
+                      5,
+                      {
+                        'Fn::Split': [
+                          ':',
+                          { 'Fn::Select': [0, { 'Fn::Split': ['/stream/', { Ref: 'SessionTableStreamArn' }] }] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      },
       ReservedConcurrentExecutions: {
         'Fn::If': ['GatewayPathEnabled', { Ref: 'SessionStatusBurstLimit' }, 0],
       },
@@ -73,7 +96,7 @@ test('session status shares the Cognito API but has a separate bounded read-only
       {
         Action: 'dynamodb:GetItem',
         Effect: 'Allow',
-        Resource: { 'Fn::GetAtt': [table[0], 'Arn'] },
+        Resource: { 'Fn::Select': [0, { 'Fn::Split': ['/stream/', { Ref: 'SessionTableStreamArn' }] }] },
         Condition: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SESSION#*'] } },
       },
     ]);

@@ -8,8 +8,9 @@ AWS checkpoint on 15 October 2026. It did not exercise Cognito, API Gateway, or 
 start. The next product milestone is an assistant-free browser flow. It needs the missing
 catalogue and account bootstrap reads, then sign-in, Challenge start, terminal and live
 telemetry, hints, outcome, debrief, playback, and retry. A later AWS checkpoint must use
-the browser rather than operator scripts. Retained AWS data ownership must be explicit
-before that deployment. See the [checkpoint report](checkpoints/2026-10-15-terminal.md).
+the browser rather than operator scripts. The durable owner stack is defined, but the
+existing retained resources still need an approved CloudFormation import before that
+deployment. See the [checkpoint report](checkpoints/2026-10-15-terminal.md).
 
 ## Work packages
 

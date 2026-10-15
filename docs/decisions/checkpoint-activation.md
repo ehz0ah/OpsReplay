@@ -34,10 +34,9 @@ Keep ExpireProvisioning at zero. Current start schedules target ReconcileSession
 owns provisioning recovery and the later lifecycle. Enabling the older action would add
 a second cleanup implementation to the same session.
 
-Managed Cognito resources remain controlled by the explicit identity-mode parameter.
-They do not follow runtime shutdown because their retain policy would otherwise orphan
-the physical pool and block clean reactivation. The default external mode creates no
-project-owned identity resource.
+The learner user pool has a separate durable owner. The explicit identity-mode parameter
+controls only the disposable checkpoint app client and login domain. The default external
+mode creates neither resource.
 
 Activation is manual and staged:
 

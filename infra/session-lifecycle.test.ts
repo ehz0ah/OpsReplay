@@ -43,7 +43,9 @@ test('lifecycle has separate runtime-gated action bundles, bounded triggers, nar
         assert.equal(actions.includes('ecs:RunTask'), true);
         const bootstrap = statements.filter((statement) => [statement.Action].flat().includes('s3:PutObject'));
         assert.equal(bootstrap.length, 2);
-        assert.ok(bootstrap.some((statement) => JSON.stringify(statement.Resource).includes('MonitorSecretFiles')));
+        assert.ok(
+          bootstrap.some((statement) => JSON.stringify(statement.Resource).includes('MonitorBootstrapBucketArn')),
+        );
         assert.ok(bootstrap.some((statement) => JSON.stringify(statement.Resource).includes('/sessions/*/playback/*')));
       }
       if (name === 'EndSession') {
@@ -60,6 +62,7 @@ test('lifecycle has separate runtime-gated action bundles, bounded triggers, nar
     }
     const stream = Object.values(resources).find((value) => value.Type === 'AWS::Lambda::EventSourceMapping');
     assert.ok(stream);
+    assert.deepEqual(stream.Properties.EventSourceArn, { Ref: 'SessionTableStreamArn' });
     assert.deepEqual(stream.Properties.Enabled, { 'Fn::If': ['GatewayPathEnabled', true, false] });
     assert.equal(stream.Properties.BatchSize, 25);
     assert.equal(stream.Properties.MaximumRetryAttempts, 3);
@@ -75,8 +78,10 @@ test('lifecycle has separate runtime-gated action bundles, bounded triggers, nar
     assert.ok(end);
     assert.equal(end.Properties.AuthorizationType, 'COGNITO_USER_POOLS');
     assert.equal(end.Properties.HttpMethod, 'POST');
-    const table = Object.values(resources).find((value) => value.Type === 'AWS::DynamoDB::Table');
-    assert.equal(table?.Properties.StreamSpecification.StreamViewType, 'KEYS_ONLY');
+    assert.equal(
+      Object.values(resources).some((value) => value.Type === 'AWS::DynamoDB::Table'),
+      false,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

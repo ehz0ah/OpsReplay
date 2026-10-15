@@ -16,7 +16,7 @@ type Resource = {
   Properties?: Record<string, any>;
 };
 
-test('authenticated session entry has one exact browser policy and optional managed Cognito resources', () => {
+test('authenticated session entry uses a durable pool and optional disposable client resources', () => {
   const directory = mkdtempSync(join(tmpdir(), 'opsreplay-session-entry-'));
   try {
     const rendered = Template.fromStack(new SessionStartStack(new App({ outdir: directory }), 'TestEntry')).toJSON();
@@ -27,7 +27,12 @@ test('authenticated session entry has one exact browser policy and optional mana
       Type: 'String',
       Default: 'external',
       AllowedValues: ['external', 'managed'],
-      Description: 'Use an existing user pool and client, or create checkpoint-owned Cognito resources.',
+      Description: 'Use an existing client and login domain, or create disposable checkpoint-owned values.',
+    });
+    assert.deepEqual(rendered.Parameters.CognitoUserPoolArn, {
+      Type: 'String',
+      AllowedPattern: 'arn:aws[a-z-]*:cognito-idp:[a-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+',
+      Description: 'Existing durable learner user pool ARN.',
     });
     const origin = new RegExp(rendered.Parameters.PublicApiAllowedOrigin.AllowedPattern);
     for (const value of ['', 'https://app.opsreplay.test', 'http://localhost:3000']) assert.match(value, origin);
@@ -50,13 +55,10 @@ test('authenticated session entry has one exact browser policy and optional mana
     assert.ok(rendered.Rules.ExternalCognitoConfigurationRequired);
     assert.ok(rendered.Rules.ManagedCognitoConfigurationRequired);
     assert.equal(ofType('AWS::Cognito::IdentityPool').length, 0);
-    const [pool] = ofType('AWS::Cognito::UserPool');
+    assert.equal(ofType('AWS::Cognito::UserPool').length, 0);
     const [client] = ofType('AWS::Cognito::UserPoolClient');
     const [domain] = ofType('AWS::Cognito::UserPoolDomain');
-    assert.ok(pool && client && domain);
-    assert.equal(pool[1].Condition, 'ManagedCognitoIdentity');
-    assert.equal(pool[1].DeletionPolicy, 'Retain');
-    assert.equal(pool[1].UpdateReplacePolicy, 'Retain');
+    assert.ok(client && domain);
     assert.equal(client[1].Condition, 'ManagedCognitoIdentity');
     assert.deepEqual(client[1].Properties, {
       AllowedOAuthFlows: ['code'],
@@ -70,22 +72,22 @@ test('authenticated session entry has one exact browser policy and optional mana
       LogoutURLs: [{ Ref: 'BrowserLogoutUrl' }],
       PreventUserExistenceErrors: 'ENABLED',
       SupportedIdentityProviders: ['COGNITO'],
-      UserPoolId: { Ref: pool[0] },
+      UserPoolId: {
+        'Fn::Select': [1, { 'Fn::Split': ['/', { Ref: 'CognitoUserPoolArn' }] }],
+      },
     });
     assert.equal(domain[1].Condition, 'ManagedCognitoIdentity');
     assert.deepEqual(domain[1].Properties, {
       Domain: { Ref: 'CognitoDomainPrefix' },
-      UserPoolId: { Ref: pool[0] },
+      UserPoolId: {
+        'Fn::Select': [1, { 'Fn::Split': ['/', { Ref: 'CognitoUserPoolArn' }] }],
+      },
     });
 
     const [authorizer] = ofType('AWS::ApiGateway::Authorizer');
     assert.ok(authorizer);
     assert.equal(authorizer[1].Condition, 'GatewayPathEnabled');
-    assert.deepEqual(authorizer[1].Properties?.ProviderARNs, [
-      {
-        'Fn::If': ['ManagedCognitoIdentity', { 'Fn::GetAtt': [pool[0], 'Arn'] }, { Ref: 'CognitoUserPoolArn' }],
-      },
-    ]);
+    assert.deepEqual(authorizer[1].Properties?.ProviderARNs, [{ Ref: 'CognitoUserPoolArn' }]);
 
     const methods = ofType('AWS::ApiGateway::Method');
     assert.equal(methods.length, 16);
@@ -195,7 +197,10 @@ test('authenticated session entry has one exact browser policy and optional mana
     for (const output of ['PublicApiAllowedOrigin', 'BrowserCallbackUrl', 'BrowserLogoutUrl']) {
       assert.equal(rendered.Outputs[output]?.Condition, 'GatewayPathEnabled');
     }
-    for (const output of ['ManagedCognitoUserPoolId', 'ManagedCognitoUserPoolClientId', 'ManagedCognitoLoginHostname'])
+    assert.deepEqual(rendered.Outputs.CognitoUserPoolId, {
+      Value: { 'Fn::Select': [1, { 'Fn::Split': ['/', { Ref: 'CognitoUserPoolArn' }] }] },
+    });
+    for (const output of ['ManagedCognitoUserPoolClientId', 'ManagedCognitoLoginHostname'])
       assert.equal(rendered.Outputs[output]?.Condition, 'ManagedCognitoIdentity');
   } finally {
     rmSync(directory, { recursive: true, force: true });
