@@ -30,3 +30,8 @@ Private contracts must not be exported through OpenAPI or a browser bundle.
 
 After changing `public.schema.json`, run `npm run contracts:sync` to update the embedded
 OpenAPI component schemas, then `npm run check`. Do not edit the embedded copy directly.
+
+`public-types.ts` is generated from the public schema. Run `npm run contracts:generate`
+after schema changes. `npm run contracts:check` rejects drift and precompiles selected
+browser validators into ignored local build output. Neither generator reads private
+schemas. Browser code imports only these public types and validation helpers.

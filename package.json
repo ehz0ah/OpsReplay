@@ -13,7 +13,7 @@
     "lint:fix": "oxlint . --fix --deny-warnings --report-unused-disable-directives",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
-    "quality": "npm run lint && npm run format:check && npm run typecheck",
+    "quality": "npm run contracts:check && npm run lint && npm run format:check && npm run typecheck",
     "monitor:test": "node --import tsx --test apps/monitor/test/*.test.ts",
     "monitor:build": "node scripts/build-monitor.mjs",
     "monitor:image:build": "docker build --target test -t opsreplay/monitor-test:dev -f apps/monitor/Dockerfile .",
@@ -37,21 +37,31 @@
     "api:test": "npm run api:build && node --import tsx --test apps/api/test/*.test.ts",
     "infra:test": "npm run api:build && node --import tsx --test infra/*.test.ts",
     "infra:synth": "npm run api:build && node --import tsx infra/synth.ts",
-    "infra:cdk": "cdk"
+    "infra:cdk": "cdk",
+    "contracts:generate": "node scripts/generate-public-contracts.mjs",
+    "contracts:check": "node scripts/generate-public-contracts.mjs --check",
+    "postinstall": "npm run contracts:check",
+    "web:dev": "npm run contracts:check && vite --config apps/web/vite.config.ts",
+    "web:build": "npm run contracts:check && vite build --config apps/web/vite.config.ts",
+    "web:test": "npm run contracts:check && node --import tsx --test apps/web/test/*.test.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
     "@types/aws-lambda": "8.10.164",
     "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/ws": "8.18.2",
     "aws-cdk": "2.1145.0",
     "aws-cdk-lib": "2.272.0",
     "constructs": "10.8.1",
     "esbuild": "0.28.2",
+    "json-schema-to-typescript": "16.0.0",
     "oxlint": "1.87.0",
     "prettier": "3.9.9",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1146.0",
@@ -63,6 +73,8 @@
     "@smithy/node-http-handler": "4.12.1",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "selfsigned": "5.5.0",
     "ws": "8.22.0"
   }

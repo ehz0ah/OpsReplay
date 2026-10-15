@@ -120,6 +120,10 @@ No table scan, secondary index, or runtime activation is added.
 queries and Cognito account reads, sharing the current-plan resolver with admission.
 Both remain action-scoped and default-off.
 
+16 October 2026: the static browser uses React, Vite, and native CSS. Public DTOs are
+generated from the current schema. Selected validators are precompiled for a strict
+CSP without runtime evaluation. No new backend or authentication service is added.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

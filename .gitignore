@@ -34,3 +34,6 @@ cdk.out/
 *.out
 *.toc
 *.synctex.gz
+
+# Public deployment configuration is generated from verified stack outputs
+apps/web/public/config.json

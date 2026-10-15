@@ -1,14 +1,25 @@
-# Web application boundary
+# Browser application
 
-Status: not implemented. Follow [design](../../docs/design.md) and
-[API](../../docs/api.md). The frontend framework, terminal emulator, and chart library
-are open. The output must support static hosting.
+Static React application built by Vite. Public DTOs come from `public.schema.json`;
+`contracts:check` rejects stale checked-in types and compiles browser validators without
+runtime `eval`. Private contracts and Challenge files are never imported by this app.
 
-Own navigation, plan display, Learn, the Challenge workspace with terminal, dashboard,
-and timeline, hints, the optional assistant, debrief, playback, retry, and Code Review.
-Consume public contracts only. Never import files from `content/` or calculate recovery,
-evidence, or scores.
+```sh
+npm ci
+npm run web:test
+npm run web:build
+```
 
-First task: build the workspace against the contract examples, including provisioning,
-reconnecting, replaced, outcome, and provider-failure states. Then connect it to the
-local gateway and API. Do not add a fake start command before a runnable app exists.
+For development, copy `public/config.example.json` to `public/config.json` and replace
+its placeholders with the verified API and Cognito configuration. Redirects must match
+`http://localhost:3000/auth/callback` and `http://localhost:3000/` in the public client.
+Run `npm run web:dev`. The file is ignored. It contains public identifiers only.
+No local authentication server or fake game runtime is provided.
+
+Build output is `dist/web`. Configuration is loaded from `/config.json` without caching.
+An absent or invalid configuration shows a recoverable error. Production redirects must
+use the exact HTTPS browser origin. Hosting remains separate from this boundary.
+
+Follow [design](../../docs/design.md) and [API](../../docs/api.md). The following PRs add
+Cognito sign-in, entry, live workspace and results. Runtime state, recovery and scores
+remain backend-owned.
