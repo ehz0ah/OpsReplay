@@ -41,6 +41,7 @@ const groups = {
   session: [
     'SessionView',
     'SessionResponse',
+    'EndSessionResponse',
     'TerminalTicket',
     'HintResponse',
     'TimelinePage',

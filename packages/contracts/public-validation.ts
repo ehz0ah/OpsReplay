@@ -9,6 +9,7 @@ const loaders = {
   Account: entry,
   SessionView: session,
   SessionResponse: session,
+  EndSessionResponse: session,
   TerminalTicket: session,
   HintResponse: session,
   TimelinePage: session,

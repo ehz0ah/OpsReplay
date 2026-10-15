@@ -18,7 +18,10 @@
           "tier": "easy",
           "category": "networking"
         },
-        "attempt": { "kind": "first", "number": 1 },
+        "attempt": {
+          "kind": "first",
+          "number": 1
+        },
         "status": "provisioning",
         "statusReason": null,
         "alert": {
@@ -27,11 +30,31 @@
           "severity": "critical"
         },
         "dashboard": [
-          { "id": "request_rate", "label": "Requests", "unit": "requests_per_second" },
-          { "id": "error_rate", "label": "Errors", "unit": "percent" },
-          { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds" },
-          { "id": "cpu", "label": "CPU", "unit": "percent" },
-          { "id": "memory", "label": "Memory", "unit": "mebibytes" }
+          {
+            "id": "request_rate",
+            "label": "Requests",
+            "unit": "requests_per_second"
+          },
+          {
+            "id": "error_rate",
+            "label": "Errors",
+            "unit": "percent"
+          },
+          {
+            "id": "latency_p95",
+            "label": "Latency p95",
+            "unit": "milliseconds"
+          },
+          {
+            "id": "cpu",
+            "label": "CPU",
+            "unit": "percent"
+          },
+          {
+            "id": "memory",
+            "label": "Memory",
+            "unit": "mebibytes"
+          }
         ],
         "recovery": null,
         "timeLimitSeconds": 1200,
@@ -39,10 +62,21 @@
         "readyAt": null,
         "endsAt": null,
         "endedAt": null,
-        "hints": { "released": [], "remaining": 2, "nextAvailableAt": null },
-        "assistance": { "hintsReleased": 0, "assistantTurns": 0, "proposalsRun": 0 },
+        "hints": {
+          "released": [],
+          "remaining": 2,
+          "nextAvailableAt": null
+        },
+        "assistance": {
+          "hintsReleased": 0,
+          "assistantTurns": 0,
+          "proposalsRun": 0
+        },
         "debriefAvailable": false,
-        "recording": { "status": "pending", "reason": null }
+        "recording": {
+          "status": "pending",
+          "reason": null
+        }
       },
       "replayed": false
     }
@@ -59,7 +93,10 @@
             "tier": "easy",
             "category": "networking"
           },
-          "attempt": { "kind": "first", "number": 1 },
+          "attempt": {
+            "kind": "first",
+            "number": 1
+          },
           "status": "resolved",
           "createdAt": "2026-10-05T02:00:00Z",
           "endedAt": "2026-10-05T02:07:03Z"
@@ -117,7 +154,9 @@
       "type": "turn_started",
       "turnId": "55555555-5555-4555-8555-555555555555",
       "sequence": 0,
-      "data": { "requestId": "55555555-5555-4555-8555-555555555555" }
+      "data": {
+        "requestId": "55555555-5555-4555-8555-555555555555"
+      }
     },
     {
       "type": "text_delta",
@@ -173,9 +212,18 @@
         "Clients cache DNS answers for different lengths of time.",
         "Correcting a record does not update answers already cached."
       ],
-      "sources": [{ "title": "Placeholder incident report", "url": "https://status.example.com/incidents/stale-dns" }],
+      "sources": [
+        {
+          "title": "Placeholder incident report",
+          "url": "https://status.example.com/incidents/stale-dns"
+        }
+      ],
       "relatedExercises": [
-        { "mode": "challenge", "id": "stale-dns-record", "title": "Checkout API unreachable after migration" }
+        {
+          "mode": "challenge",
+          "id": "stale-dns-record",
+          "title": "Checkout API unreachable after migration"
+        }
       ],
       "html": "<h2>What happened</h2><p>Synthetic example body rendered from Markdown at build time.</p>"
     }
@@ -256,6 +304,79 @@
       "recording": {
         "status": "incomplete",
         "reason": "recorder_lost"
+      }
+    }
+  ],
+  "EndSessionResponse": [
+    {
+      "session": {
+        "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "challenge": {
+          "id": "wrong-upstream-port",
+          "version": "0.1.0",
+          "title": "Storefront returns 502",
+          "tier": "easy",
+          "category": "networking"
+        },
+        "attempt": {
+          "kind": "first",
+          "number": 1
+        },
+        "status": "ended",
+        "statusReason": "learner_ended",
+        "alert": {
+          "title": "Checkout error rate above 90%",
+          "summary": "Synthetic checkout checks have returned 502 Bad Gateway from the storefront since the latest application deploy.",
+          "severity": "critical"
+        },
+        "dashboard": [
+          {
+            "id": "request_rate",
+            "label": "Requests",
+            "unit": "requests_per_second"
+          },
+          {
+            "id": "error_rate",
+            "label": "Errors",
+            "unit": "percent"
+          },
+          {
+            "id": "latency_p95",
+            "label": "Latency p95",
+            "unit": "milliseconds"
+          },
+          {
+            "id": "cpu",
+            "label": "CPU",
+            "unit": "percent"
+          },
+          {
+            "id": "memory",
+            "label": "Memory",
+            "unit": "mebibytes"
+          }
+        ],
+        "recovery": null,
+        "timeLimitSeconds": 1200,
+        "createdAt": "2026-10-05T02:00:00Z",
+        "readyAt": null,
+        "endsAt": null,
+        "endedAt": "2026-10-05T02:00:00Z",
+        "hints": {
+          "released": [],
+          "remaining": 2,
+          "nextAvailableAt": null
+        },
+        "assistance": {
+          "hintsReleased": 0,
+          "assistantTurns": 0,
+          "proposalsRun": 0
+        },
+        "debriefAvailable": false,
+        "recording": {
+          "status": "pending",
+          "reason": null
+        }
       }
     }
   ]

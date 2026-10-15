@@ -353,6 +353,7 @@ export interface PublicTypes {
   GatewayClientMessage: GatewayClientMessage;
   GatewayServerMessage: GatewayServerMessage;
   RecordingState: RecordingState;
+  EndSessionResponse: EndSessionResponse;
 }
 export interface Error {
   code:
@@ -693,4 +694,7 @@ export interface ReviewSubmissionPage {
    */
   items: ReviewSubmissionSummary[];
   nextCursor: string | null;
+}
+export interface EndSessionResponse {
+  session: SessionView;
 }

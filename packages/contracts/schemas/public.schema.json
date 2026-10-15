@@ -2260,6 +2260,16 @@
           "required": ["status", "reason"]
         }
       ]
+    },
+    "EndSessionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "required": ["session"]
     }
   }
 }
