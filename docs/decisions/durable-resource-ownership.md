@@ -1,6 +1,6 @@
 # Durable AWS resource ownership
 
-Status: implemented locally; retained checkpoint resources are not yet imported
+Status: selected checkpoint resources imported; deletion protection declared in IaC
 Date: 15 October 2026
 Owner: Cloud contributors
 
@@ -22,7 +22,9 @@ another retained set instead of reusing the first set.
 
 All four resources retain their data on stack deletion or replacement. The two buckets
 keep S3-managed encryption, public-access blocking, and a policy that denies insecure
-transport.
+transport. The durable owner template enables service-level deletion protection for the
+table and user pool. DynamoDB point-in-time recovery remains a separate cost and
+restore-policy decision.
 
 `OpsReplaySessionStart` is disposable. It derives the table from its stream ARN and
 accepts explicit bucket and user-pool identifiers. It creates no durable resource. It can still create a temporary
@@ -41,11 +43,10 @@ for the foundation permission and the runtime import.
 
 ## Existing-resource adoption
 
-The retained checkpoint resources are currently unmanaged. Select one matching table,
-one bootstrap bucket, one recording bucket, and one user pool. Import exactly that set
-into `OpsReplayDurableResources` before a normal deployment. Review the import mapping,
-the subsequent update, and drift results. The subsequent update adds the durable bucket
-transport policies.
+The selected table, bootstrap bucket, recording bucket, and user pool were imported into
+`OpsReplayDurableResources` on 15 October 2026. The import changed ownership only. A
+reviewed update then added the two durable bucket transport policies. Drift detection
+reported `IN_SYNC` after each operation.
 
 Do not use a normal first deployment while matching retained resources exist. Do not
 delete, replace, merge, or copy retained data as part of adoption. Keep every unselected
@@ -54,6 +55,6 @@ resource unchanged until its owner approves a separate disposition.
 ## Validation boundary
 
 Template tests verify ownership, retention, storage controls, explicit runtime inputs,
-and the execution-role permission. Local synthesis does not prove resource import,
-CloudFormation drift, IAM enforcement, Cognito behavior, or S3 lifecycle timing. The
-first import and later deployment require separate AWS review and approval.
+and the execution-role permission. The AWS adoption verified import, policy creation,
+and CloudFormation drift. It did not test IAM enforcement, Cognito authentication, S3
+lifecycle timing, or a deployed runtime.

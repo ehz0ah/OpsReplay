@@ -1,7 +1,6 @@
 # AWS durable resource adoption
 
-Status: reviewed procedure only. The retained checkpoint resources are not yet managed by
-`OpsReplayDurableResources`.
+Status: completed for the selected checkpoint resources on 15 October 2026.
 
 Use this procedure once, before another runtime deployment. It changes CloudFormation
 ownership. Obtain approval and use the `opsreplay` profile in `ap-southeast-1`. Keep the
@@ -80,13 +79,13 @@ runtime parameter records. Keep the untracked mapping out of Git.
 
 ## 4. Add deletion protection after adoption
 
-Do not add service-level deletion protection to the import template. The retained table
-and user pool do not use it, and an import operation cannot change resource properties.
+Do not add service-level deletion protection to an initial import template unless the
+selected resources already use it. An import operation cannot change resource properties.
 
-After the import, policy update, and drift checks are complete, prepare a separate
-reviewed change that enables DynamoDB and Cognito deletion protection. Confirm that its
-change set updates only those two properties without replacement. Deploy and verify the
-live protection settings before any runtime deployment.
+After the import, policy update, and drift checks are complete, enable DynamoDB and
+Cognito deletion protection in a separate reviewed change. Confirm that its change set
+updates only those two properties without replacement. Deploy and verify the live
+protection settings before any runtime deployment.
 
 Evaluate DynamoDB point-in-time recovery separately. It has an ongoing storage cost and
 needs an approved retention, restore-test, and budget decision. It is not required to
