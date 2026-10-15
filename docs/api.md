@@ -64,7 +64,7 @@ validator or probe definitions, unreleased hints, or review findings.
 
 | Status | Codes                                                                                                                                                                   |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_REQUEST`                                                                                                                                                       |
+| 400    | `INVALID_REQUEST`, `INVALID_CURSOR`                                                                                                                                     |
 | 401    | `UNAUTHENTICATED`                                                                                                                                                       |
 | 403    | `ACCESS_DENIED`                                                                                                                                                         |
 | 404    | `NOT_FOUND`                                                                                                                                                             |
