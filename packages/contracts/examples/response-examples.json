@@ -261,6 +261,11 @@
       "code": "INTERNAL_ERROR",
       "message": "This Challenge could not start. Try again later with a new request ID.",
       "requestId": "99999999-9999-4999-8999-999999999999"
+    },
+    {
+      "code": "INVALID_CURSOR",
+      "message": "Restart paging with a new cursor.",
+      "requestId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     }
   ],
   "Debrief": [

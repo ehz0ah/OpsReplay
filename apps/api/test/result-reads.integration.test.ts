@@ -290,6 +290,7 @@ test('final timeline cursors reject a changed result snapshot', async () => {
   const response = await f.call('timeline', { cursor });
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).code, 'INVALID_CURSOR');
+  valid('Error', JSON.parse(response.body));
 });
 
 test('a delayed recovery cutoff does not remove an assistance action that already occurred', async () => {

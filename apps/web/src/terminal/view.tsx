@@ -9,11 +9,13 @@ export default function TerminalView({
   id,
   enabled = true,
   onFrame,
+  onConnection,
   refresh,
 }: {
   id: string;
   enabled?: boolean;
   onFrame?: (frame: PublicTypes['GatewayServerMessage']) => void;
+  onConnection?: (connected: boolean) => void;
   refresh: () => void;
 }) {
   const api = useApi(),
@@ -23,8 +25,8 @@ export default function TerminalView({
     screen = useRef(false);
   const activeInput = useRef(enabled);
   activeInput.current = enabled;
-  const handlers = useRef({ onFrame, refresh });
-  handlers.current = { onFrame, refresh };
+  const handlers = useRef({ onFrame, onConnection, refresh });
+  handlers.current = { onFrame, onConnection, refresh };
   const [revision, setRevision] = useState(0),
     [state, setState] = useState<AttachmentState>('connecting'),
     [message, setMessage] = useState<string | null>(null);
@@ -86,6 +88,7 @@ export default function TerminalView({
       {
         state: (value, text) => {
           if (!disposed) {
+            handlers.current.onConnection?.(value === 'ready');
             setState(value);
             setMessage(text);
             term.options.disableStdin = value !== 'ready' || !activeInput.current;
@@ -125,6 +128,7 @@ export default function TerminalView({
     void connection.start();
     return () => {
       disposed = true;
+      handlers.current.onConnection?.(false);
       connection.stop();
       for (const finish of pending) finish();
       term.options.disableStdin = true;

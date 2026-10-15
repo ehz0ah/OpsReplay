@@ -12,6 +12,7 @@
           "type": "string",
           "enum": [
             "INVALID_REQUEST",
+            "INVALID_CURSOR",
             "UNAUTHENTICATED",
             "ACCESS_DENIED",
             "NOT_FOUND",

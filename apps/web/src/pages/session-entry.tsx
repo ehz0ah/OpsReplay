@@ -1,3 +1,8 @@
+import { useTelemetry } from '../telemetry/use-telemetry.js';
+import { freshSample } from '../telemetry/state.js';
+import { Metric } from '../components/metric.js';
+import { Timeline } from '../components/timeline.js';
+import { Hints } from '../components/hints.js';
 import { lazy, Suspense } from 'react';
 const TerminalView = lazy(() => import('../terminal/view.js'));
 import { useAlive } from '../use-alive.js';
@@ -41,6 +46,7 @@ export function SessionEntry({ id }: { id: string }) {
       if (alive.current) setEnding(false);
     }
   }
+  const telemetry = useTelemetry(id, session.view?.status === 'ready');
   const view = session.view,
     remaining = view ? timeRemaining(view, now) : null;
   return (
@@ -106,8 +112,39 @@ export function SessionEntry({ id }: { id: string }) {
           </section>
           {view.status === 'ready' && (
             <Suspense fallback={<p role="status">Opening terminal…</p>}>
-              <TerminalView id={id} enabled={!ending && !endError} refresh={session.refresh} />
+              <TerminalView
+                id={id}
+                enabled={!ending && !endError}
+                refresh={session.refresh}
+                onFrame={telemetry.frame}
+                onConnection={telemetry.connection}
+              />
             </Suspense>
+          )}
+          {view.status === 'ready' && (
+            <>
+              <section className="panel">
+                <h2>Service telemetry</h2>
+                {(!freshSample(telemetry.samples.at(-1), now, telemetry.connected) || telemetry.unavailable) && (
+                  <p role="status" className="notice">
+                    Telemetry is unavailable or stale. These values do not prove current system health.
+                  </p>
+                )}
+                <div className="metric-grid">
+                  {view.dashboard.map((descriptor) => (
+                    <Metric key={descriptor.id} descriptor={descriptor} samples={telemetry.samples} />
+                  ))}
+                </div>
+                <p className="muted">
+                  {telemetry.samples.at(-1)
+                    ? `Last sample: ${new Date(telemetry.samples.at(-1)!.at).toLocaleTimeString()}`
+                    : 'Waiting for a saved Monitor sample.'}
+                </p>
+              </section>
+              <Hints view={view} now={now} refresh={session.refresh} disabled={ending || Boolean(endError)} />
+              <Failure error={telemetry.error} />
+              <Timeline items={telemetry.events} />
+            </>
           )}
           {view.recovery && (
             <section className="panel">

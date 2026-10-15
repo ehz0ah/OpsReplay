@@ -358,6 +358,7 @@ export interface PublicTypes {
 export interface Error {
   code:
     | 'INVALID_REQUEST'
+    | 'INVALID_CURSOR'
     | 'UNAUTHENTICATED'
     | 'ACCESS_DENIED'
     | 'NOT_FOUND'

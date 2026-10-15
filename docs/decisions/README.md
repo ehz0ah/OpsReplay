@@ -228,3 +228,10 @@ Classroom limits require load measurements and the documented Lambda quota calcu
 projects. Server checks exclude DOM/JSX. Strict options are shared. The `browser`
 job already runs on #76 and later PRs. Require it after #75 merges and before #76
 merges. Requiring it while #75 is open would block that PR, which lacks the job.
+
+16 October 2026: the learner workspace shows public Monitor samples and a bounded
+investigation timeline. The timeline API handles durable catch-up. WebSocket samples
+are live observations, not acknowledgements. Missing/stale values remain visible.
+Hint release uses saved request identity and exposes only released authored text.
+The public error schema now includes the existing `INVALID_CURSOR` response so
+clients can restart timeline and playback pagination. Wire behavior is unchanged.
