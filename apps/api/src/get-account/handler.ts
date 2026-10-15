@@ -1,3 +1,4 @@
+import { retryDynamoConflict } from '../../../../packages/dynamodb/src/conflict-retry.js';
 import { GetCommand, TransactGetCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { bootstrapHandler, BootstrapError } from '../bootstrap/handler.js';
 import { keys } from '../start-session/store.js';
@@ -17,12 +18,10 @@ export function createGetAccountHandler(
       if (Object.keys(event.multiValueQueryStringParameters ?? event.queryStringParameters ?? {}).length)
         throw new BootstrapError('INVALID_REQUEST');
       if (!owner) throw new BootstrapError('UNAUTHENTICATED');
-      const snapshot = await client.send(
-        new TransactGetCommand({
-          TransactItems: [keys.plan(owner), keys.active(owner)].map((Key) => ({ Get: { TableName: table, Key } })),
-        }),
-        { abortSignal: signal },
-      );
+      const request = new TransactGetCommand({
+        TransactItems: [keys.plan(owner), keys.active(owner)].map((Key) => ({ Get: { TableName: table, Key } })),
+      });
+      const snapshot = await retryDynamoConflict(() => client.send(request, { abortSignal: signal }), signal);
       if (snapshot.Responses?.length !== 2) throw new Error('Incomplete account snapshot');
       const planItem = snapshot.Responses[0]?.Item;
       const activeItem = snapshot.Responses[1]?.Item;
