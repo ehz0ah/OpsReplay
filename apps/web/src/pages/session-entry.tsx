@@ -1,3 +1,5 @@
+import { lazy, Suspense } from 'react';
+const TerminalView = lazy(() => import('../terminal/view.js'));
 import { useAlive } from '../use-alive.js';
 import { ApiError } from '../api.js';
 import { useEffect, useMemo, useState } from 'react';
@@ -102,6 +104,11 @@ export function SessionEntry({ id }: { id: string }) {
             <p>{view.alert.summary}</p>
             <span className="badge">{view.alert.severity}</span>
           </section>
+          {view.status === 'ready' && (
+            <Suspense fallback={<p role="status">Opening terminal…</p>}>
+              <TerminalView id={id} enabled={!ending && !endError} refresh={session.refresh} />
+            </Suspense>
+          )}
           {view.recovery && (
             <section className="panel">
               <h2>Recovery: {view.recovery.state}</h2>

@@ -20,7 +20,7 @@ export class ApiClient {
     private readonly transport: typeof fetch = (...args) => fetch(...args),
   ) {}
   async read<K extends BrowserType>(type: K, path: string, signal?: AbortSignal): Promise<PublicTypes[K]> {
-    return this.request(type, path, undefined, signal);
+    return this.request(type, path, 'GET', undefined, signal);
   }
   async mutate<K extends BrowserType>(
     type: K,
@@ -28,11 +28,12 @@ export class ApiClient {
     body: unknown,
     signal?: AbortSignal,
   ): Promise<PublicTypes[K]> {
-    return this.request(type, path, body, signal);
+    return this.request(type, path, 'POST', body, signal);
   }
   private async request<K extends BrowserType>(
     type: K,
     path: string,
+    method: 'GET' | 'POST',
     body: unknown,
     signal?: AbortSignal,
   ): Promise<PublicTypes[K]> {
@@ -43,7 +44,7 @@ export class ApiClient {
     let response: Response;
     try {
       response = await this.transport(this.baseUrl + path, {
-        method: body === undefined ? 'GET' : 'POST',
+        method,
         credentials: 'omit',
         cache: 'no-store',
         redirect: 'error',
