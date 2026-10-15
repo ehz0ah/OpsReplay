@@ -31,7 +31,8 @@ outside the disposable foundation gives it one stable owner across foundation up
 `DurableResourcesStack`, synthesized as `OpsReplayDurableResources`, owns the session
 table, Monitor bootstrap bucket, recording bucket, and learner user pool. All four use
 `Retain`. The table keeps its keys-only stream, ticket TTL, and `unfinished-work` index.
-The stack configures service-level deletion protection for the table and user pool.
+The stack template declares service-level deletion protection for the table and user
+pool. This control becomes active only when the stack update is deployed.
 The buckets keep encryption, public-access blocking, transport enforcement, and their
 existing expiry rules. Exact physical names are required through CDK context for an
 owner-stack import or deployment. With no durable context, the owner stack is omitted;

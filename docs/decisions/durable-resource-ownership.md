@@ -22,7 +22,7 @@ another retained set instead of reusing the first set.
 
 All four resources retain their data on stack deletion or replacement. The two buckets
 keep S3-managed encryption, public-access blocking, and a policy that denies insecure
-transport. The durable owner template enables service-level deletion protection for the
+transport. The durable owner template declares service-level deletion protection for the
 table and user pool. DynamoDB point-in-time recovery remains a separate cost and
 restore-policy decision.
 
