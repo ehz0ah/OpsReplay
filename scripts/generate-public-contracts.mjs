@@ -35,40 +35,40 @@ if (process.argv.includes('--check')) {
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true, code: { source: true, esm: true } });
 addFormats(ajv);
 ajv.addSchema(schema);
-const names = [
-  'Error',
-  'Catalog',
-  'Account',
-  'SessionView',
-  'SessionResponse',
-  'StartSessionRequest',
-  'MutationRequest',
-  'TerminalTicket',
-  'HintResponse',
-  'TimelinePage',
-  'Debrief',
-  'Playback',
-  'GatewayClientMessage',
-  'GatewayServerMessage',
-];
-const exports = Object.fromEntries(names.map((name) => [name, `${schema.$id}#/$defs/${name}`]));
-for (const ref of Object.values(exports)) ajv.getSchema(ref);
-const output = await build({
-  stdin: { contents: standalone(ajv, exports), resolveDir: fileURLToPath(root) },
-  bundle: true,
-  platform: 'browser',
-  format: 'esm',
-  target: 'es2022',
-  minify: true,
-  write: false,
-});
+const groups = {
+  requests: ['StartSessionRequest', 'MutationRequest'],
+  entry: ['Error', 'Catalog', 'Account'],
+  session: [
+    'SessionView',
+    'SessionResponse',
+    'TerminalTicket',
+    'HintResponse',
+    'TimelinePage',
+    'GatewayClientMessage',
+    'GatewayServerMessage',
+  ],
+  results: ['Debrief', 'Playback'],
+};
 const directory = new URL('.local/contracts/', root);
 await mkdir(directory, { recursive: true });
-await writeFile(new URL('public-validators.js', directory), output.outputFiles[0].contents);
-await writeFile(
-  new URL('public-validators.d.ts', directory),
-  `import type { PublicTypes } from '../../packages/contracts/public-types.js';\n` +
-    names.map((name) => `export function ${name}(value: unknown): value is PublicTypes['${name}'];`).join('\n') +
-    '\n',
-);
+for (const [group, names] of Object.entries(groups)) {
+  const exports = Object.fromEntries(names.map((name) => [name, `${schema.$id}#/$defs/${name}`]));
+  for (const ref of Object.values(exports)) ajv.getSchema(ref);
+  const output = await build({
+    stdin: { contents: standalone(ajv, exports), resolveDir: fileURLToPath(root) },
+    bundle: true,
+    platform: 'browser',
+    format: 'esm',
+    target: 'es2022',
+    minify: true,
+    write: false,
+  });
+  await writeFile(new URL(`${group}-validators.js`, directory), output.outputFiles[0].contents);
+  await writeFile(
+    new URL(`${group}-validators.d.ts`, directory),
+    `import type { PublicTypes } from '../../packages/contracts/public-types.js';\n` +
+      names.map((name) => `export function ${name}(value: unknown): value is PublicTypes['${name}'];`).join('\n') +
+      '\n',
+  );
+}
 console.log('Public types checked; browser validators compiled without runtime evaluation.');

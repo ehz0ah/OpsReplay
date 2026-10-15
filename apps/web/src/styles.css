@@ -228,3 +228,23 @@ select {
     padding: 0 1rem;
   }
 }
+
+.challenge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+.challenge-row p {
+  max-width: 720px;
+}
+.challenge-row button {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .challenge-row {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

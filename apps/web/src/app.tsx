@@ -1,3 +1,5 @@
+import { CataloguePage } from './pages/catalogue.js';
+import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
 import { usePath, navigate } from './navigation.js';
 export function App() {
@@ -44,10 +46,19 @@ export function App() {
         </h1>
         <p className="intro">Read the signals. Test your hypothesis. Restore service, then review the evidence.</p>
         {path === '/' ? (
-          <section className="panel">
-            <h2>Your practice workspace</h2>
-            <p>Start with an alert. Investigate an isolated system, restore service, then review your response.</p>
-          </section>
+          <CataloguePage key={auth.identity?.sub ?? 'public'} />
+        ) : /^\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(path) ? (
+          auth.loading ? (
+            <p role="status">Connecting your account…</p>
+          ) : auth.identity ? (
+            <SessionEntry key={auth.identity.sub + path} id={path.split('/')[2]!} />
+          ) : (
+            <section className="panel">
+              <h2>Sign in to resume this attempt.</h2>
+              <p>The incident clock continues while you are disconnected.</p>
+              <button onClick={() => void auth.signIn()}>Sign in</button>
+            </section>
+          )
         ) : (
           <section className="panel">
             <h2>Page not found</h2>

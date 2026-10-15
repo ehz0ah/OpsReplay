@@ -129,6 +129,11 @@ state and nonce validation. Tokens and authorization state stay in tab-scoped se
 storage. HTTP requests use ID tokens; backend Cognito validation remains authoritative.
 Refresh is bounded and shared within the tab. No iframe or local login fallback is added.
 
+16 October 2026: browser catalogue entry reads public metadata and the authenticated
+account before admission. Pending mutations keep their exact request IDs in an
+owner-scoped tab journal. Gateway errors cannot discard uncertain requests. Existing
+active attempts are resumed through their owned session URL.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

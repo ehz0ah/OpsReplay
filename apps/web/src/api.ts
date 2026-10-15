@@ -84,7 +84,7 @@ export class ApiClient {
     } catch {
       throw new TransportError();
     }
-    if (!response.ok) throw new ApiError(response.status, parsePublic('Error', value));
+    if (!response.ok) throw new ApiError(response.status, await parsePublic('Error', value));
     return parsePublic(type, value);
   }
 }

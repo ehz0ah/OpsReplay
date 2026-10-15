@@ -1,7 +1,31 @@
-import * as validators from '../../.local/contracts/public-validators.js';
+import * as requests from '../../.local/contracts/requests-validators.js';
 import type { PublicTypes } from './public-types.js';
-export type BrowserType = keyof typeof validators;
-export function parsePublic<K extends BrowserType>(name: K, value: unknown): PublicTypes[K] {
-  if (!validators[name](value)) throw new Error('The server response does not match the public contract.');
+const entry = () => import('../../.local/contracts/entry-validators.js');
+const session = () => import('../../.local/contracts/session-validators.js');
+const results = () => import('../../.local/contracts/results-validators.js');
+const loaders = {
+  Error: entry,
+  Catalog: entry,
+  Account: entry,
+  SessionView: session,
+  SessionResponse: session,
+  TerminalTicket: session,
+  HintResponse: session,
+  TimelinePage: session,
+  GatewayClientMessage: session,
+  GatewayServerMessage: session,
+  Debrief: results,
+  Playback: results,
+};
+export type BrowserType = keyof typeof loaders;
+export async function parsePublic<K extends BrowserType>(name: K, value: unknown): Promise<PublicTypes[K]> {
+  const module: Record<string, unknown> = await loaders[name]();
+  const guard = module[name];
+  if (typeof guard !== 'function' || !guard(value))
+    throw new Error('The server response does not match the public contract.');
+  return value as PublicTypes[K];
+}
+export function parseMutation<K extends keyof typeof requests>(name: K, value: unknown): PublicTypes[K] {
+  if (!requests[name](value)) throw new Error('The request does not match the public contract.');
   return value as PublicTypes[K];
 }
