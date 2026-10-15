@@ -64,7 +64,7 @@ turns run in their own function so they have separate concurrency and timeout li
 They are not separate microservices. The gateway is the only component that talks to
 environment tasks. Lambda handlers stay outside the VPC.
 
-## Proposed AWS deployment
+## AWS deployment design
 
 The deployment uses CDK with TypeScript, one workload Region, and a CloudFront-scope WAF
 in `us-east-1`. The permanent workload Region remains open. The MVP uses the default

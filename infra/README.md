@@ -162,7 +162,10 @@ Challenge stdout is not a recording path; terminal evidence still comes from the
 Private subnets, security groups, public-IP disabling, ECS Exec disabling, and Fargate
 platform `1.4.0` remain launch/application configuration, not task-definition fields.
 Local synthesis and Docker tests do not prove Fargate isolation, IAM/bootstrap
-delivery, startup timing, or resource enforcement. These need the approved AWS checkpoint.
+delivery, startup timing, or resource enforcement. The 15 October 2026 operator-seeded
+checkpoint exercised S3 bootstrap delivery, Fargate startup, and one successful runtime
+path. It did not test normal learner entry, failure handling, concurrent load, or
+resource-limit behavior.
 
 `npm run infra:synth` uses the CDK library locally. It does not read AWS profiles,
 make AWS API calls, bootstrap, or deploy. `npm run infra:test` checks the generated
@@ -181,11 +184,11 @@ package source produces different bytes during a later build of the same commit.
 Repeated runs reuse only tags that match the tested archive. The workflow does not
 package Lambda code, deploy a stack, or start a task.
 
-That existing workflow still publishes the **generic** Monitor target, which lacks
-`/app/challenge.json`. It cannot supply `ReferenceMonitorImageDigest`. Publishing the
-tested reference target and binding its digest and task revision to an immutable
-content version belong to the separate publication PR. The authored Challenge stays
-draft with null image digests in this increment.
+The workflow builds, tests, and publishes the **reference** Monitor target with
+`/app/challenge.json`. It does not publish learner content. `npm run content:publish`
+separately verifies the image, task, and manifest pins before it writes an immutable
+content version. The authored Challenge remains draft until that command succeeds for
+an approved deployment.
 
 The table and secret-file bucket use `Retain` by default. Stack deletion would keep
 their data and storage charges. DynamoDB TTL removes expired terminal-ticket items by
@@ -200,7 +203,9 @@ The environment task execution role must be in the deployment account. Private t
 need the S3 endpoint route and an endpoint policy permitting the bootstrap bucket,
 alongside their image-pull dependencies. The monitor must not print its environment or share it with the
 learner container. The pinned definition must not override `OPSREPLAY_MONITOR_SECRET`.
-Validate these conditions in the integrated Fargate test before enabling either action.
+The operator-seeded checkpoint exercised this bootstrap path for one Fargate task. Keep
+learner admission disabled until normal session-start integration and failure paths are
+tested.
 
 The expiry callback has two retries and a 15-minute event age. Recording-work delivery
 and asynchronous invocation have two retries, a two-minute event age, and an encrypted
@@ -231,7 +236,7 @@ the gateway group to the endpoint group. That group must be attached to the ECR 
 Docker, and CloudWatch Logs interface endpoints. The workload subnets must not have an
 internet or NAT route.
 
-The later disposable test stack must choose explicit export and deletion rules. Stack
+Each disposable runtime stack must choose explicit export and deletion rules. Stack
 deletion does not remove the retained buckets or table. Their object lifecycle rules
 continue to apply while the buckets exist.
 

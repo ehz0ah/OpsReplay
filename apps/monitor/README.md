@@ -4,8 +4,8 @@ Status: traffic, HTTP measurements, recovery validation, TCP outage detection,
 authenticated control, sequenced public frames, and bounded allowlisted captures are
 implemented for the reference Challenge. Local Linux image tests cover the watched-volume
 boundary. The Monitor, Gateway recording path, readiness, and Fargate task passed one
-operator-seeded AWS checkpoint on 15 October 2026. CPU and memory measurements,
-concurrent load, and additional Challenges remain unimplemented or unvalidated.
+operator-seeded AWS checkpoint on 15 October 2026. CPU and memory measurements and
+additional Challenges are not implemented. Concurrent load is not validated.
 
 The TypeScript core uses Node 22 and measures real HTTP results independently of the
 learner's services. It aggregates its bounded request records directly because this
@@ -59,8 +59,9 @@ certificate before it sends the 32-byte base64url session secret. The monitor re
 certificate, private key, and secret from its own environment. The Challenge container
 does not receive them. Production must deliver all three values through the encrypted
 per-session S3 environment file, never through a plaintext `RunTask` override. Certificate
-issuance and environment-file delivery are implemented in the lifecycle code but
-remain unvalidated on Fargate.
+issuance and environment-file delivery are implemented in the lifecycle code. The
+15 October 2026 operator-seeded AWS checkpoint exercised certificate creation and
+delivered the environment file to a Fargate task.
 
 | Operation                         | Result                                                                       |
 | --------------------------------- | ---------------------------------------------------------------------------- |
@@ -175,15 +176,17 @@ The local `test` target adds that manifest and gateway substitute.
 `monitor:reference:image:test` runs the actual reference target with a separate
 test-client image, including immediate container startup without waiting for shop
 listeners, private process/environment checks, and rejected Monitor writes.
-The existing checkpoint publisher still selects the generic target; reference image
-publication and immutable content binding are a separate PR.
+The checkpoint image workflow builds, tests, and publishes this reference target.
+Content publication separately verifies the image, task, and manifest pins before it
+writes an immutable version.
 `dist/monitor/core.cjs` remains a reusable build artifact outside the
 runtime image. The gateway substitute starts measurement, polls and resumes by sequence,
 and seals on SIGTERM. It exists only for integration tests and is not the real gateway or
 cloud lifecycle.
 
-Local Docker checks do not prove Fargate isolation, cloud timing, or complete recording.
-The complete monitor publication harness, including repeated scenario runs, remains a
-later gate. See [the contract](../../docs/challenges.md#monitor) and
+Local Docker checks do not by themselves prove Fargate isolation, cloud timing, or
+complete recording. The 15 October 2026 checkpoint exercised one Fargate success path.
+Repeated scenario runs, failure handling, and concurrent load remain unvalidated. See
+[the contract](../../docs/challenges.md#monitor) and
 [the measurement](../../docs/decisions/monitor-measurement.md) and
 [control](../../docs/decisions/monitor-control.md) decisions.
