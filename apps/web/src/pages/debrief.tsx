@@ -5,7 +5,7 @@ import { useApi } from '../api-context.js';
 import { useAuth } from '../auth/provider.js';
 import { useAlive } from '../use-alive.js';
 import { useRead } from '../use-read.js';
-import { savedDebrief, playbackPages } from '../playback/reads.js';
+import { savedDebrief, playbackPage, appendPlayback } from '../playback/reads.js';
 import { readAsset, metricSamples, captureObject } from '../playback/assets.js';
 import { MutationJournal } from '../mutation-journal.js';
 import { startAttempt } from '../start-attempt.js';
@@ -23,6 +23,7 @@ export function DebriefPage({ id }: { id: string }) {
     [error, setError] = useState<Error | null>(null),
     [revision, setRevision] = useState(0),
     [busy, setBusy] = useState(false),
+    [playbackRevision, setPlaybackRevision] = useState(0),
     [playback, setPlayback] = useState<PublicTypes['Playback'] | null>(null),
     [samples, setSamples] = useState<PublicTypes['MetricSample'][]>([]),
     [at, setAt] = useState<number | null>(null),
@@ -84,9 +85,20 @@ export function DebriefPage({ id }: { id: string }) {
       if (alive.current) setBusy(false);
     }
   }
-  async function links() {
-    const value = await playbackPages(api, id, operations.current.signal);
-    if (alive.current) setPlayback(value);
+  async function links(more = false) {
+    const cursor = more ? playback?.nextCursor : null;
+    if (more && !cursor) return;
+    const value = await playbackPage(api, id, operations.current.signal, cursor ?? null);
+    const combined = more && playback ? appendPlayback(playback, value) : value;
+    if (alive.current) {
+      setPlayback(combined);
+      if (!more) {
+        setPlaybackRevision((current) => current + 1);
+        setSamples([]);
+        setAt(null);
+        setCapture(null);
+      }
+    }
   }
   async function metrics() {
     if (!playback) return;
@@ -258,9 +270,18 @@ export function DebriefPage({ id }: { id: string }) {
             ))}
           </section>
           <div className="actions">
-            <button disabled={busy || now < retryAt} onClick={() => void task(links)}>
+            <button disabled={busy || now < retryAt} onClick={() => void task(() => links())}>
               {playback ? 'Refresh recording links' : 'Load recording'}
             </button>
+            {playback?.nextCursor && (
+              <button
+                className="secondary"
+                disabled={busy || now < retryAt}
+                onClick={() => void task(() => links(true))}
+              >
+                Load next recording page
+              </button>
+            )}
             <button
               className="secondary"
               disabled={busy || events.length >= 16000 || (!cursor && events.length > 0)}
@@ -288,12 +309,14 @@ export function DebriefPage({ id }: { id: string }) {
           {playback && (
             <>
               <p className="muted">
-                Recording links expire at {new Date(playback.expiresAt).toLocaleTimeString()}. Refresh them after
-                expiry.
+                Loaded {playback.terminal.length} terminal chunks, {playback.metrics.length} metric chunks and{' '}
+                {playback.captures.length} captures.{' '}
+                {playback.nextCursor ? 'More pages are available.' : 'All recording pages are loaded.'} Recording links
+                expire at {new Date(playback.expiresAt).toLocaleTimeString()}. Refresh them after expiry.
               </p>
               <Suspense fallback={<p>Opening recorded terminal…</p>}>
                 <RecordedTerminal
-                  key={playback.expiresAt}
+                  key={id + ':' + playbackRevision}
                   tracks={playback.terminal}
                   highlights={playback.highlights}
                   onTime={setAt}

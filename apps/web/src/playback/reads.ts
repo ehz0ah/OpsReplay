@@ -15,40 +15,39 @@ export async function savedDebrief(api: ApiClient, id: string, signal: AbortSign
     }
   }
 }
-export async function playbackPages(api: ApiClient, id: string, signal: AbortSignal) {
-  let cursor: string | null = null,
-    combined: PublicTypes['Playback'] | null = null;
-  const cursors = new Set<string>();
-  for (let page = 0; page < 300; page++) {
-    const value: PublicTypes['Playback'] = await api.read(
-      'Playback',
-      `/v1/sessions/${id}/playback?limit=25${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`,
-      signal,
-    );
-    if (value.sessionId !== id) throw new Error('The recording does not match this attempt.');
-    if (combined) {
-      if (
-        JSON.stringify(value.recording) !== JSON.stringify(combined.recording) ||
-        JSON.stringify(value.highlights) !== JSON.stringify(combined.highlights)
-      )
-        throw new Error('Recording snapshot changed. Refresh links.');
-      combined = {
-        sessionId: combined.sessionId,
-        highlights: combined.highlights,
-        recording: combined.recording,
-        expiresAt: Date.parse(value.expiresAt) < Date.parse(combined.expiresAt) ? value.expiresAt : combined.expiresAt,
-        terminal: [...combined.terminal, ...value.terminal],
-        metrics: [...combined.metrics, ...value.metrics],
-        captures: [...combined.captures, ...value.captures],
-        nextCursor: value.nextCursor,
-      };
-    } else combined = value;
-    if (combined.terminal.length > 500 || combined.metrics.length > 500 || combined.captures.length > 5000)
-      throw new Error('Recording reference limit exceeded.');
-    if (value.nextCursor === null) return combined;
-    if (cursors.has(value.nextCursor)) throw new Error('Recording cursor did not advance.');
-    cursors.add(value.nextCursor);
-    cursor = value.nextCursor;
-  }
-  throw new Error('Recording page limit exceeded.');
+export async function playbackPage(api: ApiClient, id: string, signal: AbortSignal, cursor: string | null = null) {
+  const value = await api.read(
+    'Playback',
+    `/v1/sessions/${id}/playback?limit=25${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`,
+    signal,
+  );
+  if (value.sessionId !== id) throw new Error('The recording does not match this attempt.');
+  if (cursor !== null && value.nextCursor === cursor) throw new Error('Recording cursor did not advance.');
+  return value;
+}
+export function appendPlayback(
+  current: PublicTypes['Playback'],
+  page: PublicTypes['Playback'],
+): PublicTypes['Playback'] {
+  if (
+    current.sessionId !== page.sessionId ||
+    current.recording.status !== page.recording.status ||
+    current.recording.reason !== page.recording.reason ||
+    JSON.stringify(current.highlights) !== JSON.stringify(page.highlights)
+  )
+    throw new Error('Recording snapshot changed. Refresh links.');
+  const combined = {
+    sessionId: current.sessionId,
+    recording: current.recording,
+    highlights: current.highlights,
+    expiresAt: Date.parse(page.expiresAt) < Date.parse(current.expiresAt) ? page.expiresAt : current.expiresAt,
+    terminal: [...current.terminal, ...page.terminal],
+    metrics: [...current.metrics, ...page.metrics],
+    captures: [...current.captures, ...page.captures],
+    nextCursor: page.nextCursor,
+  };
+  // Aggregate limits follow source event/metric/capture bounds, not per-page array limits.
+  if (combined.terminal.length > 100000 || combined.metrics.length > 10000 || combined.captures.length > 5000)
+    throw new Error('Recording reference limit exceeded.');
+  return combined;
 }

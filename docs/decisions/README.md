@@ -241,3 +241,7 @@ chunks share one emulator and align to track timestamps. Input records never exe
 Public asset DTOs validate metric exports and watched-file captures without browser
 imports of private server modules. Recording expiry does not remove the debrief.
 A retry uses a new session receipt and preserves the first attempt.
+
+Playback metadata loads one page per learner request, including empty pages. The next
+control follows its cursor. Page array limits do not cap the whole recording. Loaded
+chunks share the read-only emulator; explicit link refresh restarts the loaded prefix.
