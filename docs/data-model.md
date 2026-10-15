@@ -45,6 +45,7 @@ names are a storage convention, not part of the HTTP contract.
 | `USER#<id>`              | `PROGRESS#<contentId>`                                     | Learner progress                                                                          |
 | `USER#<id>`              | `START#<requestId>`                                        | Session start receipt                                                                     |
 | `USER#<id>`              | `REVIEWREQ#<requestId>`                                    | Review submission receipt                                                                 |
+| `CATALOG#PUBLIC`         | `ENTRY#<mode>#<id>#<version>`                              | Published public catalogue metadata only                                                  |
 | `CONTENT#<id>`           | `VERSION#<version>`                                        | Server-only published Challenge admission snapshot                                        |
 | `SESSION#<id>`           | `STATE`                                                    | Private session record, admitted hint IDs/delays, and public view                         |
 | `SESSION#<id>`           | `RECORDING`                                                | Lease, cursors, references, and nullable `retainUntil`                                    |

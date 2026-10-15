@@ -203,7 +203,7 @@ package Lambda code, deploy a stack, or start a task.
 The workflow builds, tests, and publishes the **reference** Monitor target with
 `/app/challenge.json`. It does not publish learner content. `npm run content:publish`
 separately verifies the image, task, and manifest pins before it writes an immutable
-content version. The authored Challenge remains draft until that command succeeds for
+content version and its exact public catalogue projection in one transaction. The authored Challenge remains draft until that command succeeds for
 an approved deployment.
 
 The durable table and buckets use `Retain`. Deleting the runtime or foundation does not

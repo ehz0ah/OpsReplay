@@ -46,7 +46,7 @@ test('content publication uses a separate exact-trust role with read and conditi
       [['dynamodb:GetItem', 'dynamodb:PutItem'], 'ecr:BatchGetImage', 'ecs:DescribeTaskDefinition'],
     );
     assert.deepEqual(statements[0]?.Condition, {
-      'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#*'] },
+      'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#*', 'CATALOG#PUBLIC'] },
     });
     assert.equal(
       statements.some((statement) => JSON.stringify(statement.Action).includes('ecr:PutImage')),

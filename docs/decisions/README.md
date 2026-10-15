@@ -112,6 +112,10 @@ pool into one long-lived stack. Disposable foundation and runtime stacks consume
 identifiers. The selected retained resources were imported with zero reported drift.
 The table and user pool have service-level deletion protection enabled.
 
+16 October 2026: [Public catalogue publication](catalogue-publication.md) adds an exact
+public partition and atomically publishes metadata with immutable admission records.
+No table scan, secondary index, or runtime activation is added.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

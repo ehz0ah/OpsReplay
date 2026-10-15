@@ -35,7 +35,7 @@ export class ContentPublicationStack extends Stack {
       new PolicyStatement({
         actions: ['dynamodb:GetItem', 'dynamodb:PutItem'],
         resources: [contentTableArn.valueAsString],
-        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#*'] } },
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['CONTENT#*', 'CATALOG#PUBLIC'] } },
       }),
     );
     role.addToPolicy(
