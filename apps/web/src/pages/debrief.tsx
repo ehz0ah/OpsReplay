@@ -167,7 +167,20 @@ export function DebriefPage({ id }: { id: string }) {
               <dl className="metric-grid">
                 {Object.entries(debrief.score).map(([name, value]) => (
                   <div key={name}>
-                    <dt>{name.replace(/([A-Z])/g, ' $1')}</dt>
+                    <dt>
+                      {
+                        (
+                          {
+                            timeToRecoverySeconds: 'Time to recovery (seconds)',
+                            totalRequests: 'Total requests',
+                            failedRequests: 'Failed requests',
+                            commandCount: 'Commands',
+                            observedOutages: 'Observed outages',
+                            outageSeconds: 'Outage duration (seconds)',
+                          } as Record<string, string>
+                        )[name]
+                      }
+                    </dt>
                     <dd>{value ?? 'Not recovered'}</dd>
                   </div>
                 ))}
