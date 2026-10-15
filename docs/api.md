@@ -283,6 +283,12 @@ because it cannot know whether Gateway consumed the previous ticket.
 ### End
 
 The separate, disabled `POST /v1/sessions/{id}/end` action accepts only `requestId`.
+
+The end action returns `EndSessionResponse`, an envelope containing `session` only.
+Unlike start, it does not expose a replay flag. The pre-release OpenAPI response was
+corrected to match the existing handler. Repeat the same request ID after an uncertain
+end response; read the saved session to confirm the outcome.
+
 It checks Cognito ownership and saves `ended/learner_ended` with an atomic receipt and
 fixed recording cutoff. A request at or after the saved time limit returns
 `failed/time_limit` at that deadline. Ending an attempt that already has an outcome

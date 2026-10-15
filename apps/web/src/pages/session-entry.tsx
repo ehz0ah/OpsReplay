@@ -1,26 +1,124 @@
-import { useRead } from '../use-read.js';
+import { useAlive } from '../use-alive.js';
+import { ApiError } from '../api.js';
+import { useEffect, useMemo, useState } from 'react';
+import { useSession } from '../use-session.js';
+import { useAuth } from '../auth/provider.js';
+import { useApi } from '../api-context.js';
+import { MutationJournal } from '../mutation-journal.js';
+import { endAttempt } from '../end-attempt.js';
+import { timeRemaining, terminal } from '../lifecycle.js';
 import { Failure } from '../components/failure.js';
+import { navigate } from '../navigation.js';
 export function SessionEntry({ id }: { id: string }) {
-  const session = useRead('SessionView', '/v1/sessions/' + id);
+  const alive = useAlive();
+  const session = useSession(id),
+    auth = useAuth(),
+    api = useApi();
+  const journal = useMemo(() => new MutationJournal(sessionStorage, auth.identity!.sub), [auth.identity?.sub]);
+  const [ending, setEnding] = useState(false),
+    [endError, setEndError] = useState<Error | null>(null),
+    [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  async function end() {
+    if (ending || !confirm('End this attempt? It cannot be resumed. The incident clock continues while you decide.'))
+      return;
+    setEnding(true);
+    setEndError(null);
+    try {
+      await endAttempt(api, journal, id);
+      if (alive.current) session.refresh();
+    } catch (value) {
+      if (alive.current)
+        setEndError(
+          value instanceof Error ? value : new Error('The outcome is uncertain. Retry the same end request.'),
+        );
+    } finally {
+      if (alive.current) setEnding(false);
+    }
+  }
+  const view = session.view,
+    remaining = view ? timeRemaining(view, now) : null;
   return (
     <>
-      <Failure error={session.error} retry={session.reload} />
-      {session.loading && <p role="status">Reading your attempt…</p>}
-      {session.data && (
-        <section className="panel">
-          <span className="badge">{session.data.status}</span>
-          <h2>{session.data.challenge.title}</h2>
-          <h3>{session.data.alert.title}</h3>
-          <p>{session.data.alert.summary}</p>
-          <p className="muted">
-            {session.data.status === 'provisioning'
-              ? 'The clock starts when the environment is ready.'
-              : 'This attempt uses real time.'}
-          </p>
-          <button className="secondary" onClick={session.reload}>
-            Refresh status
-          </button>
-        </section>
+      <button className="secondary" onClick={() => navigate('/')}>
+        All Challenges
+      </button>
+      <Failure error={session.error} retry={session.refresh} />
+      {session.error instanceof ApiError && session.error.status === 401 && (
+        <button onClick={() => void auth.signIn()}>Sign in again</button>
+      )}
+      <Failure error={endError} retry={() => void end()} />
+      {!view && !session.error && <p role="status">Reading your attempt…</p>}
+      {view && (
+        <>
+          <header className="workspace-heading">
+            <div>
+              <p className="eyebrow">
+                {view.challenge.category} / {view.challenge.tier}
+              </p>
+              <h1>{view.challenge.title}</h1>
+              <span className="badge">
+                Attempt {view.attempt.number} · {view.attempt.kind}
+              </span>
+            </div>
+            <div className="stack">
+              <span className="badge">{view.status}</span>
+              {remaining !== null && !terminal(view.status) && (
+                <strong aria-label="Time remaining">
+                  {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                </strong>
+              )}
+            </div>
+          </header>
+          {view.status === 'provisioning' ? (
+            <div role="status" className="notice">
+              <p>Your isolated environment is starting. This can take tens of seconds.</p>
+              <p>
+                The incident clock starts when the environment is ready. You can leave this page and resume the attempt.
+              </p>
+            </div>
+          ) : terminal(view.status) ? (
+            <div role="status" className="notice">
+              <h2>Attempt {view.status}</h2>
+              <p>{view.statusReason?.replaceAll('_', ' ') ?? 'The attempt has ended.'}</p>
+              {view.readyAt === null ? (
+                <p>This environment did not reach readiness. Return to Challenges after cleanup to try again.</p>
+              ) : view.debriefAvailable ? (
+                <button onClick={() => navigate(`/sessions/${id}/debrief`)}>Open debrief</button>
+              ) : (
+                <p>Your debrief is being prepared. Status updates continue automatically.</p>
+              )}
+            </div>
+          ) : (
+            <p className="muted">
+              Traffic and failures continue while you investigate or reconnect. Recovery is confirmed by the server.
+            </p>
+          )}
+          <section className="panel">
+            <h2>{view.alert.title}</h2>
+            <p>{view.alert.summary}</p>
+            <span className="badge">{view.alert.severity}</span>
+          </section>
+          {view.recovery && (
+            <section className="panel">
+              <h2>Recovery: {view.recovery.state}</h2>
+              <p>
+                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds} seconds sustained
+              </p>
+            </section>
+          )}
+          {remaining === 0 && !terminal(view.status) && (
+            <p role="status">The displayed time budget has elapsed. Waiting for the server outcome.</p>
+          )}
+          {!terminal(view.status) && (
+            <button className="secondary" disabled={ending} onClick={() => void end()}>
+              {ending ? 'Confirming outcome…' : 'End attempt'}
+            </button>
+          )}
+        </>
       )}
     </>
   );

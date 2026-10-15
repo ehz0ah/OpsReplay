@@ -1,3 +1,4 @@
+import { useAlive } from '../use-alive.js';
 import { startAttempt } from '../start-attempt.js';
 import { useEffect, useMemo, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
@@ -9,6 +10,7 @@ import { MutationJournal, type PendingMutation } from '../mutation-journal.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
 export function CataloguePage() {
+  const alive = useAlive();
   const auth = useAuth(),
     api = useApi();
   const [filters, setFilters] = useState({ tier: '', category: '', plan: '' }),
@@ -63,10 +65,12 @@ export function CataloguePage() {
       if (!request || request.kind !== 'start') throw new Error('There is no start request to recover.');
       setPending(request);
       const result = await startAttempt(api, journal, request);
+      if (!alive.current) return;
       setPending(null);
       account.reload();
       navigate('/sessions/' + result.id);
     } catch (value) {
+      if (!alive.current) return;
       if (request) journal.reject(request, value);
       try {
         setPending(journal.load('start', '/v1/sessions'));
@@ -86,7 +90,7 @@ export function CataloguePage() {
         }
       }
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   }
   return (

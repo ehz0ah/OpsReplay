@@ -248,3 +248,13 @@ select {
     gap: 0.5rem;
   }
 }
+
+.workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2rem 0;
+}
+.workspace-heading h1 {
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+}

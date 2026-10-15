@@ -42,3 +42,9 @@ requests keep their ID across reloads and errors. Recover the saved request befo
 starting another. HTTP and storage errors never cause an automatic new mutation.
 Response validators load by entry, session or results group, keeping results code out
 of the initial catalogue bundle.
+
+The workspace polls saved session state serially, cancels requests when leaving, and
+backs off after throttling. Its real-time countdown displays the saved deadline without
+deciding the outcome. Ending requires confirmation and preserves the same request ID
+until the server confirms its result. Terminal outcomes stop interaction and lead to
+the debrief when the backend marks it available.

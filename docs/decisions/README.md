@@ -134,6 +134,11 @@ account before admission. Pending mutations keep their exact request IDs in an
 owner-scoped tab journal. Gateway errors cannot discard uncertain requests. Existing
 active attempts are resumed through their owned session URL.
 
+16 October 2026: browser lifecycle reads are serial, cancel on view changes and use
+bounded backoff after errors. Real-time countdowns display the saved deadline without
+deciding outcomes. End requests keep their receipt until confirmed. `EndSessionResponse`
+corrects the pre-release contract to the existing handler's `{session}` envelope.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

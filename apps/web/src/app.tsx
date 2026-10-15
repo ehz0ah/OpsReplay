@@ -38,13 +38,18 @@ export function App() {
             {auth.message}
           </p>
         )}
-        <p className="eyebrow">Production engineering / Practice</p>
-        <h1>
-          Learn production failures
-          <br />
-          by investigating them.
-        </h1>
-        <p className="intro">Read the signals. Test your hypothesis. Restore service, then review the evidence.</p>
+        {path === '/' && (
+          <>
+            {' '}
+            <p className="eyebrow">Production engineering / Practice</p>
+            <h1>
+              Learn production failures
+              <br />
+              by investigating them.
+            </h1>
+            <p className="intro">Read the signals. Test your hypothesis. Restore service, then review the evidence.</p>
+          </>
+        )}
         {path === '/' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
         ) : /^\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(path) ? (
