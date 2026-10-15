@@ -1,20 +1,12 @@
 # Challenge environments
 
-Status: proposed v0.2 runtime contract, following the preliminary report. It replaces the
-earlier simulated engine. The three [Challenge manifests](../content/challenges/README.md)
-are drafts. A [local reference image](../content/challenges/wrong-upstream-port/README.md)
-implements the wrong-upstream-port service stack and image tests. The
-[monitor](../apps/monitor/README.md) implements local traffic, recovery, outage checks,
-and authenticated HTTPS control. A gateway controller can record, resume, and seal this
-monitor stream through an injected sink. The reference image has a private interactive
-terminal and a bounded read-only recording source. The gateway has a locally tested
-interactive and recording clients, admission, browser relay, composed process, and monitor storage
-adapters. Durable terminal pages, combined cutoff sealing, lifecycle cleanup,
-bounded command evidence, interval captures, and atomic debrief finalisation are
-implemented and tested locally. Playback exports/read APIs, environment task
-publication, and the complete public AWS path remain unimplemented or unvalidated. Numbers
-marked proposed are starting values to measure, not results. The full task and publication
-requirements below remain unproven.
+Status: version 0.2 runtime contract. It replaces the earlier simulated engine. The wrong
+upstream port Challenge has a runnable image, private terminal, independent Monitor,
+durable recording, deterministic validation, debrief, and playback. Its complete backend
+runtime path passed one operator-seeded AWS checkpoint on 15 October 2026. The other
+Challenge manifests remain drafts. Browser use, concurrent load, and additional Challenge
+publication remain unvalidated. Numbers marked proposed are starting values to measure,
+not results.
 
 ## Principle
 
@@ -40,9 +32,9 @@ localhost. Watched configuration and log paths are shared with the monitor read-
 through a task-local ephemeral volume at `/opsreplay/watched`. The
 [publication helper](../infra/environment-watched-volume.ts) defines the Challenge
 writable mount, Monitor read-only mount, and Challenge-only initialisation option.
-Local Docker tests use this layout. No environment task definition is deployed or
-created by the current application stack. Its publication and Fargate isolation
-check remain prerequisites for activation. No Monitor secret enters the volume. A separate
+Local Docker tests use this layout. A separate reference stack defines the digest-pinned
+environment task. Its publication and Fargate isolation passed the 15 October AWS
+checkpoint; no task definition is currently active. No Monitor secret enters the volume. A separate
 container protects the monitor's files and processes only when its storage and PID
 namespace are private. Shared networking still needs the controls below. Learners can
 alter the service responses and files being measured, but not the saved recording.
@@ -298,8 +290,8 @@ The root learner can still disrupt its own task network and prevent a later gate
 reconnection. Connection limits are resource bounds, not an availability boundary. A lost
 monitor makes the recording incomplete and the attempt a platform error with no score.
 Stronger denial-of-service isolation requires a separate network trust boundary. The
-certificate delivery and task-address publication path is implemented locally but is
-not deployed. The monitor recording supervisor is tested locally.
+certificate delivery, task-address publication, and monitor recording supervisor passed
+the 15 October operator-only AWS checkpoint. Concurrent load remains unmeasured.
 
 **Untrusted files.** Watched files are written by a root learner. The monitor reads only
 regular files, never follows symbolic links, and caps the bytes it reads. Otherwise a
@@ -485,10 +477,12 @@ cutoff and remain visibly incomplete. Capture links use the requesting command's
 eligibility and preserve the actual baseline/start/completion interval, including drain.
 They do not claim an atomic snapshot or command causality.
 
-Read APIs are separate disabled Lambdas. Playback pages expose at most 25 selected object
+Read APIs are separate default-off Lambdas. Playback pages expose at most 25 selected object
 links and repeat the bounded saved highlights. The full timeline is paginated separately.
-No browser player, backfill for old finalised records, or AWS deployment is included.
-See [the playback decision](decisions/playback-api.md).
+The result handlers read the managed checkpoint data when invoked locally. Their API
+Gateway and Cognito paths were not exercised. No browser player or backfill for old
+finalised records is implemented. See
+[the playback decision](decisions/playback-api.md).
 
 A retry starts a fresh task from the current published version. It is labelled `retry`
 and never changes the first attempt, its debrief, or its score.

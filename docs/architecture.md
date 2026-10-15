@@ -1,17 +1,15 @@
 # Architecture
 
-Status: implementation proposal consistent with the preliminary report. The
-[reference Challenge image](../content/challenges/wrong-upstream-port/README.md) runs
-locally. Session admission, ECS launch orchestration, and provisioning-expiry cleanup
-have separate disabled Lambda definitions. Monitor traffic, recovery, outage checks, and
-authenticated HTTPS control run locally. The gateway monitor client, bounded recording
-controller, durable recording adapters, work source, supervisor, browser terminal relay,
-and composed process are implemented and tested locally. CDK defines an inactive Gateway
-path with CloudFront, an internal ALB, private network edges, and terminal-ticket route, plus the
-disposable foundation used for its checkpoint. It also defines optional checkpoint-owned
-Cognito resources, one exact browser origin, and an inactive authenticated session-start
-route. The temporary resources were removed. DNS and the web application are not
-implemented.
+Status: the backend path for the
+[reference Challenge](../content/challenges/wrong-upstream-port/README.md) is implemented.
+It includes authenticated session entry, Fargate launch and cleanup, the Monitor,
+CloudFront terminal ingress, the Gateway, durable recording, hints, deterministic
+debrief, timeline, and playback. An operator-seeded terminal-to-result AWS checkpoint
+passed on 15 October 2026. It did not exercise Cognito, API Gateway, or session start.
+Its disposable resources were removed, and every runtime gate remains default-off.
+The web application, catalogue and account bootstrap APIs, additional Challenges, and
+hosted deployment are not implemented. See the
+[checkpoint report](checkpoints/2026-10-15-terminal.md).
 
 This document owns the service layout. The domain contracts own detailed behaviour, as
 defined in the [decision register](decisions/README.md). Diagrams are views of these
@@ -68,7 +66,9 @@ environment tasks. Lambda handlers stay outside the VPC.
 
 ## Proposed AWS deployment
 
-The deployment uses CDK with TypeScript and one Region. The Region and domain remain open.
+The deployment uses CDK with TypeScript, one workload Region, and a CloudFront-scope WAF
+in `us-east-1`. The permanent workload Region remains open. The MVP uses the default
+CloudFront hostname and does not require a custom domain.
 
 ```mermaid
 flowchart TB
@@ -219,7 +219,9 @@ increments before the first temporary AWS spike.
 
 Local tests prove image behaviour, validators, recording, and domain logic. They do not
 prove Cognito, IAM, VPC isolation, Fargate start-up time, quotas, WebSockets through the
-ALB, or REST API streaming. The AWS spike proves those.
+ALB, or REST API streaming. An AWS checkpoint proves only the managed boundaries that it
+exercises. The 15 October checkpoint covered the private runtime and CloudFront terminal
+path, but not Cognito, API Gateway, session start, or REST API streaming.
 
 ## Operational requirements before a hosted pilot
 

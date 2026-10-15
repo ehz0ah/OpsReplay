@@ -1,8 +1,11 @@
 # Data model
 
-Status: proposed v0.2 persistence contract. Private records and wire types are separate.
-Public responses use explicit allowlists. Never serialise a private record and remove a
-few known fields afterwards.
+Status: version 0.2 persistence contract. Session, lifecycle, recording, evidence,
+debrief, progress, and playback records are implemented. Selected records were exercised
+by one operator-seeded AWS session on 15 October 2026. Catalogue, account, Learn, Code
+Review, and assistant records remain proposed. Private records and wire types are
+separate. Public responses use explicit allowlists. Never serialise a private record and
+remove known fields later.
 
 ## Records
 
@@ -348,9 +351,12 @@ These private fields never reach a public session projection. Launch arguments c
 an S3 environment-file ARN, not the secret value. The key is bound to the session ID.
 The recovery schedule uses the saved schedule name plus `-recovery`. Both callbacks
 exist before `RunTask`. A confirmed launch error is replayed from `launchFailure`.
-These fields revise an undeployed record format. Old local test records must be rebuilt.
+These fields were used by the operator-seeded 15 October AWS checkpoint. The session-start
+route did not create them during that run. Old local test records must still be rebuilt
+when the private schema changes.
 Provisioning timeout cleanup releases the active
 lock only after a saved task is stopped or the bounded launch-recovery period passes with
-no active task. The recording-work attributes are written locally, but their global
-secondary index is not deployed yet. Readiness and the reconciliation sweep remain to
-be implemented before the API is enabled.
+no active task. The recording-work attributes, global secondary index, readiness path,
+and reconciliation sweep are implemented. The operator-seeded AWS checkpoint exercised
+the runtime path after setup. These components remain default-off and are not currently
+deployed.

@@ -1,10 +1,14 @@
 # API contract
 
-Status: proposed `/v1` contract, version 0.2. [OpenAPI](../packages/contracts/openapi.json)
-owns REST routes and wire schemas. [Public schemas](../packages/contracts/schemas/public.schema.json)
-also define the terminal gateway frames. This document owns stateful behaviour, the
-gateway protocol, and error semantics. Session-start admission has a locally tested
-Lambda handler and a disabled CDK route. No public API or Gateway is deployed.
+Status: version 0.2 contract with a partially implemented API.
+[OpenAPI](../packages/contracts/openapi.json) owns REST routes and wire schemas.
+[Public schemas](../packages/contracts/schemas/public.schema.json) also define terminal
+Gateway frames. The reference Challenge handlers from session start through result reads
+are implemented. An operator-seeded AWS checkpoint on 15 October 2026 exercised the real
+CloudFront terminal path and invoked ticket and result handlers locally against managed
+data. It did not exercise Cognito, API Gateway, or session start. Catalogue, account
+bootstrap, session listing, Learn, Code Review, and assistant routes are not implemented.
+All runtime routes remain default-off, and no public API or Gateway is currently deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
 engine with typed actions. Nothing depended on 0.1. This pre-release revision adds
@@ -124,6 +128,8 @@ has zero reserved concurrency. Shared lifecycle routines
 are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
 now has local debrief/finalisation code, bounded playback exports, and separate owner
 read routes. These routes remain disabled. An approved AWS checkpoint is still required.
+The session-start and public REST paths still require that checkpoint through API Gateway
+and Cognito.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -156,7 +162,8 @@ read routes. These routes remain disabled. An approved AWS checkpoint is still r
 An ECS `RUNNING` task-state action reads the ENI private IPv4 address. After it verifies
 the saved cluster, task ARN, certificate, status, and provisioning deadline, it stores
 the address and adds the session to the sparse recording-work index. This action is
-bundled and locally tested. Its EventBridge rule is not deployed yet.
+bundled and tested locally and in the 15 October AWS checkpoint. Its EventBridge rule is
+defined behind the default-off runtime gate.
 
 A repeated request returns the saved session and invokes the same provisioning routine.
 It repairs both callbacks even when the ARN is already saved. If the ARN is missing, it
@@ -298,7 +305,9 @@ recovery observation. The separate Lambda and route have zero reserved concurren
 
 ### Timeline, debrief, and playback
 
-The three separate read Lambdas are implemented and tested locally, not deployed.
+The three separate read Lambdas are implemented. During the 15 October AWS checkpoint,
+their handlers were invoked locally against the managed data. Their API Gateway and
+Cognito paths were not exercised. They remain default-off and are not currently deployed.
 Each checks Cognito identity, request shape, session ownership, and the saved access
 grant before reading result data. Current plan expiry does not revoke that grant.
 Responses are `no-store`; logs contain only operation, correlation ID, result, and duration.

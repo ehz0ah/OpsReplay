@@ -1,12 +1,11 @@
 # Gateway service boundary
 
-Status: the production monitor HTTPS client, private interactive and recording TCP clients, authenticated
-terminal admission core, browser terminal relay, bounded recording controller, durable
-recording adapters, recording-session runner, DynamoDB work source, bounded service
-supervisor, and composed process image are implemented and tested locally. CDK defines
-one private Fargate Gateway service, terminal and recording modules, TLS ALB, WAF,
-network edges, roles, bucket, and event source, but keeps the complete path disabled by
-default. No complete Gateway deployment has run.
+Status: the monitor client, terminal clients, authenticated admission, browser relay,
+live telemetry, durable recording, work source, bounded supervisor, and composed Gateway
+image are implemented. CDK places one private Gateway service behind CloudFront and an
+internal HTTP ALB. An operator-seeded AWS checkpoint exercised the CloudFront terminal,
+telemetry, and recording path on 15 October 2026. The path is default-off, and no Gateway
+service is currently deployed.
 Follow the [gateway protocol](../../docs/api.md#terminal-gateway-protocol),
 [Challenge environments](../../docs/challenges.md), and
 [architecture](../../docs/architecture.md).
@@ -106,11 +105,11 @@ failure sends `TELEMETRY_UNAVAILABLE` once per outage without closing the termin
 failed authorization check or replaced input generation closes the connection. All
 messages use the existing one-second bounded browser send path.
 
-The runtime image now composes the relay with the recording supervisor when its complete
-terminal configuration is present. CDK now defines its public ALB and private security
-group path. Learner heartbeat, command evidence, interval captures, and durable live
-dashboard delivery are implemented locally. Proposals, frontend dashboard rendering,
-and AWS validation remain separate work.
+The runtime image composes the relay with the recording supervisor when its complete
+terminal configuration is present. CDK defines CloudFront, an internal HTTP ALB, and the
+private security-group path. Learner heartbeat, command evidence, interval captures, and
+durable live dashboard delivery passed one operator-only AWS checkpoint. Proposals,
+frontend rendering, and concurrent load remain separate work.
 
 ## Monitor client
 
@@ -319,12 +318,14 @@ terminal ticket through the browser WebSocket path, attempts the private termina
 connection, and stops cleanly on `SIGTERM`. These checks do not prove Fargate networking,
 ALB upgrades, production certificate delivery, IAM, or managed DynamoDB and S3 behaviour.
 
-Next: after review and merge, deploy the disposable AWS checkpoint and validate the
-complete authenticated WebSocket path through ALB, Gateway, and the Challenge terminal.
+The 15 October AWS checkpoint validated the WebSocket path through CloudFront, the
+internal ALB, Gateway, and the Challenge terminal with a ticket issued by a locally
+invoked handler. It did not validate Cognito or API Gateway entry. The next integration
+checkpoint must start from the learner web application.
 Outcome actions, command evidence, safe interval captures, and deterministic debrief
 finalisation are implemented locally. The recorder derives sealed commands from the
 exact terminal prefix, drains captures through the cutoff-open command, and conditions
 all evidence snapshots before completion. See
 [the evidence/debrief decision](../../docs/decisions/evidence-debrief.md).
-Playback exports/read APIs, frontend integration, content/task publication, and broader
-AWS validation remain separate increments. AWS work requires explicit approval.
+Frontend integration, additional content publication, and broader AWS validation remain
+separate increments. AWS work requires explicit approval.
