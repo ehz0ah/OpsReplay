@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CreateTableCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { catalogueKey } from '../src/catalogue.js';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { startLocalDatabase } from '../../../apps/api/test/local-dynamodb.js';
 import { manifestKey } from '../../session/src/manifest.js';
 import {
   prepareReferenceRelease,
+  projectCatalogue,
   publishReferenceRelease,
   releaseGates,
   type PublicationEvidence,
@@ -117,6 +119,13 @@ test('identical concurrent publication is idempotent while a conflicting project
       new GetCommand({ TableName: tableName, Key: privateKey, ConsistentRead: true }),
     );
     assert.deepEqual(privateSaved.Item?.data, first.manifest);
+    const entry = projectCatalogue(first.manifest);
+    const publicSaved = await database.document.send(
+      new GetCommand({ TableName: tableName, Key: catalogueKey(entry), ConsistentRead: true }),
+    );
+    assert.deepEqual(publicSaved.Item?.data, entry);
+    assert.equal('pins' in entry, false);
+    assert.equal('hints' in entry, false);
   } finally {
     database.close();
   }
@@ -129,9 +138,11 @@ test('failure after private content storage never creates an admissible version'
     await createTable(database.client, tableName);
     const release = prepareReferenceRelease(build, identity, task(), 1800);
     const interrupted = {
-      send: async (command: PutCommand | GetCommand, options?: { abortSignal?: AbortSignal }) => {
-        if (command instanceof PutCommand && String(command.input.Item?.SK).startsWith('VERSION#'))
-          throw new Error('injected failure');
+      send: async (
+        command: PutCommand | GetCommand | TransactWriteCommand,
+        options?: { abortSignal?: AbortSignal },
+      ) => {
+        if (command instanceof TransactWriteCommand) throw new Error('injected failure');
         if (command instanceof PutCommand) return database.document.send(command, options);
         return database.document.send(command, options);
       },
@@ -159,6 +170,10 @@ test('failure after private content storage never creates an admissible version'
     );
     assert.ok(privateItem.Item);
     assert.equal(admission.Item, undefined);
+    const listed = await database.document.send(
+      new GetCommand({ TableName: tableName, Key: catalogueKey(projectCatalogue(release.manifest)) }),
+    );
+    assert.equal(listed.Item, undefined);
   } finally {
     database.close();
   }
@@ -182,4 +197,56 @@ test('tampered release and incomplete evidence fail before any content write', a
   incomplete.gates.scenarioRepeats.repeats = 19;
   await assert.rejects(publishReferenceRelease(client, 'test-table', release, incomplete, AbortSignal.timeout(1000)));
   assert.equal(calls.length, 0);
+});
+
+test('backfills an identical published admission and recovers an uncertain transaction response', async () => {
+  const database = await startLocalDatabase();
+  const tableName = 'reference-backfill';
+  try {
+    await createTable(database.client, tableName);
+    const release = prepareReferenceRelease(build, identity, task(), 1800);
+    await database.document.send(
+      new PutCommand({
+        TableName: tableName,
+        Item: { PK: `CONTENT#${build.id}`, SK: `VERSION#${build.version}`, data: release.admission },
+      }),
+    );
+    let writes = 0;
+    const uncertain = {
+      send: async (
+        command: PutCommand | GetCommand | TransactWriteCommand,
+        options?: { abortSignal?: AbortSignal },
+      ) => {
+        if (command instanceof TransactWriteCommand) {
+          writes++;
+          await database.document.send(command, options);
+          throw new Error('lost response');
+        }
+        if (command instanceof PutCommand) return database.document.send(command, options);
+        return database.document.send(command, options);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    await publishReferenceRelease(uncertain, tableName, release, evidence(release), AbortSignal.timeout(10_000));
+    assert.equal(writes, 1);
+    const entry = projectCatalogue(release.manifest);
+    assert.deepEqual(
+      (await database.document.send(new GetCommand({ TableName: tableName, Key: catalogueKey(entry) }))).Item?.data,
+      entry,
+    );
+    await database.document.send(
+      new PutCommand({
+        TableName: tableName,
+        Item: {
+          PK: `CONTENT#${build.id}`,
+          SK: `VERSION#${build.version}`,
+          data: { ...release.admission, status: 'retired' },
+        },
+      }),
+    );
+    await assert.rejects(
+      publishReferenceRelease(database.document, tableName, release, evidence(release), AbortSignal.timeout(10_000)),
+    );
+  } finally {
+    database.close();
+  }
 });

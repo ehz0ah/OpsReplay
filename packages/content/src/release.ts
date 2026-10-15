@@ -1,6 +1,7 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { GetCommand, PutCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { catalogueKey, validCatalogEntry, type CatalogEntry } from './catalogue.js';
 import type { TaskDefinition, ContainerDefinition } from '@aws-sdk/client-ecs';
 import challengeSchema from '../../contracts/schemas/challenge.schema.json';
 import { canonicalJson } from '../../session/src/canonical.js';
@@ -24,6 +25,7 @@ export const releaseGates = [
 export interface BuildManifest extends DebriefManifest {
   status: 'draft' | 'published';
   title: string;
+  summary: string;
   tier: ContentVersion['challenge']['tier'];
   category: string;
   plan: ContentVersion['plan'];
@@ -59,6 +61,20 @@ export interface ReferenceRelease {
   taskDefinitionArn: string;
   manifest: BuildManifest;
   admission: ContentVersion;
+}
+export function projectCatalogue(manifest: BuildManifest): CatalogEntry {
+  const entry: CatalogEntry = {
+    id: manifest.id,
+    version: manifest.version,
+    mode: 'challenge',
+    title: manifest.title,
+    summary: manifest.summary,
+    category: manifest.category,
+    plan: manifest.plan,
+    tier: manifest.tier,
+  };
+  if (manifest.status !== 'published' || !validCatalogEntry(entry)) fail();
+  return entry;
 }
 export interface PublicationEvidence {
   identity: ReleaseIdentity;
@@ -362,11 +378,41 @@ export async function publishReferenceRelease(
     abortSignal: signal,
   });
   if (!equal(saved.Item?.data, release.manifest)) fail();
-  await immutablePut(
-    client,
-    table,
-    { PK: `CONTENT#${release.manifest.id}`, SK: `VERSION#${release.manifest.version}` },
-    release.admission,
-    signal,
-  );
+  const entry = projectCatalogue(release.manifest);
+  const projections = [
+    {
+      key: { PK: `CONTENT#${release.manifest.id}`, SK: `VERSION#${release.manifest.version}` },
+      data: release.admission,
+    },
+    { key: catalogueKey(entry), data: entry },
+  ];
+  signal.throwIfAborted();
+  try {
+    await client.send(
+      new TransactWriteCommand({
+        TransactItems: projections.map(({ key, data }) => ({
+          Put: {
+            TableName: table,
+            Item: { ...key, data },
+            // This also backfills an existing identical admission record. A different
+            // release or retired version cannot be overwritten by a retry.
+            ConditionExpression: 'attribute_not_exists(PK) OR #data = :expected',
+            ExpressionAttributeNames: { '#data': 'data' },
+            ExpressionAttributeValues: { ':expected': data },
+          },
+        })),
+      }),
+      { abortSignal: signal },
+    );
+  } catch (error) {
+    signal.throwIfAborted();
+    // A lost response or concurrent identical publication is successful only when
+    // both immutable projections are visible with the complete expected values.
+    for (const { key: projectionKey, data } of projections) {
+      const result = await client.send(new GetCommand({ TableName: table, Key: projectionKey, ConsistentRead: true }), {
+        abortSignal: signal,
+      });
+      if (!equal(result.Item?.data, data)) throw error;
+    }
+  }
 }
