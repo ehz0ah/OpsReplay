@@ -483,5 +483,5 @@ console.log(
     ' Markdown files.',
 );
 console.log(
-  'This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run gateway:test and npm run gateway:runtime:image:test for the composed gateway, npm run content:test for release preparation and publication logic, npm run api:test for session lifecycle, evidence, playback and owner reads, and npm run infra:test for disabled CDK definitions. The web application, remaining API routes, actual AWS content publication and complete AWS flow remain unimplemented or unvalidated.',
+  'This check covers contracts and reference models only. Run npm run challenge:test for the local image, npm run monitor:test and npm run monitor:image:test for the monitor, npm run gateway:test and npm run gateway:runtime:image:test for the composed gateway, npm run content:test for release preparation and publication logic, npm run api:test for session lifecycle, evidence, playback and owner reads, and npm run infra:test for default-off CDK definitions. The web application and remaining API routes are not implemented. This command does not repeat the operator-seeded AWS checkpoint.',
 );

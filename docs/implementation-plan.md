@@ -1,49 +1,41 @@
 # Implementation plan
 
-Status: task breakdown for six contributors. No assignments are implied. Agree owners on
-the team's task board before overlapping work. The team proves one complete Challenge
-first, then a small Learn collection and Code Review set.
+Status: current work plan for six contributors. No assignments are implied. Agree owners
+before overlapping work. Work packages are responsibility groups, not a waterfall.
 
-The local wrong-upstream-port image now contains its service stack and private interactive
-terminal server and bounded recording source. Shell markers remain open in I01.
-Later increments added session-start admission with a Lambda handler, a DynamoDB
-transaction, and disabled CDK definitions, followed by ECS launch and
-provisioning-timeout cleanup. The first monitor increment added real traffic,
-measurements, checkout validation, and outage probes beside the
-reference image. A focused increment then added authenticated monitor network control.
-The gateway monitor client, bounded recording controller, and durable recording adapters
-consume that control API locally. A separate private terminal client connects to the
-reference image and preserves the terminal server's generation and uncertain-input
-semantics. The browser relay and composed Gateway process are also tested locally.
-The read-only terminal recording client now validates the source, but terminal storage,
-recording-worker integration, captures, and playback remain open in I03. Complete public
-Gateway deployment remains unverified; issue #39 tracks its trusted endpoint blocker.
-Work packages are responsibility groups, not a requirement to complete one subsystem
-before integrating another.
+An operator-seeded terminal-to-result path for the first Challenge passed a disposable
+AWS checkpoint on 15 October 2026. It did not exercise Cognito, API Gateway, or session
+start. The next product milestone is an assistant-free browser flow. It needs the missing
+catalogue and account bootstrap reads, then sign-in, Challenge start, terminal and live
+telemetry, hints, outcome, debrief, playback, and retry. A later AWS checkpoint must use
+the browser rather than operator scripts. Retained AWS data ownership must be explicit
+before that deployment. See the [checkpoint report](checkpoints/2026-10-15-terminal.md).
 
 ## Work packages
 
-| ID  | Work                                                                                                                              | Dependencies                               | Completion evidence                                                                                          |
-| --- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| I01 | Build the reference Challenge image: services under a supervisor, planted fault, service wrappers, shell markers, terminal server | Reference Challenge choice                 | Runs under local Docker with the fault present                                                               |
-| I02 | Build the monitor: traffic, checkout validation, probes, timestamped captures, authenticated TLS control port                     | Manifest schema                            | Scenario harness passes the reference fix and each trap locally, 20 repeats. Status-only checkout stubs fail |
-| I03 | Build the gateway: tickets, fenced terminal input, dashboard relay, recording, proposal delivery, heartbeats                      | I01, I02, gateway protocol                 | Matching playback, two-gateway reconnect tests, and explicit results for uncertain command delivery          |
-| I04 | Implement session lifecycle: start, readiness, end, time limit, sweep, finaliser, reconciliation                                  | Data model, launcher port                  | Duplicate starts launch one task. Every ended session leaves no running task                                 |
-| I05 | Prove AWS: VPC and endpoints, ECS cluster, task definitions by digest, gateway behind the ALB, Cognito, Route 53, Scheduler       | Architecture                               | Deployed spike with measured time to a ready terminal, isolation test results, and teardown                  |
-| I06 | Build the web workspace: terminal, dashboard with command markers, timeline, hints, outcome                                       | API and gateway examples, then I03 and I04 | Alert to outcome without the assistant                                                                       |
-| I07 | Implement debrief, score components, playback, and retry                                                                          | I03, I04                                   | Debrief rules match the fixtures. Retries never change the first attempt                                     |
-| I08 | Add the assistant: context builder, streaming turns, proposals, confirmed runs, review debrief support                            | I03, I04, I06                              | Benchmark, leakage tests, provider-failure recovery                                                          |
-| I09 | Add Learn build step, Code Review matcher, submissions, and plans                                                                 | Catalogue and review contracts             | Free and Pro access enforced. Matching fixture passes                                                        |
-| I10 | Validate additional Challenges                                                                                                    | I01 to I03, authoring guide                | Scenario harness evidence and independent content review                                                     |
-| I11 | Run evaluation and cost comparison, prepare demo and report                                                                       | Complete core flow                         | Reproducible system results and pilot report                                                                 |
+| ID  | State                      | Work                                                                                      | Completion evidence                                                                                 |
+| --- | -------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| I01 | Implemented                | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                |
+| I02 | Implemented                | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                |
+| I03 | Core implemented           | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local reconnect and recording tests; one AWS session. Assistant proposal execution remains with I08 |
+| I04 | Implemented                | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Failure-injection tests and one operator-seeded AWS lifecycle                                       |
+| I05 | First checkpoint complete  | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [15 October checkpoint](checkpoints/2026-10-15-terminal.md). Browser, REST entry, and load remain   |
+| I06 | Next                       | Browser terminal, dashboard, timeline, hints, and outcome                                 | Alert-to-outcome flow without the assistant                                                         |
+| I07 | Backend implemented        | Debrief, score components, playback, and retry                                            | Local contract tests and local handler reads against AWS data. Browser presentation remains         |
+| I08 | Not started                | Optional assistant and confirmed proposals                                                | Benchmark, leakage tests, and provider-failure recovery                                             |
+| I09 | Catalogue and account next | Catalogue, account, and plans; later Learn and Code Review                                | Free and Pro access enforcement and matching tests                                                  |
+| I10 | Not started                | Additional validated Challenges                                                           | Scenario evidence and independent content review                                                    |
+| I11 | Not started                | System and user evaluation, cost comparison, demo, and report                             | Reproducible measurements and pilot results                                                         |
 
-Frontend exploration, AWS networking, and content research can start while I01 to I03
-are built. Shared contract changes are coordinated, not redefined in each module.
+The browser workspace and missing catalogue and account reads can proceed in parallel
+against the current public contracts. Shared contract changes are coordinated, not
+redefined in each module.
 
 ## First milestone
 
-Build toward this loop with local component and integration tests, then run the first
-complete cloud test in a temporary AWS environment:
+The backend is implemented, and the checkpoint covered the cloud runtime after operator
+setup. I06 must make the same path usable through the browser before the milestone is
+complete:
 
 ```text
 Start -> task ready -> alert -> terminal investigation -> configuration fix

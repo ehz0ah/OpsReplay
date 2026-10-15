@@ -99,6 +99,13 @@ Reuse recorder supervision and cooldown. Preserve exact evidence conditions, lea
 fencing, and unknown SDK failures. Local controlled renewals reproduce the failure;
 the original CI timeout has insufficient diagnostics to confirm the same cause.
 
+15 October 2026: an operator-seeded terminal-to-result path passed an AWS checkpoint at
+commit `c6e68ec617dcba1f1c11e8b55f9e63f516d9dbaf`. The run covered CloudFront terminal
+ingress, live telemetry, recovery, recording, managed result storage, and teardown. Local
+drivers invoked the ticket and result handlers. It did not exercise Cognito, API Gateway,
+session start, the unimplemented browser application, or concurrent learner load. See the
+[checkpoint report](../checkpoints/2026-10-15-terminal.md).
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |

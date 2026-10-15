@@ -1,12 +1,13 @@
 # API application boundary
 
-Status: admission, launch, recording work, status, terminal tickets, owner end,
-readiness, outcomes, liveness, deadline repair, and confirmed cleanup are implemented
-and tested locally. Deterministic debrief and atomic once-only finalisation now run
-as shared code in reconcile/sweep after confirmed cleanup. CDK defines disabled
-routes and lifecycle triggers. Bounded resumable playback exports and three separate
-owner debrief/timeline/playback read actions are implemented locally. New actions remain
-disabled. No AWS deployment has run for this increment. Follow
+Status: the reference Challenge session path is implemented from authenticated start
+through confirmed cleanup, deterministic debrief, timeline, and playback. An
+operator-seeded AWS checkpoint on 15 October 2026 exercised the runtime after setup and
+used local handler calls for ticket and result access. It did not exercise Cognito, API
+Gateway, or session start. CDK keeps every runtime action and new-session admission
+default-off, and no runtime is currently deployed.
+Catalogue, account bootstrap, session listing, Learn, Code Review, and assistant actions
+are not implemented. Follow
 [architecture](../../docs/architecture.md),
 [API](../../docs/api.md), [data model](../../docs/data-model.md),
 [Challenge environments](../../docs/challenges.md), and
@@ -190,10 +191,9 @@ of four and rate of two per second. Timeline rereads bounded history per page; c
 latency and memory use remain unmeasured. Export preparation processes at most 20 source
 pages per pass in the existing reconcile/sweep functions.
 
-Next: reviewed integration and an explicitly approved disposable AWS checkpoint.
-No AWS writes, frontend player, new service, or migration/backfill are part of this PR.
-Publication must supply the immutable private manifest and mandatory SHA-256 pin.
+Next: connect the implemented path to the learner web application. Publication must
+supply the immutable private manifest and mandatory SHA-256 pin.
 The finaliser reads accepted sealed evidence, not private manifests in a browser or
 assistant prompt. Incomplete results retain safe saved events and have a null score.
-Keep admission disabled until these dependencies and an approved AWS checkpoint are complete.
+Keep admission disabled except during an approved, bounded AWS checkpoint.
 Local Docker remains a test tool, not a second platform runtime.

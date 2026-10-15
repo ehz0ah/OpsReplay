@@ -2,165 +2,124 @@
 
 Learn production failures by investigating them.
 
-OpsReplay is a production-engineering learning platform for computer science students and
-junior software, DevOps, platform, and site reliability engineers. In a Challenge, the
-learner gets a root shell in a live, deliberately misconfigured environment running real
-services in an isolated cloud container. They diagnose with production tools, repair real
-configuration files, and see real consequences. Afterwards they can play back the session
-beside the logs and metrics, or retry in a fresh environment.
+OpsReplay is a production-engineering learning platform for students and junior
+engineers. A learner enters an isolated, deliberately misconfigured environment,
+investigates it with real tools, repairs the fault, and reviews a deterministic debrief
+and session playback.
 
-**Status: local Challenge image with a private interactive terminal and bounded recording source, monitor measurements
-and control, disabled session provisioning, and a completed disposable AWS checkpoint for
-image publication and the private gateway runtime.** The disposable resources were removed after validation. The
-[preliminary report, version 5](docs/reports/preliminary/README.md)
-defines the accepted product direction. The [decision register](docs/decisions/README.md)
-defines precedence for later refinements. This repository contains design documents, versioned contracts,
-validation tools, three synthetic draft Challenge manifests, and a
-[runnable local reference image](content/challenges/wrong-upstream-port/README.md).
-The [API](apps/api/README.md) has a session-start Lambda, a separate provisioning-expiry
-Lambda, DynamoDB persistence, and ECS and Scheduler adapters. CDK definitions keep the
-complete runtime and new-session admission disabled by default. The [monitor](apps/monitor/README.md) measures traffic, checkout
-recovery, and outages, and exposes authenticated HTTPS control locally. The gateway has
-a production monitor client, private interactive and recording terminal clients, an authenticated terminal
-admission core, a browser terminal relay, a bounded recording controller, durable
-recording adapters, a work source, and a composed Gateway process. These parts are
-tested locally, including as a hardened container against DynamoDB Local and
-against the real monitor and Challenge containers. CDK defines the sparse work index, recording bucket, ECS task
-event action, combined private Gateway service, CloudFront with an internal ALB, terminal-ticket route, and
-the checkpoint network, endpoints, cluster, and image repositories. The API also defines
-an inactive owned-session status route with a separate read-only Lambda. The checkpoint published and
-verified all three images and ran the private gateway service from its exact digest. The
-complete Gateway path remains disabled by default and has not run in AWS. The terminal source is
-process-local. The composed recorder now collects terminal pages and monitor measurements
-under one lease. It copies the exact terminal prefix into sealed retention and requires
-both streams before publishing recording completion. These paths are tested locally,
-not deployed. The lifecycle adds committed readiness, owner end, saved outcomes, learner
-liveness, deadline repair, bounded task coverage, task-independent sealing, and confirmed task cleanup. Its three separate
-Lambda actions and triggers are wired behind the default-off complete-runtime switch. Command receipts, safe interval captures, pinned private manifests, and deterministic
-debrief finalisation are now implemented locally. Finalisation commits the result,
-progress, and matching ready-attempt lock release together after confirmed cleanup.
-Bounded resumable playback exports and three separate owner read APIs are implemented
-locally. Finalisation saves the debrief, highlights and progress, and releases the matching
-lock without waiting for playback exports. Pending exports use the existing lifecycle
-work index and transition hints. Playback returns its own pending response. Read Lambdas
-gain bounded concurrency only with the complete runtime. New-session admission has a
-separate default-off switch. Authored hint release is implemented as another isolated,
-runtime-gated action. It releases only the next due hint from the pinned private manifest
-and records the hint, assistance event, counter, and idempotency receipt atomically.
-Content publication, environment task definitions, remaining API, and the web application are not implemented.
-No checkpoint image is currently published in AWS,
-and no public route is deployed.
+## Current status
 
-## Start here
+**Current phase:** the backend path for one reference Challenge is implemented. A
+disposable AWS checkpoint exercised one operator-seeded session from CloudFront terminal
+ingress through stored results on 15 October 2026. It was then removed. The learner web
+application and normal authenticated entry path are the next product milestone.
 
-1. Read the [PRD](docs/PRD.md) for scope and acceptance criteria.
-2. Read the [decision register](docs/decisions/README.md) for decisions, proposed
-   defaults, and open choices. Do not infer team approval from a detailed specification.
-3. Read the [architecture](docs/architecture.md) and [Challenge environments](docs/challenges.md).
-4. Use the [implementation plan](docs/implementation-plan.md) to pick a bounded task.
-5. Follow [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-   Read [SECURITY.md](SECURITY.md) before handling credentials, environments, or learner data.
+| Area                                                                 | Status                                                                              |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Wrong upstream port Challenge                                        | Runnable and tested locally and on AWS                                              |
+| Monitor and validators                                               | Implemented with authenticated control, metrics, captures, and recovery checks      |
+| Gateway                                                              | Implemented with terminal relay, live telemetry, recording, and reconnect handling  |
+| Session backend                                                      | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup |
+| Results                                                              | Deterministic debrief, timeline, playback export, and retry support are implemented |
+| AWS infrastructure                                                   | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed    |
+| Web application                                                      | Not implemented                                                                     |
+| Catalogue, account bootstrap, Learn, Code Review, and assistant APIs | Not implemented                                                                     |
+| Additional Challenges and evaluation                                 | Planned after the first learner-facing flow                                         |
 
-## Product
+See the [15 October AWS checkpoint report](docs/checkpoints/2026-10-15-terminal.md)
+for the tested commit, setup, results, limitations, and teardown state. It did not test
+browser sign-in, API Gateway authentication, or session start.
 
-| Mode        | Purpose                                                                                          |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| Learn       | Curated documented failures: category, summary, lessons, official report link, related exercises |
-| Challenges  | Investigate and recover a live misconfigured environment, then debrief, play back, or retry      |
-| Code Review | Flag risky lines in a diff and compare them with reference findings                              |
+## Product scope
 
-Challenges are the main development focus. Challenges and Code Review use Easy, Medium,
-and Hard tiers. Access is freemium in every mode: Free covers a limited set, mostly Easy,
-including full Challenge debriefs and playback. Pro unlocks the expanded set, and
-Institutional licenses Pro per seat. The prototype uses server-side plan grants, not a
-payment processor.
+| Mode        | Learner activity                                                          | Current priority |
+| ----------- | ------------------------------------------------------------------------- | ---------------- |
+| Challenges  | Diagnose and repair a live failure, then review the evidence and playback | Primary MVP path |
+| Learn       | Read curated incident explanations and related exercises                  | Planned          |
+| Code Review | Find risky changes and compare them with reviewed findings                | Planned          |
 
-Validators decide recovery, and the monitor measures impact outside the learner's reach.
-The optional assistant explains and may propose a command that runs only after the
-learner confirms it. Every mode works without it.
+Free access will include complete introductory experiences. Paid individual and
+institutional access will add content and progress features. Exact prices are not set.
 
-## Check this repository
+## How a Challenge works
 
-Requirements: Node.js 22.19 or later within the Node 22 release line and npm 10+. The
-[.nvmrc](.nvmrc) selects the development Node version. No AWS account, Docker, or LLM key
-is needed for these checks.
+```text
+Sign in -> start isolated task -> investigate terminal and telemetry
+        -> repair the fault -> validators confirm recovery
+        -> debrief -> playback or retry in a fresh task
+```
+
+The Challenge, monitor, and Gateway run as separate containers. The learner receives a
+root shell only inside the Challenge container. The monitor decides recovery from
+external checks. The deterministic backend owns session state, consequences, evidence,
+and scoring. The planned assistant can explain or propose a command, but it does not own
+scenario truth and is not required to complete a Challenge.
+
+## Repository checks
+
+Base requirements:
+
+- Node.js 22.19 or later in the Node 22 release line
+- npm 10 or later
+
+The `.nvmrc` file selects the development Node version. Docker is also required for image
+tests and DynamoDB Local integration tests.
 
 ```sh
 npm ci
+npm run quality
 npm run check
 ```
 
-Checks validate the JSON Schema and OpenAPI contracts, contract examples, Challenge
-manifests and review bundles, trap and evidence patterns, the reference debrief and
-review-matching rules against the examples, local documentation links, and style.
-Regression tests also exercise reference models for interrupted startup, recording
-drain, evidence matching, and assistant expiry. These models do not call AWS, run
-containers, or use an LLM provider. Additional models check receipt lookup order,
-terminal input generations, uncertain proposal delivery, and checkout responses through
-an injected transport. They do not test a real PTY or TLS. There is no platform
-application start command yet. Use `npm run typecheck`, `npm run api:test`,
-`npm run infra:test`, and `npm run infra:synth` for session provisioning. API tests
-require Docker and use a temporary DynamoDB Local container with dummy credentials.
-Fake ECS and Scheduler ports inject lost responses, retries, concurrency, and expiry.
-These checks do not deploy or use an AWS account. To build and test the local Challenge image
-with Docker, run `npm run challenge:build` and `npm run challenge:test`. These separate
-integration tests exercise the real PTY, repair, and traps against the container.
-Run `npm run monitor:test`, `npm run monitor:image:build`, and
-`npm run monitor:image:test` for the monitor core and the three-process control and
-measurement tests. Run `npm run gateway:runtime:image:build` and
-`npm run gateway:runtime:image:test` for the combined Gateway image and its DynamoDB,
-health, admission, private-connection, and shutdown paths. The monitor image tests require the built Challenge image
-and wait the full 60-second recovery window.
+These commands do not use AWS or an LLM provider. Component checks are separate because
+some build images or run longer integration tests:
+
+| Component      | Commands                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Challenge      | `npm run challenge:build && npm run challenge:test`                                                 |
+| Monitor        | `npm run monitor:test && npm run monitor:image:build && npm run monitor:image:test`                 |
+| Gateway        | `npm run gateway:test && npm run gateway:runtime:image:build && npm run gateway:runtime:image:test` |
+| API            | `npm run api:test`                                                                                  |
+| Content        | `npm run content:test`                                                                              |
+| Infrastructure | `npm run infra:test && npm run infra:synth`                                                         |
+
+There is no browser application start command yet. Local checks do not prove AWS IAM,
+Cognito, Fargate, or network behaviour.
 
 ## Repository map
 
 ```text
-apps/
-  web/                  Static browser application
-  api/                  Lambda handlers, lifecycle, and finaliser
-  gateway/              WebSocket gateway service on ECS
-  monitor/              Monitor container beside each Challenge
-packages/
-  contracts/            JSON Schema, OpenAPI, examples
-content/
-  challenges/           Challenge manifests and the first image build context
-  learn/                Learn entries
-  reviews/              Code Review bundles and private findings
-infra/                  Deployment boundary and first spike
-docs/                   Product, design, data, delivery, and decisions
-scripts/                Repository validation
+apps/api/          Lambda actions and lifecycle orchestration
+apps/gateway/      Terminal, telemetry, and recording Gateway
+apps/monitor/      Independent measurements and recovery validation
+apps/web/          Planned static browser application
+content/           Challenge, Learn, and Code Review source material
+packages/          Contracts, content validation, and shared session logic
+infra/             CDK stacks and infrastructure tests
+docs/              Product, architecture, operations, and decision records
 ```
 
-Never import Challenge manifests, review findings, or other private content into the
-frontend or the assistant's context. Content is visible in this public repository, so
-the prototype cannot promise exam secrecy. Runtime APIs must still prevent accidental
-answer leakage.
+Start with the [documentation index](docs/README.md). Contributors must also read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
-## Specifications
+## Security and content boundary
 
-| Document                                           | Owns                                                  |
-| -------------------------------------------------- | ----------------------------------------------------- |
-| [PRD](docs/PRD.md)                                 | Product scope and acceptance criteria                 |
-| [Architecture](docs/architecture.md)               | Components, AWS deployment, isolation, trade-offs     |
-| [Challenge environments](docs/challenges.md)       | Tasks, monitor, recording, scoring, debrief, playback |
-| [Data model](docs/data-model.md)                   | Records, keys, conditional writes, retention          |
-| [API](docs/api.md)                                 | REST behaviour, gateway protocol, errors              |
-| [Design](docs/design.md)                           | Learner flows and frontend behaviour                  |
-| [LLM integration](docs/llm.md)                     | Context, proposals, limits, provider failure          |
-| [Content guide](docs/content-authoring.md)         | Images, manifests, Learn, reviews, release checks     |
-| [Evaluation](docs/evaluation.md)                   | System, LLM, learner, and cost evaluation             |
-| [Implementation plan](docs/implementation-plan.md) | Work packages and dates                               |
-| [Decision register](docs/decisions/README.md)      | Decision status and change process                    |
+Never import private Challenge manifests, validators, traps, or review findings into the
+browser or assistant context. Public responses use explicit projections and server-side
+ownership checks. Challenge tasks have no task IAM role and no internet route.
 
-Google's [Wheel of Misfortune](https://sre.google/workbook/postmortem-culture/) is the
-educational reference for reenacting previous incidents. OpsReplay adapts it for
-individual browser-based practice. This is not a claim that incident training or its
-software implementation is new.
+The repository is public, so its current content cannot provide exam secrecy. Runtime
+controls still prevent accidental answer leakage between learners.
 
-## Team and project
+## Project
 
-NUS CS5224, Group 26: Lee Hao Zhe, Neeraj Kumbar, Neo Qi Hao, Poh Yu Wen, See Yang Zhi,
-and Teo Kai Xiang.
+OpsReplay is an NUS CS5224 project by Lee Hao Zhe, Neeraj Kumbar, Neo Qi Hao, Poh Yu Wen,
+See Yang Zhi, and Teo Kai Xiang.
 
-No open-source licence has been selected. Public visibility alone does not grant reuse
-rights. Do not add a licence without a team decision.
+Google SRE's
+[Wheel of Misfortune](https://sre.google/workbook/postmortem-culture/) is the educational
+reference for replaying incidents. OpsReplay does not claim that incident simulation is
+a new category.
+
+No open-source licence has been selected. Public access to this repository does not grant
+permission to reuse its contents.

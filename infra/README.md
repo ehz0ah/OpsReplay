@@ -1,19 +1,14 @@
 # Infrastructure boundary
 
-Status: CDK TypeScript definitions exist for a disposable AWS checkpoint foundation,
-session start, provisioning-expiry cleanup, recording-work publication, terminal-ticket
-issuance, session-status reads, owner end, session reconciliation, bounded sweep,
-and the combined Gateway path behind CloudFront and an internal ALB. One complete-runtime switch now gates
-the actions and triggers required to finish existing sessions. A separate admission
-switch gates only new session starts. Both default to inactive. See the
-[lifecycle decision](../docs/decisions/session-lifecycle.md). The first disposable
-checkpoint verified GitHub OIDC image
-publication and the private gateway runtime in AWS. Its foundation, service, and image
-repositories were then removed. No OpsReplay runtime or image is currently deployed.
-The account-level GitHub OIDC provider and standard CDK bootstrap stack remain. The
-tested school-account permissions apply only to this checkpoint. The checkpoint commands
-target the `opsreplay` profile in `ap-southeast-1`; this does not select the permanent
-deployment Region.
+Status: CDK defines the disposable checkpoint foundation, digest-pinned reference task,
+session and lifecycle actions, combined Gateway service, CloudFront terminal ingress,
+and edge WAF. One switch gates the complete existing-session runtime. A separate switch
+gates only new-session admission. Both default to inactive. An operator-seeded
+terminal-to-result path passed an AWS checkpoint on 15 October 2026. Its disposable
+resources were removed. Retained data resources, the account-level GitHub OIDC provider,
+and both CDK bootstrap stacks remain. No OpsReplay runtime or image is currently deployed. See the
+[checkpoint report](../docs/checkpoints/2026-10-15-terminal.md) and
+[lifecycle decision](../docs/decisions/session-lifecycle.md).
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
@@ -342,7 +337,7 @@ npm run infra:cdk -- destroy OpsReplayCheckpointFoundation --profile opsreplay -
 npm run infra:cdk -- destroy OpsReplayGitHubOidcProvider --profile opsreplay --region ap-southeast-1
 ```
 
-## First AWS checkpoint
+## AWS checkpoints
 
 The first checkpoint completed on 10 October 2026. GitHub Actions run `37965328481`
 built, tested, and published all three images through OIDC. The artifact digests matched
@@ -353,27 +348,23 @@ GitHub environment variable. The `CDKToolkit` and account-level
 `OpsReplayGitHubOidcProvider` support stacks remain. This test did not run the complete
 Challenge session or recording path.
 
-Build a small integrated flow before deploying: start, terminal access, investigation
-and repair, recovery, end, and verified cleanup. Use the NUS school account with a
-separate SSO profile. Never use the default or personal AWS profile. Confirm permissions,
-allowed Region, budget, and expiry before bootstrap or deployment.
+The second checkpoint completed on 15 October 2026. It verified an operator-seeded path
+through CloudFront terminal ingress, live telemetry, recovery, recording, stored results,
+and teardown. The ticket and result handlers were invoked locally against managed data.
+It did not exercise Cognito, API Gateway, session start, the unimplemented web application,
+or concurrent learners. See the
+[checkpoint report](../docs/checkpoints/2026-10-15-terminal.md).
 
-The foundation provides reviewed deploy and cleanup commands but is not the complete
-test runner. The next increments publish pinned images and compose the runtime resources.
-Run private tasks with only the required VPC endpoints and reach them through the
-gateway. Save test results, stop runtime tasks, destroy the exact test stacks, and verify
-leftovers. Runtime cleanup must handle failed tests and have an independent expiry path
-for a crashed runner. Verify the recording tags and lifecycle rules on managed S3. Verify that
-an initial tagged upload succeeds and a standalone retag attempt fails. Verify that
-deletion of one terminal test session removes its S3 prefix before its DynamoDB partition
-and matching start receipt. Record readiness time, isolation results, cost, and retained
-resources.
+Use the NUS school account with a separate SSO profile. Never use the default or personal
+AWS profile. Confirm permissions, allowed Region, budget, and expiry before bootstrap or
+deployment. Save test results, stop runtime tasks, destroy the exact disposable stacks,
+and verify retained and removed resources.
 No full-stack AWS run is required for each small PR. Local checks do not prove later AWS
 changes. Repeat a bounded checkpoint when a change affects a managed-service contract or
 runtime behavior that local tests cannot verify.
 
-Before a pilot, choose and validate the managed or external Cognito path,
-connect the browser to the exact-origin REST API, add any required streaming route, add separate environment
-configuration, budgets and alarms including Fargate vCPU use, the reconciliation sweep,
-backup and restore validation, and rollback. Do not add a NAT gateway, Redis, or
-unrelated AWS services without a recorded need.
+Before another deployment, make ownership and reuse of retained tables, buckets, and user
+pools explicit. Before a pilot, connect the browser to the exact-origin REST API, add any
+required streaming route, add environment configuration, budgets and alarms including
+Fargate vCPU use, backup and restore validation, and rollback. Do not add a NAT gateway,
+Redis, or unrelated AWS services without a recorded need.
