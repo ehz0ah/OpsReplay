@@ -49,6 +49,11 @@ test('checkpoint workloads stay isolated behind bounded public ingress subnets',
       AllowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com',
       Description: 'Verified GitHub Actions OIDC provider ARN with the sts.amazonaws.com client ID.',
     });
+    assert.deepEqual(rendered.Parameters.MonitorBootstrapBucketArn, {
+      Type: 'String',
+      AllowedPattern: 'arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]*[a-z0-9]',
+      Description: 'Durable Monitor bootstrap-file bucket ARN.',
+    });
 
     template.resourceCountIs('AWS::EC2::VPC', 1);
     template.resourceCountIs('AWS::EC2::Subnet', 4);
@@ -284,6 +289,8 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       [
         'ecr:GetAuthorizationToken',
         ['ecr:BatchCheckLayerAvailability', 'ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer'],
+        's3:GetObject',
+        's3:GetBucketLocation',
         ['logs:CreateLogStream', 'logs:PutLogEvents'],
       ],
     );
@@ -297,12 +304,16 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       repositoryArn('opsreplay/monitor'),
       repositoryArn('opsreplay/challenge-wrong-upstream-port'),
     ]);
+    assert.deepEqual(statements[2]?.Resource, {
+      'Fn::Join': ['', [{ Ref: 'MonitorBootstrapBucketArn' }, '/sessions/*']],
+    });
+    assert.deepEqual(statements[3]?.Resource, { Ref: 'MonitorBootstrapBucketArn' });
     const environmentLogGroupId = expectStringResourceId(
       rendered.Resources,
       'AWS::Logs::LogGroup',
       (resource) => resource.Properties?.LogGroupName === '/opsreplay/checkpoint/environment',
     );
-    assert.deepEqual(statements[2]?.Resource, { 'Fn::GetAtt': [environmentLogGroupId, 'Arn'] });
+    assert.deepEqual(statements[4]?.Resource, { 'Fn::GetAtt': [environmentLogGroupId, 'Arn'] });
 
     const publisherStatements = (publisherPolicy.Properties.PolicyDocument as { Statement: Record<string, unknown>[] })
       .Statement;
@@ -372,6 +383,7 @@ test('checkpoint outputs match the existing application-stack deployment inputs'
       'EnvironmentVpcId',
       'GatewayRepositoryUri',
       'GitHubImagePublisherRoleArn',
+      'MonitorBootstrapBucketArn',
       'MonitorRepositoryUri',
       'PublicIngressSubnetIds',
       'S3GatewayEndpointPrefixListId',
@@ -380,6 +392,9 @@ test('checkpoint outputs match the existing application-stack deployment inputs'
     assert.deepEqual(rendered.Outputs.S3GatewayEndpointPrefixListId, { Value: { Ref: 'S3PrefixListId' } });
     assert.deepEqual(rendered.Outputs.DynamoDbGatewayEndpointPrefixListId, {
       Value: { Ref: 'DynamoDbPrefixListId' },
+    });
+    assert.deepEqual(rendered.Outputs.MonitorBootstrapBucketArn, {
+      Value: { Ref: 'MonitorBootstrapBucketArn' },
     });
     assert.deepEqual(rendered.Outputs.EnvironmentSecurityGroupIds, rendered.Outputs.EnvironmentMonitorSecurityGroupId);
   } finally {

@@ -1,6 +1,7 @@
 import { App } from 'aws-cdk-lib';
 import { CheckpointFoundationStack } from './checkpoint-foundation-stack.js';
 import { ContentPublicationStack } from './content-publication-stack.js';
+import { DurableResourcesStack, durableResourceNamesFromContext } from './durable-resources-stack.js';
 import { GitHubOidcProviderStack } from './github-oidc-provider-stack.js';
 import { ReferenceEnvironmentStack } from './reference-environment-stack.js';
 import { SessionStartStack } from './session-start-stack.js';
@@ -11,7 +12,14 @@ const app = new App({ outdir: process.env.CDK_OUTDIR ?? 'cdk.out' });
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 const region = process.env.CDK_DEFAULT_REGION;
 const deployment = account && region ? { env: { account, region } } : undefined;
+const durableResourceNames = durableResourceNamesFromContext((key) => app.node.tryGetContext(key));
 new GitHubOidcProviderStack(app, 'OpsReplayGitHubOidcProvider', deployment);
+if (durableResourceNames) {
+  new DurableResourcesStack(app, 'OpsReplayDurableResources', {
+    ...deployment,
+    resourceNames: durableResourceNames,
+  });
+}
 new CheckpointFoundationStack(app, 'OpsReplayCheckpointFoundation', deployment);
 new ContentPublicationStack(app, 'OpsReplayContentPublication', deployment);
 new SessionStartStack(app, 'OpsReplaySessionStart', deployment);

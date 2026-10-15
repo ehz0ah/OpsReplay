@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { App } from 'aws-cdk-lib';
-import { Match, Template } from 'aws-cdk-lib/assertions';
+import { Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
 test('the stack preserves separate inactive lifecycle, session-status, and terminal-ticket actions', () => {
@@ -14,7 +14,10 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
     template.resourceCountIs('AWS::Lambda::Function', 12);
-    template.resourceCountIs('AWS::DynamoDB::Table', 1);
+    template.resourceCountIs('AWS::DynamoDB::Table', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 0);
+    template.resourceCountIs('AWS::S3::BucketPolicy', 0);
+    template.resourceCountIs('AWS::Cognito::UserPool', 0);
     template.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',
@@ -22,11 +25,6 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
       ReservedConcurrentExecutions: 0,
       Timeout: 20,
       MemorySize: 256,
-    });
-    template.hasResource('AWS::DynamoDB::Table', {
-      DeletionPolicy: 'Retain',
-      UpdateReplacePolicy: 'Retain',
-      Properties: { BillingMode: 'PAY_PER_REQUEST', TimeToLiveSpecification: { AttributeName: 'ExpiresAt' } },
     });
     template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 4);
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
@@ -44,35 +42,6 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
       MetricName: 'InvocationDroppedCount',
       Threshold: 1,
     });
-    template.hasResourceProperties('AWS::S3::Bucket', {
-      BucketEncryption: {
-        ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }],
-      },
-      PublicAccessBlockConfiguration: {
-        BlockPublicAcls: true,
-        BlockPublicPolicy: true,
-        IgnorePublicAcls: true,
-        RestrictPublicBuckets: true,
-      },
-      LifecycleConfiguration: { Rules: [{ ExpirationInDays: 1, Prefix: 'sessions/', Status: 'Enabled' }] },
-    });
-    template.hasResourceProperties('AWS::S3::BucketPolicy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({ Effect: 'Deny', Action: 's3:*', Condition: { Bool: { 'aws:SecureTransport': 'false' } } }),
-          Match.objectLike({
-            Effect: 'Allow',
-            Action: 's3:GetObject',
-            Principal: { AWS: { Ref: 'EnvironmentExecutionRoleArn' } },
-          }),
-          Match.objectLike({
-            Effect: 'Allow',
-            Action: 's3:GetBucketLocation',
-            Principal: { AWS: { Ref: 'EnvironmentExecutionRoleArn' } },
-          }),
-        ]),
-      },
-    });
     const resources = Object.values(template.toJSON().Resources) as {
       Type: string;
       Properties?: Record<string, unknown>;
@@ -87,18 +56,14 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
       'AWS::ApiGateway::Resource',
       'AWS::ApiGateway::RestApi',
       'AWS::ApiGateway::Stage',
-      'AWS::Cognito::UserPool',
       'AWS::Cognito::UserPoolClient',
       'AWS::Cognito::UserPoolDomain',
-      'AWS::DynamoDB::Table',
       'AWS::IAM::Role',
       'AWS::IAM::Policy',
       'AWS::Logs::LogGroup',
       'AWS::Scheduler::ScheduleGroup',
       'AWS::Lambda::EventInvokeConfig',
       'AWS::CloudWatch::Alarm',
-      'AWS::S3::Bucket',
-      'AWS::S3::BucketPolicy',
       'AWS::EC2::SecurityGroup',
       'AWS::EC2::SecurityGroupEgress',
       'AWS::EC2::SecurityGroupIngress',
@@ -194,7 +159,27 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
         Variables: {
           ECS_PLATFORM_VERSION: '1.4.0',
           MONITOR_CONTAINER_NAME: 'monitor',
-          SESSION_TABLE_NAME: { Ref: 'Sessions8896A56D' },
+          SESSION_TABLE_NAME: {
+            'Fn::Select': [
+              1,
+              {
+                'Fn::Split': [
+                  '/',
+                  {
+                    'Fn::Select': [
+                      5,
+                      {
+                        'Fn::Split': [
+                          ':',
+                          { 'Fn::Select': [0, { 'Fn::Split': ['/stream/', { Ref: 'SessionTableStreamArn' }] }] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
         },
       },
     });

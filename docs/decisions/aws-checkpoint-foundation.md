@@ -35,8 +35,8 @@ The stack creates an ECS cluster and three immutable, scan-on-push ECR repositor
 the gateway, monitor, and first Challenge. It also creates the environment log group
 and an ECS execution role. The role can pull only the monitor and first-Challenge
 repositories and write only that log group. It is an execution role and is not exposed
-inside either container. The application stack grants its private bootstrap bucket to
-this role through the bucket policy.
+inside either container. Its identity policy reads only `sessions/*` from the explicitly
+supplied durable Monitor bootstrap bucket.
 
 The stack also defines the narrow role needed by the later manual image-publication
 workflow. It references a verified account-level GitHub Actions OIDC provider. The

@@ -26,7 +26,27 @@ test('hint release is an isolated runtime-gated action with a narrow authenticat
     assert.equal(fn.Properties.Timeout, 10);
     assert.equal(fn.Properties.MemorySize, 256);
     assert.equal(fn.Properties.VpcConfig, undefined);
-    assert.match(fn.Properties.Environment.Variables.SESSION_TABLE_NAME.Ref, /^Sessions[A-F0-9]+$/);
+    assert.deepEqual(fn.Properties.Environment.Variables.SESSION_TABLE_NAME, {
+      'Fn::Select': [
+        1,
+        {
+          'Fn::Split': [
+            '/',
+            {
+              'Fn::Select': [
+                5,
+                {
+                  'Fn::Split': [
+                    ':',
+                    { 'Fn::Select': [0, { 'Fn::Split': ['/stream/', { Ref: 'SessionTableStreamArn' }] }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
     assert.deepEqual(fn.Properties.Environment.Variables.PUBLIC_API_ALLOWED_ORIGIN, {
       Ref: 'PublicApiAllowedOrigin',
     });

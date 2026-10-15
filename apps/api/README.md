@@ -110,10 +110,10 @@ Gateway defines Cognito-authorized methods for start, status, terminal-ticket, o
 end, debrief, timeline, and playback actions. Each action has an exact route invocation
 permission. Tests construct the authorizer context directly.
 
-The stack can create one retained Cognito user pool, public authorization-code client,
-and AWS-managed login domain, or it can use an explicitly supplied existing pool,
-client, and AWS-managed login hostname. The browser client has no secret and must use
-PKCE S256. API Gateway validates the pool token; the action entry wrapper additionally
+The runtime stack uses an explicitly supplied durable Cognito user pool. It can create a
+disposable public authorization-code client and AWS-managed login domain, or use an
+explicitly supplied existing client and login hostname. The browser client has no secret
+and must use PKCE S256. API Gateway validates the pool token; the action entry wrapper additionally
 accepts only ID tokens for the configured app-client audience and derives ownership
 only from the verified `sub`.
 

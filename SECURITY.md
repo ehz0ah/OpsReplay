@@ -1,8 +1,11 @@
 # Security and data handling
 
-No OpsReplay runtime is deployed. The first disposable AWS checkpoint was removed after
-validation. The standard CDK bootstrap stack and account-level GitHub OIDC provider
-remain, but they do not run the application. Before the pilot, verify the controls in
+No OpsReplay runtime is deployed. Both disposable AWS checkpoints were removed after
+validation. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
+contain checkpoint session or identity data. They are not yet imported into the new
+durable owner stack. The CDK bootstrap stacks in `ap-southeast-1` and `us-east-1` and the
+account-level GitHub OIDC provider also remain, but they do not run the application.
+Before the pilot, verify the controls in
 [architecture](docs/architecture.md), [Challenge environments](docs/challenges.md),
 [data model](docs/data-model.md), and [LLM integration](docs/llm.md).
 

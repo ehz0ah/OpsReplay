@@ -9,13 +9,21 @@ differs from the review record. Review the [CloudFront ingress limits](../decisi
 before approval. Its default certificate cannot enforce a custom TLS minimum, and the
 private origin hop uses HTTP.
 
+This runbook assumes the selected retained table, buckets, and user pool are already
+owned by `OpsReplayDurableResources`. If they are not, stop and follow the
+[durable-resource adoption runbook](aws-durable-resource-adoption.md). Do not deploy a
+new durable set as part of a temporary checkpoint.
+
 ## 1. Prepare the parameter record
 
 Copy [the example mapping](../../infra/checkpoint-runtime-parameters.example.json) to an
 untracked file. Replace every angle-bracket value from reviewed foundation outputs and
 approved resources. Keep `EnableGatewayPath=true` and
 `EnableSessionAdmission=false`. Do not store tokens, passwords, private keys, or session
-data in the mapping. Also copy [the edge mapping](../../infra/terminal-edge-parameters.example.json)
+data in the mapping. Copy the table stream ARN, Monitor bootstrap bucket ARN, recording
+bucket name, and user pool ARN from the reviewed durable-stack outputs. Use the same
+Monitor bootstrap bucket ARN for the foundation permission and runtime import. Also copy
+[the edge mapping](../../infra/terminal-edge-parameters.example.json)
 to an untracked file. Its parameters belong only to `OpsReplayTerminalEdgeProtection`.
 The edge stack supplies the Web ACL ARN for the workload mapping. The workload outputs
 the terminal WSS URL. Do not supply an external terminal hostname or ACM certificate.
@@ -24,6 +32,8 @@ Use the same reviewed mapping for `cdk diff` and `cdk deploy`. Convert each entr
 explicit `--parameters OpsReplaySessionStart:<key>=<value>` argument. Use the
 `OpsReplayTerminalEdgeProtection:` prefix for edge parameters. Do not use shell
 defaults for account, Region, digest, ARN, subnet, security group, origin, or hostname.
+Before the runtime diff, confirm that the foundation `MonitorBootstrapBucketArn` output
+equals the value in this mapping.
 
 ## 2. Run read-only preflight checks
 
@@ -32,6 +42,7 @@ Authenticate and record the exact account before any change:
 ```sh
 aws sso login --profile opsreplay
 aws sts get-caller-identity --profile opsreplay --region ap-southeast-1
+aws cloudformation describe-stacks --stack-name OpsReplayDurableResources --profile opsreplay --region ap-southeast-1
 aws cloudformation describe-stacks --stack-name OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1
 ```
 
@@ -124,7 +135,9 @@ npm run infra:cdk -- diff OpsReplaySessionStart --no-change-set --profile opsrep
 ```
 
 Stop if the diff widens IAM, adds public task addresses, enables ExpireProvisioning,
-changes retained-resource ownership, or opens admission.
+changes a durable-resource identifier, or opens admission. The foundation diff may grant
+its new execution role `GetBucketLocation` and `sessions/*` `GetObject` on only the
+selected Monitor bootstrap bucket.
 
 ## 3. Prepare the runtime with admission closed
 
@@ -207,9 +220,9 @@ operation and do not clear locks or records manually.
 Only then set `EnableGatewayPath=false`, review the diff, and deploy. Wait for CloudFront
 distribution and VPC-origin removal before disabling or destroying
 `OpsReplayTerminalEdgeProtection` in `us-east-1`. Check that no other distribution uses
-the ACL. Remove disposable
-foundation resources only under their separate ownership procedure. The application
-table and buckets are retained by policy. Inventory their ongoing cost and obtain
-explicit approval before deleting retained data. Record the final account, Region,
+the ACL. Remove disposable foundation resources only under their separate ownership
+procedure. Keep `OpsReplayDurableResources`; its table, buckets, and user pool are not
+part of checkpoint teardown. Inventory their ongoing cost and obtain explicit approval
+before deleting retained data. Record the final account, Region,
 stack events, image digests, test results, retained resources, and teardown evidence in
 both Regions. Preserve pre-existing bootstrap stacks and account resources.

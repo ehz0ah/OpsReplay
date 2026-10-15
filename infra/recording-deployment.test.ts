@@ -307,10 +307,11 @@ test('the complete Gateway path is bounded, conditional, and private behind the 
 test('terminal-ticket deployment is action-scoped, authenticated, throttled, and disabled by default', () => {
   const { directory, template, rendered } = synthesize();
   try {
-    template.hasResourceProperties('AWS::DynamoDB::Table', {
-      BillingMode: 'PAY_PER_REQUEST',
-      TimeToLiveSpecification: { AttributeName: 'ExpiresAt', Enabled: true },
-    });
+    assert.equal(ofType(rendered.Resources, 'AWS::DynamoDB::Table').length, 0);
+    assert.ok(rendered.Parameters.SessionTableStreamArn);
+    assert.equal(rendered.Parameters.SessionTableName, undefined);
+    assert.ok(rendered.Parameters.MonitorBootstrapBucketArn);
+    assert.equal(rendered.Parameters.MonitorBootstrapBucketName, undefined);
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',
       Handler: 'index.handler',
@@ -376,15 +377,7 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
     template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
       Type: 'COGNITO_USER_POOLS',
       IdentitySource: 'method.request.header.Authorization',
-      ProviderARNs: [
-        {
-          'Fn::If': [
-            'ManagedCognitoIdentity',
-            { 'Fn::GetAtt': ['CheckpointUserPool', 'Arn'] },
-            { Ref: 'CognitoUserPoolArn' },
-          ],
-        },
-      ],
+      ProviderARNs: [{ Ref: 'CognitoUserPoolArn' }],
     });
     template.hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'POST',
@@ -477,56 +470,11 @@ test('terminal-ticket deployment is action-scoped, authenticated, throttled, and
   }
 });
 
-test('recording remains durable and least-privilege inside the combined Gateway service', () => {
+test('the combined Gateway service uses imported recording storage with least privilege', () => {
   const { directory, template, rendered } = synthesize();
   try {
-    template.hasResourceProperties('AWS::DynamoDB::Table', {
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: 'unfinished-work',
-          KeySchema: [
-            { AttributeName: 'WorkPK', KeyType: 'HASH' },
-            { AttributeName: 'WorkSK', KeyType: 'RANGE' },
-          ],
-          Projection: { ProjectionType: 'KEYS_ONLY' },
-        },
-      ],
-    });
-    const buckets = ofType(rendered.Resources, 'AWS::S3::Bucket').map(([, resource]) => resource);
-    const recordingBucket = buckets.find((resource) => {
-      const lifecycle = resource.Properties?.LifecycleConfiguration as { Rules?: { Id?: string }[] } | undefined;
-      return lifecycle?.Rules?.some((rule) => rule.Id === 'ExpireProvisionalRecordings');
-    });
-    assert.ok(recordingBucket);
-    assert.equal(recordingBucket.DeletionPolicy, 'Retain');
-    assert.equal(recordingBucket.UpdateReplacePolicy, 'Retain');
-    assert.deepEqual(recordingBucket.Properties?.PublicAccessBlockConfiguration, {
-      BlockPublicAcls: true,
-      BlockPublicPolicy: true,
-      IgnorePublicAcls: true,
-      RestrictPublicBuckets: true,
-    });
-    assert.deepEqual(recordingBucket.Properties?.BucketEncryption, {
-      ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }],
-    });
-    assert.deepEqual(recordingBucket.Properties?.LifecycleConfiguration, {
-      Rules: [
-        {
-          ExpirationInDays: 7,
-          Id: 'ExpireProvisionalRecordings',
-          Prefix: 'sessions/',
-          Status: 'Enabled',
-          TagFilters: [{ Key: 'opsreplay-retention', Value: 'provisional' }],
-        },
-        {
-          ExpirationInDays: 30,
-          Id: 'ExpireSealedRecordings',
-          Prefix: 'sessions/',
-          Status: 'Enabled',
-          TagFilters: [{ Key: 'opsreplay-retention', Value: 'sealed' }],
-        },
-      ],
-    });
+    assert.equal(ofType(rendered.Resources, 'AWS::DynamoDB::Table').length, 0);
+    assert.equal(ofType(rendered.Resources, 'AWS::S3::Bucket').length, 0);
     template.hasResourceProperties('AWS::Lambda::Function', {
       ReservedConcurrentExecutions: { 'Fn::If': ['GatewayPathEnabled', 4, 0] },
       Environment: { Variables: { SESSION_TABLE_NAME: Match.anyValue() } },

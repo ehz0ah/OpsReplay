@@ -41,6 +41,11 @@ export class CheckpointFoundationStack extends Stack {
       allowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com',
       description: 'Verified GitHub Actions OIDC provider ARN with the sts.amazonaws.com client ID.',
     });
+    const monitorSecretBucketArn = new CfnParameter(this, 'MonitorBootstrapBucketArn', {
+      type: 'String',
+      allowedPattern: 'arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]*[a-z0-9]',
+      description: 'Durable Monitor bootstrap-file bucket ARN.',
+    });
 
     const vpc = new Vpc(this, 'Vpc', {
       ipAddresses: IpAddresses.cidr(vpcCidr),
@@ -226,6 +231,18 @@ export class CheckpointFoundationStack extends Stack {
         resources: [monitorRepository.repositoryArn, challengeRepository.repositoryArn],
       }),
     );
+    executionRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [Fn.join('', [monitorSecretBucketArn.valueAsString, '/sessions/*'])],
+      }),
+    );
+    executionRole.addToPolicy(
+      new PolicyStatement({
+        actions: ['s3:GetBucketLocation'],
+        resources: [monitorSecretBucketArn.valueAsString],
+      }),
+    );
     environmentLogs.grantWrite(executionRole);
 
     const outputs: Record<string, string> = {
@@ -238,6 +255,7 @@ export class CheckpointFoundationStack extends Stack {
       AwsInterfaceEndpointSecurityGroupId: endpointSecurityGroup.attrGroupId,
       S3GatewayEndpointPrefixListId: s3PrefixListId.valueAsString,
       DynamoDbGatewayEndpointPrefixListId: dynamoDbPrefixListId.valueAsString,
+      MonitorBootstrapBucketArn: monitorSecretBucketArn.valueAsString,
       VpcDnsResolverIpv4: vpcDnsResolverIpv4,
       EnvironmentExecutionRoleArn: executionRole.roleArn,
       EnvironmentLogGroupName: environmentLogs.logGroupName,
@@ -246,6 +264,9 @@ export class CheckpointFoundationStack extends Stack {
       ChallengeRepositoryUri: challengeRepository.repositoryUri,
       GitHubImagePublisherRoleArn: imagePublisherRole.roleArn,
     };
-    for (const [name, value] of Object.entries(outputs)) new CfnOutput(this, name, { value });
+    for (const [name, value] of Object.entries(outputs)) {
+      const output = new CfnOutput(this, `${name}Output`, { value });
+      output.overrideLogicalId(name);
+    }
   }
 }

@@ -2,13 +2,14 @@
 
 Status: CDK defines the disposable checkpoint foundation, digest-pinned reference task,
 session and lifecycle actions, combined Gateway service, CloudFront terminal ingress,
-and edge WAF. One switch gates the complete existing-session runtime. A separate switch
+edge WAF, and a separate long-lived resource owner. One switch gates the complete existing-session runtime. A separate switch
 gates only new-session admission. Both default to inactive. An operator-seeded
 terminal-to-result path passed an AWS checkpoint on 15 October 2026. Its disposable
 resources were removed. Retained data resources, the account-level GitHub OIDC provider,
-and both CDK bootstrap stacks remain. No OpsReplay runtime or image is currently deployed. See the
+and both CDK bootstrap stacks remain. The retained data resources are not yet imported
+into the new owner stack. No OpsReplay runtime or image is currently deployed. See the
 [checkpoint report](../docs/checkpoints/2026-10-15-terminal.md) and
-[lifecycle decision](../docs/decisions/session-lifecycle.md).
+[durable-resource decision](../docs/decisions/durable-resource-ownership.md).
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
@@ -27,6 +28,18 @@ and the private origin hop is HTTP. Review these limits before approving AWS val
 the account does not already contain the GitHub Actions provider. Keeping this provider
 outside the disposable foundation gives it one stable owner across foundation updates.
 
+`DurableResourcesStack`, synthesized as `OpsReplayDurableResources`, owns the session
+table, Monitor bootstrap bucket, recording bucket, and learner user pool. All four use
+`Retain`. The table keeps its keys-only stream, ticket TTL, and `unfinished-work` index.
+The buckets keep encryption, public-access blocking, transport enforcement, and their
+existing expiry rules. Exact physical names are required through CDK context for an
+owner-stack import or deployment. With no durable context, the owner stack is omitted;
+a partial context fails synthesis. This prevents an unrelated stack command from being
+blocked and prevents the owner from using fallback names. The retained checkpoint set
+must be imported before normal deployment. Follow
+the [adoption runbook](../docs/runbooks/aws-durable-resource-adoption.md); do not create a
+second set.
+
 `CheckpointFoundationStack` defines the minimum base for the first temporary AWS run:
 
 - one VPC with two public ingress subnets and two isolated workload subnets across two
@@ -41,24 +54,27 @@ outside the disposable foundation gives it one stable owner across foundation up
 - an image publisher role that trusts only the `aws-checkpoint` GitHub environment,
   references the verified account-level GitHub OIDC provider, and is restricted to those
   three repositories;
-- one environment execution role and one seven-day environment log group.
+- one environment execution role, with read access to the selected durable Monitor
+  bootstrap bucket, and one seven-day environment log group.
 
 The internal ALB uses the two isolated workload subnets. The existing public subnets
 remain foundation resources. Gateway and environment tasks also remain isolated. Interface endpoints exist in both workload subnets and incur
 hourly charges while the stack exists. The stack outputs the network, cluster, role,
-prefix-list, and repository values needed by later deployment steps. It does not define
-a task, service, Lambda activation, or load balancer.
+prefix-list, repository, and authorized bootstrap-bucket values needed by later
+deployment steps. It does not define a task, service, Lambda activation, or load
+balancer.
 
-The environment role can pull only the monitor and first-Challenge images and write the
-environment log group. It is an ECS execution role, not a task role, so the containers
-do not receive AWS credentials. The application stack grants this role access to the
-per-session bootstrap file through the bucket policy.
+The environment role can pull only the monitor and first-Challenge images, write the
+environment log group, and read `sessions/*` from the explicitly supplied Monitor
+bootstrap bucket. It is an ECS execution role, not a task role, so the containers do not
+receive AWS credentials. The permission disappears with the disposable role and does
+not leave a stale principal in the durable bucket policy.
 
-[SessionStartStack](session-start-stack.ts) defines an on-demand DynamoDB table with the
-keys-only `unfinished-work` index and ticket TTL, separate start, provisioning-expiry,
-recording-work, session-status, terminal-ticket, and hint-release Lambdas, an EventBridge Scheduler group, a private S3
-secret-file bucket, a separate private recording bucket, failure alarms, and narrow
-roles.
+[SessionStartStack](session-start-stack.ts) derives the durable table from its exact
+stream ARN and imports the Monitor bootstrap bucket by ARN, the recording bucket by name,
+and the learner user pool by ARN. It defines separate start, provisioning-expiry, recording-work,
+session-status, terminal-ticket, and hint-release Lambdas, an EventBridge Scheduler
+group, failure alarms, and narrow roles.
 The start action can read and update session records, create its two named callbacks,
 write the session secret file, and run one tagged task from an `opsreplay-*` task
 definition. The expiry action can find,
@@ -70,9 +86,9 @@ Gateway task and service, internal HTTP ALB listener, CloudFront VPC origin and
 distribution, target health check, and the
 authenticated session-status, terminal-ticket, and hint-release API routes. It does not
 create the ECS cluster, VPC, VPC endpoints, ECR repositories, certificate, DNS record,
-or web app. It uses an existing Cognito user pool and client by default. The explicit
-managed mode instead creates a retained checkpoint user pool, public client, and
-AWS-managed login domain.
+or web app. It always uses an existing durable Cognito user pool. By default it also uses
+an existing public client and login hostname. The explicit managed mode creates only a
+disposable public client and AWS-managed login domain for that pool.
 
 `EnableGatewayPath` defaults to `false`. In this state all runtime actions have zero
 reserved concurrency, all runtime event paths are disabled, and the ALB, CloudFront resources, shared
@@ -94,9 +110,9 @@ they initialise. The default disabled configuration leaves those values empty, s
 accidental invocation fails closed during initialisation. This is expected until the
 Gateway path is configured and enabled.
 
-Activation requires a pinned Gateway image digest, verified CloudFront origin-facing
-prefix-list ID, edge Web ACL ARN, exact allowed web origins, and a complete external or
-checkpoint-managed Cognito configuration. The terminal URL is generated from the
+Activation requires the durable stream, bucket, and user-pool identifiers, a pinned Gateway image digest,
+verified CloudFront origin-facing prefix-list ID, edge Web ACL ARN, exact allowed web
+origins, and a complete external or checkpoint-managed Cognito client configuration. The terminal URL is generated from the
 distribution. Deployment inputs also identify the isolated workload subnets, cluster,
 VPC, environment security groups, execution role, private endpoint destinations, VPC DNS
 resolver, service count, and per-process recording capacity. The image must exist in the
@@ -190,15 +206,15 @@ separately verifies the image, task, and manifest pins before it writes an immut
 content version. The authored Challenge remains draft until that command succeeds for
 an approved deployment.
 
-The table and secret-file bucket use `Retain` by default. Stack deletion would keep
-their data and storage charges. DynamoDB TTL removes expired terminal-ticket items by
+The durable table and buckets use `Retain`. Deleting the runtime or foundation does not
+remove them. DynamoDB TTL removes expired terminal-ticket items by
 their numeric `ExpiresAt` value. TTL deletion is asynchronous, so Gateway admission still
 checks the exact ISO expiry before consuming a ticket. Secret files use S3-managed
 encryption, HTTPS, public-access blocking, and
 one-day lifecycle expiration. Expiration is asynchronous. This is a bootstrap-file
-retention rule, not a session deadline. The bucket policy grants reads only to the
-configured task execution role. Start has `PutObject` and a bounded `GetObject` recovery
-read, and expiry has no S3 access.
+retention rule, not a session deadline. The disposable foundation grants its task
+execution role read access through an identity policy. Start has `PutObject` and a bounded
+`GetObject` recovery read, and expiry has no S3 access.
 The environment task execution role must be in the deployment account. Private tasks
 need the S3 endpoint route and an endpoint policy permitting the bootstrap bucket,
 alongside their image-pull dependencies. The monitor must not print its environment or share it with the
@@ -215,8 +231,8 @@ the deployment checkpoint. After an alarm, inspect the action logs and failure q
 Keep the learner lock until task stop is confirmed. Never clear locks manually to hide
 an error.
 
-The recording bucket is retained when the stack is deleted, but its tagged objects have
-explicit lifecycle expiry. Live pages are provisional and expire after seven days.
+The durable recording bucket is retained when its owner stack is deleted, but its tagged
+objects have explicit lifecycle expiry. Live pages are provisional and expire after seven days.
 Sealed recordings expire after 30 days. These rules bound unreferenced uploads while
 keeping active recordings safe under the four-hour session limit. Recording objects are
 immutable through content-addressed keys and conditional writes. S3 bucket versioning
@@ -236,9 +252,9 @@ the gateway group to the endpoint group. That group must be attached to the ECR 
 Docker, and CloudWatch Logs interface endpoints. The workload subnets must not have an
 internet or NAT route.
 
-Each disposable runtime stack must choose explicit export and deletion rules. Stack
-deletion does not remove the retained buckets or table. Their object lifecycle rules
-continue to apply while the buckets exist.
+The runtime stack has no data-resource deletion path. Its explicit parameters select the
+durable table stream and buckets. Their owner stack and object lifecycle rules continue
+after runtime teardown.
 
 ## Checkpoint deployment commands
 
@@ -299,7 +315,8 @@ The expected response has `use_immutable_subject` set to `true` and `sub_claim_p
 set to `repo:ehz0ah@130889443/OpsReplay@1378586293`. Stop before deployment if either
 value differs.
 
-Before foundation deployment, obtain the current AWS-managed prefix-list IDs:
+Before foundation deployment, obtain the current AWS-managed prefix-list IDs and the
+`MonitorBootstrapBucketArn` output from the adopted durable stack:
 
 ```sh
 aws ec2 describe-managed-prefix-lists --profile opsreplay --region ap-southeast-1 --filters Name=prefix-list-name,Values=com.amazonaws.ap-southeast-1.s3 --query 'PrefixLists[0].PrefixListId' --output text
@@ -309,8 +326,8 @@ aws ec2 describe-managed-prefix-lists --profile opsreplay --region ap-southeast-
 Pass the reviewed values to `diff` and `deploy`. Do not copy the placeholders below.
 
 ```sh
-npm run infra:cdk -- diff OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
-npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
+npm run infra:cdk -- diff OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters 'MonitorBootstrapBucketArn=<durable-bootstrap-bucket-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
+npm run infra:cdk -- deploy OpsReplayCheckpointFoundation --profile opsreplay --region ap-southeast-1 --parameters 'GitHubOidcProviderArn=<verified-provider-arn>' --parameters 'MonitorBootstrapBucketArn=<durable-bootstrap-bucket-arn>' --parameters S3PrefixListId=pl-s3 --parameters DynamoDbPrefixListId=pl-dynamodb
 ```
 
 After foundation deployment, copy the `GitHubImagePublisherRoleArn` stack output into
@@ -368,8 +385,9 @@ No full-stack AWS run is required for each small PR. Local checks do not prove l
 changes. Repeat a bounded checkpoint when a change affects a managed-service contract or
 runtime behavior that local tests cannot verify.
 
-Before another deployment, make ownership and reuse of retained tables, buckets, and user
-pools explicit. Before a pilot, connect the browser to the exact-origin REST API, add any
+Before another deployment, import the selected retained table, buckets, and user pool as
+described in the durable-resource adoption runbook. Before a pilot, connect the browser
+to the exact-origin REST API, add any
 required streaming route, add environment configuration, budgets and alarms including
 Fargate vCPU use, backup and restore validation, and rollback. Do not add a NAT gateway,
 Redis, or unrelated AWS services without a recorded need.
