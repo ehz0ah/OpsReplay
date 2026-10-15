@@ -1,6 +1,7 @@
 # Browser application
 
-Static React application built by Vite. Public DTOs come from `public.schema.json`;
+Static React application built by Vite. Client libraries are build dependencies, so
+production-only backend installs do not include them. Public DTOs come from `public.schema.json`;
 `contracts:check` rejects stale checked-in types and compiles browser validators without
 runtime `eval`. Private contracts and Challenge files are never imported by this app.
 
