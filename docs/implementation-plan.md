@@ -72,3 +72,8 @@ A task needs a requirement ID, an owner, stable input and output examples, depen
 and observable acceptance criteria. Framework, IaC, and monitor language choices can be
 made by their owners when the work starts, with a brief rationale in the decision
 register.
+
+Before a classroom pilot, measure simultaneous catalogue/account loads and tune their
+shared API Gateway burst/rate limits. The current read defaults are burst 4 and rate 2
+requests per second for each route, across all callers. This is a capacity follow-up
+from PR #75, not a per-user quota or measured classroom limit.
