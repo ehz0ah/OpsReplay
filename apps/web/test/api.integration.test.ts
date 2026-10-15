@@ -79,3 +79,19 @@ test('public configuration rejects credentials, foreign redirects, and non-Cogni
   ])
     assert.throws(() => parseConfig({ ...config, ...patch }, 'https://app.example'));
 });
+
+test('default native fetch keeps its browser call binding', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async function (this: unknown) {
+    assert.ok(this === undefined || this === globalThis, 'Native fetch cannot receive the API client as its receiver');
+    return new Response(JSON.stringify(account));
+  };
+  try {
+    assert.deepEqual(
+      await new ApiClient('https://api.example', async () => 'token').read('Account', '/v1/me'),
+      account,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});

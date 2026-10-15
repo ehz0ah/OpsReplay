@@ -17,7 +17,7 @@ export class ApiClient {
   constructor(
     readonly baseUrl: string,
     readonly token: () => Promise<string | null>,
-    private readonly transport: typeof fetch = fetch,
+    private readonly transport: typeof fetch = (...args) => fetch(...args),
   ) {}
   async read<K extends BrowserType>(type: K, path: string, signal?: AbortSignal): Promise<PublicTypes[K]> {
     return this.request(type, path, undefined, signal);
