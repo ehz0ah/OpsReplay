@@ -203,7 +203,8 @@ It contains raw input/output, dimensions, and exit, not command events.
 This is separate from durable recording storage and does not consume a recorder lease.
 See the [terminal source decision](decisions/terminal-recording-source.md).
 
-Gateway terminal persistence and combined cutoff sealing are implemented locally.
+Gateway terminal persistence and combined cutoff sealing are implemented. The
+15 October 2026 operator-seeded AWS checkpoint exercised one managed success path.
 Recording completion now requires both terminal and monitor final cursors when terminal
 state exists. Legacy monitor-only records use an absence condition to reject concurrent
 terminal initialisation. Lifecycle integration and debrief finalisation are tested
@@ -217,8 +218,8 @@ the same lease. Combined completion rejects parser loss, incomplete controls/UTF
 and missing required captures or unavailable capture evidence. Capture objects,
 baselines, and `CAPTURE_STATE` distinguish the `incomplete` excerpt warning from
 `unavailable` missing or unsafe evidence. Both summaries are sticky, but only
-availability gates completion. References retain the warning for playback. These
-unpublished private fields require compatible Monitor and Gateway versions.
+availability gates completion. References retain the warning for playback. These private
+fields require compatible Monitor and Gateway versions.
 Incomplete finalisation uses safe saved command and
 Monitor event projections, never invented final counters. See the
 [evidence/debrief decision](decisions/evidence-debrief.md).
@@ -234,8 +235,9 @@ sweep-discoverable. Stale continuations cannot reindex completed exports.
 `MONITOR_FINAL` is saved in the recording seal transaction, so delayed finalisation can
 use final counters and bounded `MONITOR_EVENTS` projections after S3 expiry. A projection
 gap fails closed. Legacy complete records without this receipt require their sealed S3
-object. There is no backfill for earlier finalised results. These record formats are
-undeployed.
+object. There is no backfill for earlier finalised results. The operator-seeded checkpoint
+exercised these record formats in managed DynamoDB and S3 without opening learner
+admission.
 
 The export cap remains independent of the source's encoded-byte cap. Terminal chunks are
 at most 256 KiB. The aggregate ceiling is 171,200,000 bytes: six times the source's
@@ -304,7 +306,7 @@ Playback of an old session uses only its stored data, never a new environment.
 
 ## Repository and launcher ports
 
-Implement these before UI or LLM integration:
+The implemented Challenge path uses these ports:
 
 - Sessions: `createSession`, `getOwnedSession`, `markReady`, `recordOutcome`,
   `recordHeartbeat`, `appendTimelineEvent`, `listTimeline`, `issueTicket`,
@@ -312,9 +314,9 @@ Implement these before UI or LLM integration:
 - Content and plans: `getContentVersion` and `getPlan`.
 - Environments: `launch`, `stop`, `describe`, and `listRunning`, with a Fargate adapter.
 
-Use the real DynamoDB adapter against DynamoDB Local for concurrency and duplicate-request
-tests. Local Docker is for image and component checks, not a second platform launcher.
-Add review and conversation ports when those work packages start.
+The DynamoDB adapter has concurrency and duplicate-request tests against DynamoDB Local.
+Local Docker is for image and component checks, not a second platform launcher. Review
+and conversation ports remain outside the current Challenge path.
 
 ## Implemented admission records
 
@@ -326,15 +328,15 @@ finalisation changes cannot use stale admission data.
 
 - Content admission data contains the public Challenge reference, alert, dashboard
   descriptors, hint count, plan, per-plan time limits, and pinned task/image references.
-  It does not load the full manifest or unreleased hints. A future publication step
-  writes this snapshot only after content checks pass. A published snapshot requires an
+  It does not load the full manifest or unreleased hints. The publication step writes
+  this snapshot only after content checks pass. A published snapshot requires an
   explicit Pro time limit greater than its Free limit. Draft content can leave the Pro
   setting unset. Test fixtures are synthetic.
 - Plan data is `{ plan, expiresAt }`. A missing grant uses Free. Invalid stored data
   fails closed. A Pro grant must not have expired at admission. Time limits are never
   invented in code.
 - Progress admission data is `{ completedAttempts }`, counting finalised non-error
-  attempts for that Challenge ID. The later finaliser must update it before releasing
+  attempts for that Challenge ID. The finaliser updates it before releasing
   the active lock. Zero means the next attempt is `first`. At 1000, admission rejects
   another attempt because the public schema caps the attempt number at 1000.
 - A receipt contains the owner, canonical request ID, payload hash, and session ID.

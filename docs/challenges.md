@@ -2,8 +2,8 @@
 
 Status: version 0.2 runtime contract. It replaces the earlier simulated engine. The wrong
 upstream port Challenge has a runnable image, private terminal, independent Monitor,
-durable recording, deterministic validation, debrief, and playback. Its complete backend
-runtime path passed one operator-seeded AWS checkpoint on 15 October 2026. The other
+durable recording, deterministic validation, debrief, and playback. Its terminal-to-result
+path passed one operator-seeded AWS checkpoint on 15 October 2026. The other
 Challenge manifests remain drafts. Browser use, concurrent load, and additional Challenge
 publication remain unvalidated. Numbers marked proposed are starting values to measure,
 not results.
@@ -346,11 +346,11 @@ exit with the next retained sequence after the frozen prefix; loss remains perma
 A truncated exit tail reports `data_gap` with the same final-exit rule. Neither silently
 evicts data nor stops the shell. A final nonempty page for `exited` must end with exit,
 including after loss. An empty end read alone does not prove that the reader previously
-validated exit. The future adapter must retain that validation across pages.
+validated exit. The durable recorder must retain that validation across pages.
 
 This is not S3 persistence or the export size bound. The lifetime caps are resource
-bounds, not measured capacity for a four-hour session. Relevant loss makes the future
-combined recording incomplete with a null score under P09. See the
+bounds, not measured capacity for a four-hour session. Relevant loss makes the combined
+recording incomplete with a null score under P09. See the
 [source decision](decisions/terminal-recording-source.md#lifetime-budget-and-consequence)
 for the budget and conditional durable-trimming requirements. Root can alter this
 source; the [Gateway client](decisions/gateway-terminal-recording-client.md) validates

@@ -323,7 +323,7 @@ internal ALB, Gateway, and the Challenge terminal with a ticket issued by a loca
 invoked handler. It did not validate Cognito or API Gateway entry. The next integration
 checkpoint must start from the learner web application.
 Outcome actions, command evidence, safe interval captures, and deterministic debrief
-finalisation are implemented locally. The recorder derives sealed commands from the
+finalisation are implemented. The recorder derives sealed commands from the
 exact terminal prefix, drains captures through the cutoff-open command, and conditions
 all evidence snapshots before completion. See
 [the evidence/debrief decision](../../docs/decisions/evidence-debrief.md).

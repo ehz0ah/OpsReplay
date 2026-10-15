@@ -126,10 +126,9 @@ locally through DynamoDB Local and fake ECS and Scheduler ports. New lifecycle a
 and triggers remain disabled. The authenticated route is defined, but StartSession still
 has zero reserved concurrency. Shared lifecycle routines
 are ordinary code, not one Lambda invoking another Lambda. Ready-attempt lock release
-now has local debrief/finalisation code, bounded playback exports, and separate owner
-read routes. These routes remain disabled. An approved AWS checkpoint is still required.
-The session-start and public REST paths still require that checkpoint through API Gateway
-and Cognito.
+has debrief/finalisation code, bounded playback exports, and separate owner
+read routes. These routes remain disabled. The session-start and public REST paths still
+require an approved AWS checkpoint through API Gateway and Cognito.
 
 `POST /v1/sessions` takes `requestId`, `challengeId`, and `challengeVersion`. The handler:
 
@@ -192,7 +191,9 @@ waits for the saved launch-recovery window if no task is known. A missing known 
 is not STOPPED confirmation. The minute sweep backs up missed callbacks and failed
 cleanup. Never-ready lock release follows confirmed stop and timer deletion; ready
 locks remain held for debrief finalisation. CDK defines async retries and operational
-alarms, with the new triggers disabled. These paths still need AWS validation.
+alarms, with the new triggers disabled. The 15 October 2026 operator-seeded AWS
+checkpoint exercised the ready-session success path after setup. Normal session start,
+failure recovery, and concurrent load remain unvalidated.
 
 The attempt label is `first` when the learner has no earlier attempt of that Challenge
 ID with an outcome other than `error`. Otherwise it is `retry` with the next number.
@@ -454,7 +455,9 @@ serves `GET /healthz`; other ordinary HTTP routes return 404. The conditional AW
 definition routes only `/v1/terminal` through CloudFront and an internal HTTP ALB,
 and keeps Gateway tasks private. See the [ingress decision](decisions/cloudfront-terminal-ingress.md)
 for the edge WAF, uncached terminal traffic, and explicit TLS limits.
-It has not been deployed or validated on AWS.
+The 15 October 2026 operator-seeded checkpoint exercised this route through CloudFront,
+the internal ALB, and Gateway. Ticket issuance used a local handler invocation with
+synthetic claims, so Cognito and API Gateway were not exercised.
 
 ## Assistant turns
 

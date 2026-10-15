@@ -123,11 +123,12 @@ their route. The configuration rejects wildcard and non-origin values and does n
 enable credentialed CORS or reflect request origins.
 
 All routes and lifecycle actions remain inactive by default. The start Lambda has an
-authenticated route definition but retains zero reserved concurrency, so this PR does
-not admit sessions. The recording-work action and combined Gateway service are also
-inactive. Terminal access still depends on the approved ACM certificate, public WSS
-URL, network inputs, and Gateway image. Do not enable the flow until its AWS integration
-checks pass.
+authenticated route definition but retains zero reserved concurrency, so normal
+deployments do not admit sessions. The recording-work action and combined Gateway
+service are also inactive by default. Terminal access still depends on the approved ACM
+certificate, public WSS URL, network inputs, and Gateway image. Keep learner admission
+closed until browser sign-in, Cognito, API Gateway, and session-start integration checks
+pass.
 Do not seed the draft repository Challenge as published content.
 
 The separate [debrief](src/get-debrief/index.ts), [timeline](src/list-timeline/index.ts),
