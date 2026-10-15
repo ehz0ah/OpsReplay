@@ -42,7 +42,13 @@ async function until(predicate: () => boolean) {
   }
   assert.fail('Expected asynchronous state was not reached');
 }
-function fixture(options: { wait?: (ms: number, signal: AbortSignal) => Promise<void>; failure?: boolean } = {}) {
+function fixture(
+  options: {
+    wait?: (ms: number, signal: AbortSignal) => Promise<void>;
+    failure?: boolean;
+    output?: (bytes: Uint8Array) => Promise<void>;
+  } = {},
+) {
   const sockets: Socket[] = [],
     states: { state: AttachmentState; message: string | null }[] = [],
     output: number[][] = [];
@@ -77,6 +83,7 @@ function fixture(options: { wait?: (ms: number, signal: AbortSignal) => Promise<
       state: (state, message) => states.push({ state, message }),
       output: async (bytes) => {
         output.push([...bytes]);
+        await options.output?.(bytes);
       },
       frame: () => {},
       refresh: () => {},
@@ -197,4 +204,31 @@ test('invalid and oversized frames fail closed and endpoint validation excludes 
     'wss://example/other',
   ])
     assert.throws(() => terminalUrl(url, true));
+});
+
+test('a delayed output failure on a detached socket cannot overwrite its replacement', async () => {
+  let rejectOutput!: (error: Error) => void;
+  const pending = new Promise<void>((_resolve, reject) => {
+    rejectOutput = reject;
+  });
+  const f = fixture({ wait: async () => {}, output: async () => pending });
+  const run = f.attachment.start();
+  try {
+    await until(() => f.sockets.length === 1);
+    f.sockets[0]!.admitted();
+    await until(() => f.states.at(-1)?.state === 'ready');
+    f.sockets[0]!.frame(new Uint8Array([1]).buffer);
+    await until(() => f.output.length === 1);
+    f.sockets[0]!.onerror?.({} as Event);
+    await until(() => f.sockets.length === 2);
+    f.sockets[1]!.admitted(true);
+    await until(() => f.states.at(-1)?.state === 'ready');
+    rejectOutput(new Error('old output timeout'));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(f.states.at(-1)?.state, 'ready');
+    assert.equal(f.attachment.input('new input'), true);
+  } finally {
+    f.attachment.stop();
+    await run;
+  }
 });
