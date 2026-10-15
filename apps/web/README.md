@@ -35,3 +35,10 @@ Authorization state and tokens are tab-scoped. Expired ID tokens use one shared 
 request when a refresh token exists; otherwise sign in again. Logout clears local
 identity even if revocation is unavailable, then opens Cognito logout using public
 identifiers only. Live Cognito behaviour still requires the browser AWS checkpoint.
+
+The catalogue is public. Account bootstrap controls plan display and offers the owned
+active attempt for resume. New starts use the exact published version. Pending start
+requests keep their ID across reloads and errors. Recover the saved request before
+starting another. HTTP and storage errors never cause an automatic new mutation.
+Response validators load by entry, session or results group, keeping results code out
+of the initial catalogue bundle.

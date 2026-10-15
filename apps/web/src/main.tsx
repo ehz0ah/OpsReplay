@@ -1,3 +1,4 @@
+import { ApiProvider } from './api-context.js';
 import { AuthProvider } from './auth/provider.js';
 import { ConfigContext } from './config-context.js';
 import { Component, type ReactNode } from 'react';
@@ -31,7 +32,9 @@ loadConfig()
       <Boundary>
         <ConfigContext value={config}>
           <AuthProvider>
-            <App />
+            <ApiProvider>
+              <App />
+            </ApiProvider>
           </AuthProvider>
         </ConfigContext>
       </Boundary>,
