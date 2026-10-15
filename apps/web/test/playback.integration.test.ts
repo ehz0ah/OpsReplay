@@ -183,3 +183,32 @@ test('public recording objects reject private fields and mismatched capture inte
   assert.equal((await captureObject(JSON.stringify(capture), reference)).commandSeq, 1);
   await assert.rejects(captureObject(JSON.stringify(capture), { ...reference, commandSeq: 2 }), /match/);
 });
+
+test('stopping during a playback write prevents a late timeline update', async () => {
+  const track = { url: 'https://bucket.s3.amazonaws.com/x', startedAt: at, endedAt: at };
+  const body =
+    JSON.stringify({ version: 2, width: 80, height: 24, timestamp: Date.parse(at) / 1000, duration: 0 }) +
+    '\n' +
+    JSON.stringify([0, 'o', 'output']) +
+    '\n';
+  const controller = new AbortController();
+  let updates = 0;
+  await assert.rejects(
+    replayTerminal(
+      [track],
+      controller.signal,
+      {
+        resize: () => {},
+        write: async () => {
+          controller.abort();
+        },
+        time: () => {
+          updates++;
+        },
+      },
+      0,
+      async () => body,
+    ),
+  );
+  assert.equal(updates, 0);
+});

@@ -31,6 +31,7 @@ export async function replayTerminal(
         const [cols, rows] = event.value.split('x').map(Number);
         sink.resize(cols!, rows!);
       }
+      signal.throwIfAborted();
       previous = event.at;
       sink.time(event.at);
     }
