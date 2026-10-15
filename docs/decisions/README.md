@@ -245,3 +245,8 @@ A retry uses a new session receipt and preserves the first attempt.
 Playback metadata loads one page per learner request, including empty pages. The next
 control follows its cursor. Page array limits do not cap the whole recording. Loaded
 chunks share the read-only emulator; explicit link refresh restarts the loaded prefix.
+
+16 October 2026: a separate static browser stack owns one private S3 asset bucket and
+CloudFront distribution. It does not own learner data or activate runtime. Only exact
+browser routes rewrite to HTML. Hashed assets cache; HTML/config remain uncached.
+Configure exact API, Cognito and terminal connection origins before publication.

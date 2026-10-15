@@ -26,6 +26,9 @@ Later decisions and implemented contracts take precedence.
 Machine-readable contracts are under `packages/contracts/`. A contract change must update
 the normative document, schema, examples, and validation together.
 
+[Browser deployment](browser-deployment.md) covers static hosting, exact connection
+origins, identity setup and signed-recording CORS.
+
 ## Delivery and evaluation
 
 | Document                                                        | Responsibility                                    |
