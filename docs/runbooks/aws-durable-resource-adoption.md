@@ -78,7 +78,21 @@ After the update, verify all four resources are `UPDATE_COMPLETE`, owned by
 `OpsReplayDurableResources`, and not drifted. Save its outputs for the foundation and
 runtime parameter records. Keep the untracked mapping out of Git.
 
-## 4. Handle unselected resources separately
+## 4. Add deletion protection after adoption
+
+Do not add service-level deletion protection to the import template. The retained table
+and user pool do not use it, and an import operation cannot change resource properties.
+
+After the import, policy update, and drift checks are complete, prepare a separate
+reviewed change that enables DynamoDB and Cognito deletion protection. Confirm that its
+change set updates only those two properties without replacement. Deploy and verify the
+live protection settings before any runtime deployment.
+
+Evaluate DynamoDB point-in-time recovery separately. It has an ongoing storage cost and
+needs an approved retention, restore-test, and budget decision. It is not required to
+complete resource adoption.
+
+## 5. Handle unselected resources separately
 
 Importing one set does not authorize deletion of any other retained table, bucket, or
 user pool. Record each unselected resource, its contents, owner, and ongoing cost. Delete
