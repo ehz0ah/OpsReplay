@@ -46,7 +46,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 7;
+const terminalTicketApiDeploymentVersion = 8;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -1096,6 +1096,42 @@ export class SessionStartStack extends Stack {
       ) as unknown as number,
     });
 
+    const bootstrapFunctions = [
+      ['ListCatalog', 'list-catalog', false],
+      ['GetAccount', 'get-account', true],
+    ] as const;
+    const bootstrapActions = bootstrapFunctions.map(([id, bundle, authenticated]) => {
+      const actionLogs = new LogGroup(this, `${id}Logs`, {
+        retention: RetentionDays.ONE_WEEK,
+        removalPolicy: RemovalPolicy.DESTROY,
+      });
+      const actionRole = new Role(this, `${id}Role`, { assumedBy: new ServicePrincipal('lambda.amazonaws.com') });
+      actionLogs.grantWrite(actionRole);
+      actionRole.addToPolicy(
+        new PolicyStatement({
+          actions: authenticated ? ['dynamodb:TransactGetItems', 'dynamodb:GetItem'] : ['dynamodb:Query'],
+          resources: [table.tableArn],
+          conditions: {
+            'ForAllValues:StringLike': {
+              'dynamodb:LeadingKeys': authenticated ? ['USER#*', 'SESSION#*'] : ['CATALOG#PUBLIC'],
+            },
+          },
+        }),
+      );
+      const action = new Function(this, id, {
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'index.handler',
+        code: Code.fromAsset(fileURLToPath(new URL(`../dist/${bundle}/`, import.meta.url))),
+        role: actionRole,
+        logGroup: actionLogs,
+        environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
+        memorySize: 256,
+        timeout: Duration.seconds(10),
+        reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, 4, 0) as unknown as number,
+      });
+      return { id, action, authenticated, path: authenticated ? 'me' : 'catalog' };
+    });
+
     const terminalApi = new CfnRestApi(this, 'TerminalTicketApi', {
       name: 'opsreplay-terminal-ticket',
       description: 'Authenticated session actions for the bounded checkpoint path.',
@@ -1117,6 +1153,56 @@ export class SessionStartStack extends Stack {
       pathPart: 'v1',
     });
     terminalApiV1.cfnOptions.condition = gatewayEnabled;
+    const bootstrapRoutes = bootstrapActions.map(({ id, action, authenticated, path }) => {
+      const resource = new ApiGatewayResource(this, `${id}Resource`, {
+        restApiId: terminalApi.ref,
+        parentId: terminalApiV1.ref,
+        pathPart: path,
+      });
+      resource.cfnOptions.condition = gatewayEnabled;
+      const method = new CfnMethod(this, `${id}Method`, {
+        restApiId: terminalApi.ref,
+        resourceId: resource.ref,
+        httpMethod: 'GET',
+        authorizationType: authenticated ? 'COGNITO_USER_POOLS' : 'NONE',
+        ...(authenticated ? { authorizerId: terminalAuthorizer.ref } : {}),
+        apiKeyRequired: false,
+        operationName: authenticated ? 'getAccount' : 'listCatalog',
+        integration: {
+          type: 'AWS_PROXY',
+          integrationHttpMethod: 'POST',
+          timeoutInMillis: 8000,
+          uri: Fn.join('', [
+            'arn:',
+            Aws.PARTITION,
+            ':apigateway:',
+            Aws.REGION,
+            ':lambda:path/2015-03-31/functions/',
+            action.functionArn,
+            '/invocations',
+          ]),
+        },
+      });
+      method.cfnOptions.condition = gatewayEnabled;
+      const permission = new CfnPermission(this, `${id}ApiPermission`, {
+        action: 'lambda:InvokeFunction',
+        functionName: action.functionArn,
+        principal: 'apigateway.amazonaws.com',
+        sourceArn: Fn.join('', [
+          'arn:',
+          Aws.PARTITION,
+          ':execute-api:',
+          Aws.REGION,
+          ':',
+          Aws.ACCOUNT_ID,
+          ':',
+          terminalApi.ref,
+          `/*/GET/v1/${path}`,
+        ]),
+      });
+      permission.cfnOptions.condition = gatewayEnabled;
+      return { id, resource, method, path };
+    });
     const terminalApiSessions = new ApiGatewayResource(this, 'TerminalTicketApiSessions', {
       restApiId: terminalApi.ref,
       parentId: terminalApiV1.ref,
@@ -1488,6 +1574,7 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      ...bootstrapRoutes.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
       corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
       corsPreflight('Session', terminalApiSession, ['GET', 'OPTIONS']),
       corsPreflight('SessionEnd', endResource, ['OPTIONS', 'POST']),
@@ -1570,6 +1657,7 @@ export class SessionStartStack extends Stack {
       },
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
+    for (const { method } of bootstrapRoutes) terminalTicketDeployment.addResourceDependency(method);
     terminalTicketDeployment.addResourceDependency(startSessionMethod);
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
@@ -1585,6 +1673,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        ...bootstrapRoutes.map(({ path }) => ({
+          httpMethod: 'GET',
+          resourcePath: `/~1v1~1${path}`,
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 4,
+          throttlingRateLimit: 2,
+        })),
         {
           httpMethod: 'POST',
           resourcePath: '/~1v1~1sessions',

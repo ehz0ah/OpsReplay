@@ -63,16 +63,16 @@ aws ec2 describe-managed-prefix-lists --filters Name=prefix-list-name,Values=com
 ```
 
 Lambda keeps 100 executions unreserved. With the default parameters, this stack reserves
-61 executions in runtime-only mode: 4 for reconciliation, 1 for sweep, 4 for owner end,
-12 across the three result reads, 4 for recording-work publication, 4 for hint release,
+69 executions in runtime-only mode: 4 for reconciliation, 1 for sweep, 4 for owner end,
+12 across the three result reads, 4 for recording-work publication, 4 for hint release, 8 for catalogue/account reads,
 16 for terminal tickets, and 16 for session status. Opening admission adds 8 for
-StartSession, for a total of 69. The account quota must therefore be at least 161 before
-runtime activation and 169 before admission, plus reserved concurrency already assigned
+StartSession, for a total of 77. The account quota must therefore be at least 169 before
+runtime activation and 177 before admission, plus reserved concurrency already assigned
 to other functions in the Region. If a burst parameter changes, recalculate the
 requirement as follows:
 
 ```text
-runtime only = 100 + other reservations + 29 + TerminalTicketBurstLimit + SessionStatusBurstLimit
+runtime only = 100 + other reservations + 37 + TerminalTicketBurstLimit + SessionStatusBurstLimit
 admission open = runtime only + StartSessionBurstLimit
 ```
 

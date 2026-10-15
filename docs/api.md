@@ -107,10 +107,13 @@ below.
 
 ## Catalogue, account, and Learn
 
-The catalogue is public. It lists Free and Pro entries with their `plan`, so the client
+The implemented catalogue is public. It lists Free and Pro entries with their `plan`, so the client
 can show locked items. It lists only filter values represented by published content and
 never returns private content locations. `GET /v1/me` returns the plan the server will
-enforce. The client uses it for display only.
+enforce. The client uses it for display only. Missing or expired grants return Free. An active
+session ID represents the admission lock, including cleanup after an outcome. Both
+bootstrap routes remain default-off until the runtime is enabled. See the
+[bootstrap decision](decisions/learner-bootstrap.md).
 
 Free Learn entries are static pages served through CloudFront. `GET /v1/learn/{id}`
 returns any published entry the caller's plan includes, and `403` for a Pro entry on

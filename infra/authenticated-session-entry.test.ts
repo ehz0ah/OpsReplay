@@ -90,15 +90,20 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     assert.deepEqual(authorizer[1].Properties?.ProviderARNs, [{ Ref: 'CognitoUserPoolArn' }]);
 
     const methods = ofType('AWS::ApiGateway::Method');
-    assert.equal(methods.length, 16);
+    assert.equal(methods.length, 20);
     const actions = methods.filter(([, value]) => value.Properties?.HttpMethod !== 'OPTIONS');
     const options = methods.filter(([, value]) => value.Properties?.HttpMethod === 'OPTIONS');
-    assert.equal(actions.length, 8);
-    assert.equal(options.length, 8);
+    assert.equal(actions.length, 10);
+    assert.equal(options.length, 10);
     for (const [, method] of actions) {
       assert.equal(method.Condition, 'GatewayPathEnabled');
-      assert.equal(method.Properties?.AuthorizationType, 'COGNITO_USER_POOLS');
-      assert.deepEqual(method.Properties?.AuthorizerId, { Ref: authorizer[0] });
+      if (method.Properties?.OperationName === 'listCatalog') {
+        assert.equal(method.Properties?.AuthorizationType, 'NONE');
+        assert.equal(method.Properties?.AuthorizerId, undefined);
+      } else {
+        assert.equal(method.Properties?.AuthorizationType, 'COGNITO_USER_POOLS');
+        assert.deepEqual(method.Properties?.AuthorizerId, { Ref: authorizer[0] });
+      }
     }
     for (const [, method] of options) {
       assert.equal(method.Condition, 'GatewayPathEnabled');
@@ -135,7 +140,7 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     const permissions = ofType('AWS::Lambda::Permission').filter(
       ([, value]) => value.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(permissions.length, 8);
+    assert.equal(permissions.length, 10);
     const startPermission = permissions.find(([, value]) =>
       JSON.stringify(value.Properties?.SourceArn).includes('/*/POST/v1/sessions'),
     );
@@ -190,7 +195,7 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     );
     const [deployment] = ofType('AWS::ApiGateway::Deployment');
     assert.ok(deployment);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV7');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV8');
     const dependencies = [deployment[1].DependsOn].flat();
     for (const [id] of methods) assert.ok(dependencies.includes(id));
 

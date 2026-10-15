@@ -127,6 +127,11 @@ edge stack. Their defaults target the first 50-learner checkpoint and must be
 validated under shared-IP and mass-reconnect load. A browser that receives `429` must
 retry with capped exponential backoff and full jitter.
 
+The catalogue and account bootstrap methods share this API. Catalogue is public; account
+uses Cognito. Their separate read-only Lambdas each reserve four executions with a
+burst limit of four and sustained limit of two requests per second. Neither can mutate
+session state or read private content. Both use exact-origin CORS and the runtime gate.
+
 The session-status method shares the Cognito REST API and has independent burst and
 rate parameters, defaulting to 16 and 8 requests per second. Its Lambda has only
 `dynamodb:GetItem` for `SESSION#*` and scoped log-write permissions. It performs no

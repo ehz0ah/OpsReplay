@@ -128,6 +128,12 @@
           },
           "500": {
             "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

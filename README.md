@@ -14,17 +14,18 @@ disposable AWS checkpoint exercised one operator-seeded session from CloudFront 
 ingress through stored results on 15 October 2026. It was then removed. The learner web
 application and normal authenticated entry path are the next product milestone.
 
-| Area                                                                 | Status                                                                              |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Wrong upstream port Challenge                                        | Runnable and tested locally and on AWS                                              |
-| Monitor and validators                                               | Implemented with authenticated control, metrics, captures, and recovery checks      |
-| Gateway                                                              | Implemented with terminal relay, live telemetry, recording, and reconnect handling  |
-| Session backend                                                      | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup |
-| Results                                                              | Deterministic debrief, timeline, playback export, and retry support are implemented |
-| AWS infrastructure                                                   | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed    |
-| Web application                                                      | Not implemented                                                                     |
-| Catalogue, account bootstrap, Learn, Code Review, and assistant APIs | Not implemented                                                                     |
-| Additional Challenges and evaluation                                 | Planned after the first learner-facing flow                                         |
+| Area                                   | Status                                                                              |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| Wrong upstream port Challenge          | Runnable and tested locally and on AWS                                              |
+| Monitor and validators                 | Implemented with authenticated control, metrics, captures, and recovery checks      |
+| Gateway                                | Implemented with terminal relay, live telemetry, recording, and reconnect handling  |
+| Session backend                        | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup |
+| Results                                | Deterministic debrief, timeline, playback export, and retry support are implemented |
+| AWS infrastructure                     | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed    |
+| Web application                        | Not implemented                                                                     |
+| Catalogue and account bootstrap APIs   | Implemented locally; AWS integration pending                                        |
+| Learn, Code Review, and assistant APIs | Not implemented                                                                     |
+| Additional Challenges and evaluation   | Planned after the first learner-facing flow                                         |
 
 See the [15 October AWS checkpoint report](docs/checkpoints/2026-10-15-terminal.md)
 for the tested commit, setup, results, limitations, and teardown state. It did not test
