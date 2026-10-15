@@ -17,6 +17,8 @@ const loaders = {
   GatewayServerMessage: session,
   Debrief: results,
   Playback: results,
+  PlaybackMetrics: results,
+  PlaybackCapture: results,
 };
 export type BrowserType = keyof typeof loaders;
 export async function parsePublic<K extends BrowserType>(name: K, value: unknown): Promise<PublicTypes[K]> {

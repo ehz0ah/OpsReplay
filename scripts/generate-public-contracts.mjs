@@ -48,7 +48,7 @@ const groups = {
     'GatewayClientMessage',
     'GatewayServerMessage',
   ],
-  results: ['Debrief', 'Playback'],
+  results: ['Debrief', 'Playback', 'PlaybackMetrics', 'PlaybackCapture'],
 };
 const directory = new URL('.local/contracts/', root);
 await mkdir(directory, { recursive: true });
