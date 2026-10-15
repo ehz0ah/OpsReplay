@@ -81,6 +81,7 @@ test('the durable stack owns only retained state and its storage controls', () =
         { AttributeName: 'WorkSK', AttributeType: 'S' },
       ],
       BillingMode: 'PAY_PER_REQUEST',
+      DeletionProtectionEnabled: true,
       GlobalSecondaryIndexes: [
         {
           IndexName: 'unfinished-work',
@@ -168,6 +169,7 @@ test('the durable stack owns only retained state and its storage controls', () =
       AccountRecoverySetting: { RecoveryMechanisms: [{ Name: 'verified_email', Priority: 1 }] },
       AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
       AutoVerifiedAttributes: ['email'],
+      DeletionProtection: 'ACTIVE',
       UserPoolName: 'opsreplay-retained-users',
       UsernameAttributes: ['email'],
       UsernameConfiguration: { CaseSensitive: false },

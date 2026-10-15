@@ -109,7 +109,9 @@ session start, the unimplemented browser application, or concurrent learner load
 15 October 2026: [Durable AWS resource ownership](durable-resource-ownership.md) moves
 the retained session table, Monitor bootstrap bucket, recording bucket, and learner user
 pool into one long-lived stack. Disposable foundation and runtime stacks consume explicit
-identifiers. Existing retained resources require a reviewed import before deployment.
+identifiers. The selected retained resources were imported with zero reported drift.
+The durable owner template enables service-level deletion protection for the table and
+user pool.
 
 ## Product decisions
 

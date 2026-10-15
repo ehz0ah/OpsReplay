@@ -6,8 +6,8 @@ edge WAF, and a separate long-lived resource owner. One switch gates the complet
 gates only new-session admission. Both default to inactive. An operator-seeded
 terminal-to-result path passed an AWS checkpoint on 15 October 2026. Its disposable
 resources were removed. Retained data resources, the account-level GitHub OIDC provider,
-and both CDK bootstrap stacks remain. The retained data resources are not yet imported
-into the new owner stack. No OpsReplay runtime or image is currently deployed. See the
+and both CDK bootstrap stacks remain. The selected retained data resources are owned by
+`OpsReplayDurableResources`. No OpsReplay runtime or image is currently deployed. See the
 [checkpoint report](../docs/checkpoints/2026-10-15-terminal.md) and
 [durable-resource decision](../docs/decisions/durable-resource-ownership.md).
 Use the [architecture](../docs/architecture.md) and
@@ -31,13 +31,13 @@ outside the disposable foundation gives it one stable owner across foundation up
 `DurableResourcesStack`, synthesized as `OpsReplayDurableResources`, owns the session
 table, Monitor bootstrap bucket, recording bucket, and learner user pool. All four use
 `Retain`. The table keeps its keys-only stream, ticket TTL, and `unfinished-work` index.
+The stack configures service-level deletion protection for the table and user pool.
 The buckets keep encryption, public-access blocking, transport enforcement, and their
 existing expiry rules. Exact physical names are required through CDK context for an
 owner-stack import or deployment. With no durable context, the owner stack is omitted;
 a partial context fails synthesis. This prevents an unrelated stack command from being
-blocked and prevents the owner from using fallback names. The retained checkpoint set
-must be imported before normal deployment. Follow
-the [adoption runbook](../docs/runbooks/aws-durable-resource-adoption.md); do not create a
+blocked and prevents the owner from using fallback names. Follow the
+[adoption runbook](../docs/runbooks/aws-durable-resource-adoption.md); do not create a
 second set.
 
 `CheckpointFoundationStack` defines the minimum base for the first temporary AWS run:

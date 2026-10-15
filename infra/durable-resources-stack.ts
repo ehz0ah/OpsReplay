@@ -59,6 +59,7 @@ export class DurableResourcesStack extends Stack {
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.KEYS_ONLY,
       timeToLiveAttribute: terminalTicketTtlAttribute,
+      deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN,
     });
     table.addGlobalSecondaryIndex({
@@ -110,6 +111,7 @@ export class DurableResourcesStack extends Stack {
       usernameAttributes: ['email'],
       usernameConfiguration: { caseSensitive: false },
       accountRecoverySetting: { recoveryMechanisms: [{ name: 'verified_email', priority: 1 }] },
+      deletionProtection: 'ACTIVE',
     });
     userPool.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
