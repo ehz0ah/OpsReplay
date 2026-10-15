@@ -1,8 +1,8 @@
-import { CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { CfnCondition, CfnOutput, CfnParameter, Aws, Duration, Fn, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import type { StackProps } from 'aws-cdk-lib';
 import { CfnUserPool } from 'aws-cdk-lib/aws-cognito';
 import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb';
-import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
+import { BlockPublicAccess, Bucket, BucketEncryption, CfnBucket } from 'aws-cdk-lib/aws-s3';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
 import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
@@ -103,6 +103,21 @@ export class DurableResourcesStack extends Stack {
       if (!policy) throw new Error(`TLS policy was not created for ${bucket.node.path}`);
       policy.applyRemovalPolicy(RemovalPolicy.RETAIN);
     }
+
+    const browserOrigin = new CfnParameter(this, 'BrowserAllowedOrigin', {
+      type: 'String',
+      default: '',
+      allowedPattern: '^(?:|https://[a-z0-9]+\\.cloudfront\\.net)$',
+      description: 'Exact static browser origin for signed recording GETs. Empty disables browser CORS.',
+    });
+    const corsEnabled = new CfnCondition(this, 'BrowserPlaybackCorsEnabled', {
+      expression: Fn.conditionNot(Fn.conditionEquals(browserOrigin.valueAsString, '')),
+    });
+    (recordings.node.defaultChild as CfnBucket).corsConfiguration = Fn.conditionIf(
+      corsEnabled.logicalId,
+      { CorsRules: [{ AllowedMethods: ['GET'], AllowedOrigins: [browserOrigin.valueAsString], MaxAge: 300 }] },
+      Aws.NO_VALUE,
+    );
 
     const userPool = new CfnUserPool(this, 'UserPool', {
       userPoolName: resourceNames.cognitoUserPool,

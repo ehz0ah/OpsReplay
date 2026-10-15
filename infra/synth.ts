@@ -1,3 +1,4 @@
+import { BrowserHostingStack } from './browser-hosting-stack.js';
 import { App } from 'aws-cdk-lib';
 import { CheckpointFoundationStack } from './checkpoint-foundation-stack.js';
 import { ContentPublicationStack } from './content-publication-stack.js';
@@ -23,6 +24,7 @@ if (durableResourceNames) {
 new CheckpointFoundationStack(app, 'OpsReplayCheckpointFoundation', deployment);
 new ContentPublicationStack(app, 'OpsReplayContentPublication', deployment);
 new SessionStartStack(app, 'OpsReplaySessionStart', deployment);
+new BrowserHostingStack(app, 'OpsReplayBrowserHosting', deployment);
 // Explicit output-to-parameter handoff avoids cross-Region CloudFormation exports.
 new TerminalEdgeProtectionStack(app, 'OpsReplayTerminalEdgeProtection', {
   env: { ...(account ? { account } : {}), region: 'us-east-1' },

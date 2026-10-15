@@ -67,7 +67,7 @@ test('the durable stack owns only retained state and its storage controls', () =
     const resources = Object.entries(rendered.Resources);
     const ofType = (type: string) => resources.filter(([, resource]) => resource.Type === type);
 
-    assert.deepEqual(Object.keys(rendered.Parameters), ['BootstrapVersion']);
+    assert.deepEqual(Object.keys(rendered.Parameters).sort(), ['BootstrapVersion', 'BrowserAllowedOrigin'].sort());
 
     const [table] = ofType('AWS::DynamoDB::Table');
     assert.ok(table);
@@ -123,6 +123,15 @@ test('the durable stack owns only retained state and its storage controls', () =
       ([, bucket]) => bucket.Properties?.BucketName === 'opsreplay-retained-recordings',
     );
     assert.ok(secretBucket && recordingBucket);
+    assert.equal(rendered.Parameters.BrowserAllowedOrigin!.Default, '');
+    assert.deepEqual(recordingBucket[1].Properties?.CorsConfiguration, {
+      'Fn::If': [
+        'BrowserPlaybackCorsEnabled',
+        { CorsRules: [{ AllowedMethods: ['GET'], AllowedOrigins: [{ Ref: 'BrowserAllowedOrigin' }], MaxAge: 300 }] },
+        { Ref: 'AWS::NoValue' },
+      ],
+    });
+    assert.equal(secretBucket[1].Properties?.CorsConfiguration, undefined);
     assert.deepEqual(secretBucket[1].Properties?.LifecycleConfiguration, {
       Rules: [{ ExpirationInDays: 1, Prefix: 'sessions/', Status: 'Enabled' }],
     });

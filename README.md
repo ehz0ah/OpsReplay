@@ -12,20 +12,21 @@ and session playback.
 **Current phase:** the backend path for one reference Challenge is implemented. A
 disposable AWS checkpoint exercised one operator-seeded session from CloudFront terminal
 ingress through stored results on 15 October 2026. It was then removed. The learner web
-application and normal authenticated entry path are the next product milestone.
+application is implemented locally. Normal AWS browser entry and playback validation
+are the next deployment checkpoint.
 
-| Area                                   | Status                                                                              |
-| -------------------------------------- | ----------------------------------------------------------------------------------- |
-| Wrong upstream port Challenge          | Runnable and tested locally and on AWS                                              |
-| Monitor and validators                 | Implemented with authenticated control, metrics, captures, and recovery checks      |
-| Gateway                                | Implemented with terminal relay, live telemetry, recording, and reconnect handling  |
-| Session backend                        | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup |
-| Results                                | Deterministic debrief, timeline, playback export, and retry support are implemented |
-| AWS infrastructure                     | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed    |
-| Web application                        | Not implemented                                                                     |
-| Catalogue and account bootstrap APIs   | Implemented locally; AWS integration pending                                        |
-| Learn, Code Review, and assistant APIs | Not implemented                                                                     |
-| Additional Challenges and evaluation   | Planned after the first learner-facing flow                                         |
+| Area                                   | Status                                                                                               |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Wrong upstream port Challenge          | Runnable and tested locally and on AWS                                                               |
+| Monitor and validators                 | Implemented with authenticated control, metrics, captures, and recovery checks                       |
+| Gateway                                | Implemented with terminal relay, live telemetry, recording, and reconnect handling                   |
+| Session backend                        | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup                  |
+| Results                                | Deterministic debrief, timeline, playback export, and retry support are implemented                  |
+| AWS infrastructure                     | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed                     |
+| Web application                        | Catalogue, PKCE authentication, terminal, telemetry, hints, debrief and playback implemented locally |
+| Catalogue and account bootstrap APIs   | Implemented locally; AWS integration pending                                                         |
+| Learn, Code Review, and assistant APIs | Not implemented                                                                                      |
+| Additional Challenges and evaluation   | Planned after the first learner-facing flow                                                          |
 
 See the [15 October AWS checkpoint report](docs/checkpoints/2026-10-15-terminal.md)
 for the tested commit, setup, results, limitations, and teardown state. It did not test
@@ -84,7 +85,10 @@ some build images or run longer integration tests:
 | Content        | `npm run content:test`                                                                              |
 | Infrastructure | `npm run infra:test && npm run infra:synth`                                                         |
 
-There is no browser application start command yet. Local checks do not prove AWS IAM,
+For local browser development, copy `apps/web/public/config.example.json` to the ignored
+`apps/web/public/config.json` and set your public endpoints. Run `npm run web:dev`.
+Browser checks are `npm run web:test` and `npm run web:build`. See
+[browser deployment](docs/browser-deployment.md) for static hosting and exact origin setup. Local checks do not prove AWS IAM,
 Cognito, Fargate, or network behaviour.
 
 ## Repository map
@@ -93,7 +97,7 @@ Cognito, Fargate, or network behaviour.
 apps/api/          Lambda actions and lifecycle orchestration
 apps/gateway/      Terminal, telemetry, and recording Gateway
 apps/monitor/      Independent measurements and recovery validation
-apps/web/          Planned static browser application
+apps/web/          Static learner browser application
 content/           Challenge, Learn, and Code Review source material
 packages/          Contracts, content validation, and shared session logic
 infra/             CDK stacks and infrastructure tests

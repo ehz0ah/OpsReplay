@@ -13,6 +13,10 @@ and both CDK bootstrap stacks remain. The selected retained data resources are o
 Use the [architecture](../docs/architecture.md) and
 [decision register](../docs/decisions/README.md).
 
+`BrowserHostingStack` defines a separate private asset bucket and static CloudFront
+distribution. It does not activate runtime or own learner data. See
+[browser deployment](../docs/browser-deployment.md) for the setup order and validation limits.
+
 ## Current definitions
 
 `TerminalEdgeProtectionStack` defines only the default-off CloudFront-scope Web ACL
