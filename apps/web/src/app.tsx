@@ -1,6 +1,8 @@
+import { useAuth } from './auth/provider.js';
 import { usePath, navigate } from './navigation.js';
 export function App() {
   const path = usePath();
+  const auth = useAuth();
   return (
     <>
       <a className="skip" href="#main">
@@ -17,9 +19,23 @@ export function App() {
         >
           OpsReplay<span>Incident practice</span>
         </a>
-        <span className="status-label">Single-player workspace</span>
+        <div className="actions">
+          <span className="status-label">Single-player workspace</span>
+          <button
+            className="secondary"
+            disabled={auth.loading}
+            onClick={() => void (auth.identity ? auth.signOut() : auth.signIn())}
+          >
+            {auth.loading ? 'Connecting…' : auth.identity ? 'Sign out' : 'Sign in'}
+          </button>
+        </div>
       </header>
       <main id="main" className="page">
+        {auth.message && (
+          <p role="alert" className="notice error">
+            {auth.message}
+          </p>
+        )}
         <p className="eyebrow">Production engineering / Practice</p>
         <h1>
           Learn production failures

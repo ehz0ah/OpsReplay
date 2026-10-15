@@ -56,6 +56,7 @@
     "constructs": "10.8.1",
     "esbuild": "0.28.2",
     "json-schema-to-typescript": "16.0.0",
+    "oidc-client-ts": "3.5.0",
     "oxlint": "1.87.0",
     "prettier": "3.9.9",
     "react": "19.3.1",

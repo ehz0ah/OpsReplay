@@ -29,3 +29,9 @@ remain backend-owned.
 separately. Server checks use Node types without DOM or JSX. Browser source checks
 use DOM types without Node globals. Browser tests and Vite config also have Node types.
 All projects share the same strict compiler options in `tsconfig.base.json`.
+
+Sign-in uses the hosted Cognito code flow with PKCE, state and nonce validation.
+Authorization state and tokens are tab-scoped. Expired ID tokens use one shared refresh
+request when a refresh token exists; otherwise sign in again. Logout clears local
+identity even if revocation is unavailable, then opens Cognito logout using public
+identifiers only. Live Cognito behaviour still requires the browser AWS checkpoint.
