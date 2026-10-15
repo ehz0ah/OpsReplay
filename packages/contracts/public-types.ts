@@ -354,6 +354,8 @@ export interface PublicTypes {
   GatewayServerMessage: GatewayServerMessage;
   RecordingState: RecordingState;
   EndSessionResponse: EndSessionResponse;
+  PlaybackMetrics: PlaybackMetrics;
+  PlaybackCapture: PlaybackCapture;
 }
 export interface Error {
   code:
@@ -698,4 +700,48 @@ export interface ReviewSubmissionPage {
 }
 export interface EndSessionResponse {
   session: SessionView;
+}
+export interface PlaybackMetrics {
+  schemaVersion: 1;
+  kind: 'playback_metrics';
+  /**
+   * @maxItems 10000
+   */
+  frames: {
+    source: string;
+    sequence: number;
+    recordedAt: string;
+    payload: GatewayServerMessage;
+  }[];
+  final?: GatewayServerMessage;
+}
+export interface PlaybackCapture {
+  schemaVersion: 1;
+  commandId: string;
+  commandSeq: number;
+  sequence: number;
+  baselineAt: string;
+  startedAt: string;
+  completedAt: string;
+  /**
+   * @maxItems 20
+   */
+  files: {
+    path: string;
+    before: string | null;
+    after: string | null;
+  }[];
+  /**
+   * @maxItems 20
+   */
+  logs: {
+    path: string;
+    /**
+     * @maxItems 200
+     */
+    lines: string[];
+  }[];
+  metrics: MetricSample | null;
+  incomplete: boolean;
+  unavailable: boolean;
 }

@@ -235,3 +235,9 @@ are live observations, not acknowledgements. Missing/stale values remain visible
 Hint release uses saved request identity and exposes only released authored text.
 The public error schema now includes the existing `INVALID_CURSOR` response so
 clients can restart timeline and playback pagination. Wire behavior is unchanged.
+
+16 October 2026: debrief and read-only playback use saved owner results. Terminal
+chunks share one emulator and align to track timestamps. Input records never execute.
+Public asset DTOs validate metric exports and watched-file captures without browser
+imports of private server modules. Recording expiry does not remove the debrief.
+A retry uses a new session receipt and preserves the first attempt.

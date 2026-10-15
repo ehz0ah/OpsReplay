@@ -535,3 +535,8 @@ command bounds are in the schemas and the [data model](data-model.md).
 
 Breaking wire changes require a new API version or an explicitly reviewed pre-release
 contract update.
+
+Browser playback validates metric objects as `PlaybackMetrics` and watched-file
+capture objects as `PlaybackCapture` in the public schema. These describe the
+existing signed-object formats. Terminal objects use asciicast v2. The browser
+never connects recorded input to a live terminal.

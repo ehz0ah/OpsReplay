@@ -1,3 +1,5 @@
+import { lazy, Suspense } from 'react';
+const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 import { CataloguePage } from './pages/catalogue.js';
 import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
@@ -52,11 +54,19 @@ export function App() {
         )}
         {path === '/' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
-        ) : /^\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(path) ? (
+        ) : /^\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\/debrief)?$/.test(
+            path,
+          ) ? (
           auth.loading ? (
             <p role="status">Connecting your account…</p>
           ) : auth.identity ? (
-            <SessionEntry key={auth.identity.sub + path} id={path.split('/')[2]!} />
+            path.endsWith('/debrief') ? (
+              <Suspense fallback={<p>Opening debrief…</p>}>
+                <DebriefPage key={auth.identity.sub + path} id={path.split('/')[2]!} />
+              </Suspense>
+            ) : (
+              <SessionEntry key={auth.identity.sub + path} id={path.split('/')[2]!} />
+            )
           ) : (
             <section className="panel">
               <h2>Sign in to resume this attempt.</h2>
