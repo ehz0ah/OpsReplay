@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { ApiClient } from '../src/api.js';
 import { parseCast, metricSamples, captureObject, readAsset, assetUrl, AssetExpired } from '../src/playback/assets.js';
-import { playbackPages, savedDebrief } from '../src/playback/reads.js';
+import { playbackPage, appendPlayback, savedDebrief } from '../src/playback/reads.js';
 import { replayTerminal } from '../src/playback/terminal.js';
 import { encodeAsciicast } from '../../../packages/session/src/asciicast.js';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -61,13 +61,15 @@ test('real exporter chunks share terminal state and keep recorded input out of e
   assert.ok(delays.includes(500));
   assert.throws(() => parseCast(first.body.toString(), { ...tracks[0]!, startedAt: later }));
 });
-test('playback follows empty pages and rejects cyclic cursors or a foreign session', async () => {
+test('playback returns empty pages for explicit continuation and rejects cyclic cursors or a foreign session', async () => {
   let calls = 0;
+  const urls: string[] = [];
   const api = new ApiClient(
     'https://api.example',
     async () => 'token',
-    async () =>
-      new Response(
+    async (url) => {
+      urls.push(String(url));
+      return new Response(
         JSON.stringify({
           ...recording,
           terminal: [],
@@ -75,20 +77,41 @@ test('playback follows empty pages and rejects cyclic cursors or a foreign sessi
           captures: [],
           nextCursor: ++calls === 1 ? 'next' : null,
         }),
-      ),
+      );
+    },
   );
-  assert.equal((await playbackPages(api, id, new AbortController().signal)).sessionId, id);
+  const first = await playbackPage(api, id, new AbortController().signal);
+  assert.equal(calls, 1);
+  assert.equal(first.nextCursor, 'next');
+  const next = await playbackPage(api, id, new AbortController().signal, first.nextCursor);
   assert.equal(calls, 2);
+  assert.match(urls[1]!, /cursor=next/);
+  assert.equal(appendPlayback(first, next).nextCursor, null);
   const cycle = new ApiClient(
     'https://api.example',
     async () => 'token',
-    async () =>
-      new Response(JSON.stringify({ ...recording, terminal: [], metrics: [], captures: [], nextCursor: 'same' })),
+    async () => new Response(JSON.stringify({ ...recording, nextCursor: 'same' })),
   );
-  await assert.rejects(playbackPages(cycle, id, new AbortController().signal), /advance/);
+  await assert.rejects(playbackPage(cycle, id, new AbortController().signal, 'same'), /advance/);
   await assert.rejects(
-    playbackPages(api, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', new AbortController().signal),
+    playbackPage(api, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', new AbortController().signal),
     /match/,
+  );
+});
+test('a recording can exceed one-page array limits while each read remains bounded and explicit', async () => {
+  const track = { url: 'https://bucket.s3.amazonaws.com/x', startedAt: at, endedAt: at };
+  const first = {
+    ...recording,
+    terminal: Array.from({ length: 500 }, () => track),
+    metrics: [],
+    captures: [],
+    nextCursor: 'next',
+  };
+  const next = { ...recording, terminal: [track], metrics: [], captures: [], nextCursor: null };
+  assert.equal(appendPlayback(first, next).terminal.length, 501);
+  assert.throws(
+    () => appendPlayback(first, { ...next, sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }),
+    /snapshot/,
   );
 });
 test('debrief pending honors the server delay and incomplete results retain a null score', async () => {
