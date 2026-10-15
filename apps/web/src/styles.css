@@ -258,3 +258,26 @@ select {
 .workspace-heading h1 {
   font-size: clamp(1.8rem, 3vw, 2.8rem);
 }
+
+.terminal-panel {
+  background: #101416;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+.terminal-heading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.terminal-heading h2 {
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+.terminal-host {
+  height: 420px;
+  padding: 12px;
+}

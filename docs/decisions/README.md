@@ -139,6 +139,11 @@ bounded backoff after errors. Real-time countdowns display the saved deadline wi
 deciding outcomes. End requests keep their receipt until confirmed. `EndSessionResponse`
 corrects the pre-release contract to the existing handler's `{session}` envelope.
 
+16 October 2026: browser terminal uses xterm and the existing single-use ticket protocol.
+POST ticket issuance has no body. Reconnect obtains a fresh ticket, retains the local
+screen and never resends input. Replacement waits for explicit takeover. Browser queues
+and paste size are bounded; no clipboard or automatic-command addon is enabled.
+
 ## Product decisions
 
 | ID  | Decision                                                                                                          | Source                                           |
