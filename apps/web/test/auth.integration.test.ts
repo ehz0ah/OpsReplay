@@ -60,13 +60,21 @@ test('expired or mismatched ID tokens cannot be used as the displayed identity',
   ])
     assert.equal(userIdentity(user(patch), config, now), null);
 });
-test('return navigation cannot become an open redirect', () => {
-  assert.equal(returnPath('//other.example'), '/');
-  assert.equal(returnPath('https://other.example'), '/');
-  assert.equal(
-    returnPath('/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-    '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  );
+test('return navigation accepts served session routes and rejects unsupported or malformed paths', () => {
+  const session = '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  for (const path of ['/', session, session + '/debrief']) assert.equal(returnPath(path), path);
+  for (const path of [
+    '//other.example',
+    'https://other.example',
+    session + '/playback',
+    session + '/private',
+    session + '?next=https://other.example',
+    session + '#fragment',
+    '/sessions/' + '-'.repeat(36),
+    '/sessions/aaaaaaaa-aaaa-0aaa-8aaa-aaaaaaaaaaaa',
+    '/sessions/aaaaaaaa-aaaa-4aaa-1aaa-aaaaaaaaaaaa',
+  ])
+    assert.equal(returnPath(path), '/');
 });
 
 test('concurrent API calls share one refresh and logout never puts an ID token in the URL', async () => {
