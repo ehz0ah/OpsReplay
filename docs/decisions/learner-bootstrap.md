@@ -26,6 +26,9 @@ implemented. Existing attempts continue to use their saved admission grant.
 
 Both actions have separate bundles, roles, logs, timeouts, concurrency and throttling.
 They use the existing API, fixed-origin CORS and default-off runtime gate. Opening
-admission remains a separate switch. The additional two functions reserve eight
-executions when runtime is enabled. No table, index, payment service or authentication
+admission remains a separate switch. With default limits, the additional two functions reserve eight
+executions when runtime is enabled. `BootstrapReadBurstLimit` sets both their per-action
+concurrency and each route's burst, default 4. `BootstrapReadRateLimit` sets each route's sustained rate, default 2 requests per second across its callers. Bounds are 1 to 64.
+Tune them from simultaneous-load measurements before a classroom pilot and recalculate
+the account concurrency requirement. These controls do not change per-user entitlements. No table, index, payment service or authentication
 service is added.

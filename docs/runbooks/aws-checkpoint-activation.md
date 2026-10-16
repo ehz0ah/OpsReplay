@@ -72,7 +72,7 @@ to other functions in the Region. If a burst parameter changes, recalculate the
 requirement as follows:
 
 ```text
-runtime only = 100 + other reservations + 37 + TerminalTicketBurstLimit + SessionStatusBurstLimit
+runtime only = 100 + other reservations + 29 + 2 * BootstrapReadBurstLimit + TerminalTicketBurstLimit + SessionStatusBurstLimit
 admission open = runtime only + StartSessionBurstLimit
 ```
 
