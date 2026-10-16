@@ -68,6 +68,44 @@ test('release preparation rejects incompatible task, content, identity, and plan
   assert.throws(() => prepareReferenceRelease(build, { ...identity, account: 'other' }, task(), 1800));
 });
 
+test('release preparation accepts ECS empty defaults without accepting added container configuration', () => {
+  const described = task();
+  for (const container of described.containerDefinitions!) {
+    container.links = [];
+    container.entryPoint = [];
+    container.command = [];
+    container.environmentFiles = [];
+    container.dockerLabels = {};
+    container.linuxParameters!.devices = [];
+    container.linuxParameters!.tmpfs = [];
+    container.linuxParameters!.capabilities!.add = [];
+    for (const mapping of container.portMappings!) mapping.hostPort = mapping.containerPort;
+    if (container.logConfiguration) container.logConfiguration.secretOptions = [];
+  }
+  const saved = structuredClone(described);
+  assert.deepEqual(
+    prepareReferenceRelease(build, identity, described, 1800),
+    prepareReferenceRelease(build, identity, task(), 1800),
+  );
+  assert.deepEqual(described, saved, 'Release inspection must not change the supplied task');
+
+  const addedCapability = structuredClone(described);
+  addedCapability.containerDefinitions![1]!.linuxParameters!.capabilities!.add = ['NET_ADMIN'];
+  assert.throws(() => prepareReferenceRelease(build, identity, addedCapability, 1800));
+  const addedLabel = structuredClone(described);
+  addedLabel.containerDefinitions![0]!.dockerLabels = { unexpected: 'value' };
+  assert.throws(() => prepareReferenceRelease(build, identity, addedLabel, 1800));
+  const addedMount = structuredClone(described);
+  addedMount.containerDefinitions![0]!.linuxParameters!.tmpfs = [{ containerPath: '/private', size: 1 }];
+  assert.throws(() => prepareReferenceRelease(build, identity, addedMount, 1800));
+  const addedDevice = structuredClone(described);
+  addedDevice.containerDefinitions![0]!.linuxParameters!.devices = [{ hostPath: '/dev/unexpected' }];
+  assert.throws(() => prepareReferenceRelease(build, identity, addedDevice, 1800));
+  const addedSecret = structuredClone(described);
+  addedSecret.containerDefinitions![1]!.logConfiguration!.secretOptions = [{ name: 'secret', valueFrom: 'unexpected' }];
+  assert.throws(() => prepareReferenceRelease(build, identity, addedSecret, 1800));
+});
+
 async function createTable(client: Awaited<ReturnType<typeof startLocalDatabase>>['client'], tableName: string) {
   await client.send(
     new CreateTableCommand({

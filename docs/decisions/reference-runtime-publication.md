@@ -39,3 +39,7 @@ The tools do not prove AWS behaviour until the approved checkpoint runs. Evidenc
 references are reviewed operator assertions, not cryptographic proof of the underlying
 test results. The Pro time limit remains an explicit input because the team has not
 selected it. No current draft is promoted by this change.
+
+17 October 2026: live `DescribeTaskDefinition` responses include empty Docker labels,
+Linux device/tmpfs/capability-add lists, and log secret options. Release inspection
+omits these known empty defaults. Non-empty additions still fail the exact task check.
