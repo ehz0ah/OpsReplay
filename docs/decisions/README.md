@@ -205,6 +205,6 @@ remain burst 4 and rate 2 per route. Each action's concurrency follows the burst
 Classroom limits require load measurements and the documented Lambda quota calculation.
 
 16 October 2026: browser source and Node-based browser tests use separate TypeScript
-projects. Server checks exclude DOM/JSX. Strict options are shared. After the browser
-workflow reaches main in PR #76, require its `browser` check before merging #77 or
-later work. Requiring it earlier would block #75, whose main-based workflow lacks it.
+projects. Server checks exclude DOM/JSX. Strict options are shared. The `browser`
+job already runs on #76 and later PRs. Require it after #75 merges and before #76
+merges. Requiring it while #75 is open would block that PR, which lacks the job.
