@@ -1,22 +1,7 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "verbatimModuleSyntax": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "types": ["node", "aws-lambda"],
-    "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": ["node", "aws-lambda"]
   },
   "include": [
     "apps/api/**/*.ts",
@@ -26,9 +11,6 @@
     "packages/contracts/private/**/*.ts",
     "packages/session/**/*.ts",
     "packages/content/**/*.ts",
-    "scripts/publish-reference-release.ts",
-    "apps/web/**/*.ts",
-    "apps/web/**/*.tsx",
-    "packages/contracts/public*.ts"
+    "scripts/publish-reference-release.ts"
   ]
 }
