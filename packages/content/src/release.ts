@@ -127,6 +127,14 @@ function assertContainer(container: ContainerDefinition, expected: ContainerDefi
     ),
   );
   const expectedNormalized = Object.fromEntries(Object.entries(expected).filter(([, v]) => v !== false));
+  if (container.dockerLabels && Object.keys(container.dockerLabels).length === 0) delete normalized.dockerLabels;
+  if (container.linuxParameters) {
+    const linux = container.linuxParameters;
+    if (linux.devices?.length === 0) delete linux.devices;
+    if (linux.tmpfs?.length === 0) delete linux.tmpfs;
+    if (linux.capabilities?.add?.length === 0) delete linux.capabilities.add;
+  }
+  if (container.logConfiguration?.secretOptions?.length === 0) delete container.logConfiguration.secretOptions;
   for (const mapping of (normalized.portMappings as NonNullable<ContainerDefinition['portMappings']>) ?? []) {
     if (mapping.hostPort === mapping.containerPort) delete mapping.hostPort;
   }
