@@ -39,9 +39,9 @@ cloud resources deployed by this baseline.
    state visibility, and failure handling as applicable.
 6. Merge after review and successful required checks. Branch protection is managed
    in the GitHub `Protect Main` ruleset. After this workflow exists on `main`, a
-   repository owner must add its `title` job to that ruleset. Once PR #76 adds the
-   browser workflow to `main`, also require its `browser` job before merging #77 or
-   later work. Do not require it before #76, because earlier PRs do not run that job.
+   repository owner must add its `title` job to that ruleset. After #75 merges,
+   require `browser` before merging #76. That job already runs on #76 and later PRs.
+   Do not require it while #75 is open, because #75 does not run that job.
 
 Use clear commits such as `docs: define session playback semantics`. Do not add
 generated binaries, dependency directories, or AI co-author trailers. The report
