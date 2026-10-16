@@ -195,3 +195,7 @@ These are engineering rules, not a reason to add a queue or workflow service wit
 
 Use [the ADR template](template.md) for a significant technical change. Routine decisions
 can be a short register update.
+
+16 October 2026: catalogue/account read limits are deployment parameters. Defaults
+remain burst 4 and rate 2 per route. Each action's concurrency follows the burst.
+Classroom limits require load measurements and the documented Lambda quota calculation.

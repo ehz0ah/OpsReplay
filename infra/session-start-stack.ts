@@ -148,6 +148,20 @@ export class SessionStartStack extends Stack {
       allowedPattern: '(|arn:aws:wafv2:us-east-1:[0-9]{12}:global/webacl/[A-Za-z0-9_-]+/[a-f0-9-]+)',
       description: 'CloudFront-scope Web ACL ARN from OpsReplayTerminalEdgeProtection in us-east-1.',
     });
+    const bootstrapReadBurstLimit = new CfnParameter(this, 'BootstrapReadBurstLimit', {
+      type: 'Number',
+      default: 4,
+      minValue: 1,
+      maxValue: 64,
+      description: 'Burst and per-action Lambda concurrency for each catalogue/account read route.',
+    });
+    const bootstrapReadRateLimit = new CfnParameter(this, 'BootstrapReadRateLimit', {
+      type: 'Number',
+      default: 2,
+      minValue: 1,
+      maxValue: 64,
+      description: 'Sustained requests per second for each catalogue/account read route, shared by its callers.',
+    });
     const terminalTicketBurstLimit = new CfnParameter(this, 'TerminalTicketBurstLimit', {
       type: 'Number',
       default: 16,
@@ -1127,7 +1141,11 @@ export class SessionStartStack extends Stack {
         environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
         memorySize: 256,
         timeout: Duration.seconds(10),
-        reservedConcurrentExecutions: Fn.conditionIf(gatewayEnabled.logicalId, 4, 0) as unknown as number,
+        reservedConcurrentExecutions: Fn.conditionIf(
+          gatewayEnabled.logicalId,
+          bootstrapReadBurstLimit.valueAsNumber,
+          0,
+        ) as unknown as number,
       });
       return { id, action, authenticated, path: authenticated ? 'me' : 'catalog' };
     });
@@ -1679,8 +1697,8 @@ export class SessionStartStack extends Stack {
           cachingEnabled: false,
           dataTraceEnabled: false,
           metricsEnabled: true,
-          throttlingBurstLimit: 4,
-          throttlingRateLimit: 2,
+          throttlingBurstLimit: bootstrapReadBurstLimit.valueAsNumber,
+          throttlingRateLimit: bootstrapReadRateLimit.valueAsNumber,
         })),
         {
           httpMethod: 'POST',

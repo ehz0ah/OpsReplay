@@ -22,7 +22,9 @@ test('bootstrap routes preserve public catalogue and authenticated read-only acc
       )!;
       assert.ok(fn);
       assert.equal(fn[1].Properties.VpcConfig, undefined);
-      assert.deepEqual(fn[1].Properties.ReservedConcurrentExecutions, { 'Fn::If': ['GatewayPathEnabled', 4, 0] });
+      assert.deepEqual(fn[1].Properties.ReservedConcurrentExecutions, {
+        'Fn::If': ['GatewayPathEnabled', { Ref: 'BootstrapReadBurstLimit' }, 0],
+      });
       const role = fn[1].Properties.Role['Fn::GetAtt'][0];
       const statements = Object.values(resources)
         .filter((r: any) => r.Type === 'AWS::IAM::Policy' && r.Properties.Roles?.some((v: any) => v.Ref === role))
@@ -39,6 +41,24 @@ test('bootstrap routes preserve public catalogue and authenticated read-only acc
       ) as any;
       assert.equal(method.Properties.AuthorizationType, prefix === 'ListCatalog' ? 'NONE' : 'COGNITO_USER_POOLS');
       assert.equal(method.Condition, 'GatewayPathEnabled');
+    }
+    assert.deepEqual(template.Parameters.BootstrapReadBurstLimit, {
+      Type: 'Number',
+      Default: 4,
+      MinValue: 1,
+      MaxValue: 64,
+      Description: 'Burst and per-action Lambda concurrency for each catalogue/account read route.',
+    });
+    assert.equal(template.Parameters.BootstrapReadRateLimit.Default, 2);
+    assert.equal(template.Parameters.BootstrapReadRateLimit.MinValue, 1);
+    assert.equal(template.Parameters.BootstrapReadRateLimit.MaxValue, 64);
+    const stage = Object.values(resources).find((resource: any) => resource.Type === 'AWS::ApiGateway::Stage') as any;
+    for (const path of ['catalog', 'me']) {
+      const setting = stage.Properties.MethodSettings.find((row: any) => row.ResourcePath === `/~1v1~1${path}`);
+      assert.equal(setting.HttpMethod, 'GET');
+      assert.equal(setting.CachingEnabled, false);
+      assert.deepEqual(setting.ThrottlingBurstLimit, { Ref: 'BootstrapReadBurstLimit' });
+      assert.deepEqual(setting.ThrottlingRateLimit, { Ref: 'BootstrapReadRateLimit' });
     }
     assert.equal(
       Object.values(resources).some((r: any) => r.Type === 'AWS::DynamoDB::Table'),
