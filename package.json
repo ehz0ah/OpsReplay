@@ -30,7 +30,7 @@
     "challenge:test": "node --import tsx --test content/challenges/wrong-upstream-port/image.test.mjs content/challenges/wrong-upstream-port/recording-wire.test.mjs",
     "check": "node scripts/check.mjs && node --import tsx --test packages/contracts/private/*.test.ts && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs && prettier --write packages/contracts/openapi.json",
-    "typecheck": "npm run contracts:check && tsc --noEmit",
+    "typecheck": "npm run contracts:check && tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.test.json",
     "content:test": "node --import tsx --test packages/content/test/*.test.ts",
     "content:publish": "node --import tsx scripts/publish-reference-release.ts",
     "api:build": "node scripts/build-start-session.mjs",

@@ -24,3 +24,8 @@ use the exact HTTPS browser origin. Hosting remains separate from this boundary.
 Follow [design](../../docs/design.md) and [API](../../docs/api.md). The following PRs add
 Cognito sign-in, entry, live workspace and results. Runtime state, recovery and scores
 remain backend-owned.
+
+`npm run typecheck` checks the server, browser and browser test/tooling projects
+separately. Server checks use Node types without DOM or JSX. Browser source checks
+use DOM types without Node globals. Browser tests and Vite config also have Node types.
+All projects share the same strict compiler options in `tsconfig.base.json`.
