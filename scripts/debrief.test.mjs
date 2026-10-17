@@ -11,6 +11,29 @@ const log = challenge.debrief.keyEvidence[0];
 const completedSession = { readyAt: '2026-10-05T02:00:42Z', endedAt: '2026-10-05T02:07:03Z', status: 'resolved' };
 const deriveDebrief = (manifest, events) => derive(manifest, events, completedSession);
 
+test('quoted and escaped semicolons do not create investigation commands', () => {
+  const rule = challenge.debrief.keyEvidence[2];
+  for (const command of [
+    "printf 'one;two'; grep proxy_pass /etc/nginx/nginx.conf;",
+    'printf "one;two"; grep proxy_pass /etc/nginx/nginx.conf',
+    'printf one\\;two; grep proxy_pass /etc/nginx/nginx.conf',
+  ]) {
+    assert.equal(
+      matchEvidence(rule, [{ ...commands[0], command, outputExcerpt: 'proxy_pass http://127.0.0.1:8081;' }]).status,
+      'observed',
+    );
+  }
+  for (const command of [
+    "printf 'one; grep proxy_pass /etc/nginx/nginx.conf'",
+    'printf one\\;grep\\ proxy_pass\\ /etc/nginx/nginx.conf',
+  ]) {
+    assert.equal(
+      matchEvidence(rule, [{ ...commands[0], command, outputExcerpt: 'proxy_pass http://127.0.0.1:8081;' }]).status,
+      'not_observed',
+    );
+  }
+});
+
 test('mentioning a log path does not prove its evidence was observed', () => {
   const echoed = {
     ...commands[1],

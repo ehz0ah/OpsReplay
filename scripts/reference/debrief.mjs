@@ -1,9 +1,10 @@
 // Executable debrief rules for contract fixtures, not a runtime recorder.
+import { matchesCommand } from '../../packages/session/src/command-match.mjs';
 const seconds = (from, to) => (Date.parse(to) - Date.parse(from)) / 1000;
 const matchesAny = (patterns, text) => patterns.some((source) => new RegExp(source).test(text));
 
 export function matchEvidence(evidence, commands) {
-  const attempts = commands.filter((item) => matchesAny(evidence.commandPatterns, item.command));
+  const attempts = commands.filter((item) => matchesCommand(evidence.commandPatterns, item.command));
   const observed = attempts.find(
     (item) =>
       item.endedAt !== null && evidence.outputPatterns.every((source) => new RegExp(source).test(item.outputExcerpt)),

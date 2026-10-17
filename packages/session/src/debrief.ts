@@ -3,6 +3,7 @@ import addFormats from 'ajv-formats';
 import publicSchema from '../../contracts/schemas/public.schema.json';
 import challengeSchema from '../../contracts/schemas/challenge.schema.json';
 import { isCommandEvidence, type CommandEvidence } from '../../contracts/private/command-evidence.js';
+import { matchesCommand } from './command-match.mjs';
 import type { SessionRecord, SessionView } from '../../../apps/api/src/start-session/types.js';
 
 export interface DebriefManifest {
@@ -114,7 +115,7 @@ export function deriveDebrief(
     }
   }
   const keyEvidence: Debrief['keyEvidence'] = manifest.debrief.keyEvidence.map((evidence) => {
-    const attempts = saved.filter((command) => match(evidence.commandPatterns, command.command));
+    const attempts = saved.filter((command) => matchesCommand(evidence.commandPatterns, command.command));
     const observed = attempts.find(
       (command) =>
         command.endedAt !== null &&

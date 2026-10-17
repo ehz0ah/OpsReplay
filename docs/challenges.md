@@ -422,8 +422,12 @@ The saved session's `readyAt` and `endedAt` define the bounds, even if recording
 removed lifecycle events. Only events within those bounds enter the derivation. A command
 that completes after the cutoff cannot supply observed evidence. Terminal output is
 learner-controlled, so these matches support reflection, not trusted assessment.
-Unsupported command forms may remain `not_observed`. Monitor data alone determines
-recovery and request impact.
+Unsupported command forms may remain `not_observed`. Plain semicolon-separated command lists also match individual
+inspection commands, with quoted and escaped separators kept inside arguments.
+They still require relevant output from the same completed recorded line and count
+as one command. This extension does not evaluate conditions, pipelines, nested
+shell syntax, or prove that a specific simple command ran. Existing saved debriefs
+are not recomputed. Monitor data alone determines recovery and request impact.
 
 The debrief aligns commands with metric samples and capture intervals. It shows state
 observed around those commands, not proven per-command causation. The repository check

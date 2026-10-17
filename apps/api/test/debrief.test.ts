@@ -25,6 +25,56 @@ function session() {
   return value;
 }
 const counters = { totalRequests: 884, failedRequests: 640 };
+test('sequential investigation lists use their saved output without changing command count or impact', () => {
+  const input = [
+    {
+      ...commands[0]!,
+      command:
+        'printf "marker: %s\\n" "${CHECKPOINT_RESUME:-absent}"; grep proxy_pass /etc/nginx/nginx.conf; curl http://127.0.0.1/',
+      outputExcerpt: 'checking configuration\nproxy_pass http://127.0.0.1:8081;\n502',
+    },
+  ];
+  const snapshot = structuredClone(input);
+  const result = deriveDebrief(manifest, session(), input, events, counters);
+  assert.equal(result.keyEvidence[2]!.status, 'observed');
+  assert.equal(result.keyEvidence[2]!.commandSeq, input[0]!.seq);
+  assert.equal(result.score!.commandCount, 1);
+  assert.equal(result.score!.failedRequests, counters.failedRequests);
+  assert.deepEqual(input, snapshot);
+  for (const patch of [{ outputExcerpt: '' }, { endedAt: null, exitStatus: null }]) {
+    assert.equal(
+      deriveDebrief(manifest, session(), [{ ...input[0]!, ...patch }], events, counters).keyEvidence[2]!.status,
+      'attempted',
+    );
+  }
+});
+
+test('quoted command mentions and unsupported shell branches receive no new evidence credit', () => {
+  for (const command of [
+    'printf "grep proxy_pass /etc/nginx/nginx.conf"',
+    "printf 'a; grep proxy_pass /etc/nginx/nginx.conf'",
+    'printf "checking"; false && grep proxy_pass /etc/nginx/nginx.conf',
+    'printf "checking"; true || grep proxy_pass /etc/nginx/nginx.conf',
+    'if false; then grep proxy_pass /etc/nginx/nginx.conf; fi',
+    'printf "$(grep proxy_pass /etc/nginx/nginx.conf)"; true',
+    'printf "checking"; (grep proxy_pass /etc/nginx/nginx.conf)',
+    'printf "checking" # ; grep proxy_pass /etc/nginx/nginx.conf',
+    'printf "checking";; grep proxy_pass /etc/nginx/nginx.conf',
+    'exit; grep proxy_pass /etc/nginx/nginx.conf',
+    'printf "checking"; return; grep proxy_pass /etc/nginx/nginx.conf',
+    'printf "checking"; `grep proxy_pass /etc/nginx/nginx.conf`',
+    'printf "checking"; grep proxy_pass /etc/nginx/nginx.conf "unfinished',
+  ]) {
+    const result = deriveDebrief(
+      manifest,
+      session(),
+      [{ ...commands[0]!, command, outputExcerpt: 'proxy_pass http://127.0.0.1:8081;' }],
+      events,
+      counters,
+    );
+    assert.equal(result.keyEvidence[2]!.status, 'not_observed', command);
+  }
+});
 test('production derivation matches the published evidence and raw score fixture', () => {
   assert.deepEqual(deriveDebrief(manifest, session(), commands, events, counters), expected);
 });
