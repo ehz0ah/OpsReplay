@@ -174,3 +174,12 @@ Rollback before deployment is a revert. After future publication, retain private
 manifest items and published task revisions for existing attempts. Do not clear
 active locks or replace saved outcomes to bypass finalisation. A runtime rollback
 must keep in-flight work readable or allow it to drain with the compatible version.
+
+17 October 2026: evidence matching also checks individual commands in plain
+semicolon-separated lists when the existing whole-line pattern does not match.
+Quoted and escaped semicolons remain argument text. Conditional lists, pipelines,
+subshells, substitutions, comments, control words and malformed lists receive no
+new matching support. Existing whole-line matches and harmful-action rules stay
+unchanged. Evidence still needs matching output from the same completed recorded
+line. The line counts as one command. Its combined output cannot prove which
+simple command ran or what the learner understood. Saved debriefs are not rebuilt.
