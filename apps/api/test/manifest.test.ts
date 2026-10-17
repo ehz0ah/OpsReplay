@@ -23,7 +23,7 @@ test('private manifest read uses the admitted hash and is independent of object 
   assert.deepEqual(await readManifest(client, 'test-table', session), manifest);
   assert.deepEqual(key, {
     PK: 'CONTENT#challenge#wrong-upstream-port',
-    SK: `MANIFEST#0.1.0#${session.pins.manifestSha256}`,
+    SK: `MANIFEST#${manifest.version}#${session.pins.manifestSha256}`,
   });
   assert.equal(manifestHash(reordered), session.pins.manifestSha256);
 });

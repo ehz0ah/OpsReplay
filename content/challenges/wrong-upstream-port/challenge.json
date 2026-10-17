@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.2",
   "id": "wrong-upstream-port",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "title": "Storefront returns 502",
   "summary": "Users see 502 Bad Gateway after an application change. Find why the proxy cannot reach the application and restore checkout without taking the proxy down.",
   "status": "draft",
@@ -64,9 +64,7 @@
   "dashboard": [
     { "id": "request_rate", "label": "Requests", "unit": "requests_per_second", "source": "request_rate" },
     { "id": "error_rate", "label": "Errors", "unit": "percent", "source": "error_rate" },
-    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" },
-    { "id": "cpu", "label": "CPU", "unit": "percent", "source": "cpu" },
-    { "id": "memory", "label": "Memory", "unit": "mebibytes", "source": "memory" }
+    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" }
   ],
   "alert": {
     "title": "Checkout error rate above 90%",

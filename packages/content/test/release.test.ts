@@ -68,6 +68,23 @@ test('release preparation rejects incompatible task, content, identity, and plan
   assert.throws(() => prepareReferenceRelease(build, { ...identity, account: 'other' }, task(), 1800));
 });
 
+test('reference publication requires a measured dashboard ID, source and unit', () => {
+  const release = prepareReferenceRelease(build, identity, task(), 1800);
+  assert.deepEqual(
+    release.admission.dashboard.map((metric) => metric.id),
+    ['request_rate', 'error_rate', 'latency_p95'],
+  );
+  for (const descriptor of [
+    { id: 'cpu', label: 'CPU', source: 'cpu', unit: 'percent' },
+    { id: 'memory', label: 'Memory', source: 'memory', unit: 'mebibytes' },
+    { id: 'error_rate', label: 'Errors', source: 'cpu', unit: 'percent' },
+    { id: 'error_rate', label: 'Errors', source: 'error_rate', unit: 'milliseconds' },
+    { id: 'constructor', label: 'Unknown', source: 'constructor', unit: 'percent' },
+  ]) {
+    assert.throws(() => prepareReferenceRelease({ ...build, dashboard: [descriptor] }, identity, task(), 1800));
+  }
+});
+
 test('release preparation accepts ECS empty defaults without accepting added container configuration', () => {
   const described = task();
   for (const container of described.containerDefinitions!) {
