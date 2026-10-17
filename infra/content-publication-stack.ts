@@ -44,6 +44,7 @@ export class ContentPublicationStack extends Stack {
         resources: [
           `arn:${Aws.PARTITION}:ecr:${Aws.REGION}:${Aws.ACCOUNT_ID}:repository/opsreplay/monitor`,
           `arn:${Aws.PARTITION}:ecr:${Aws.REGION}:${Aws.ACCOUNT_ID}:repository/opsreplay/challenge-wrong-upstream-port`,
+          `arn:${Aws.PARTITION}:ecr:${Aws.REGION}:${Aws.ACCOUNT_ID}:repository/opsreplay/challenge-stale-dns-record`,
         ],
       }),
     );

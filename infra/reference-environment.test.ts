@@ -149,3 +149,20 @@ test('existing launch bootstrap targets only the defined Monitor container witho
   await new MonitorBootstrapFile(client).ensure(session);
   assert.equal(uploaded, true);
 });
+
+test('DNS blueprint pins its own challenge image and keeps the shared isolation settings', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'opsreplay-dns-task-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const rendered = Template.fromStack(
+    new ReferenceEnvironmentStack(new App({ outdir: directory }), 'DnsEnvironment', {
+      challengeId: 'stale-dns-record',
+    }),
+  ).toJSON();
+  const task = rendered.Resources.ReferenceTask.Properties;
+  assert.equal(task.Family, 'opsreplay-stale-dns-record');
+  assert.equal(task.TaskRoleArn, undefined);
+  assert.equal(task.PidMode, undefined);
+  assert.match(JSON.stringify(task.ContainerDefinitions[0].Image), /challenge-stale-dns-record@/);
+  assert.equal(task.ContainerDefinitions[1].ReadonlyRootFilesystem, true);
+  assert.equal(task.ContainerDefinitions[1].MountPoints[0].ReadOnly, true);
+});
