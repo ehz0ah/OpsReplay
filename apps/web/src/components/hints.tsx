@@ -1,3 +1,4 @@
+import { Button, Group, Modal } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { useApi } from '../api-context.js';
@@ -22,6 +23,7 @@ export function Hints({
     auth = useAuth(),
     alive = useAlive(),
     journal = useMemo(() => new MutationJournal(sessionStorage, auth.identity!.sub), [auth.identity?.sub]);
+  const [confirmHint, setConfirmHint] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<Error | null>(null),
     [released, setReleased] = useState<PublicTypes['Hint'][]>([]),
@@ -41,6 +43,7 @@ export function Hints({
   );
   async function request() {
     if (busy || disabled) return;
+    setConfirmHint(false);
     setBusy(true);
     setError(null);
     try {
@@ -68,16 +71,27 @@ export function Hints({
   }
   return (
     <section className="panel">
+      <Modal opened={confirmHint} onClose={() => setConfirmHint(false)} title="Release a hint?" centered>
+        <p>This is recorded as assistance. The incident clock continues.</p>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setConfirmHint(false)} data-autofocus>
+            Cancel
+          </Button>
+          <Button disabled={disabled || busy} onClick={() => void request()}>
+            Release hint
+          </Button>
+        </Group>
+      </Modal>
       <h2>Hints</h2>
       <p className="muted">Hints count as assistance. Only released hints appear here.</p>
       {hints.map((hint) => (
         <p key={hint.id}>{hint.text}</p>
       ))}
       <Failure error={error} />
-      <button
-        className="secondary"
+      <Button
+        variant="default"
         disabled={disabled || busy || (!pending && (view.hints.remaining === 0 || wait > 0)) || now < retryAt}
-        onClick={() => void request()}
+        onClick={() => (pending ? void request() : setConfirmHint(true))}
       >
         {busy
           ? 'Releasing hint…'
@@ -88,7 +102,7 @@ export function Hints({
               : view.hints.remaining === 0
                 ? 'No hints remain'
                 : 'Release next hint'}
-      </button>
+      </Button>
     </section>
   );
 }

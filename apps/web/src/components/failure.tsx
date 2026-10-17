@@ -1,3 +1,4 @@
+import { Button } from '@mantine/core';
 import { ApiError } from '../api.js';
 export function Failure({ error, retry }: { error: Error | null; retry?: () => void }) {
   if (!error) return null;
@@ -7,9 +8,9 @@ export function Failure({ error, retry }: { error: Error | null; retry?: () => v
       {error instanceof ApiError && <small>Reference: {error.detail.requestId}</small>}
       {retry && (
         <p>
-          <button className="secondary" onClick={retry}>
+          <Button variant="default" onClick={retry}>
             Try again
-          </button>
+          </Button>
         </p>
       )}
     </div>
