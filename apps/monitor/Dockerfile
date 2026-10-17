@@ -34,4 +34,8 @@ COPY content/challenges/wrong-upstream-port/challenge.json /app/challenge.json
 FROM runtime-base AS reference
 COPY --chown=node:node --chmod=444 content/challenges/wrong-upstream-port/challenge.json /app/challenge.json
 
+# Candidate DNS runtime. Shared Monitor implementation, separate private manifest.
+FROM runtime-base AS stale-dns
+COPY --chown=node:node --chmod=444 content/challenges/stale-dns-record/challenge.json /app/challenge.json
+
 FROM runtime-base AS runtime

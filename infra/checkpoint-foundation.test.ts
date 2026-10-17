@@ -197,10 +197,15 @@ test('checkpoint repositories and execution permissions are bounded and disposab
     const repositoryEntries = Object.entries(rendered.Resources).filter(
       ([, resource]) => resource.Type === 'AWS::ECR::Repository',
     );
-    assert.equal(repositoryEntries.length, 3);
+    assert.equal(repositoryEntries.length, 4);
     assert.deepEqual(
       repositoryEntries.map(([, repository]) => repository.Properties?.RepositoryName).sort(),
-      ['opsreplay-gateway', 'opsreplay/monitor', 'opsreplay/challenge-wrong-upstream-port'].sort(),
+      [
+        'opsreplay-gateway',
+        'opsreplay/monitor',
+        'opsreplay/challenge-wrong-upstream-port',
+        'opsreplay/challenge-stale-dns-record',
+      ].sort(),
     );
     for (const [, repository] of repositoryEntries) {
       const properties = repository.Properties;
@@ -303,6 +308,7 @@ test('checkpoint repositories and execution permissions are bounded and disposab
     assert.deepEqual(statements[1]?.Resource, [
       repositoryArn('opsreplay/monitor'),
       repositoryArn('opsreplay/challenge-wrong-upstream-port'),
+      repositoryArn('opsreplay/challenge-stale-dns-record'),
     ]);
     assert.deepEqual(statements[2]?.Resource, {
       'Fn::Join': ['', [{ Ref: 'MonitorBootstrapBucketArn' }, '/sessions/*']],
@@ -336,6 +342,7 @@ test('checkpoint repositories and execution permissions are bounded and disposab
       repositoryArn('opsreplay-gateway'),
       repositoryArn('opsreplay/monitor'),
       repositoryArn('opsreplay/challenge-wrong-upstream-port'),
+      repositoryArn('opsreplay/challenge-stale-dns-record'),
     ]);
 
     template.hasResource('AWS::Logs::LogGroup', {
@@ -373,6 +380,7 @@ test('checkpoint outputs match the existing application-stack deployment inputs'
     assert.deepEqual(Object.keys(rendered.Outputs).sort(), [
       'AwsInterfaceEndpointSecurityGroupId',
       'ChallengeRepositoryUri',
+      'DnsChallengeRepositoryUri',
       'DynamoDbGatewayEndpointPrefixListId',
       'EnvironmentClusterArn',
       'EnvironmentExecutionRoleArn',

@@ -9,6 +9,7 @@ import { boundedRun, referenceImageManifest } from './reference-image-manifest.m
 import { canonicalJson } from '../packages/session/src/canonical.js';
 import { manifestHash } from '../packages/session/src/manifest.js';
 import {
+  assertBuildManifest,
   prepareReferenceRelease,
   publishReferenceRelease,
   type PublicationEvidence,
@@ -56,8 +57,12 @@ export function inspectRelease(
   const aws = (args: string[]) => run('aws', [...args, '--region', images.region, '--output', 'json']);
   const caller = JSON.parse(aws(['sts', 'get-caller-identity']));
   if (caller.Account !== images.account) throw new Error('Publication account does not match.');
+  const build = readReference(images.images.monitor.configDigest);
+  assertBuildManifest(build);
+  if (manifestHash(build) !== images.buildManifestSha256)
+    throw new Error('Embedded build manifest does not match publication.');
   for (const [name, repository] of [
-    ['challenge', 'opsreplay/challenge-wrong-upstream-port'],
+    ['challenge', build.environment.image.repository],
     ['monitor', 'opsreplay/monitor'],
   ] as const) {
     const image = images.images[name];
@@ -89,9 +94,6 @@ export function inspectRelease(
     )
       throw new Error('ECR image does not match the tested configuration.');
   }
-  const build = readReference(images.images.monitor.configDigest);
-  if (manifestHash(build) !== images.buildManifestSha256)
-    throw new Error('Embedded build manifest does not match publication.');
   const task = JSON.parse(aws(['ecs', 'describe-task-definition', '--task-definition', config.taskDefinitionArn]))
     .taskDefinition as TaskDefinition;
   return prepareReferenceRelease(

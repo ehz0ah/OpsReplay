@@ -4,11 +4,19 @@ import { CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import type { Construct } from 'constructs';
 import { environmentWatchedVolume } from './environment-watched-volume.js';
 
+export type ChallengeBlueprint = 'wrong-upstream-port' | 'stale-dns-record';
+export interface ReferenceEnvironmentProps extends StackProps {
+  challengeId?: ChallengeBlueprint;
+}
+
 /** Registers a blueprint only. Publication and the existing start action own admission and launch. */
 export class ReferenceEnvironmentStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+  constructor(scope: Construct, id: string, props?: ReferenceEnvironmentProps) {
     super(scope, id, props);
 
+    const challengeId = props?.challengeId ?? 'wrong-upstream-port';
+    if (!['wrong-upstream-port', 'stale-dns-record'].includes(challengeId))
+      throw new Error('Unknown Challenge blueprint.');
     const executionRole = new CfnParameter(this, 'EnvironmentExecutionRoleArn', {
       type: 'String',
       allowedPattern: 'arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+',
@@ -39,7 +47,7 @@ export class ReferenceEnvironmentStack extends Stack {
     };
     const layout = environmentWatchedVolume();
     const task = new CfnTaskDefinition(this, 'ReferenceTask', {
-      family: 'opsreplay-wrong-upstream-port',
+      family: `opsreplay-${challengeId}`,
       cpu: '1024',
       memory: '2048',
       networkMode: 'awsvpc',
@@ -51,7 +59,7 @@ export class ReferenceEnvironmentStack extends Stack {
       containerDefinitions: [
         {
           name: 'challenge',
-          image: image('ChallengeImageDigest', 'opsreplay/challenge-wrong-upstream-port', 'Tested Challenge digest.'),
+          image: image('ChallengeImageDigest', `opsreplay/challenge-${challengeId}`, 'Tested Challenge digest.'),
           essential: true,
           user: '0',
           cpu: 768,

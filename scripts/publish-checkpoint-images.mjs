@@ -16,23 +16,29 @@ function canonical(value) {
 }
 import { pathToFileURL } from 'node:url';
 
-export const checkpointImages = Object.freeze([
-  Object.freeze({
-    name: 'gateway',
-    repository: 'opsreplay-gateway',
-    localImage: 'opsreplay/gateway-recording:dev',
-  }),
-  Object.freeze({
-    name: 'monitor',
-    repository: 'opsreplay/monitor',
-    localImage: 'opsreplay/monitor-reference:dev',
-  }),
-  Object.freeze({
-    name: 'challenge',
-    repository: 'opsreplay/challenge-wrong-upstream-port',
-    localImage: 'opsreplay/challenge-wrong-upstream-port:dev',
-  }),
-]);
+export function checkpointImagesFor(challengeId = 'wrong-upstream-port') {
+  if (!['wrong-upstream-port', 'stale-dns-record'].includes(challengeId))
+    throw new Error('Unknown checkpoint Challenge.');
+  return Object.freeze([
+    Object.freeze({
+      name: 'gateway',
+      repository: 'opsreplay-gateway',
+      localImage: 'opsreplay/gateway-recording:dev',
+    }),
+    Object.freeze({
+      name: 'monitor',
+      repository: 'opsreplay/monitor',
+      localImage:
+        challengeId === 'stale-dns-record' ? 'opsreplay/monitor-stale-dns:dev' : 'opsreplay/monitor-reference:dev',
+    }),
+    Object.freeze({
+      name: 'challenge',
+      repository: `opsreplay/challenge-${challengeId}`,
+      localImage: `opsreplay/challenge-${challengeId}:dev`,
+    }),
+  ]);
+}
+export const checkpointImages = checkpointImagesFor();
 
 const commitPattern = /^[0-9a-f]{40}$/;
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
@@ -89,7 +95,7 @@ export function parseBatchGetImage(value, repository, tag) {
   throw new Error(`ECR could not resolve ${repository}:${tag}. Failure codes: ${codes || 'unexpected response'}.`);
 }
 
-export function parseDockerArchiveManifest(value) {
+export function parseDockerArchiveManifest(value, images = checkpointImages) {
   let response;
   try {
     response = JSON.parse(value);
@@ -101,7 +107,7 @@ export function parseDockerArchiveManifest(value) {
   }
 
   const configDigests = new Map();
-  for (const image of checkpointImages) {
+  for (const image of images) {
     const matchingEntries = response.filter(
       (entry) => Array.isArray(entry?.RepoTags) && entry.RepoTags.includes(image.localImage),
     );
@@ -165,8 +171,13 @@ export function publishCheckpointImages({
   const region = env.AWS_REGION ?? '';
   if (!regionPattern.test(region)) throw new Error('AWS_REGION is missing or invalid.');
 
+  const challengeId = env.CHECKPOINT_CHALLENGE_ID || 'wrong-upstream-port';
+  const checkpointImages = checkpointImagesFor(challengeId);
   const bundlePath = resolve(env.CHECKPOINT_IMAGE_BUNDLE ?? 'artifacts/checkpoint-images.tar');
-  const localConfigDigests = parseDockerArchiveManifest(run('tar', ['-xOf', bundlePath, 'manifest.json']));
+  const localConfigDigests = parseDockerArchiveManifest(
+    run('tar', ['-xOf', bundlePath, 'manifest.json']),
+    checkpointImages,
+  );
   for (const image of checkpointImages) {
     const loadedConfigDigest = run('docker', ['image', 'inspect', '--format', '{{.Id}}', image.localImage]);
     if (loadedConfigDigest !== localConfigDigests.get(image.name)) {
@@ -175,7 +186,7 @@ export function publishCheckpointImages({
   }
   const buildManifest = readReference(localConfigDigests.get('monitor'));
   if (
-    buildManifest?.id !== 'wrong-upstream-port' ||
+    buildManifest?.id !== challengeId ||
     buildManifest?.status !== 'draft' ||
     buildManifest?.environment?.image?.digest !== null ||
     buildManifest?.environment?.monitorImage?.digest !== null

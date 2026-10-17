@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -113,6 +113,39 @@ test('release inspection rejects a wrong account, ECR configuration, or embedded
       () => inspectRelease(config, awsRun(), () => ({ ...referenceBuild, title: 'changed' })),
       /Embedded build manifest does not match/,
     );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('DNS inspection binds its embedded manifest to the matching ECR repository and task family', () => {
+  const { directory, config, images } = fixture();
+  const build = JSON.parse(
+    readFileSync(new URL('../content/challenges/stale-dns-record/challenge.json', import.meta.url), 'utf8'),
+  );
+  images.buildManifestSha256 = manifestHash(build);
+  images.images.challenge.repository = build.environment.image.repository;
+  images.images.challenge.imageUri = images.images.challenge.imageUri.replace(
+    'wrong-upstream-port',
+    'stale-dns-record',
+  );
+  writeFileSync(config.imagesFile, JSON.stringify(images));
+  const task = referenceTask();
+  task.family = 'opsreplay-stale-dns-record';
+  task.taskDefinitionArn = task.taskDefinitionArn!.replace('wrong-upstream-port', 'stale-dns-record');
+  task.containerDefinitions![0]!.image = task.containerDefinitions![0]!.image!.replace(
+    'wrong-upstream-port',
+    'stale-dns-record',
+  );
+  config.taskDefinitionArn = task.taskDefinitionArn!;
+  try {
+    const release = inspectRelease(
+      config,
+      (command, args) => (args[0] === 'ecs' ? JSON.stringify({ taskDefinition: task }) : awsRun()(command, args)),
+      () => build,
+    );
+    assert.equal(release.admission.challenge.id, 'stale-dns-record');
+    assert.equal(release.admission.plan, 'pro');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

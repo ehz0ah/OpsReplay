@@ -339,3 +339,64 @@ test('publication rejects a non-main ref before using AWS', () => {
     rmSync(output.directory, { recursive: true, force: true });
   }
 });
+
+test('DNS bundle requires its own challenge and matching Monitor identities', async () => {
+  const { checkpointImagesFor } = await import('./publish-checkpoint-images.mjs');
+  const images = checkpointImagesFor('stale-dns-record');
+  assert.equal(images.find((v) => v.name === 'challenge').repository, 'opsreplay/challenge-stale-dns-record');
+  assert.equal(images.find((v) => v.name === 'monitor').localImage, 'opsreplay/monitor-stale-dns:dev');
+  const archive = images.map((image, i) => ({
+    RepoTags: [image.localImage],
+    Config: `${String(i + 1).repeat(64)}.json`,
+  }));
+  assert.equal(parseDockerArchiveManifest(JSON.stringify(archive), images).size, 3);
+  assert.throws(() => parseDockerArchiveManifest(JSON.stringify(archive)), /must contain exactly one/);
+  assert.throws(() => checkpointImagesFor('unknown'), /Unknown checkpoint Challenge/);
+});
+
+test('DNS publication reads only the selected image bundle and rejects a mismatched private manifest', async () => {
+  const { checkpointImagesFor } = await import('./publish-checkpoint-images.mjs');
+  const output = temporaryOutput();
+  const selected = checkpointImagesFor('stale-dns-record');
+  const configs = new Map(selected.map((image, i) => [image.localImage, digest(String.fromCharCode(97 + i))]));
+  const values = Object.fromEntries(
+    selected.map((image, i) => [
+      image.repository,
+      { digest: digest(String(i + 1)), configDigest: configs.get(image.localImage) },
+    ]),
+  );
+  const archive = JSON.stringify(
+    selected.map((image) => ({
+      RepoTags: [image.localImage],
+      Config: `blobs/sha256/${configs.get(image.localImage).slice(7)}`,
+    })),
+  );
+  const calls = [];
+  const run = (command, args) => {
+    calls.push([command, args]);
+    if (command === 'tar') return archive;
+    if (command === 'docker' && args[0] === 'image') return configs.get(args.at(-1));
+    if (command === 'aws' && args[0] === 'sts') return '123456789012';
+    if (command === 'aws' && args[1] === 'batch-get-image')
+      return batchResponse(args[args.indexOf('--repository-name') + 1], values);
+    throw new Error('Unexpected publication operation');
+  };
+  const env = environment(output, { CHECKPOINT_CHALLENGE_ID: 'stale-dns-record' });
+  try {
+    assert.throws(() => publishCheckpointImages({ env, run, readReference }), /draft reference manifest/);
+    assert.equal(
+      calls.some(([command]) => command === 'aws'),
+      false,
+    );
+    calls.length = 0;
+    const { manifest } = publishCheckpointImages({
+      env,
+      run,
+      readReference: () => ({ ...structuredClone(referenceManifest), id: 'stale-dns-record' }),
+    });
+    assert.equal(manifest.images.challenge.repository, 'opsreplay/challenge-stale-dns-record');
+    assert.ok(!JSON.stringify(calls).includes('challenge-wrong-upstream-port'));
+  } finally {
+    rmSync(output.directory, { recursive: true, force: true });
+  }
+});

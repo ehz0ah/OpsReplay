@@ -12,7 +12,9 @@ import { Template } from 'aws-cdk-lib/assertions';
 import { ReferenceEnvironmentStack } from '../../../infra/reference-environment-stack.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
-const challengePath = new URL('../../../content/challenges/wrong-upstream-port/', import.meta.url);
+const challengeId = process.env.OPSREPLAY_TEST_CHALLENGE ?? 'wrong-upstream-port';
+if (!['wrong-upstream-port', 'stale-dns-record'].includes(challengeId)) throw new Error('Unknown test Challenge.');
+const challengePath = new URL(`../../../content/challenges/${challengeId}/`, import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('challenge.json', challengePath)));
 const containers = new Set();
 const followers = new Set();
@@ -21,7 +23,7 @@ const synthesisDirectory = mkdtempSync(join(tmpdir(), 'opsreplay-reference-image
 let task;
 try {
   task = Template.fromStack(
-    new ReferenceEnvironmentStack(new App({ outdir: synthesisDirectory }), 'ReferenceImageTest'),
+    new ReferenceEnvironmentStack(new App({ outdir: synthesisDirectory }), 'ReferenceImageTest', { challengeId }),
   ).toJSON().Resources.ReferenceTask.Properties;
 } finally {
   rmSync(synthesisDirectory, { recursive: true, force: true });
@@ -308,14 +310,19 @@ async function startingWithMissingService(t, service, port) {
     () => exec(shop, 'curl', '--silent', '--output', '/dev/null', 'http://127.0.0.1/').status === 0,
     'Proxy did not start with its planted fault',
   );
-  const otherPorts = [80, 8080, 5432, 7681].filter((candidate) => candidate !== port);
+  const otherPorts = [
+    ['127.0.0.1', 80],
+    [challengeId === 'stale-dns-record' ? '127.0.0.2' : '127.0.0.1', 8080],
+    ['127.0.0.1', 5432],
+    ['127.0.0.1', 7681],
+  ].filter((candidate) => candidate[1] !== port);
   await eventually(
     () =>
       exec(
         shop,
         'python3',
         '-c',
-        `import socket\nfor port in ${JSON.stringify(otherPorts)}:\n with socket.create_connection(("127.0.0.1", port), timeout=1): pass`,
+        `import socket\nfor host, port in ${JSON.stringify(otherPorts)}:\n with socket.create_connection((host, port), timeout=1): pass`,
       ).status === 0,
     'Unrelated service listeners did not start',
   );
@@ -623,8 +630,12 @@ test(
     assert.notEqual(exec(shop, 'curl', '--silent', '--show-error', 'http://127.0.0.1:9443/healthz').status, 0);
 
     const trap = manifest.traps[0];
-    success(exec(shop, 'sh', '-ec', trap.safeAlternative.commands[0]));
-    assert.notEqual(exec(shop, 'sh', '-ec', trap.safeAlternative.commands[1]).status, 0);
+    for (const command of trap.safeAlternative.commands.slice(0, -1)) {
+      const result = exec(shop, 'sh', '-ec', command);
+      if (command === 'service coredns restart') assert.notEqual(result.status, 0);
+      else success(result);
+    }
+    assert.notEqual(exec(shop, 'sh', '-ec', trap.safeAlternative.commands.at(-1)).status, 0);
     await delay(6000);
     assert.equal(monitor.events('outage_started').length, 0, 'Failed reload should preserve the listener');
     assert.notEqual(exec(shop, 'service', 'nginx', 'restart').status, 0);
@@ -639,6 +650,16 @@ test(
           shop + ':/etc/nginx/nginx.conf',
         ),
       );
+      if (challengeId === 'stale-dns-record') {
+        success(
+          docker(
+            'cp',
+            fileURLToPath(new URL('image/rootfs/etc/coredns/internal.db', challengePath)),
+            shop + ':/etc/coredns/internal.db',
+          ),
+        );
+        success(exec(shop, 'service', 'coredns', 'restart'));
+      }
       success(exec(shop, 'service', 'nginx', 'start'));
       await eventually(
         () => exec(shop, 'sh', '-ec', 'test -s /run/nginx.pid && kill -0 "$(cat /run/nginx.pid)"').status === 0,
@@ -680,7 +701,10 @@ test(
     const captures = JSON.stringify(monitor.all().filter((r) => r.type === 'capture_verified'));
     for (const hidden of ['plantedFault', 'referenceFix', 'validators', 'MONITOR_SECRET'])
       assert.ok(!captures.includes(hidden));
-    assert.ok(captures.includes('proxy_pass'), 'Changed allowlisted config was not captured');
+    assert.ok(
+      captures.includes(challengeId === 'stale-dns-record' ? 'api IN A' : 'proxy_pass'),
+      'Changed allowlisted config was not captured',
+    );
     await stopMonitor(monitor);
 
     const alreadyHealthy = startMonitor(t, shop, 5_000);
@@ -703,7 +727,15 @@ test(
       'Initial failures were not measured',
     );
     await repaired(t, monitor, async () => {
-      success(exec(shop, 'sed', '-i', 's/127.0.0.1:8080/127.0.0.1:8081/', '/etc/shop/gunicorn.conf.py'));
+      success(
+        exec(
+          shop,
+          'sed',
+          '-i',
+          challengeId === 'stale-dns-record' ? 's/127.0.0.2:8080/127.0.0.3:8080/' : 's/127.0.0.1:8080/127.0.0.1:8081/',
+          '/etc/shop/gunicorn.conf.py',
+        ),
+      );
       success(exec(shop, 'service', 'shop', 'restart'));
     });
     assert.equal(monitor.events('outage_started').length, 0, 'Changing the app listener does not stop the proxy');
