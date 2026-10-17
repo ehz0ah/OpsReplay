@@ -114,6 +114,88 @@ test('a recording can exceed one-page array limits while each read remains bound
     /snapshot/,
   );
 });
+
+test('explicit playback continuation keeps every reference and the earliest link expiry', async () => {
+  const pages = [
+    { ...recording, terminal: [], metrics: [], captures: [], nextCursor: 'page-2', expiresAt: '2026-10-16T00:05:00Z' },
+    {
+      ...recording,
+      terminal: [recording.terminal[0]],
+      metrics: [],
+      captures: [],
+      nextCursor: 'page-3',
+      expiresAt: '2026-10-16T00:04:00Z',
+    },
+    {
+      ...recording,
+      terminal: [],
+      metrics: recording.metrics,
+      captures: recording.captures,
+      nextCursor: null,
+      expiresAt: '2026-10-16T00:06:00Z',
+    },
+  ];
+  const urls: string[] = [];
+  const api = new ApiClient(
+    'https://api.example',
+    async () => 'token',
+    async (url) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify(pages[urls.length - 1]));
+    },
+  );
+  const controller = new AbortController();
+  let combined = await playbackPage(api, id, controller.signal);
+  assert.equal(urls.length, 1, 'First read must not consume continuation pages');
+  while (combined.nextCursor) {
+    const page = await playbackPage(api, id, controller.signal, combined.nextCursor);
+    combined = appendPlayback(combined, page);
+  }
+  assert.deepEqual(
+    urls.map((url) => new URL(url).searchParams.get('cursor')),
+    [null, 'page-2', 'page-3'],
+  );
+  assert.deepEqual(combined.terminal, recording.terminal);
+  assert.deepEqual(combined.metrics, recording.metrics);
+  assert.deepEqual(combined.captures, recording.captures);
+  assert.equal(combined.expiresAt, pages[1]!.expiresAt);
+  assert.equal(combined.nextCursor, null);
+});
+
+test('an expired playback object can be retried with refreshed links without changing saved output', async () => {
+  const bytes = 'recorded output';
+  let generation = 0;
+  const api = new ApiClient(
+    'https://api.example',
+    async () => 'token',
+    async () =>
+      new Response(
+        JSON.stringify({
+          ...recording,
+          terminal: [
+            { ...recording.terminal[0], url: `https://bucket.s3.amazonaws.com/output?generation=${++generation}` },
+          ],
+          metrics: [],
+          captures: [],
+          nextCursor: null,
+        }),
+      ),
+  );
+  const controller = new AbortController();
+  const first = await playbackPage(api, id, controller.signal);
+  await assert.rejects(
+    readAsset(first.terminal[0]!.url, controller.signal, 100, async () => new Response('', { status: 403 })),
+    AssetExpired,
+  );
+  const refreshed = await playbackPage(api, id, controller.signal);
+  assert.notEqual(first.terminal[0]!.url, refreshed.terminal[0]!.url);
+  assert.equal(refreshed.terminal[0]!.startedAt, first.terminal[0]!.startedAt);
+  assert.equal(refreshed.terminal[0]!.endedAt, first.terminal[0]!.endedAt);
+  assert.equal(
+    await readAsset(refreshed.terminal[0]!.url, controller.signal, 100, async () => new Response(bytes)),
+    bytes,
+  );
+});
 test('debrief pending honors the server delay and incomplete results retain a null score', async () => {
   let calls = 0,
     delay = 0;

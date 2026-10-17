@@ -29,6 +29,11 @@ https://<browser-host> .local/config.json`. The output must not already exist.
    playback with the deployed browser. Check the browser console and failed requests.
    Local fixtures do not prove Cognito, CORS, CloudFront or AWS behavior.
 
+`npm run web:test` also uses Docker for the browser-to-handler DynamoDB Local
+recovery tests. Those tests use dummy credentials and simulated external adapters;
+they make no AWS calls. The reviewed live follow-up uses the
+[browser verification checklist](runbooks/browser-checkpoint-verification.md).
+
 The asset bucket is private. CloudFront has signed reads limited to `index.html`,
 `config.json` and `assets/*`, bound to that distribution ARN. An operator needs only
 upload permissions for those paths. The stack creates no publisher Lambda.

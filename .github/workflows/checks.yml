@@ -138,5 +138,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: docker pull amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
       - run: npm run web:test
       - run: npm run web:build
+      - name: Remove browser test databases after failure or cancellation
+        if: always()
+        run: docker ps -aq --filter label=opsreplay.test=session-start | xargs -r docker rm -f
