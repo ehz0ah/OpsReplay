@@ -3,29 +3,26 @@
 Status: current work plan for six contributors. No assignments are implied. Agree owners
 before overlapping work. Work packages are responsibility groups, not a waterfall.
 
-An operator-seeded terminal-to-result path for the first Challenge passed a disposable
-AWS checkpoint on 15 October 2026. It did not exercise Cognito, API Gateway, or session
-start. The assistant-free browser is now implemented locally: catalogue/account reads,
-PKCE sign-in, start/resume, terminal, telemetry, hints, outcome, debrief, playback and
-retry. Static hosting is defined. A later AWS checkpoint must verify this browser path.
-The selected retained resources are now owned
-by the durable stack. See the [checkpoint report](checkpoints/2026-10-15-terminal.md).
+The reference Challenge passed a disposable AWS browser checkpoint on 17 October 2026. One learner completed a recovery and a fresh retry through Cognito, API
+Gateway, terminal, debrief and S3 playback. All temporary runtime resources were
+removed. The durable stack retains data resources. See the
+[checkpoint report](checkpoints/2026-10-17-browser.md) for findings and untested cases.
 
 ## Work packages
 
-| ID  | State                         | Work                                                                                      | Completion evidence                                                                                                |
-| --- | ----------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| I01 | Implemented                   | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                               |
-| I02 | Implemented                   | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                               |
-| I03 | Core implemented              | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local reconnect and recording tests; one AWS session. Assistant proposal execution remains with I08                |
-| I04 | Implemented                   | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Failure-injection tests and one operator-seeded AWS lifecycle                                                      |
-| I05 | First checkpoint complete     | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [15 October checkpoint](checkpoints/2026-10-15-terminal.md). Browser, REST entry, and load remain                  |
-| I06 | Implemented locally           | Browser terminal, dashboard, timeline, hints, and outcome                                 | Alert-to-outcome flow without the assistant                                                                        |
-| I07 | Browser implemented locally   | Debrief, score components, playback, and retry                                            | Local contract tests and local handler reads against AWS data. Browser/asset checks pass; AWS browser reads remain |
-| I08 | Not started                   | Optional assistant and confirmed proposals                                                | Benchmark, leakage tests, and provider-failure recovery                                                            |
-| I09 | Catalogue/account implemented | Catalogue, account, and plans; later Learn and Code Review                                | Free and Pro access enforcement and matching tests                                                                 |
-| I10 | Not started                   | Additional validated Challenges                                                           | Scenario evidence and independent content review                                                                   |
-| I11 | Not started                   | System and user evaluation, cost comparison, demo, and report                             | Reproducible measurements and pilot results                                                                        |
+| ID  | State                         | Work                                                                                      | Completion evidence                                                                                         |
+| --- | ----------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| I01 | Implemented                   | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                        |
+| I02 | Implemented                   | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                        |
+| I03 | Core implemented              | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local tests and AWS browser resume/recording; assistant proposals remain with I08                           |
+| I04 | Implemented                   | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Local failure-injection tests and two browser-started AWS attempts                                          |
+| I05 | Browser checkpoint complete   | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [17 October checkpoint](checkpoints/2026-10-17-browser.md). Load and remaining failure cases are unverified |
+| I06 | Browser checked on AWS        | Browser terminal, dashboard, timeline, hints, and outcome                                 | Real alert-to-outcome flow; command matching and telemetry follow-ups remain                                |
+| I07 | Browser checked on AWS        | Debrief, score components, playback, and retry                                            | Real debrief, recorded terminal, metrics/captures and fresh retry; expiry/pagination limits remain          |
+| I08 | Not started                   | Optional assistant and confirmed proposals                                                | Benchmark, leakage tests, and provider-failure recovery                                                     |
+| I09 | Catalogue/account implemented | Catalogue, account, and plans; later Learn and Code Review                                | Free and Pro access enforcement and matching tests                                                          |
+| I10 | Not started                   | Additional validated Challenges                                                           | Scenario evidence and independent content review                                                            |
+| I11 | Not started                   | System and user evaluation, cost comparison, demo, and report                             | Reproducible measurements and pilot results                                                                 |
 
 The browser and bootstrap reads share the public contracts. AWS verification remains
 separate from local implementation. Shared contract changes are coordinated, not
@@ -33,18 +30,20 @@ redefined in each module.
 
 ## First milestone
 
-The backend is implemented, and the checkpoint covered the cloud runtime after operator
-setup. The browser implementation has local coverage. The milestone remains open until
-normal browser entry and this complete path pass on AWS:
+The first integrated browser milestone passed on AWS for one reference Challenge:
 
 ```text
 Start -> task ready -> alert -> terminal investigation -> configuration fix
       -> validators sustained -> debrief -> playback -> retry in a fresh task
 ```
 
-For the reference Challenge, demonstrate at least one trap with its real effect, such as
-a restart with a broken configuration taking the proxy down. This matters more than more
-Challenges or a polished assistant.
+Before the pilot, correct compound-command evidence matching and reconcile
+dashboard descriptors with measured signals. Review existing tests before adding
+coverage for uncertain start, cross-owner access, expiry and playback continuation.
+These checks remain separate from the completed normal browser flow.
+
+The checkpoint demonstrated the required trap: restarting nginx with invalid
+configuration stopped the proxy. Keep this real consequence in the demonstration.
 
 AWS is the deployment target. Use Lambda handlers and the real DynamoDB adapter from
 the start. Test locally with DynamoDB Local, image tests, and bounded fault injection.

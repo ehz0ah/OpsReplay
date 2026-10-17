@@ -2,7 +2,9 @@
 
 The browser uses `OpsReplayBrowserHosting`. The runtime retains its separate terminal
 CloudFront route. Both origins use default AWS hostnames. No custom domain is required.
-This definition has local synthesis coverage. It has not been deployed to AWS.
+A disposable deployment exercised the real browser flow on 17 October 2026.
+See the [checkpoint report](checkpoints/2026-10-17-browser.md) for the tested
+revision, findings and limits. No runtime remains deployed.
 
 ## Order
 

@@ -9,28 +9,24 @@ and session playback.
 
 ## Current status
 
-**Current phase:** the backend path for one reference Challenge is implemented. A
-disposable AWS checkpoint exercised one operator-seeded session from CloudFront terminal
-ingress through stored results on 15 October 2026. It was then removed. The learner web
-application is implemented locally. Normal AWS browser entry and playback validation
-are the next deployment checkpoint.
+**Current phase:** one reference Challenge passed the real AWS browser flow on
+17 October 2026: Cognito sign-in, start, investigation, harmful action, repair,
+sustained recovery, debrief, playback and a fresh retry. All temporary resources
+were removed. Debrief command matching and unsupported dashboard signals need
+focused follow-up before a learner pilot.
 
-| Area                                   | Status                                                                                               |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Wrong upstream port Challenge          | Runnable and tested locally and on AWS                                                               |
-| Monitor and validators                 | Implemented with authenticated control, metrics, captures, and recovery checks                       |
-| Gateway                                | Implemented with terminal relay, live telemetry, recording, and reconnect handling                   |
-| Session backend                        | Implemented for start, status, tickets, hints, end, lifecycle recovery, and cleanup                  |
-| Results                                | Deterministic debrief, timeline, playback export, and retry support are implemented                  |
-| AWS infrastructure                     | One operator-seeded terminal-to-result checkpoint passed; no runtime is deployed                     |
-| Web application                        | Catalogue, PKCE authentication, terminal, telemetry, hints, debrief and playback implemented locally |
-| Catalogue and account bootstrap APIs   | Implemented locally; AWS integration pending                                                         |
-| Learn, Code Review, and assistant APIs | Not implemented                                                                                      |
-| Additional Challenges and evaluation   | Planned after the first learner-facing flow                                                          |
+| Area                                     | Status                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                |
+| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS        |
+| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts |
+| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                  |
+| Learn, Code Review and assistant APIs    | Not implemented                                                                    |
+| Additional Challenges and evaluation     | Pending                                                                            |
 
-See the [15 October AWS checkpoint report](docs/checkpoints/2026-10-15-terminal.md)
-for the tested commit, setup, results, limitations, and teardown state. It did not test
-browser sign-in, API Gateway authentication, or session start.
+The [17 October browser checkpoint](docs/checkpoints/2026-10-17-browser.md) records
+the revision, results, findings and limits. It does not establish classroom
+capacity, learning effectiveness or complete failure-path coverage.
 
 ## Product scope
 
