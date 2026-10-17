@@ -1,3 +1,5 @@
+import { Alert, Badge, Button, Group, Modal, Progress, Tabs } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { useTelemetry } from '../telemetry/use-telemetry.js';
 import { freshSample } from '../telemetry/state.js';
 import { Metric } from '../components/metric.js';
@@ -18,6 +20,9 @@ import { Failure } from '../components/failure.js';
 import { navigate } from '../navigation.js';
 export function SessionEntry({ id }: { id: string }) {
   const alive = useAlive();
+  const wide = useMediaQuery('(min-width: 1100px)');
+  const [tab, setTab] = useState<string | null>('terminal');
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const session = useSession(id),
     auth = useAuth(),
     api = useApi();
@@ -30,8 +35,8 @@ export function SessionEntry({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, []);
   async function end() {
-    if (ending || !confirm('End this attempt? It cannot be resumed. The incident clock continues while you decide.'))
-      return;
+    if (ending) return;
+    setConfirmEnd(false);
     setEnding(true);
     setEndError(null);
     try {
@@ -51,14 +56,25 @@ export function SessionEntry({ id }: { id: string }) {
     remaining = view ? timeRemaining(view, now) : null;
   return (
     <>
-      <button className="secondary" onClick={() => navigate('/')}>
+      <Modal opened={confirmEnd} onClose={() => setConfirmEnd(false)} title="End this attempt?" centered>
+        <p>This attempt cannot be resumed after it ends. The incident clock continues while you decide.</p>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setConfirmEnd(false)} data-autofocus>
+            Keep investigating
+          </Button>
+          <Button color="red" onClick={() => void end()} disabled={ending}>
+            End attempt
+          </Button>
+        </Group>
+      </Modal>
+      <Button variant="default" onClick={() => navigate('/')}>
         All Challenges
-      </button>
+      </Button>
       <Failure error={session.error} retry={session.refresh} />
       {session.error instanceof ApiError && session.error.status === 401 && (
-        <button onClick={() => void auth.signIn()}>Sign in again</button>
+        <Button onClick={() => void auth.signIn()}>Sign in again</Button>
       )}
-      <Failure error={endError} retry={() => void end()} />
+      <Failure error={endError} retry={() => setConfirmEnd(true)} />
       {!view && !session.error && <p role="status">Reading your attempt…</p>}
       {view && (
         <>
@@ -68,99 +84,137 @@ export function SessionEntry({ id }: { id: string }) {
                 {view.challenge.category} / {view.challenge.tier}
               </p>
               <h1>{view.challenge.title}</h1>
-              <span className="badge">
+              <p className="muted">
                 Attempt {view.attempt.number} · {view.attempt.kind}
-              </span>
-            </div>
-            <div className="stack">
-              <span className="badge">{view.status}</span>
-              {remaining !== null && !terminal(view.status) && (
-                <strong aria-label="Time remaining">
-                  {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
-                </strong>
-              )}
-            </div>
-          </header>
-          {view.status === 'provisioning' ? (
-            <div role="status" className="notice">
-              <p>Your isolated environment is starting. This can take tens of seconds.</p>
-              <p>
-                The incident clock starts when the environment is ready. You can leave this page and resume the attempt.
               </p>
             </div>
+            <Group gap="md" className="attempt-status">
+              <Badge variant="light" color={view.status === 'ready' ? 'teal' : 'gray'}>
+                {view.status}
+              </Badge>
+              {remaining !== null && !terminal(view.status) && (
+                <div className="clock">
+                  <span>Time remaining</span>
+                  <strong aria-label="Time remaining">
+                    {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                  </strong>
+                </div>
+              )}
+            </Group>
+          </header>
+          {view.status === 'provisioning' ? (
+            <Alert title="Starting your environment" role="status">
+              This can take tens of seconds. The incident clock starts when the environment is ready. You can leave this
+              page and resume the attempt.
+            </Alert>
           ) : terminal(view.status) ? (
-            <div role="status" className="notice">
-              <h2>Attempt {view.status}</h2>
+            <Alert title={`Attempt ${view.status}`} role="status" color="gray">
               <p>{view.statusReason?.replaceAll('_', ' ') ?? 'The attempt has ended.'}</p>
               {view.readyAt === null ? (
                 <p>This environment did not reach readiness. Return to Challenges after cleanup to try again.</p>
               ) : view.debriefAvailable ? (
-                <button onClick={() => navigate(`/sessions/${id}/debrief`)}>Open debrief</button>
+                <Button onClick={() => navigate(`/sessions/${id}/debrief`)}>Open debrief</Button>
               ) : (
                 <p>Your debrief is being prepared. Status updates continue automatically.</p>
               )}
+            </Alert>
+          ) : null}
+          <div className="incident-strip">
+            <Badge color="red" variant="light">
+              {view.alert.severity}
+            </Badge>
+            <div>
+              <strong>{view.alert.title}</strong>
+              <p>{view.alert.summary}</p>
             </div>
-          ) : (
-            <p className="muted">
-              Traffic and failures continue while you investigate or reconnect. Recovery is confirmed by the server.
-            </p>
-          )}
-          <section className="panel">
-            <h2>{view.alert.title}</h2>
-            <p>{view.alert.summary}</p>
-            <span className="badge">{view.alert.severity}</span>
-          </section>
-          {view.status === 'ready' && (
-            <Suspense fallback={<p role="status">Opening terminal…</p>}>
-              <TerminalView
-                id={id}
-                enabled={!ending && !endError}
-                refresh={session.refresh}
-                onFrame={telemetry.frame}
-                onConnection={telemetry.connection}
+          </div>
+          {view.recovery && (
+            <div className="recovery-strip" role="status">
+              <strong>Recovery: {view.recovery.state}</strong>
+              <Progress
+                aria-label="Sustained recovery"
+                value={Math.min(
+                  100,
+                  (view.recovery.sustainedSeconds / Math.max(1, view.recovery.requiredSeconds)) * 100,
+                )}
+                color="teal"
               />
-            </Suspense>
+              <span>
+                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds}s sustained
+              </span>
+            </div>
           )}
           {view.status === 'ready' && (
             <>
-              <section className="panel">
-                <h2>Service telemetry</h2>
-                {(!freshSample(telemetry.samples.at(-1), now, telemetry.connected) || telemetry.unavailable) && (
-                  <p role="status" className="notice">
-                    Telemetry is unavailable or stale. These values do not prove current system health.
-                  </p>
-                )}
-                <div className="metric-grid">
-                  {view.dashboard.map((descriptor) => (
-                    <Metric key={descriptor.id} descriptor={descriptor} samples={telemetry.samples} />
-                  ))}
-                </div>
-                <p className="muted">
-                  {telemetry.samples.at(-1)
-                    ? `Last sample: ${new Date(telemetry.samples.at(-1)!.at).toLocaleTimeString()}`
-                    : 'Waiting for a saved Monitor sample.'}
-                </p>
-              </section>
-              <Hints view={view} now={now} refresh={session.refresh} disabled={ending || Boolean(endError)} />
-              <Failure error={telemetry.error} />
-              <Timeline items={telemetry.events} />
-            </>
-          )}
-          {view.recovery && (
-            <section className="panel">
-              <h2>Recovery: {view.recovery.state}</h2>
-              <p>
-                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds} seconds sustained
+              <p className="workspace-note">
+                Traffic and failures continue while you read or reconnect. Recovery is confirmed by the server.
               </p>
-            </section>
+              <Tabs
+                value={wide && tab === 'terminal' ? 'telemetry' : tab}
+                onChange={setTab}
+                keepMounted
+                keepMountedMode="display-none"
+                className="investigation-workspace"
+              >
+                <Tabs.List aria-label="Investigation panels">
+                  <Tabs.Tab value="terminal" className="terminal-tab">
+                    Terminal
+                  </Tabs.Tab>
+                  <Tabs.Tab value="telemetry">Telemetry</Tabs.Tab>
+                  <Tabs.Tab value="timeline">Timeline</Tabs.Tab>
+                  <Tabs.Tab value="hints">Hints</Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel value="terminal" className="workspace-terminal">
+                  <Suspense fallback={<p role="status">Opening terminal…</p>}>
+                    <TerminalView
+                      id={id}
+                      enabled={!ending && !endError}
+                      refresh={session.refresh}
+                      onFrame={telemetry.frame}
+                      onConnection={telemetry.connection}
+                    />
+                  </Suspense>
+                </Tabs.Panel>
+                <Tabs.Panel value="telemetry" className="workspace-evidence">
+                  <section className="telemetry-panel" aria-label="Service telemetry">
+                    <div className="section-heading">
+                      <h2>Service telemetry</h2>
+                      <span className="muted">Live Monitor samples</span>
+                    </div>
+                    {(!freshSample(telemetry.samples.at(-1), now, telemetry.connected) || telemetry.unavailable) && (
+                      <Alert role="status" color="yellow">
+                        Telemetry is unavailable or stale. These values do not prove current system health.
+                      </Alert>
+                    )}
+                    <div className="metric-grid">
+                      {view.dashboard.map((descriptor) => (
+                        <Metric key={descriptor.id} descriptor={descriptor} samples={telemetry.samples} />
+                      ))}
+                    </div>
+                    <p className="muted sample-time">
+                      {telemetry.samples.at(-1)
+                        ? `Last sample: ${new Date(telemetry.samples.at(-1)!.at).toLocaleTimeString()}`
+                        : 'Waiting for a saved Monitor sample.'}
+                    </p>
+                    <Failure error={telemetry.error} />
+                  </section>
+                </Tabs.Panel>
+                <Tabs.Panel value="timeline" className="workspace-evidence">
+                  <Timeline items={telemetry.events} />
+                </Tabs.Panel>
+                <Tabs.Panel value="hints" className="workspace-evidence">
+                  <Hints view={view} now={now} refresh={session.refresh} disabled={ending || Boolean(endError)} />
+                </Tabs.Panel>
+              </Tabs>
+            </>
           )}
           {remaining === 0 && !terminal(view.status) && (
             <p role="status">The displayed time budget has elapsed. Waiting for the server outcome.</p>
           )}
           {!terminal(view.status) && (
-            <button className="secondary" disabled={ending} onClick={() => void end()}>
+            <Button variant="default" disabled={ending} onClick={() => setConfirmEnd(true)}>
               {ending ? 'Confirming outcome…' : 'End attempt'}
-            </button>
+            </Button>
           )}
         </>
       )}

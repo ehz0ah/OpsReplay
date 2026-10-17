@@ -1,3 +1,4 @@
+import { Button } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 import { CataloguePage } from './pages/catalogue.js';
@@ -24,17 +25,26 @@ export function App() {
           OpsReplay<span>Incident practice</span>
         </a>
         <div className="actions">
-          <span className="status-label">Single-player workspace</span>
-          <button
-            className="secondary"
+          <a
+            className="site-navigation"
+            href="/"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('/');
+            }}
+          >
+            Challenges
+          </a>
+          <Button
+            variant="default"
             disabled={auth.loading}
             onClick={() => void (auth.identity ? auth.signOut() : auth.signIn())}
           >
             {auth.loading ? 'Connecting…' : auth.identity ? 'Sign out' : 'Sign in'}
-          </button>
+          </Button>
         </div>
       </header>
-      <main id="main" className="page">
+      <main id="main" tabIndex={-1} className={path === '/' ? 'page catalogue-page' : 'page workspace-page'}>
         {auth.message && (
           <p role="alert" className="notice error">
             {auth.message}
@@ -42,14 +52,11 @@ export function App() {
         )}
         {path === '/' && (
           <>
-            {' '}
-            <p className="eyebrow">Production engineering / Practice</p>
-            <h1>
-              Learn production failures
-              <br />
-              by investigating them.
-            </h1>
-            <p className="intro">Read the signals. Test your hypothesis. Restore service, then review the evidence.</p>
+            <p className="eyebrow">Production engineering</p>
+            <h1>Practice incident response.</h1>
+            <p className="intro">
+              Investigate a live failure in an isolated environment. Repair it, then review your evidence and response.
+            </p>
           </>
         )}
         {path === '/' ? (
@@ -71,7 +78,7 @@ export function App() {
             <section className="panel">
               <h2>Sign in to resume this attempt.</h2>
               <p>The incident clock continues while you are disconnected.</p>
-              <button onClick={() => void auth.signIn()}>Sign in</button>
+              <Button onClick={() => void auth.signIn()}>Sign in</Button>
             </section>
           )
         ) : (

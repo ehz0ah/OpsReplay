@@ -1,3 +1,4 @@
+import { Button } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -95,11 +96,11 @@ export default function RecordedTerminal({
             ))}
           </select>
         </label>
-        <button disabled={playing || tracks.length === 0} onClick={() => void play()}>
+        <Button disabled={playing || tracks.length === 0} onClick={() => void play()}>
           Replay
-        </button>
-        <button
-          className="secondary"
+        </Button>
+        <Button
+          variant="default"
           disabled={!playing}
           onClick={() => {
             controller.current?.abort();
@@ -107,7 +108,7 @@ export default function RecordedTerminal({
           }}
         >
           Stop
-        </button>
+        </Button>
       </div>
       <Failure error={error} />
       <div ref={host} className="terminal-host" aria-label="Recorded terminal output" />

@@ -1,6 +1,6 @@
 # Browser application
 
-Static React application built by Vite. Client libraries are build dependencies, so
+Static React application built by Vite with Mantine controls. Client libraries are build dependencies, so
 production-only backend installs do not include them. Public DTOs come from `public.schema.json`;
 `contracts:check` rejects stale checked-in types and compiles browser validators without
 runtime `eval`. Private contracts and Challenge files are never imported by this app.
@@ -21,8 +21,8 @@ Build output is `dist/web`. Configuration is loaded from `/config.json` without 
 An absent or invalid configuration shows a recoverable error. Production redirects must
 use the exact HTTPS browser origin. Hosting remains separate from this boundary.
 
-Follow [design](../../docs/design.md) and [API](../../docs/api.md). The following PRs add
-Cognito sign-in, entry, live workspace and results. Runtime state, recovery and scores
+Follow [design](../../docs/design.md) and [API](../../docs/api.md) for Cognito sign-in,
+entry, live workspace and results. Runtime state, recovery and scores
 remain backend-owned.
 
 `npm run typecheck` checks the server, browser and browser test/tooling projects
@@ -48,3 +48,14 @@ backs off after throttling. Its real-time countdown displays the saved deadline 
 deciding the outcome. Ending requires confirmation and preserves the same request ID
 until the server confirms its result. Terminal outcomes stop interaction and lead to
 the debrief when the backend marks it available.
+
+The workspace shows the terminal beside an evidence panel on desktop. Narrow screens
+use labelled tabs. Tabs use display-only hiding to keep the shell connection and typed
+input alive. Do not use React Activity hiding for the terminal. Size changes use one
+animation-frame resize and never open a new shell. Ctrl+Shift+F6 moves focus from the
+terminal to its screen-reader control without sending the shortcut to Bash.
+
+Mantine styles are imported only for used components. Theme values live in `src/theme.ts`;
+workspace layout lives in `src/styles.css`. Keep labels, focus, stale-data messages,
+hint confirmation, and end confirmation when changing the presentation. Charts retain
+missing-data gaps and provide the latest 60 samples in a table.

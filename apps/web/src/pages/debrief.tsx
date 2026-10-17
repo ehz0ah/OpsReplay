@@ -1,3 +1,4 @@
+import { Button } from '@mantine/core';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { ApiError } from '../api.js';
@@ -146,9 +147,9 @@ export function DebriefPage({ id }: { id: string }) {
   const visible = samples.filter((sample) => at === null || Date.parse(sample.at) <= at).slice(-120);
   return (
     <>
-      <button className="secondary" onClick={() => navigate('/')}>
+      <Button variant="default" onClick={() => navigate('/')}>
         All Challenges
-      </button>
+      </Button>
       <Failure
         error={error}
         retry={() => {
@@ -173,7 +174,7 @@ export function DebriefPage({ id }: { id: string }) {
               unavailable.
             </p>
           )}
-          <section className="panel">
+          <section className="panel response-results">
             <h2>Response results</h2>
             {debrief.score ? (
               <dl className="metric-grid">
@@ -205,103 +206,101 @@ export function DebriefPage({ id }: { id: string }) {
               {debrief.assistance.proposalsRun} proposals.
             </p>
           </section>
-          <section className="panel">
-            <h2>Root cause</h2>
-            <p>{debrief.rootCause}</p>
-            <ol>
-              {debrief.causalChain.map((step, index) => (
-                <li key={index}>{step}</li>
-              ))}
-            </ol>
-          </section>
-          <section className="panel">
-            <h2>Evidence</h2>
-            <p className="muted">
-              Observed means matching saved output. It does not prove understanding. Not observed means no matching
-              record.
-            </p>
-            {debrief.keyEvidence.map((item) => (
-              <p key={item.id}>
-                <span className="badge">{item.status.replaceAll('_', ' ')}</span> {item.description}
-                {item.commandSeq !== null && ` · command ${item.commandSeq}`}
+          <div className="debrief-grid">
+            <section className="panel">
+              <h2>Root cause</h2>
+              <p>{debrief.rootCause}</p>
+              <ol>
+                {debrief.causalChain.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+            </section>
+            <section className="panel">
+              <h2>Evidence</h2>
+              <p className="muted">
+                Observed means matching saved output. It does not prove understanding. Not observed means no matching
+                record.
               </p>
-            ))}
-          </section>
-          <section className="panel">
-            <h2>Possible harmful actions</h2>
-            <p className="muted">These are command and timing associations. They do not establish causality.</p>
-            {debrief.possibleHarmfulActions.length === 0 ? (
-              <p>No recorded associations.</p>
-            ) : (
-              debrief.possibleHarmfulActions.map((item) => (
+              {debrief.keyEvidence.map((item) => (
                 <p key={item.id}>
-                  Command {item.commandSeq}: {item.description}
+                  <span className="badge">{item.status.replaceAll('_', ' ')}</span> {item.description}
+                  {item.commandSeq !== null && ` · command ${item.commandSeq}`}
                 </p>
-              ))
-            )}
-            {debrief.outages.map((outage, index) => (
-              <p key={index}>
-                {outage.label}: {new Date(outage.startedAt).toLocaleTimeString()} to{' '}
-                {outage.endedAt ? new Date(outage.endedAt).toLocaleTimeString() : 'outcome cutoff'}
-              </p>
-            ))}
-          </section>
-          <section className="panel">
-            <h2>Recommended recovery</h2>
-            <ol>
-              {debrief.recommendedRecovery.map((step, index) => (
-                <li key={index}>{step}</li>
               ))}
-            </ol>
-            {debrief.sources.map((source, index) => (
-              <p key={index}>
-                <a
-                  href={
-                    /^https?:\/\//.test(source.url) && !new URL(source.url).username && !new URL(source.url).password
-                      ? source.url
-                      : undefined
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {source.title}
-                </a>
-              </p>
-            ))}
-          </section>
+            </section>
+            <section className="panel">
+              <h2>Possible harmful actions</h2>
+              <p className="muted">These are command and timing associations. They do not establish causality.</p>
+              {debrief.possibleHarmfulActions.length === 0 ? (
+                <p>No recorded associations.</p>
+              ) : (
+                debrief.possibleHarmfulActions.map((item) => (
+                  <p key={item.id}>
+                    Command {item.commandSeq}: {item.description}
+                  </p>
+                ))
+              )}
+              {debrief.outages.map((outage, index) => (
+                <p key={index}>
+                  {outage.label}: {new Date(outage.startedAt).toLocaleTimeString()} to{' '}
+                  {outage.endedAt ? new Date(outage.endedAt).toLocaleTimeString() : 'outcome cutoff'}
+                </p>
+              ))}
+            </section>
+            <section className="panel">
+              <h2>Recommended recovery</h2>
+              <ol>
+                {debrief.recommendedRecovery.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+              {debrief.sources.map((source, index) => (
+                <p key={index}>
+                  <a
+                    href={
+                      /^https?:\/\//.test(source.url) && !new URL(source.url).username && !new URL(source.url).password
+                        ? source.url
+                        : undefined
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {source.title}
+                  </a>
+                </p>
+              ))}
+            </section>
+          </div>
           <div className="actions">
-            <button disabled={busy || now < retryAt} onClick={() => void task(() => links())}>
+            <Button disabled={busy || now < retryAt} onClick={() => void task(() => links())}>
               {playback ? 'Refresh recording links' : 'Load recording'}
-            </button>
+            </Button>
             {playback?.nextCursor && (
-              <button
-                className="secondary"
-                disabled={busy || now < retryAt}
-                onClick={() => void task(() => links(true))}
-              >
+              <Button variant="default" disabled={busy || now < retryAt} onClick={() => void task(() => links(true))}>
                 Load next recording page
-              </button>
+              </Button>
             )}
-            <button
-              className="secondary"
+            <Button
+              variant="default"
               disabled={busy || events.length >= 16000 || (!cursor && events.length > 0)}
               onClick={() => void task(timeline)}
             >
               {events.length ? 'Load more timeline' : 'Load timeline'}
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={busy || !account.data || (!!account.data.activeSessionId && !pending) || now < retryAt}
               onClick={() => void task(retry)}
             >
-              {pending ? 'Recover retry request' : 'Retry as a new attempt'}
-            </button>
+              {pending ? 'Recover retry request' : 'Retry in a fresh environment'}
+            </Button>
           </div>
           {account.data?.activeSessionId && (
             <p>
               Another attempt is active or awaiting cleanup.{' '}
-              <button className="secondary" onClick={() => navigate(`/sessions/${account.data!.activeSessionId}`)}>
+              <Button variant="default" onClick={() => navigate(`/sessions/${account.data!.activeSessionId}`)}>
                 Open attempt
-              </button>
+              </Button>
             </p>
           )}
           {now < retryAt && <p role="status">Try again in {Math.ceil((retryAt - now) / 1000)} seconds.</p>}
@@ -314,22 +313,27 @@ export function DebriefPage({ id }: { id: string }) {
                 {playback.nextCursor ? 'More pages are available.' : 'All recording pages are loaded.'} Recording links
                 expire at {new Date(playback.expiresAt).toLocaleTimeString()}. Refresh them after expiry.
               </p>
-              <Suspense fallback={<p>Opening recorded terminal…</p>}>
-                <RecordedTerminal
-                  key={id + ':' + playbackRevision}
-                  tracks={playback.terminal}
-                  highlights={playback.highlights}
-                  onTime={setAt}
-                />
-              </Suspense>
-              <button className="secondary" disabled={busy || now < retryAt} onClick={() => void task(metrics)}>
-                Load saved metrics
-              </button>
-              {at !== null && <p>Playback time: {new Date(at).toLocaleTimeString()}</p>}
-              <div className="metric-grid">
-                {session.data?.dashboard.map((descriptor) => (
-                  <Metric key={descriptor.id} descriptor={descriptor} samples={visible} />
-                ))}
+              <div className="playback-workspace">
+                <Suspense fallback={<p>Opening recorded terminal…</p>}>
+                  <RecordedTerminal
+                    key={id + ':' + playbackRevision}
+                    tracks={playback.terminal}
+                    highlights={playback.highlights}
+                    onTime={setAt}
+                  />
+                </Suspense>
+                <section className="panel">
+                  <h2>Saved telemetry</h2>
+                  <Button variant="default" disabled={busy || now < retryAt} onClick={() => void task(metrics)}>
+                    Load saved metrics
+                  </Button>
+                  {at !== null && <p>Playback time: {new Date(at).toLocaleTimeString()}</p>}
+                  <div className="metric-grid">
+                    {session.data?.dashboard.map((descriptor) => (
+                      <Metric key={descriptor.id} descriptor={descriptor} samples={visible} />
+                    ))}
+                  </div>
+                </section>
               </div>
               <section className="panel">
                 <h2>Saved capture intervals</h2>
@@ -337,8 +341,8 @@ export function DebriefPage({ id }: { id: string }) {
                   Captures show a baseline and a read interval. They do not identify which command changed each file.
                 </p>
                 {playback.captures.map((reference, index) => (
-                  <button
-                    className="secondary"
+                  <Button
+                    variant="default"
                     key={index}
                     disabled={busy || now < retryAt}
                     onClick={() =>
@@ -352,7 +356,7 @@ export function DebriefPage({ id }: { id: string }) {
                     }
                   >
                     Command {reference.commandSeq} · {new Date(reference.startedAt).toLocaleTimeString()}
-                  </button>
+                  </Button>
                 ))}
                 {capture && (
                   <>
