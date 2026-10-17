@@ -1,5 +1,6 @@
 import { limits, MonitorError } from './types.js';
 import type { MetricFrame } from './types.js';
+import { measurementDescriptors } from './measurement-descriptors.js';
 
 interface RequestRecord {
   completedAt: number;
@@ -65,7 +66,7 @@ export class Measurements {
     }
     const totalRequests = end;
     const failedRequests = end === 0 ? 0 : this.records[end - 1]!.failedTotal;
-    const values: Record<string, number> = {};
+    const values: Partial<Record<keyof typeof measurementDescriptors, number>> = {};
     if (at > from) values.request_rate = (windowRequests * 1000) / (at - from);
     if (windowRequests > 0) {
       values.error_rate = (windowFailures * 100) / windowRequests;

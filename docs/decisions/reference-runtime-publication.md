@@ -43,3 +43,9 @@ selected it. No current draft is promoted by this change.
 17 October 2026: live `DescribeTaskDefinition` responses include empty Docker labels,
 Linux device/tmpfs/capability-add lists, and log secret options. Release inspection
 omits these known empty defaults. Non-empty additions still fail the exact task check.
+
+17 October 2026: the reference candidate advances to `0.1.1` and declares only
+request rate, error rate and p95 latency. Publication checks each dashboard ID,
+source and unit against the Monitor's measurement descriptors. CPU and memory
+collection remains unimplemented. No existing content record or saved attempt is
+rewritten. The candidate needs fresh image qualification and review before apply.

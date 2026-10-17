@@ -195,16 +195,12 @@ timeout. Every step counts toward `totalRequests`, and failed steps toward
 the cutoff. The monitor retains enough timestamped data to seal counters at `endedAt`
 even when the gateway learns of the outcome later.
 
-**Dashboard.** Request rate, error rate, and latency percentiles come from the monitor's
-own traffic. CPU and memory for the challenge container come from the task metadata
-endpoint's `/task/stats` path on Fargate, or from container statistics locally. Samples
-are taken every five seconds (proposed).
-
-The first monitor increment uses five-second samples. Rate, errors, and exact nearest-rank
-p95 use ordinary requests completed in the preceding five seconds. Empty windows omit
-error rate and latency. CPU and memory are omitted until the runtime adapter exists.
-See the [measurement definitions](../apps/monitor/README.md#measurements). These partial
-samples do not claim complete dashboard or recording support.
+**Dashboard.** The Monitor emits five-second request rate, error rate and exact
+nearest-rank p95 latency from its own traffic. Empty windows omit error rate and
+latency. The reference candidate declares these three signals only; publication
+checks its IDs, sources and units against the measurement descriptors. CPU and
+memory collection is not implemented. See the
+[measurement definitions](../apps/monitor/README.md#measurements).
 
 **Validators.** Each validator is evaluated every second (proposed). The aggregate
 recovery state is `sustaining` while all pass, and `met` when each has passed

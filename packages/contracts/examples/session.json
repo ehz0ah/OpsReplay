@@ -2,7 +2,7 @@
   "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   "challenge": {
     "id": "wrong-upstream-port",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "title": "Storefront returns 502",
     "tier": "easy",
     "category": "networking"
@@ -18,9 +18,7 @@
   "dashboard": [
     { "id": "request_rate", "label": "Requests", "unit": "requests_per_second" },
     { "id": "error_rate", "label": "Errors", "unit": "percent" },
-    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds" },
-    { "id": "cpu", "label": "CPU", "unit": "percent" },
-    { "id": "memory", "label": "Memory", "unit": "mebibytes" }
+    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds" }
   ],
   "recovery": { "state": "failing", "sustainedSeconds": 0, "requiredSeconds": 60 },
   "timeLimitSeconds": 1200,

@@ -10,6 +10,7 @@ import { validContent } from '../../../apps/api/src/start-session/validation.js'
 import type { ContentVersion } from '../../../apps/api/src/start-session/types.js';
 import type { DebriefManifest } from '../../session/src/debrief.js';
 import { parseConfig } from '../../../apps/monitor/src/config.js';
+import { measurementDescriptors } from '../../../apps/monitor/src/measurement-descriptors.js';
 import { environmentWatchedVolume } from '../../../infra/environment-watched-volume.js';
 
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });
@@ -93,6 +94,14 @@ function unique(ids: string[]) {
 export function assertBuildManifest(value: unknown): asserts value is BuildManifest {
   if (!validateManifest(value) || Buffer.byteLength(canonicalJson(value)) > manifestMaximumBytes) fail();
   const m = value as unknown as BuildManifest;
+  for (const descriptor of m.dashboard) {
+    if (
+      !Object.hasOwn(measurementDescriptors, descriptor.id) ||
+      descriptor.source !== descriptor.id ||
+      descriptor.unit !== measurementDescriptors[descriptor.id as keyof typeof measurementDescriptors]
+    )
+      fail();
+  }
   if (
     m.id !== 'wrong-upstream-port' ||
     m.environment.image.repository !== 'opsreplay/challenge-wrong-upstream-port' ||
