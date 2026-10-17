@@ -30,4 +30,5 @@ new TerminalEdgeProtectionStack(app, 'OpsReplayTerminalEdgeProtection', {
   env: { ...(account ? { account } : {}), region: 'us-east-1' },
 });
 new ReferenceEnvironmentStack(app, 'OpsReplayReferenceEnvironment', deployment);
+new ReferenceEnvironmentStack(app, 'OpsReplayStaleDnsEnvironment', { ...deployment, challengeId: 'stale-dns-record' });
 app.synth();

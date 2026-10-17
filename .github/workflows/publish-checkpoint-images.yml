@@ -4,6 +4,15 @@ run-name: Publish checkpoint images for ${{ github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      challenge:
+        description: Challenge to build and test
+        type: choice
+        default: wrong-upstream-port
+        options: [wrong-upstream-port, stale-dns-record]
+
+env:
+  CHECKPOINT_CHALLENGE_ID: ${{ inputs.challenge }}
 
 permissions:
   contents: read
@@ -45,15 +54,24 @@ jobs:
 
       - name: Build and test Challenge image
         run: |
-          npm run challenge:build
-          npm run challenge:test
+          if [ "$CHECKPOINT_CHALLENGE_ID" = "stale-dns-record" ]; then
+            npm run challenge:dns:build
+            npm run challenge:dns:test
+          else
+            npm run challenge:build
+            npm run challenge:test
+          fi
 
       - name: Build and test Monitor images
         run: |
           npm run monitor:image:build
-          npm run monitor:image:test
-          npm run monitor:reference:image:build
-          npm run monitor:reference:image:test
+          if [ "$CHECKPOINT_CHALLENGE_ID" = "stale-dns-record" ]; then
+            npm run monitor:dns:image:build
+            npm run monitor:dns:image:test
+          else
+            npm run monitor:reference:image:build
+            npm run monitor:reference:image:test
+          fi
 
       - name: Build and test Gateway image
         run: |
@@ -66,8 +84,8 @@ jobs:
           mkdir -p artifacts
           docker save --output artifacts/checkpoint-images.tar \
             opsreplay/gateway-recording:dev \
-            opsreplay/monitor-reference:dev \
-            opsreplay/challenge-wrong-upstream-port:dev
+            "$(if [ "$CHECKPOINT_CHALLENGE_ID" = "stale-dns-record" ]; then printf 'opsreplay/monitor-stale-dns:dev'; else printf 'opsreplay/monitor-reference:dev'; fi)" \
+            "opsreplay/challenge-$CHECKPOINT_CHALLENGE_ID:dev"
 
       - name: Upload tested image bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
