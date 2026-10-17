@@ -103,8 +103,8 @@ export function assertBuildManifest(value: unknown): asserts value is BuildManif
       fail();
   }
   if (
-    m.id !== 'wrong-upstream-port' ||
-    m.environment.image.repository !== 'opsreplay/challenge-wrong-upstream-port' ||
+    !['wrong-upstream-port', 'stale-dns-record'].includes(m.id) ||
+    m.environment.image.repository !== `opsreplay/challenge-${m.id}` ||
     m.environment.monitorImage.repository !== 'opsreplay/monitor'
   )
     fail();
@@ -151,12 +151,12 @@ function assertContainer(container: ContainerDefinition, expected: ContainerDefi
 }
 function assertTask(task: TaskDefinition, build: BuildManifest, identity: ReleaseIdentity): string {
   const arn = task.taskDefinitionArn;
-  const prefix = `arn:aws:ecs:${identity.region}:${identity.account}:task-definition/opsreplay-wrong-upstream-port:`;
+  const prefix = `arn:aws:ecs:${identity.region}:${identity.account}:task-definition/opsreplay-${build.id}:`;
   if (
     !arn?.startsWith(prefix) ||
     !/^[1-9][0-9]*$/.test(arn.slice(prefix.length)) ||
     task.status !== 'ACTIVE' ||
-    task.family !== 'opsreplay-wrong-upstream-port' ||
+    task.family !== `opsreplay-${build.id}` ||
     task.networkMode !== 'awsvpc' ||
     task.taskRoleArn ||
     task.pidMode ||

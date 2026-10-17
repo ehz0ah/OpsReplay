@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+# Docker provides resolv.conf as a mount. Write it in place before nginx starts.
+printf 'nameserver 127.0.0.1\noptions timeout:1 attempts:1\n' > /etc/resolv.conf
+exec /usr/local/bin/opsreplay-start

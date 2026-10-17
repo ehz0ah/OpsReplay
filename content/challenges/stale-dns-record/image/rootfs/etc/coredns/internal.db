@@ -1,0 +1,12 @@
+$ORIGIN internal.
+$TTL 60
+@ IN SOA ns.internal. hostmaster.internal. (
+    2026090101 ; serial
+    60 ; refresh
+    60 ; retry
+    3600 ; expire
+    60 ; minimum
+)
+@ IN NS ns.internal.
+ns IN A 127.0.0.1
+api IN A 127.0.0.3

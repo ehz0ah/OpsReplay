@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+# Supervisor starts services in order, but DNS must answer before nginx resolves.
+for attempt in $(seq 1 30); do
+    if dig @127.0.0.1 api.internal +short +time=1 +tries=1 | grep -q '^127\.0\.0\.'; then
+        exec /usr/sbin/nginx -g 'daemon off;'
+    fi
+    sleep 0.1
+done
+echo 'Local DNS is not ready.' >&2
+exit 1

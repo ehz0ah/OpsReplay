@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.2",
   "id": "stale-dns-record",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "title": "Checkout API unreachable after migration",
   "summary": "The storefront loads, but every checkout fails after the API moved to a new address. Find where the old address survives and recover without taking the site offline.",
   "status": "draft",
@@ -19,8 +19,14 @@
     "sources": []
   },
   "environment": {
-    "image": { "repository": "opsreplay/challenge-stale-dns-record", "digest": null },
-    "monitorImage": { "repository": "opsreplay/monitor", "digest": null },
+    "image": {
+      "repository": "opsreplay/challenge-stale-dns-record",
+      "digest": null
+    },
+    "monitorImage": {
+      "repository": "opsreplay/monitor",
+      "digest": null
+    },
     "cpu": 1024,
     "memoryMiB": 2048,
     "timeLimitMinutes": 25,
@@ -33,11 +39,11 @@
         "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
       },
       {
-        "name": "shop-api",
+        "name": "shop",
         "kind": "api",
         "listens": ["127.0.0.2:8080"],
         "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
-        "logFiles": ["/var/log/shop/api.log"]
+        "logFiles": ["/var/log/shop/app.log"]
       },
       {
         "name": "coredns",
@@ -62,18 +68,41 @@
         "label": "Browse and check out",
         "ratePerSecond": 2,
         "steps": [
-          { "method": "GET", "url": "http://127.0.0.1:80/", "expectStatus": [200], "timeoutMs": 2000 },
-          { "method": "POST", "url": "http://127.0.0.1:80/api/checkout", "expectStatus": [201], "timeoutMs": 3000 }
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:80/",
+            "expectStatus": [200],
+            "timeoutMs": 2000
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:80/api/checkout",
+            "expectStatus": [201],
+            "timeoutMs": 3000
+          }
         ]
       }
     ]
   },
   "dashboard": [
-    { "id": "request_rate", "label": "Requests", "unit": "requests_per_second", "source": "request_rate" },
-    { "id": "error_rate", "label": "Errors", "unit": "percent", "source": "error_rate" },
-    { "id": "latency_p95", "label": "Latency p95", "unit": "milliseconds", "source": "latency_p95" },
-    { "id": "cpu", "label": "CPU", "unit": "percent", "source": "cpu" },
-    { "id": "memory", "label": "Memory", "unit": "mebibytes", "source": "memory" }
+    {
+      "id": "request_rate",
+      "label": "Requests",
+      "unit": "requests_per_second",
+      "source": "request_rate"
+    },
+    {
+      "id": "error_rate",
+      "label": "Errors",
+      "unit": "percent",
+      "source": "error_rate"
+    },
+    {
+      "id": "latency_p95",
+      "label": "Latency p95",
+      "unit": "milliseconds",
+      "source": "latency_p95"
+    }
   ],
   "alert": {
     "title": "Checkout requests failing",
@@ -81,23 +110,33 @@
     "severity": "critical"
   },
   "validators": [
-    { "id": "checkout-sustained", "check": { "kind": "journey", "journey": "checkout" }, "sustainSeconds": 60 },
+    {
+      "id": "checkout-sustained",
+      "check": {
+        "kind": "journey",
+        "journey": "checkout"
+      },
+      "sustainSeconds": 60
+    },
     {
       "id": "checkout-persisted",
-      "check": { "kind": "checkout", "baseUrl": "http://127.0.0.1:80", "timeoutMs": 3000 },
+      "check": {
+        "kind": "checkout",
+        "baseUrl": "http://127.0.0.1:80",
+        "timeoutMs": 3000
+      },
       "sustainSeconds": 60
     }
   ],
   "healthProbes": [
     {
       "id": "storefront-home",
-      "publicLabel": "Storefront home page stopped responding",
+      "publicLabel": "Storefront proxy stopped accepting connections",
       "check": {
-        "kind": "http",
-        "method": "GET",
-        "url": "http://127.0.0.1:80/",
-        "expectStatus": [200],
-        "timeoutMs": 2000
+        "kind": "tcp",
+        "host": "127.0.0.1",
+        "port": 80,
+        "timeoutMs": 1000
       },
       "graceSeconds": 5
     }
@@ -196,5 +235,25 @@
       "Correct the record, update the serial, and confirm the new answer with dig.",
       "Validate with nginx -t and apply with nginx -s reload rather than a restart."
     ]
-  }
+  },
+  "startupChecks": [
+    {
+      "kind": "tcp",
+      "host": "127.0.0.1",
+      "port": 53,
+      "timeoutMs": 1000
+    },
+    {
+      "kind": "tcp",
+      "host": "127.0.0.2",
+      "port": 8080,
+      "timeoutMs": 1000
+    },
+    {
+      "kind": "tcp",
+      "host": "127.0.0.1",
+      "port": 5432,
+      "timeoutMs": 1000
+    }
+  ]
 }

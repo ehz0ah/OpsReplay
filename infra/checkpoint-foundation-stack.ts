@@ -170,6 +170,7 @@ export class CheckpointFoundationStack extends Stack {
     const gatewayRepository = repository('GatewayRepository', 'opsreplay-gateway');
     const monitorRepository = repository('MonitorRepository', 'opsreplay/monitor');
     const challengeRepository = repository('ChallengeRepository', 'opsreplay/challenge-wrong-upstream-port');
+    const dnsRepository = repository('DnsChallengeRepository', 'opsreplay/challenge-stale-dns-record');
 
     const imagePublisherRole = new Role(this, 'GitHubImagePublisherRole', {
       assumedBy: new FederatedPrincipal(
@@ -206,6 +207,7 @@ export class CheckpointFoundationStack extends Stack {
           gatewayRepository.repositoryArn,
           monitorRepository.repositoryArn,
           challengeRepository.repositoryArn,
+          dnsRepository.repositoryArn,
         ],
       }),
     );
@@ -228,7 +230,7 @@ export class CheckpointFoundationStack extends Stack {
     executionRole.addToPolicy(
       new PolicyStatement({
         actions: ['ecr:BatchCheckLayerAvailability', 'ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer'],
-        resources: [monitorRepository.repositoryArn, challengeRepository.repositoryArn],
+        resources: [monitorRepository.repositoryArn, challengeRepository.repositoryArn, dnsRepository.repositoryArn],
       }),
     );
     executionRole.addToPolicy(
@@ -262,6 +264,7 @@ export class CheckpointFoundationStack extends Stack {
       GatewayRepositoryUri: gatewayRepository.repositoryUri,
       MonitorRepositoryUri: monitorRepository.repositoryUri,
       ChallengeRepositoryUri: challengeRepository.repositoryUri,
+      DnsChallengeRepositoryUri: dnsRepository.repositoryUri,
       GitHubImagePublisherRoleArn: imagePublisherRole.roleArn,
     };
     for (const [name, value] of Object.entries(outputs)) {

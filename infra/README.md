@@ -400,3 +400,9 @@ to the exact-origin REST API, add any
 required streaming route, add environment configuration, budgets and alarms including
 Fargate vCPU use, backup and restore validation, and rollback. Do not add a NAT gateway,
 Redis, or unrelated AWS services without a recorded need.
+
+`OpsReplayStaleDnsEnvironment` is the second candidate blueprint. It reuses the
+reference environment stack with `challengeId: stale-dns-record` and requires its own
+Challenge and matching Monitor digests. The foundation adds one exact ECR repository;
+execution and publication permissions name it explicitly. No additional backend,
+network route, or task role is introduced. See the [DNS Challenge](../content/challenges/stale-dns-record/README.md).
