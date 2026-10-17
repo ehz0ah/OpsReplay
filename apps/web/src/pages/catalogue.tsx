@@ -1,3 +1,4 @@
+import { Badge, Button, NativeSelect } from '@mantine/core';
 import { useAlive } from '../use-alive.js';
 import { startAttempt } from '../start-attempt.js';
 import { useEffect, useMemo, useState } from 'react';
@@ -102,38 +103,33 @@ export function CataloguePage() {
       {account.data?.activeSessionId && !pending && (
         <div className="notice">
           <p>You have an attempt in progress or awaiting cleanup.</p>
-          <button onClick={() => navigate('/sessions/' + account.data!.activeSessionId)}>Resume attempt</button>
+          <Button onClick={() => navigate('/sessions/' + account.data!.activeSessionId)}>Resume attempt</Button>
         </div>
       )}
       {account.loading && <p role="status">Loading your account…</p>}
       <Failure error={account.error} retry={account.reload} />
       {account.error instanceof ApiError && account.error.status === 401 && (
-        <button onClick={() => void auth.signIn()}>Sign in again</button>
+        <Button onClick={() => void auth.signIn()}>Sign in again</Button>
       )}
       <div className="actions">
         {(['tier', 'category', 'plan'] as const).map((name) => (
-          <label key={name}>
-            {name === 'tier' ? 'Difficulty' : name === 'category' ? 'Category' : 'Access'}
-            <select
-              value={filters[name]}
-              onChange={(e) => {
-                setFilters({ ...filters, [name]: e.target.value });
-                setCursor(null);
-              }}
-            >
-              <option value="">All</option>
-              {(name === 'tier'
-                ? catalog.data?.availableFilters.tiers
+          <NativeSelect
+            key={name}
+            label={name === 'tier' ? 'Difficulty' : name === 'category' ? 'Category' : 'Access'}
+            value={filters[name]}
+            onChange={(e) => {
+              setFilters({ ...filters, [name]: e.currentTarget.value });
+              setCursor(null);
+            }}
+            data={[
+              'All',
+              ...(name === 'tier'
+                ? (catalog.data?.availableFilters.tiers ?? [])
                 : name === 'category'
-                  ? catalog.data?.availableFilters.categories
-                  : catalog.data?.availableFilters.plans
-              )?.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </label>
+                  ? (catalog.data?.availableFilters.categories ?? [])
+                  : (catalog.data?.availableFilters.plans ?? [])),
+            ].map((v, i) => ({ value: i === 0 ? '' : v, label: v }))}
+          />
         ))}
       </div>
       {catalog.loading && <p role="status">Loading published Challenges…</p>}
@@ -149,23 +145,25 @@ export function CataloguePage() {
       {pending && (
         <div className="notice">
           <p>A start request is waiting for confirmation. Retry the same request to recover its result.</p>
-          <button disabled={busy || cooldown || !account.data} onClick={() => void start(null)}>
+          <Button disabled={busy || cooldown || !account.data} onClick={() => void start(null)}>
             Recover start request
-          </button>
+          </Button>
         </div>
       )}
       {catalog.data?.items.map((entry) => (
-        <article className="panel challenge-row" key={entry.id + '@' + entry.version}>
+        <article className="challenge-row" key={entry.id + '@' + entry.version}>
           <div>
             <div className="actions">
-              <span className="badge">{entry.tier}</span>
-              <span className="badge">{entry.category}</span>
-              <span className="badge">{entry.plan}</span>
+              <Badge variant="light" color="gray">
+                {entry.tier}
+              </Badge>
+              <span className="content-category">{entry.category}</span>
+              <span className="content-category">{entry.plan}</span>
             </div>
             <h3>{entry.title}</h3>
             <p className="muted">{entry.summary}</p>
           </div>
-          <button
+          <Button
             disabled={
               busy ||
               cooldown ||
@@ -183,19 +181,19 @@ export function CataloguePage() {
                 : account.data?.activeSessionId
                   ? 'Resume current attempt'
                   : 'Start Challenge'}
-          </button>
+          </Button>
         </article>
       ))}
       {catalog.data?.items.length === 0 && <p className="muted">No published Challenges match these filters.</p>}
       {catalog.data?.nextCursor && (
-        <button className="secondary" onClick={() => setCursor(catalog.data!.nextCursor)}>
+        <Button variant="default" onClick={() => setCursor(catalog.data!.nextCursor)}>
           Next page
-        </button>
+        </Button>
       )}
       {cursor && (
-        <button className="secondary" onClick={() => setCursor(null)}>
+        <Button variant="default" onClick={() => setCursor(null)}>
           First page
-        </button>
+        </Button>
       )}
     </>
   );

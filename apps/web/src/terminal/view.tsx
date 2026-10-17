@@ -1,3 +1,4 @@
+import { Button, Switch } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -22,13 +23,15 @@ export default function TerminalView({
     host = useRef<HTMLDivElement>(null),
     emulator = useRef<Terminal | null>(null),
     attachment = useRef<TerminalAttachment | null>(null),
-    screen = useRef(false);
+    screen = useRef(false),
+    screenControl = useRef<HTMLInputElement>(null);
   const activeInput = useRef(enabled);
   activeInput.current = enabled;
   const handlers = useRef({ onFrame, onConnection, refresh });
   handlers.current = { onFrame, onConnection, refresh };
   const [revision, setRevision] = useState(0),
     [state, setState] = useState<AttachmentState>('connecting'),
+    [screenReader, setScreenReader] = useState(false),
     [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!host.current) return;
@@ -41,6 +44,13 @@ export default function TerminalView({
       theme: { background: '#101416', foreground: '#e6eceb' },
     });
     const fit = new FitAddon();
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type === 'keydown' && event.ctrlKey && event.shiftKey && event.key === 'F6') {
+        screenControl.current?.focus();
+        return false;
+      }
+      return true;
+    });
     term.loadAddon(fit);
     term.open(host.current);
     emulator.current = term;
@@ -49,10 +59,18 @@ export default function TerminalView({
       if (!host.current || host.current.clientWidth === 0 || host.current.clientHeight === 0) return;
       const dimensions = fit.proposeDimensions();
       if (!dimensions || !Number.isFinite(dimensions.cols) || !Number.isFinite(dimensions.rows)) return;
-      term.resize(Math.max(20, Math.min(500, dimensions.cols)), Math.max(5, Math.min(200, dimensions.rows)));
-      attachment.current?.resize(term.cols, term.rows);
+      const cols = Math.max(20, Math.min(500, dimensions.cols)),
+        rows = Math.max(5, Math.min(200, dimensions.rows));
+      if (cols !== term.cols || rows !== term.rows) {
+        term.resize(cols, rows);
+        attachment.current?.resize(cols, rows);
+      }
     };
-    const observer = new ResizeObserver(resize);
+    let resizeFrame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(resize);
+    });
     observer.observe(host.current);
     const input = term.onData((value) => {
       if (activeInput.current) attachment.current?.input(value);
@@ -69,6 +87,7 @@ export default function TerminalView({
     document.addEventListener('visibilitychange', visible);
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(resizeFrame);
       input.dispose();
       binary.dispose();
       document.removeEventListener('visibilitychange', visible);
@@ -137,15 +156,18 @@ export default function TerminalView({
   useEffect(() => {
     if (emulator.current) emulator.current.options.disableStdin = state !== 'ready' || !enabled;
   }, [state, enabled]);
+  useEffect(() => {
+    if (emulator.current) emulator.current.options.screenReaderMode = screenReader;
+  }, [screenReader]);
   return (
     <section className="terminal-panel">
       <div className="terminal-heading">
         <h2>Terminal</h2>
         <span className="badge">{state}</span>
         {['replaced', 'closed', 'error'].includes(state) && (
-          <button className="secondary" onClick={() => setRevision((value) => value + 1)}>
+          <Button variant="default" onClick={() => setRevision((value) => value + 1)}>
             {state === 'replaced' ? 'Take back terminal' : 'Reconnect'}
-          </button>
+          </Button>
         )}
       </div>
       {message && (
@@ -153,6 +175,17 @@ export default function TerminalView({
           {message}
         </p>
       )}
+      <div className="terminal-tools">
+        <Switch
+          ref={screenControl}
+          label="Screen reader"
+          checked={screenReader}
+          onChange={(event) => setScreenReader(event.currentTarget.checked)}
+        />
+        <span>
+          Leave terminal: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F6</kbd>
+        </span>
+      </div>
       <div ref={host} className="terminal-host" aria-label="Incident terminal" />
     </section>
   );

@@ -9,7 +9,7 @@
     "npm": ">=10"
   },
   "scripts": {
-    "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
+    "lint": "oxlint . --deny-warnings --report-unused-disable-directives && oxlint apps/web/src --react-plugin --allow all --deny react/rules-of-hooks --deny-warnings",
     "lint:fix": "oxlint . --fix --deny-warnings --report-unused-disable-directives",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
@@ -46,6 +46,8 @@
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
+    "@mantine/core": "9.7.2",
+    "@mantine/hooks": "9.7.2",
     "@types/aws-lambda": "8.10.164",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
