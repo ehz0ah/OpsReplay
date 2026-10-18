@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+18 October 2026: debrief playback shares one position across terminal, metrics and
+captures. The range covers loaded tracks and capture completion. Capture after-state
+appears only after its read interval completes; sample times remain visible. Reads
+are bounded and continuation remains explicit.
+
 18 October 2026: recorded terminal playback uses one cancellable clock with pause,
 seek and speed controls. Backward seeks rebuild from saved output and dimensions;
 recorded input never executes. Controls cover the loaded terminal prefix.

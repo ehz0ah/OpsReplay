@@ -9,18 +9,24 @@ import { Failure } from '../components/failure.js';
 export default function RecordedTerminal({
   tracks,
   highlights,
-  onTime,
+  range: availableRange,
+  prepare,
+  onState,
 }: {
   tracks: PublicTypes['PlaybackTrack'][];
   highlights: PublicTypes['Playback']['highlights'];
-  onTime: (at: number) => void;
+  range?: import('./terminal.js').PlaybackRange | null;
+  prepare?: (at: number, signal: AbortSignal) => Promise<void>;
+  onState?: (state: PlayerState) => void;
 }) {
   const host = useRef<HTMLDivElement>(null),
     player = useRef<PlaybackPlayer | null>(null),
-    time = useRef(onTime),
+    prepareTime = useRef(prepare),
+    observe = useRef(onState),
     position = useRef<number | null>(null),
     rate = useRef(1);
-  time.current = onTime;
+  prepareTime.current = prepare;
+  observe.current = onState;
   const sourceRange = useMemo(() => {
     try {
       return { range: terminalRange(tracks), error: null };
@@ -28,7 +34,7 @@ export default function RecordedTerminal({
       return { range: null, error: value instanceof Error ? value : new Error('Invalid terminal recording.') };
     }
   }, [tracks]);
-  const range = sourceRange.range;
+  const range = availableRange === undefined ? sourceRange.range : availableRange;
   const evidence = highlights.filter(
     (item) => range && Date.parse(item.at) >= range.start && Date.parse(item.at) <= range.end,
   );
@@ -66,22 +72,26 @@ export default function RecordedTerminal({
         }),
     });
     setState(null);
-    if (source.range) {
+    if (range) {
       const control = new PlaybackPlayer(
-        source.range,
-        (at, signal) => source.render(at, signal),
+        range,
+        async (at, signal) => {
+          await prepareTime.current?.(at, signal);
+          await source.render(at, signal);
+          signal.throwIfAborted();
+        },
         (value) => {
           position.current = value.at;
           rate.current = value.speed;
           setState(value);
-          time.current(value.at);
+          observe.current?.(value);
         },
         undefined,
-        position.current ?? source.range.start,
+        position.current ?? range.start,
         rate.current,
       );
       player.current = control;
-      void control.seek(position.current ?? source.range.start);
+      void control.seek(position.current ?? range.start);
     }
     return () => {
       player.current?.dispose();
@@ -89,7 +99,7 @@ export default function RecordedTerminal({
       terminal.dispose();
       for (const done of pending) done();
     };
-  }, [tracks, sourceRange]);
+  }, [tracks, sourceRange, range]);
   const playing = state?.status === 'playing',
     seeking = state?.status === 'seeking',
     at = state?.at ?? range?.start ?? 0;
@@ -154,7 +164,7 @@ export default function RecordedTerminal({
             {new Date(at).toLocaleTimeString()} / {new Date(range.end).toLocaleTimeString()}
           </p>
         ) : (
-          <p>No terminal chunks are loaded.</p>
+          <p>No recording tracks are loaded.</p>
         )}
         {seeking && <p role="status">Preparing this playback position…</p>}
         <Failure error={sourceRange.error ?? state?.error ?? null} />
