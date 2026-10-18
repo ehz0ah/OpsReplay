@@ -1,9 +1,10 @@
-import { Button } from '@mantine/core';
-import { useEffect, useRef, useState } from 'react';
+import { Button, NativeSelect } from '@mantine/core';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
-import { replayTerminal } from './terminal.js';
+import { TerminalRecording, terminalRange } from './terminal.js';
+import { PlaybackPlayer, playbackSpeeds, type PlayerState } from './player.js';
 import { Failure } from '../components/failure.js';
 export default function RecordedTerminal({
   tracks,
@@ -15,13 +16,24 @@ export default function RecordedTerminal({
   onTime: (at: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null),
-    term = useRef<Terminal | null>(null),
-    controller = useRef<AbortController | null>(null),
-    time = useRef(onTime);
+    player = useRef<PlaybackPlayer | null>(null),
+    time = useRef(onTime),
+    position = useRef<number | null>(null),
+    rate = useRef(1);
   time.current = onTime;
-  const [playing, setPlaying] = useState(false),
-    [error, setError] = useState<Error | null>(null),
-    [from, setFrom] = useState('0');
+  const sourceRange = useMemo(() => {
+    try {
+      return { range: terminalRange(tracks), error: null };
+    } catch (value) {
+      return { range: null, error: value instanceof Error ? value : new Error('Invalid terminal recording.') };
+    }
+  }, [tracks]);
+  const range = sourceRange.range;
+  const evidence = highlights.filter(
+    (item) => range && Date.parse(item.at) >= range.start && Date.parse(item.at) <= range.end,
+  );
+  const [state, setState] = useState<PlayerState | null>(null),
+    [from, setFrom] = useState('');
   useEffect(() => {
     const terminal = new Terminal({
       disableStdin: true,
@@ -30,87 +42,123 @@ export default function RecordedTerminal({
       theme: { background: '#101416', foreground: '#e6eceb' },
     });
     terminal.open(host.current!);
-    term.current = terminal;
-    return () => {
-      controller.current?.abort();
-      term.current = null;
-      terminal.dispose();
-    };
-  }, []);
-  async function play() {
-    if (playing || !term.current) return;
-    const abort = new AbortController();
-    controller.current = abort;
-    setPlaying(true);
-    setError(null);
-    term.current.reset();
-    try {
-      await replayTerminal(
-        tracks,
-        abort.signal,
-        {
-          resize: (cols, rows) => term.current?.resize(cols, rows),
-          write: (value) =>
-            new Promise((resolve, reject) => {
-              if (abort.signal.aborted) {
-                resolve();
-                return;
-              }
-              const done = () => {
-                clearTimeout(timer);
-                abort.signal.removeEventListener('abort', done);
-                resolve();
-              };
-              const timer = setTimeout(() => {
-                abort.signal.removeEventListener('abort', done);
-                reject(new Error('Playback output timed out.'));
-              }, 5000);
-              abort.signal.addEventListener('abort', done, { once: true });
-              term.current?.write(value, done);
-            }),
-          time: (at) => time.current(at),
-        },
-        Number(from),
-      );
-    } catch (value) {
-      if (!abort.signal.aborted) setError(value instanceof Error ? value : new Error('Playback failed.'));
-    } finally {
-      if (!abort.signal.aborted) setPlaying(false);
+    const pending = new Set<() => void>();
+    if (sourceRange.error) {
+      setState(null);
+      return () => terminal.dispose();
     }
-  }
+    const source = new TerminalRecording(tracks, {
+      reset: () => terminal.reset(),
+      resize: (cols, rows) => terminal.resize(cols, rows),
+      write: (value) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            pending.delete(done);
+            reject(new Error('Playback output timed out.'));
+          }, 5000);
+          const done = () => {
+            clearTimeout(timer);
+            pending.delete(done);
+            resolve();
+          };
+          pending.add(done);
+          terminal.write(value, done);
+        }),
+    });
+    setState(null);
+    if (source.range) {
+      const control = new PlaybackPlayer(
+        source.range,
+        (at, signal) => source.render(at, signal),
+        (value) => {
+          position.current = value.at;
+          rate.current = value.speed;
+          setState(value);
+          time.current(value.at);
+        },
+        undefined,
+        position.current ?? source.range.start,
+        rate.current,
+      );
+      player.current = control;
+      void control.seek(position.current ?? source.range.start);
+    }
+    return () => {
+      player.current?.dispose();
+      player.current = null;
+      terminal.dispose();
+      for (const done of pending) done();
+    };
+  }, [tracks, sourceRange]);
+  const playing = state?.status === 'playing',
+    seeking = state?.status === 'seeking',
+    at = state?.at ?? range?.start ?? 0;
   return (
     <section className="terminal-panel">
       <div className="terminal-heading">
         <h2>Recorded terminal</h2>
-        <span className="badge">Read only · 4× speed</span>
+        <span className="badge">Read only</span>
       </div>
-      <div className="actions">
-        <label>
-          Start at
-          <select value={from} disabled={playing} onChange={(event) => setFrom(event.target.value)}>
-            <option value="0">Beginning</option>
-            {highlights.map((item, index) => (
-              <option key={index} value={String(Date.parse(item.at))}>
-                {new Date(item.at).toLocaleTimeString()} {item.label}
-              </option>
-            ))}
-          </select>
+      <div className="playback-controls">
+        <div className="actions">
+          <Button
+            disabled={!state || seeking}
+            onClick={() => void (playing ? player.current?.pause() : player.current?.play())}
+          >
+            {playing ? 'Pause' : state?.status === 'ended' ? 'Replay' : 'Play'}
+          </Button>
+          <Button variant="default" disabled={!state} onClick={() => void player.current?.seek(range!.start)}>
+            Reset
+          </Button>
+          <NativeSelect
+            label="Speed"
+            value={String(state?.speed ?? rate.current)}
+            disabled={!state}
+            data={playbackSpeeds.map((speed) => ({ value: String(speed), label: `${speed}×` }))}
+            onChange={(event) => player.current?.setSpeed(Number(event.currentTarget.value))}
+          />
+          <NativeSelect
+            label="Jump to evidence"
+            value={from}
+            disabled={!range}
+            data={[
+              { value: '', label: 'Select a moment' },
+              ...evidence.map((item, index) => ({
+                value: String(index),
+                label: `${new Date(item.at).toLocaleTimeString()} ${item.label}`,
+              })),
+            ]}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setFrom(value);
+              if (value !== '' && evidence[Number(value)])
+                void player.current?.seek(Date.parse(evidence[Number(value)]!.at));
+            }}
+          />
+        </div>
+        <label className="playback-position">
+          Playback position
+          <input
+            type="range"
+            min={range?.start ?? 0}
+            max={range?.end ?? 0}
+            step="1"
+            value={at}
+            disabled={!state || range?.start === range?.end}
+            aria-valuetext={new Date(at).toLocaleTimeString()}
+            onChange={(event) => void player.current?.seek(Number(event.currentTarget.value))}
+          />
         </label>
-        <Button disabled={playing || tracks.length === 0} onClick={() => void play()}>
-          Replay
-        </Button>
-        <Button
-          variant="default"
-          disabled={!playing}
-          onClick={() => {
-            controller.current?.abort();
-            setPlaying(false);
-          }}
-        >
-          Stop
-        </Button>
+        {range ? (
+          <p className="playback-time">
+            {new Date(at).toLocaleTimeString()} / {new Date(range.end).toLocaleTimeString()}
+          </p>
+        ) : (
+          <p>No terminal chunks are loaded.</p>
+        )}
+        {seeking && <p role="status">Preparing this playback position…</p>}
+        <Failure error={sourceRange.error ?? state?.error ?? null} />
       </div>
-      <Failure error={error} />
       <div ref={host} className="terminal-host" aria-label="Recorded terminal output" />
     </section>
   );

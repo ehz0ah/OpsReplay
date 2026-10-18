@@ -609,3 +609,33 @@ select {
 .telemetry-panel .metric summary {
   margin: 0;
 }
+
+.playback-controls {
+  padding: 0 14px 12px;
+  color: #e6eceb;
+}
+.playback-controls label {
+  color: #e6eceb;
+}
+.playback-controls .actions {
+  align-items: end;
+}
+.playback-controls .mantine-NativeSelect-root {
+  max-width: 100%;
+  min-width: 80px;
+}
+.playback-controls .mantine-NativeSelect-input {
+  max-width: 300px;
+}
+.playback-position {
+  display: grid;
+  gap: 6px;
+}
+.playback-position input {
+  width: 100%;
+  accent-color: #a9c9df;
+}
+.playback-time {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}

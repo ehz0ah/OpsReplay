@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { ApiClient } from '../src/api.js';
 import { parseCast, metricSamples, captureObject, readAsset, assetUrl, AssetExpired } from '../src/playback/assets.js';
 import { playbackPage, appendPlayback, savedDebrief } from '../src/playback/reads.js';
-import { replayTerminal } from '../src/playback/terminal.js';
+import { TerminalRecording } from '../src/playback/terminal.js';
 import { encodeAsciicast } from '../../../packages/session/src/asciicast.js';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const recording = JSON.parse(
@@ -38,27 +38,27 @@ test('real exporter chunks share terminal state and keep recorded input out of e
     endedAt: value.endedAt,
   }));
   const writes: string[] = [],
-    sizes: number[][] = [],
-    delays: number[] = [];
-  await replayTerminal(
+    sizes: number[][] = [];
+  const source = new TerminalRecording(
     tracks,
-    new AbortController().signal,
     {
+      reset: () => {
+        writes.length = 0;
+      },
       write: async (text) => {
         writes.push(text);
       },
       resize: (cols, rows) => sizes.push([cols, rows]),
-      time: () => {},
     },
-    0,
     async (url) => [first, second][Number(url.slice(-1))]!.body.toString('utf8'),
-    async (ms) => {
-      delays.push(ms);
-    },
   );
+  await source.render(Date.parse(later), new AbortController().signal);
   assert.deepEqual(writes, ['first', 'second']);
   assert.deepEqual(sizes, [[80, 24]]);
-  assert.ok(delays.includes(500));
+  await source.render(Date.parse(at), new AbortController().signal);
+  assert.deepEqual(writes, ['first'], 'Backward seeking removes later output');
+  await source.render(Date.parse(later), new AbortController().signal);
+  assert.deepEqual(writes, ['first', 'second']);
   assert.throws(() => parseCast(first.body.toString(), { ...tracks[0]!, startedAt: later }));
 });
 test('playback returns empty pages for explicit continuation and rejects cyclic cursors or a foreign session', async () => {
@@ -289,7 +289,7 @@ test('public recording objects reject private fields and mismatched capture inte
   await assert.rejects(captureObject(JSON.stringify(capture), { ...reference, commandSeq: 2 }), /match/);
 });
 
-test('stopping during a playback write prevents a late timeline update', async () => {
+test('cancelled terminal writes invalidate reconstruction before another seek', async () => {
   const track = { url: 'https://bucket.s3.amazonaws.com/x', startedAt: at, endedAt: at };
   const body =
     JSON.stringify({ version: 2, width: 80, height: 24, timestamp: Date.parse(at) / 1000, duration: 0 }) +
@@ -297,23 +297,23 @@ test('stopping during a playback write prevents a late timeline update', async (
     JSON.stringify([0, 'o', 'output']) +
     '\n';
   const controller = new AbortController();
-  let updates = 0;
-  await assert.rejects(
-    replayTerminal(
-      [track],
-      controller.signal,
-      {
-        resize: () => {},
-        write: async () => {
-          controller.abort();
-        },
-        time: () => {
-          updates++;
-        },
+  let resets = 0,
+    calls = 0;
+  const source = new TerminalRecording(
+    [track],
+    {
+      reset: () => {
+        resets++;
       },
-      0,
-      async () => body,
-    ),
+      resize: () => {},
+      write: async () => {
+        if (++calls === 1) controller.abort();
+      },
+    },
+    async () => body,
   );
-  assert.equal(updates, 0);
+  await assert.rejects(source.render(Date.parse(at), controller.signal));
+  await source.render(Date.parse(at), new AbortController().signal);
+  assert.equal(resets, 2);
+  assert.equal(calls, 2);
 });
