@@ -1,5 +1,7 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
+import { Timeline } from '../components/timeline.js';
+import { inPlaybackRange, type RecordedCommand } from './markers.js';
 import { Metric } from '../components/metric.js';
 import { Failure } from '../components/failure.js';
 import { EvidenceRecording, playbackRange, type EvidencePosition } from './evidence.js';
@@ -8,14 +10,18 @@ const RecordedTerminal = lazy(() => import('./terminal-view.js'));
 export function PlaybackWorkspace({
   playback,
   dashboard,
+  events,
 }: {
   playback: PublicTypes['Playback'];
   dashboard: PublicTypes['MetricDescriptor'][];
+  events: PublicTypes['TimelineEvent'][];
 }) {
   const loader = useMemo(() => new EvidenceRecording(), []),
     prepared = useRef<EvidencePosition | null>(null);
   const [position, setPosition] = useState<EvidencePosition | null>(null),
-    [status, setStatus] = useState<PlayerState['status']>('seeking');
+    [status, setStatus] = useState<PlayerState['status']>('seeking'),
+    [selectedId, setSelectedId] = useState<string | null>(null),
+    [seek, setSeek] = useState<{ at: number } | null>(null);
   const bounds = useMemo(() => {
     try {
       return { range: playbackRange(playback), error: null };
@@ -23,6 +29,16 @@ export function PlaybackWorkspace({
       return { range: null, error: value instanceof Error ? value : new Error('Invalid recording.') };
     }
   }, [playback]);
+  const commands = useMemo(
+    () => events.filter((event): event is RecordedCommand => event.kind === 'command'),
+    [events],
+  );
+  const selected = commands.find((command) => command.id === selectedId);
+  const select = (command: RecordedCommand) => {
+    if (!inPlaybackRange(command, bounds.range)) return;
+    setSelectedId(command.id);
+    setSeek({ at: Date.parse(command.at) });
+  };
   const capture = position?.capture,
     latest = position?.samples.at(-1);
   return (
@@ -34,6 +50,7 @@ export function PlaybackWorkspace({
             tracks={playback.terminal}
             highlights={playback.highlights}
             range={bounds.range}
+            seek={seek}
             prepare={async (at, signal) => {
               prepared.current = await loader.render(playback, at, signal);
             }}
@@ -46,28 +63,57 @@ export function PlaybackWorkspace({
         </Suspense>
         <section className="panel">
           <h2>Saved telemetry</h2>
-          {bounds.range && status === 'seeking' ? (
-            <p role="status">Preparing saved evidence…</p>
-          ) : status === 'error' ? (
-            <p>Saved evidence could not be prepared. Retry playback or refresh recording links.</p>
-          ) : (
-            <>
-              {position && <p>Playback time: {new Date(position.at).toLocaleTimeString()}</p>}
-              <p className="muted">
-                {latest
-                  ? `Latest saved sample: ${new Date(latest.at).toLocaleTimeString()} (${Math.max(0, Math.floor((position!.at - Date.parse(latest.at)) / 1000))} seconds before playback).`
-                  : 'No saved metric sample at this position.'}{' '}
-                Samples show recorded measurements.
-              </p>
-              <div className="metric-grid">
-                {dashboard.map((descriptor) => (
-                  <Metric key={descriptor.id} descriptor={descriptor} samples={position?.samples ?? []} />
-                ))}
-              </div>
-            </>
+          {commands.length === 0 && <p className="muted">Load the timeline to add command markers.</p>}
+          {bounds.range && status === 'seeking' && (
+            <p role="status">Preparing saved evidence. Charts retain the last completed playback position.</p>
           )}
+          {status === 'error' && (
+            <p>
+              Saved evidence could not be prepared. Charts retain the last completed playback position. Retry playback
+              or refresh recording links.
+            </p>
+          )}
+          {position && <p>Displayed playback time: {new Date(position.at).toLocaleTimeString()}</p>}
+          <p className="muted">
+            {latest
+              ? `Latest saved sample: ${new Date(latest.at).toLocaleTimeString()} (${Math.max(0, Math.floor((position!.at - Date.parse(latest.at)) / 1000))} seconds before playback).`
+              : 'No saved metric sample at this position.'}{' '}
+            Samples show recorded measurements.
+          </p>
+          <div className="metric-grid" aria-busy={status === 'seeking'}>
+            {dashboard.map((descriptor) => (
+              <Metric
+                key={descriptor.id}
+                descriptor={descriptor}
+                samples={position?.samples ?? []}
+                playback={
+                  bounds.range && position
+                    ? { range: bounds.range, at: position.at, commands, selectedId, onSelect: select }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
         </section>
       </div>
+      {selected && (
+        <section className="panel selected-command" aria-label="Selected command">
+          <h2>Command {selected.seq}</h2>
+          <code>{selected.command}</code>
+          <p className="muted">
+            Started {new Date(selected.at).toLocaleTimeString()} ·{' '}
+            {selected.endedAt
+              ? `Finished ${new Date(selected.endedAt).toLocaleTimeString()} · exit ${selected.exitStatus ?? 'unknown'}`
+              : 'Completion not recorded'}
+          </p>
+          <p className="muted">
+            Saved command result. The excerpt covers the command, not an exact snapshot at the playback position. Timing
+            does not establish causality.
+          </p>
+          <pre>{selected.outputExcerpt || 'No saved output excerpt.'}</pre>
+          {selected.outputTruncated && <p>Output excerpt truncated.</p>}
+        </section>
+      )}
       <section className="panel">
         <h2>Saved capture intervals</h2>
         <p className="muted">
@@ -116,6 +162,7 @@ export function PlaybackWorkspace({
           </>
         )}
       </section>
+      <Timeline items={events} playback={{ range: bounds.range, selectedId, onSelect: select }} />
     </>
   );
 }

@@ -68,3 +68,9 @@ Saved telemetry follows the same playback position and shows its latest sample t
 Only the latest completed capture is loaded. Its baseline and read interval remain
 visible; an in-progress capture does not reveal its after-state. Metric reads enforce
 recording totals, and the capture cache holds at most eight objects.
+
+Load the saved timeline to add command markers. Chart or timeline selection seeks
+playback and shows the saved command result with its completion time. Chart markers
+support Enter and Space and show at most 120 loaded commands; the timeline includes
+all loaded commands. Selection never runs a command. Output excerpts cover the saved
+command and do not represent an exact snapshot at the playback position.

@@ -12,12 +12,14 @@ export default function RecordedTerminal({
   range: availableRange,
   prepare,
   onState,
+  seek,
 }: {
   tracks: PublicTypes['PlaybackTrack'][];
   highlights: PublicTypes['Playback']['highlights'];
   range?: import('./terminal.js').PlaybackRange | null;
   prepare?: (at: number, signal: AbortSignal) => Promise<void>;
   onState?: (state: PlayerState) => void;
+  seek?: { at: number } | null;
 }) {
   const host = useRef<HTMLDivElement>(null),
     player = useRef<PlaybackPlayer | null>(null),
@@ -100,6 +102,9 @@ export default function RecordedTerminal({
       for (const done of pending) done();
     };
   }, [tracks, sourceRange, range]);
+  useEffect(() => {
+    if (seek) void player.current?.seek(seek.at);
+  }, [seek]);
   const playing = state?.status === 'playing',
     seeking = state?.status === 'seeking',
     at = state?.at ?? range?.start ?? 0;

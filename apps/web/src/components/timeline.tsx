@@ -1,11 +1,24 @@
+/** @jsxRuntime automatic */
+import { inPlaybackRange, type RecordedCommand } from '../playback/markers.js';
+import type { PlaybackRange } from '../playback/terminal.js';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
-export function Timeline({ items }: { items: PublicTypes['TimelineEvent'][] }) {
+export function Timeline({
+  items,
+  playback,
+}: {
+  items: PublicTypes['TimelineEvent'][];
+  playback?: { range: PlaybackRange | null; selectedId: string | null; onSelect(command: RecordedCommand): void };
+}) {
   return (
     <section className="panel">
       <h2>Investigation timeline</h2>
       {items.length === 0 && <p className="muted">No saved observations yet.</p>}
       {items.length >= 500 && (
-        <p className="notice">Showing the latest 500 observations. The recording retains the saved history.</p>
+        <p className="notice">
+          {playback
+            ? `${items.length} loaded observations. Load more timeline pages to see later commands.`
+            : 'Showing the latest 500 observations. The recording retains the saved history.'}
+        </p>
       )}
       <ol className="timeline">
         {items.map((event) => (
@@ -13,6 +26,20 @@ export function Timeline({ items }: { items: PublicTypes['TimelineEvent'][] }) {
             <time dateTime={event.at}>{new Date(event.at).toLocaleTimeString()}</time>
             {event.kind === 'command' ? (
               <>
+                {playback && (
+                  <button
+                    type="button"
+                    className="timeline-seek"
+                    disabled={!inPlaybackRange(event, playback.range)}
+                    aria-pressed={event.id === playback.selectedId}
+                    onClick={() => playback.onSelect(event)}
+                  >
+                    View command {event.seq} at {new Date(event.at).toLocaleTimeString()}
+                  </button>
+                )}
+                {playback && !inPlaybackRange(event, playback.range) && (
+                  <span className="muted">Outside loaded playback range.</span>
+                )}
                 <code>{event.command}</code>
                 <span className="muted">
                   {event.source} · {event.endedAt ? `exit ${event.exitStatus ?? 'unknown'}` : 'running'}

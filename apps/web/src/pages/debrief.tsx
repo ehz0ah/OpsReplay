@@ -292,10 +292,11 @@ export function DebriefPage({ id }: { id: string }) {
                 key={id + ':' + playbackRevision}
                 playback={playback}
                 dashboard={session.data?.dashboard ?? []}
+                events={events}
               />
             </>
           )}
-          <Timeline items={events} />
+          {!playback && <Timeline items={events} />}
         </>
       )}
     </>
