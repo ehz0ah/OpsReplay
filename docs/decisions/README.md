@@ -18,6 +18,10 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+18 October 2026: recorded terminal playback uses one cancellable clock with pause,
+seek and speed controls. Backward seeks rebuild from saved output and dimensions;
+recorded input never executes. Controls cover the loaded terminal prefix.
+
 | Date              | Change                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 18 October 2026   | Use Mantine controls with a compact terminal and evidence workspace. Preserve connections across tabs, keep public contracts unchanged, and verify the static build in the browser.                                                                                                                                                                              |

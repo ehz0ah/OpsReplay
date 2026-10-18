@@ -59,3 +59,8 @@ Mantine styles are imported only for used components. Theme values live in `src/
 workspace layout lives in `src/styles.css`. Keep labels, focus, stale-data messages,
 hint confirmation, and end confirmation when changing the presentation. Charts retain
 missing-data gaps and provide the latest 60 samples in a table.
+
+Recorded terminal playback supports pause/resume, reset, seek and 0.5× to 4× speed.
+Seeking backward reconstructs saved output and dimensions. Only loaded chunks are
+available; load continuation pages to extend the range. Refreshing links resets the
+loaded recording. Playback never sends recorded input to a running environment.
