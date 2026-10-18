@@ -18,6 +18,10 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+18 October 2026: saved timeline commands provide chart markers and seek targets.
+Selection shows saved command output with explicit timing and non-causality labels.
+Charts bound markers to 120; the paginated timeline retains all loaded commands.
+
 18 October 2026: debrief playback shares one position across terminal, metrics and
 captures. The range covers loaded tracks and capture completion. Capture after-state
 appears only after its read interval completes; sample times remain visible. Reads

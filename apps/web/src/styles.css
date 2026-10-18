@@ -639,3 +639,35 @@ select {
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
+
+.command-marker {
+  cursor: pointer;
+}
+.command-marker:focus {
+  outline: none;
+}
+.command-marker:focus rect {
+  stroke: #3c586d;
+  stroke-width: 2;
+}
+.timeline-seek {
+  justify-self: start;
+  padding: 5px 8px;
+  background: #fff;
+  border: 1px solid #d2dadd;
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.timeline-seek[aria-pressed='true'] {
+  border-color: #3c586d;
+  background: #edf3f7;
+}
+.timeline-seek:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.selected-command code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
