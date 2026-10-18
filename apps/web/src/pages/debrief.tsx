@@ -1,5 +1,5 @@
 import { Button } from '@mantine/core';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { ApiError } from '../api.js';
 import { useApi } from '../api-context.js';
@@ -7,14 +7,12 @@ import { useAuth } from '../auth/provider.js';
 import { useAlive } from '../use-alive.js';
 import { useRead } from '../use-read.js';
 import { savedDebrief, playbackPage, appendPlayback } from '../playback/reads.js';
-import { readAsset, metricSamples, captureObject } from '../playback/assets.js';
 import { MutationJournal } from '../mutation-journal.js';
 import { startAttempt } from '../start-attempt.js';
 import { Failure } from '../components/failure.js';
 import { Timeline } from '../components/timeline.js';
-import { Metric } from '../components/metric.js';
 import { navigate } from '../navigation.js';
-const RecordedTerminal = lazy(() => import('../playback/terminal-view.js'));
+import { PlaybackWorkspace } from '../playback/workspace.js';
 export function DebriefPage({ id }: { id: string }) {
   const api = useApi(),
     auth = useAuth(),
@@ -26,9 +24,6 @@ export function DebriefPage({ id }: { id: string }) {
     [busy, setBusy] = useState(false),
     [playbackRevision, setPlaybackRevision] = useState(0),
     [playback, setPlayback] = useState<PublicTypes['Playback'] | null>(null),
-    [samples, setSamples] = useState<PublicTypes['MetricSample'][]>([]),
-    [at, setAt] = useState<number | null>(null),
-    [capture, setCapture] = useState<PublicTypes['PlaybackCapture'] | null>(null),
     [events, setEvents] = useState<PublicTypes['TimelineEvent'][]>([]),
     [cursor, setCursor] = useState<string | null>(null),
     [retryAt, setRetryAt] = useState(0),
@@ -95,26 +90,7 @@ export function DebriefPage({ id }: { id: string }) {
       setPlayback(combined);
       if (!more) {
         setPlaybackRevision((current) => current + 1);
-        setSamples([]);
-        setAt(null);
-        setCapture(null);
       }
-    }
-  }
-  async function metrics() {
-    if (!playback) return;
-    const all: PublicTypes['MetricSample'][] = [];
-    let bytes = 0;
-    for (const track of playback.metrics) {
-      const text = await readAsset(track.url, operations.current.signal, 8 * 1024 * 1024);
-      bytes += new TextEncoder().encode(text).length;
-      if (bytes > 40960000) throw new Error('Metric recording limit exceeded.');
-      all.push(...(await metricSamples(text, track)));
-      if (all.length > 10001) throw new Error('Metric sample limit exceeded.');
-    }
-    if (alive.current) {
-      setSamples(all);
-      setAt(all.at(-1) ? Date.parse(all.at(-1)!.at) : null);
     }
   }
   async function timeline() {
@@ -144,7 +120,6 @@ export function DebriefPage({ id }: { id: string }) {
       navigate(`/sessions/${result.id}`);
     }
   }
-  const visible = samples.filter((sample) => at === null || Date.parse(sample.at) <= at).slice(-120);
   return (
     <>
       <Button variant="default" onClick={() => navigate('/')}>
@@ -313,77 +288,11 @@ export function DebriefPage({ id }: { id: string }) {
                 {playback.nextCursor ? 'More pages are available.' : 'All recording pages are loaded.'} Recording links
                 expire at {new Date(playback.expiresAt).toLocaleTimeString()}. Refresh them after expiry.
               </p>
-              <div className="playback-workspace">
-                <Suspense fallback={<p>Opening recorded terminal…</p>}>
-                  <RecordedTerminal
-                    key={id + ':' + playbackRevision}
-                    tracks={playback.terminal}
-                    highlights={playback.highlights}
-                    onTime={setAt}
-                  />
-                </Suspense>
-                <section className="panel">
-                  <h2>Saved telemetry</h2>
-                  <Button variant="default" disabled={busy || now < retryAt} onClick={() => void task(metrics)}>
-                    Load saved metrics
-                  </Button>
-                  {at !== null && <p>Playback time: {new Date(at).toLocaleTimeString()}</p>}
-                  <div className="metric-grid">
-                    {session.data?.dashboard.map((descriptor) => (
-                      <Metric key={descriptor.id} descriptor={descriptor} samples={visible} />
-                    ))}
-                  </div>
-                </section>
-              </div>
-              <section className="panel">
-                <h2>Saved capture intervals</h2>
-                <p className="muted">
-                  Captures show a baseline and a read interval. They do not identify which command changed each file.
-                </p>
-                {playback.captures.map((reference, index) => (
-                  <Button
-                    variant="default"
-                    key={index}
-                    disabled={busy || now < retryAt}
-                    onClick={() =>
-                      void task(async () => {
-                        const value = await captureObject(
-                          await readAsset(reference.url, operations.current.signal, 256 * 1024),
-                          reference,
-                        );
-                        if (alive.current) setCapture(value);
-                      })
-                    }
-                  >
-                    Command {reference.commandSeq} · {new Date(reference.startedAt).toLocaleTimeString()}
-                  </Button>
-                ))}
-                {capture && (
-                  <>
-                    <p>
-                      Baseline {capture.baselineAt} · Read {capture.startedAt} to {capture.completedAt}
-                    </p>
-                    {(capture.incomplete || capture.unavailable) && (
-                      <p className="notice">Capture is incomplete or unavailable.</p>
-                    )}
-                    {capture.files.map((file) => (
-                      <details key={file.path}>
-                        <summary>{file.path}</summary>
-                        <h3>Before</h3>
-                        <pre>{file.before ?? 'Unavailable'}</pre>
-                        <h3>After</h3>
-                        <pre>{file.after ?? 'Unavailable'}</pre>
-                      </details>
-                    ))}
-                    {capture.logs.map((log) => (
-                      <details key={log.path}>
-                        <summary>{log.path}</summary>
-                        <pre>{log.lines.join('\n')}</pre>
-                      </details>
-                    ))}
-                  </>
-                )}
-              </section>
+              <PlaybackWorkspace
+                key={id + ':' + playbackRevision}
+                playback={playback}
+                dashboard={session.data?.dashboard ?? []}
+              />
             </>
           )}
           <Timeline items={events} />

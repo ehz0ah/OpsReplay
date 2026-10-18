@@ -61,6 +61,10 @@ hint confirmation, and end confirmation when changing the presentation. Charts r
 missing-data gaps and provide the latest 60 samples in a table.
 
 Recorded terminal playback supports pause/resume, reset, seek and 0.5× to 4× speed.
-Seeking backward reconstructs saved output and dimensions. Only loaded chunks are
-available; load continuation pages to extend the range. Refreshing links resets the
+Seeking backward reconstructs saved output and dimensions. The range covers loaded terminal and metric tracks and capture completion times; load continuation pages to extend it. Refreshing links resets the
 loaded recording. Playback never sends recorded input to a running environment.
+
+Saved telemetry follows the same playback position and shows its latest sample time.
+Only the latest completed capture is loaded. Its baseline and read interval remain
+visible; an in-progress capture does not reveal its after-state. Metric reads enforce
+recording totals, and the capture cache holds at most eight objects.
