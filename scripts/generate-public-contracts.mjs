@@ -37,7 +37,7 @@ addFormats(ajv);
 ajv.addSchema(schema);
 const groups = {
   requests: ['StartSessionRequest', 'MutationRequest'],
-  entry: ['Error', 'Catalog', 'Account'],
+  entry: ['Error', 'Catalog', 'Account', 'LearnEntry'],
   session: [
     'SessionView',
     'SessionResponse',

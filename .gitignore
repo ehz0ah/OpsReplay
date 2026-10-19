@@ -37,3 +37,6 @@ cdk.out/
 
 # Public deployment configuration is generated from verified stack outputs
 apps/web/public/config.json
+
+# Authored Free lesson output is rebuilt for each browser build
+apps/web/public/learn/

@@ -671,3 +671,25 @@ select {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.lesson {
+  max-width: 76ch;
+  margin: 0 auto;
+}
+.lesson-body {
+  line-height: 1.7;
+}
+.lesson-body h2,
+.lesson > section {
+  margin-top: 2rem;
+}
+.lesson-body pre {
+  overflow-x: auto;
+  padding: 1rem;
+  background: #f3f4f2;
+}
+.lesson-body a,
+.lesson a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

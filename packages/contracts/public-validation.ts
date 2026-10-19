@@ -7,6 +7,7 @@ const loaders = {
   Error: entry,
   Catalog: entry,
   Account: entry,
+  LearnEntry: entry,
   SessionView: session,
   SessionResponse: session,
   EndSessionResponse: session,

@@ -11,6 +11,7 @@
     "packages/contracts/private/**/*.ts",
     "packages/session/**/*.ts",
     "packages/content/**/*.ts",
-    "scripts/publish-reference-release.ts"
+    "scripts/publish-reference-release.ts",
+    "scripts/publish-learn.ts"
   ]
 }

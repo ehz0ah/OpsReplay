@@ -9,6 +9,8 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
   for (const uri of [
     '/',
     '/auth/callback',
+    '/learn',
+    '/learn/safe-incident-recovery',
     '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/debrief',
   ])
@@ -16,6 +18,9 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
   for (const uri of [
     '/assets/app.js',
     '/config.json',
+    '/learn/index.json',
+    '/learn/safe-incident-recovery.json',
+    '/learn/../private',
     '/v1/terminal',
     '/other',
     '/sessions/not-a-session',

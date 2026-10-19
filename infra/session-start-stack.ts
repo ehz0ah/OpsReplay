@@ -40,13 +40,14 @@ import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 import { unfinishedWorkIndex } from '../packages/contracts/private/recording-work.js';
 import { lifecycleHintPrefix } from '../packages/contracts/private/lifecycle-hint.js';
+import { featureAction, featureResource } from './feature-api.js';
 import { recordingRetention } from '../packages/contracts/private/recording-retention.js';
 
 const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 8;
+const terminalTicketApiDeploymentVersion = 9;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -1171,6 +1172,28 @@ export class SessionStartStack extends Stack {
       pathPart: 'v1',
     });
     terminalApiV1.cfnOptions.condition = gatewayEnabled;
+    const featureApi = {
+      apiId: terminalApi.ref,
+      parentId: terminalApiV1.ref,
+      authorizerId: terminalAuthorizer.ref,
+      enabled: gatewayEnabled,
+      origin: publicApiAllowedOrigin.valueAsString,
+      tableArn: table.tableArn,
+      environment: {
+        ...publicApiEnvironment,
+        SESSION_TABLE_NAME: table.tableName,
+        RECORDING_BUCKET_NAME: recordings.bucketName,
+      },
+    };
+    const learnResource = featureResource(this, 'LearnResource', featureApi, 'learn');
+    const lessonResource = featureResource(this, 'LessonResource', featureApi, '{id}', learnResource.ref);
+    const learnAction = featureAction(this, 'GetLearn', featureApi, {
+      bundle: 'get-learn',
+      resourceId: lessonResource.ref,
+      path: '/v1/learn/*',
+      leadingKeys: ['CONTENT#learn#*', 'USER#*'],
+      objectArn: recordings.arnForObjects('content/learn/*'),
+    });
     const bootstrapRoutes = bootstrapActions.map(({ id, action, authenticated, path }) => {
       const resource = new ApiGatewayResource(this, `${id}Resource`, {
         restApiId: terminalApi.ref,
@@ -1592,6 +1615,7 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      corsPreflight('LessonCors', lessonResource, ['GET', 'OPTIONS']),
       ...bootstrapRoutes.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
       corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
       corsPreflight('Session', terminalApiSession, ['GET', 'OPTIONS']),
@@ -1676,6 +1700,7 @@ export class SessionStartStack extends Stack {
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     for (const { method } of bootstrapRoutes) terminalTicketDeployment.addResourceDependency(method);
+    terminalTicketDeployment.addResourceDependency(learnAction.method);
     terminalTicketDeployment.addResourceDependency(startSessionMethod);
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
@@ -1691,6 +1716,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'GET',
+          resourcePath: '/~1v1~1learn~1{id}',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        },
         ...bootstrapRoutes.map(({ path }) => ({
           httpMethod: 'GET',
           resourcePath: `/~1v1~1${path}`,

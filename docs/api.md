@@ -7,7 +7,7 @@ Gateway frames. The reference Challenge handlers from session start through resu
 are implemented. An operator-seeded AWS checkpoint on 15 October 2026 exercised the real
 CloudFront terminal path and invoked ticket and result handlers locally against managed
 data. It did not exercise Cognito, API Gateway, or session start. Catalogue, account
-bootstrap, session listing, Learn, Code Review, and assistant routes are not implemented.
+session listing, Code Review, and assistant routes are not implemented. Learn reads are implemented locally.
 All runtime routes remain default-off, and no public API or Gateway is currently deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
@@ -106,6 +106,10 @@ Terminal and dashboard traffic does not use these routes. It uses the gateway pr
 below.
 
 ## Catalogue, account, and Learn
+
+Learn reads validate immutable content references and current Pro access before private
+object reads. Free bodies are built as static assets. No AWS lesson is published by
+this change.
 
 The implemented catalogue is public. It lists Free and Pro entries with their `plan`, so the client
 can show locked items. It lists only filter values represented by published content and

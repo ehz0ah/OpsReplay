@@ -1,7 +1,9 @@
 # Learn content
 
-Status: no published entries yet. Each entry is Markdown with metadata for title,
-category, access plan, summary, lessons, official source links, and related exercises.
-A build step renders free entries as static pages and keeps Pro entries in private S3.
-Follow the [authoring guide](../../docs/content-authoring.md). Avoid copied articles and
-unlicensed images.
+Two original source-linked lessons are authored. No entries are published to AWS.
+Each Markdown file has strict YAML metadata and a body. `npm run learn:build`
+validates it and builds only Free lesson bodies into browser assets. Pro bodies
+remain in the ignored local preparation directory until explicit publication.
+
+Follow the [authoring guide](../../docs/content-authoring.md). Do not copy articles
+or unlicensed images. Changes to published content need a new immutable version.
