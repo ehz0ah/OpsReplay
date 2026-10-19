@@ -1,4 +1,5 @@
 import { QueryCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { isCommandEvidence } from '../../../../packages/contracts/private/command-evidence.js';
 import { isCommandPublication } from '../../../../packages/contracts/private/command-publication.js';
 import { expandCommandRow } from '../../../../packages/session/src/command-reader.js';
 import { isMonitorLiveTelemetry } from '../../../../packages/contracts/private/live-telemetry.js';
@@ -35,7 +36,7 @@ export async function buildAssistantContext(
   const commands = [];
   let budget = 16000;
   for (const row of rows.Items ?? []) {
-    const last = isCommandPublication(row.data) ? row.data.last : 5000;
+    const last = isCommandPublication(row.data) ? row.data.last : isCommandEvidence(row.data) ? row.data.seq : 5000;
     const expanded = await expandCommandRow(client, table, id, 'COMMAND', row, signal, Math.max(0, last - 8), last);
     for (const command of expanded.slice().reverse()) {
       if (command.endedAt === null || !view.readyAt || command.at < view.readyAt) continue;
