@@ -2,6 +2,7 @@ import { Button } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 import { CataloguePage } from './pages/catalogue.js';
+import { HistoryPage, SavedReviewPage } from './pages/history.js';
 import { ReviewCatalogue, ReviewPage } from './pages/review.js';
 import { LearnCatalogue, LearnPage } from './pages/learn.js';
 import { SessionEntry } from './pages/session-entry.js';
@@ -57,6 +58,16 @@ export function App() {
           >
             Code Review
           </a>
+          <a
+            className="site-navigation"
+            href="/history"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('/history');
+            }}
+          >
+            History
+          </a>
           <Button
             variant="default"
             disabled={auth.loading}
@@ -83,6 +94,12 @@ export function App() {
         )}
         {path === '/' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
+        ) : path === '/history' ? (
+          <HistoryPage key={auth.identity?.sub ?? 'public'} />
+        ) : /^\/review-submissions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+            path,
+          ) ? (
+          <SavedReviewPage key={path + (auth.identity?.sub ?? '')} id={path.split('/')[2]!} />
         ) : path === '/reviews' ? (
           <ReviewCatalogue />
         ) : /^\/reviews\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path) ? (

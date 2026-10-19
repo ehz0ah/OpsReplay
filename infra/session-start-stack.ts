@@ -47,7 +47,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 10;
+const terminalTicketApiDeploymentVersion = 11;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -1217,6 +1217,27 @@ export class SessionStartStack extends Stack {
       leadingKeys: ['CONTENT#code_review#*', 'USER#*', 'REVIEW#*'],
       actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
     });
+    const savedReviewsResource = featureResource(this, 'SavedReviewsResource', featureApi, 'review-submissions');
+    const savedReviewResource = featureResource(
+      this,
+      'SavedReviewResource',
+      featureApi,
+      '{id}',
+      savedReviewsResource.ref,
+    );
+    const listReviewsAction = featureAction(this, 'ListReviewSubmissions', featureApi, {
+      bundle: 'list-review-submissions',
+      resourceId: savedReviewsResource.ref,
+      path: '/v1/review-submissions',
+      leadingKeys: ['USER#*', 'REVIEW#*'],
+      actions: ['dynamodb:Query', 'dynamodb:GetItem'],
+    });
+    const getSavedReviewAction = featureAction(this, 'GetReviewSubmission', featureApi, {
+      bundle: 'get-review-submission',
+      resourceId: savedReviewResource.ref,
+      path: '/v1/review-submissions/*',
+      leadingKeys: ['REVIEW#*'],
+    });
     const bootstrapRoutes = bootstrapActions.map(({ id, action, authenticated, path }) => {
       const resource = new ApiGatewayResource(this, `${id}Resource`, {
         restApiId: terminalApi.ref,
@@ -1314,6 +1335,13 @@ export class SessionStartStack extends Stack {
       ]),
     });
     startSessionPermission.cfnOptions.condition = gatewayEnabled;
+    const listSessionsAction = featureAction(this, 'ListSessions', featureApi, {
+      bundle: 'list-sessions',
+      resourceId: terminalApiSessions.ref,
+      path: '/v1/sessions',
+      leadingKeys: ['USER#*', 'SESSION#*'],
+      actions: ['dynamodb:Query', 'dynamodb:GetItem'],
+    });
     const terminalApiSession = new ApiGatewayResource(this, 'TerminalTicketApiSession', {
       restApiId: terminalApi.ref,
       parentId: terminalApiSessions.ref,
@@ -1638,11 +1666,13 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      corsPreflight('SavedReviewsCors', savedReviewsResource, ['GET', 'OPTIONS']),
+      corsPreflight('SavedReviewCors', savedReviewResource, ['GET', 'OPTIONS']),
       corsPreflight('ReviewCors', reviewResource, ['GET', 'OPTIONS']),
       corsPreflight('ReviewSubmissionCors', reviewSubmitResource, ['OPTIONS', 'POST']),
       corsPreflight('LessonCors', lessonResource, ['GET', 'OPTIONS']),
       ...bootstrapRoutes.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
-      corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
+      corsPreflight('Sessions', terminalApiSessions, ['GET', 'OPTIONS', 'POST']),
       corsPreflight('Session', terminalApiSession, ['GET', 'OPTIONS']),
       corsPreflight('SessionEnd', endResource, ['OPTIONS', 'POST']),
       corsPreflight('SessionHints', hintResource, ['OPTIONS', 'POST']),
@@ -1725,6 +1755,9 @@ export class SessionStartStack extends Stack {
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     for (const { method } of bootstrapRoutes) terminalTicketDeployment.addResourceDependency(method);
+    terminalTicketDeployment.addResourceDependency(listSessionsAction.method);
+    terminalTicketDeployment.addResourceDependency(listReviewsAction.method);
+    terminalTicketDeployment.addResourceDependency(getSavedReviewAction.method);
     terminalTicketDeployment.addResourceDependency(getReviewAction.method);
     terminalTicketDeployment.addResourceDependency(submitReviewAction.method);
     terminalTicketDeployment.addResourceDependency(learnAction.method);
@@ -1743,6 +1776,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        ...['/~1v1~1sessions', '/~1v1~1review-submissions', '/~1v1~1review-submissions~1{id}'].map((resourcePath) => ({
+          httpMethod: 'GET',
+          resourcePath,
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        })),
         {
           httpMethod: 'GET',
           resourcePath: '/~1v1~1reviews~1{id}',

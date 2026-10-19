@@ -1,3 +1,4 @@
+import { historyKey } from '../../../../packages/session/src/history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { isDynamoTransactionConflict } from '../../../../packages/dynamodb/src/conflict-retry.js';
@@ -185,6 +186,16 @@ export class ReviewStore {
           new TransactWriteCommand({
             ClientRequestToken: randomUUID(),
             TransactItems: [
+              {
+                Put: {
+                  TableName: this.table,
+                  Item: {
+                    ...historyKey(owner, 'review', submittedAt, submissionId),
+                    data: { schemaVersion: 1, id: submissionId, at: submittedAt },
+                  },
+                  ConditionExpression: 'attribute_not_exists(PK)',
+                },
+              },
               same(reviewKeys.published(id), pointer),
               same(keys.plan(owner), plan),
               {

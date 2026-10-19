@@ -7,7 +7,7 @@ Gateway frames. The reference Challenge handlers from session start through resu
 are implemented. An operator-seeded AWS checkpoint on 15 October 2026 exercised the real
 CloudFront terminal path and invoked ticket and result handlers locally against managed
 data. It did not exercise Cognito, API Gateway, or session start. Catalogue, account
-session listing and assistant routes are not implemented. Code Review reads and submissions are implemented locally. Learn reads are implemented locally.
+assistant routes are not implemented. Session and review history reads are implemented locally. Code Review reads and submissions are implemented locally. Learn reads are implemented locally.
 All runtime routes remain default-off, and no public API or Gateway is currently deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
