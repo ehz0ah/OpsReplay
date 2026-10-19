@@ -2,6 +2,7 @@ import * as requests from '../../.local/contracts/requests-validators.js';
 import type { PublicTypes } from './public-types.js';
 const entry = () => import('../../.local/contracts/entry-validators.js');
 const session = () => import('../../.local/contracts/session-validators.js');
+const assistant = () => import('../../.local/contracts/assistant-validators.js');
 const reviews = () => import('../../.local/contracts/reviews-validators.js');
 const results = () => import('../../.local/contracts/results-validators.js');
 const loaders = {
@@ -10,6 +11,8 @@ const loaders = {
   Account: entry,
   LearnEntry: entry,
   SessionPage: entry,
+  Turn: assistant,
+  StreamEvent: assistant,
   ReviewExercise: reviews,
   ReviewSubmission: reviews,
   ReviewSubmissionPage: reviews,

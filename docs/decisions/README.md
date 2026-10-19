@@ -268,3 +268,8 @@ chunks share the read-only emulator; explicit link refresh restarts the loaded p
 CloudFront distribution. It does not own learner data or activate runtime. Only exact
 browser routes rewrite to HTML. Hashed assets cache; HTML/config remain uncached.
 Configure exact API, Cognito and terminal connection origins before publication.
+
+20 October 2026: [live assistant](live-assistant.md) adds optional, bounded, saved
+Challenge chat from public evidence. One turn owns a worker-fenced slot. Retries read
+saved results. Separate send/read Lambdas remain disabled or bounded by configuration.
+Command proposals and Code Review chat remain separate work.

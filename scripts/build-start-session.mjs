@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 // Each entry point becomes one deployable action with its own bundle.
 const root = fileURLToPath(new URL('..', import.meta.url));
 for (const [entryPoint, outfile] of [
+  ['apps/api/src/send-session-message/index.ts', 'dist/send-session-message/index.cjs'],
+  ['apps/api/src/get-session-turn/index.ts', 'dist/get-session-turn/index.cjs'],
   ['apps/api/src/list-sessions/index.ts', 'dist/list-sessions/index.cjs'],
   ['apps/api/src/list-review-submissions/index.ts', 'dist/list-review-submissions/index.cjs'],
   ['apps/api/src/get-review-submission/index.ts', 'dist/get-review-submission/index.cjs'],
