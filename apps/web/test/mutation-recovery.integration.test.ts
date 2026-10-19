@@ -12,7 +12,7 @@ const pending: PendingMutation = {
   body: {
     requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     challengeId: 'wrong-upstream-port',
-    challengeVersion: '0.1.1',
+    challengeVersion: '0.1.2',
   },
 };
 test('reload and duplicate start retain the exact request while different learners stay isolated', () => {

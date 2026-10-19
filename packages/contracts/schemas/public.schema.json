@@ -2105,6 +2105,20 @@
             }
           },
           "required": ["type", "proposalId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "query_proposal"
+            },
+            "proposalId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": ["type", "proposalId"]
         }
       ]
     },

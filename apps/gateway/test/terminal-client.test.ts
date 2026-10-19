@@ -423,3 +423,37 @@ test('validates configuration before opening a connection', async () => {
   );
   await assert.rejects(TerminalClient.connect({ ...options(7681), generation: 0 }), /positive safe integer/);
 });
+
+test('proposal capability is explicit and typed receipt tokens must match', async (t) => {
+  const setup = await fixture(t),
+    opening = TerminalClient.connect(options(setup.port)),
+    peer = await setup.accept;
+  await peer.receive();
+  peer.send({ type: 'ready', version: 1, generation: 7, resumed: false, replayTruncated: false, proposals: true });
+  const { client } = await opening;
+  const frame = {
+    token: '11111111-1111-4111-8111-111111111111',
+    proposalId: '22222222-2222-4222-8222-222222222222',
+    command: 'pwd',
+  };
+  const delivering = client.proposal(frame);
+  assert.deepEqual(await peer.receive(), { type: 'proposal', generation: 7, ...frame, query: false });
+  peer.send({ type: 'proposal_receipt', generation: 7, token: frame.token, status: 'accepted' });
+  assert.equal(await delivering, 'accepted');
+  client.close();
+});
+test('legacy terminal does not receive unsupported proposal frames', async (t) => {
+  const { connecting, peer } = await connect(t);
+  ready(peer);
+  const { client } = await connecting;
+  assert.equal(
+    await client.proposal({
+      token: '11111111-1111-4111-8111-111111111111',
+      proposalId: '22222222-2222-4222-8222-222222222222',
+      command: 'pwd',
+    }),
+    'busy',
+  );
+  assert.equal(peer.bufferedBytes(), 0);
+  client.close();
+});

@@ -32,3 +32,31 @@ __opsreplay_prompt() {
 PS0='$(__opsreplay_command_start)'
 PROMPT_COMMAND=__opsreplay_prompt
 PS1='\[\e]133;A\a\]\u@\h:\w# \[\e]133;B\a\]'
+
+# bind -x exposes the actual Readline edit buffer. No Enter is injected.
+__opsreplay_confirmed_proposal() {
+    local token proposal encoded command status
+    read -r token proposal encoded < <(/usr/bin/python3 - <<'PY'
+import json,os,time
+try:
+    with open('/run/opsreplay-terminal/proposal.json') as f:
+        v=json.load(f)
+    os.unlink('/run/opsreplay-terminal/proposal.json')
+    if v['expiresAt'] > time.time():
+        print(v['token'],v['proposalId'],v['command'])
+except (OSError,ValueError,KeyError):
+    pass
+PY
+)
+    [[ $token =~ ^[a-f0-9-]{36}$ && $proposal =~ ^[a-f0-9-]{36}$ ]] || return
+    status=busy
+    if [[ -z $READLINE_LINE ]]; then status=accepted; fi
+    builtin printf '{"token":"%s","status":"%s"}\n' "$token" "$status" > /run/opsreplay-terminal/proposal.receipt
+    [[ $status == accepted ]] || return
+    command=$(builtin printf '%s' "$encoded" | /usr/bin/base64 -d) || return
+    builtin printf '\033]133;C;%s;%s\007' "$encoded" "$proposal"
+    builtin eval -- "$command"
+    status=$?
+    builtin printf '\033]133;D;%s\007' "$status"
+}
+bind -x '"\e[99~":__opsreplay_confirmed_proposal'

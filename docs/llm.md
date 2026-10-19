@@ -1,8 +1,8 @@
 # Optional LLM integration
 
 Status: live Challenge chat is implemented locally and disabled by default. The
-provider and model remain open. Command proposals and Code Review assistant turns
-remain planned. No deployed streaming or paid provider validation is claimed.
+provider and model remain open. Confirmed Challenge command proposals are implemented locally. Code Review assistant
+turns remain planned. No deployed streaming or paid provider validation is claimed.
 
 ## Responsibilities
 
@@ -49,7 +49,8 @@ matching a deny list that would end the environment, such as killing PID 1, are 
 and logged for evaluation.
 
 The learner confirms in the workspace. The terminal server serializes proposal delivery
-with manual input and accepts it only at a verified empty prompt. If the terminal adapter
+with manual input. It checks foreground Bash and prompt markers, then uses a private
+Readline binding to check the actual empty edit buffer before evaluation. If the terminal adapter
 cannot verify that state, the learner can copy the command manually. See the
 [gateway protocol](api.md#terminal-gateway-protocol). The resulting
 command event records the proposal ID. The learner can also copy, edit, and run a

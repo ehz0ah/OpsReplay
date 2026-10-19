@@ -5,7 +5,7 @@ This implements the service stack and private terminal endpoint in
 [separate monitor test](../../../apps/monitor/README.md) runs traffic and recovery
 checks beside this image. The Gateway browser relay is implemented separately and
 is tested locally. This standalone run deploys no AWS resources.
-The current candidate is version `0.1.1`, which shows only the Monitor's request
+The current candidate is version `0.1.2`, which shows only the Monitor's request
 rate, error rate and p95 latency. It remains unpublished. Version `0.1.0` was used
 in the 17 October AWS checkpoint. Existing attempts retain their pinned manifest.
 

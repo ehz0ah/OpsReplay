@@ -109,11 +109,19 @@ export function parseCommandEvents(
     } else if (value === '133;B') state.idle = state.active === null;
     else if (value === '133;T') lose(at);
     else if (value.startsWith('133;C;')) {
-      const encoded = value.slice(6);
+      const [encoded = '', proposalId] = value.slice(6).split(';');
+      if (proposalId && !/^[a-f0-9-]{36}$/.test(proposalId)) {
+        lose(at);
+        return;
+      }
       try {
         const bytes = Buffer.from(encoded, 'base64');
         if (!encoded || bytes.toString('base64') !== encoded || bytes.length > 16_000) throw new Error();
         start(utf8.decode(bytes), at, true);
+        if (proposalId && state.active) {
+          state.active.event.source = 'assistant';
+          state.active.event.proposalId = proposalId;
+        }
       } catch {
         lose(at);
       }

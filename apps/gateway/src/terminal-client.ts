@@ -75,6 +75,7 @@ export class TerminalClientError extends Error {
 export interface TerminalReady {
   resumed: boolean;
   replayTruncated: boolean;
+  proposals?: boolean;
 }
 
 export type TerminalClientEnd =
@@ -97,15 +98,18 @@ type ReadyFrame = {
   generation: number;
   resumed: boolean;
   replayTruncated: boolean;
+  proposals?: boolean;
 };
 
 type OutputFrame = { type: 'output'; generation: number; data: Buffer };
-type AcceptedFrame = { type: 'input_accepted' | 'resize_accepted' | 'heartbeat'; generation: number };
+type AcceptedFrame =
+  | { type: 'input_accepted' | 'resize_accepted' | 'heartbeat'; generation: number }
+  | { type: 'proposal_receipt'; generation: number; token: string; status: 'accepted' | 'busy' | 'unknown' };
 type ExitFrame = { type: 'exit'; code: number };
 type ErrorFrame = { type: 'error'; code: TerminalServerErrorCode };
 type ServerFrame = ReadyFrame | OutputFrame | AcceptedFrame | ExitFrame | ErrorFrame;
 type ExpectedFrame = ReadyFrame['type'] | AcceptedFrame['type'];
-type OperationKind = 'attach' | 'heartbeat' | 'input' | 'resize';
+type OperationKind = 'attach' | 'heartbeat' | 'input' | 'resize' | 'proposal';
 
 interface PendingOperation {
   expected: ExpectedFrame;
@@ -184,7 +188,11 @@ function parseServerFrame(line: Buffer): ServerFrame {
   switch (value.type) {
     case 'ready':
       if (
-        !exactKeys(value, ['type', 'version', 'generation', 'resumed', 'replayTruncated']) ||
+        !(
+          exactKeys(value, ['type', 'version', 'generation', 'resumed', 'replayTruncated']) ||
+          (value.proposals === true &&
+            exactKeys(value, ['type', 'version', 'generation', 'resumed', 'replayTruncated', 'proposals']))
+        ) ||
         value.version !== PROTOCOL_VERSION ||
         !validInteger(value.generation, 1, MAX_GENERATION) ||
         typeof value.resumed !== 'boolean' ||
@@ -201,6 +209,16 @@ function parseServerFrame(line: Buffer): ServerFrame {
       if (data === undefined) throw new TerminalClientError('invalid_response');
       return { type: 'output', generation: value.generation, data };
     }
+    case 'proposal_receipt':
+      if (
+        !exactKeys(value, ['type', 'generation', 'token', 'status']) ||
+        !validInteger(value.generation, 1, MAX_GENERATION) ||
+        typeof value.token !== 'string' ||
+        !/^[a-f0-9-]{36}$/.test(value.token) ||
+        !['accepted', 'busy', 'unknown'].includes(String(value.status))
+      )
+        throw new TerminalClientError('invalid_response');
+      return value as AcceptedFrame;
     case 'input_accepted':
     case 'resize_accepted':
     case 'heartbeat':
@@ -267,6 +285,7 @@ function definiteInputRejection(error: TerminalClientError): boolean {
 }
 
 export class TerminalClient {
+  private proposalsSupported = false;
   readonly ended: Promise<TerminalClientEnd>;
 
   private readonly socket: Socket;
@@ -344,6 +363,24 @@ export class TerminalClient {
         'input',
         signal,
       );
+    });
+  }
+
+  proposal(
+    frame: { token: string; proposalId: string; command: string; query?: boolean },
+    signal?: AbortSignal,
+  ): Promise<'accepted' | 'busy' | 'unknown'> {
+    if (!this.proposalsSupported) return Promise.resolve(frame.query ? 'unknown' : 'busy');
+    return this.enqueue(async () => {
+      const result = await this.request(
+        { type: 'proposal', generation: this.generation, ...frame, query: frame.query ?? false },
+        'proposal_receipt',
+        'proposal',
+        signal,
+      );
+      if (result.type !== 'proposal_receipt' || result.token !== frame.token)
+        throw new TerminalClientError('invalid_response');
+      return result.status;
     });
   }
 
@@ -534,7 +571,10 @@ export class TerminalClient {
     if (pending === undefined || pending.expected !== frame.type || frame.generation !== this.generation) {
       throw new TerminalClientError('invalid_response');
     }
-    if (frame.type === 'ready') this.attached = true;
+    if (frame.type === 'ready') {
+      this.attached = true;
+      this.proposalsSupported = frame.proposals === true;
+    }
     this.pending = undefined;
     pending.cleanup();
     pending.resolve(frame);

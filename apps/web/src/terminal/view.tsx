@@ -11,12 +11,14 @@ export default function TerminalView({
   enabled = true,
   onFrame,
   onConnection,
+  proposalControl,
   refresh,
 }: {
   id: string;
   enabled?: boolean;
   onFrame?: (frame: PublicTypes['GatewayServerMessage']) => void;
   onConnection?: (connected: boolean) => void;
+  proposalControl?: { current: ((id: string, queryOnly?: boolean) => boolean) | null };
   refresh: () => void;
 }) {
   const api = useApi(),
@@ -144,15 +146,18 @@ export default function TerminalView({
       screen.current,
     );
     attachment.current = connection;
+    if (proposalControl)
+      proposalControl.current = (id, queryOnly) => activeInput.current && connection.confirmProposal(id, queryOnly);
     void connection.start();
     return () => {
       disposed = true;
       handlers.current.onConnection?.(false);
       connection.stop();
+      if (proposalControl) proposalControl.current = null;
       for (const finish of pending) finish();
       term.options.disableStdin = true;
     };
-  }, [api, id, revision]);
+  }, [api, id, revision, proposalControl]);
   useEffect(() => {
     if (emulator.current) emulator.current.options.disableStdin = state !== 'ready' || !enabled;
   }, [state, enabled]);

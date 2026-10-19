@@ -5,9 +5,22 @@
       "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       "ticket": "q7Xo2m3ZkVdQ8yB1tNcR5wLpE0sHaUfJiGvK4bYx9Tz"
     },
-    { "type": "resize", "cols": 120, "rows": 32 },
-    { "type": "heartbeat" },
-    { "type": "run_proposal", "proposalId": "77777777-7777-4777-8777-777777777777" }
+    {
+      "type": "resize",
+      "cols": 120,
+      "rows": 32
+    },
+    {
+      "type": "heartbeat"
+    },
+    {
+      "type": "run_proposal",
+      "proposalId": "77777777-7777-4777-8777-777777777777"
+    },
+    {
+      "type": "query_proposal",
+      "proposalId": "33333333-3333-4333-8333-333333333333"
+    }
   ],
   "server": [
     {
@@ -21,10 +34,23 @@
       "type": "metrics",
       "sample": {
         "at": "2026-10-05T02:01:15Z",
-        "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 312 }
+        "values": {
+          "request_rate": 2,
+          "error_rate": 100,
+          "latency_p95": 4,
+          "cpu": 6.5,
+          "memory": 312
+        }
       },
-      "counters": { "totalRequests": 132, "failedRequests": 132 },
-      "recovery": { "state": "failing", "sustainedSeconds": 0, "requiredSeconds": 60 }
+      "counters": {
+        "totalRequests": 132,
+        "failedRequests": 132
+      },
+      "recovery": {
+        "state": "failing",
+        "sustainedSeconds": 0,
+        "requiredSeconds": 60
+      }
     },
     {
       "type": "timeline",
@@ -42,7 +68,13 @@
         "outputTruncated": false,
         "metrics": {
           "at": "2026-10-05T02:01:10Z",
-          "values": { "request_rate": 2, "error_rate": 100, "latency_p95": 4, "cpu": 6.5, "memory": 312 }
+          "values": {
+            "request_rate": 2,
+            "error_rate": 100,
+            "latency_p95": 4,
+            "cpu": 6.5,
+            "memory": 312
+          }
         }
       }
     },
@@ -51,9 +83,25 @@
       "code": "TERMINAL_BUSY",
       "message": "The prompt is busy, non-empty, or unknown. Clear it before confirming, or copy the command manually."
     },
-    { "type": "proposal_status", "proposalId": "77777777-7777-4777-8777-777777777777", "status": "dispatching" },
-    { "type": "proposal_status", "proposalId": "77777777-7777-4777-8777-777777777777", "status": "unknown" },
-    { "type": "proposal_status", "proposalId": "77777777-7777-4777-8777-777777777777", "status": "accepted" },
-    { "type": "status", "status": "resolved", "reason": "validators_passed" }
+    {
+      "type": "proposal_status",
+      "proposalId": "77777777-7777-4777-8777-777777777777",
+      "status": "dispatching"
+    },
+    {
+      "type": "proposal_status",
+      "proposalId": "77777777-7777-4777-8777-777777777777",
+      "status": "unknown"
+    },
+    {
+      "type": "proposal_status",
+      "proposalId": "77777777-7777-4777-8777-777777777777",
+      "status": "accepted"
+    },
+    {
+      "type": "status",
+      "status": "resolved",
+      "reason": "validators_passed"
+    }
   ]
 }

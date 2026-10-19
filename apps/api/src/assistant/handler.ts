@@ -111,7 +111,8 @@ export function createAssistantHandler(
           ),
           bounded,
         );
-        const saved = await store.finish(id, admitted.saved, reply.text, 'completed', signal);
+        const saved = await store.finish(id, admitted.saved, reply.text, 'completed', signal, reply.proposal);
+        if (saved.proposals[0]) send('proposal', saved.proposals[0]);
         send('turn_completed', saved);
         try {
           report({

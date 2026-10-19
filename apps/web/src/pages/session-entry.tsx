@@ -1,3 +1,4 @@
+import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { Alert, Badge, Button, Group, Modal, Progress, Tabs } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useTelemetry } from '../telemetry/use-telemetry.js';
@@ -10,7 +11,7 @@ import { lazy, Suspense } from 'react';
 const TerminalView = lazy(() => import('../terminal/view.js'));
 import { useAlive } from '../use-alive.js';
 import { ApiError } from '../api.js';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useSession } from '../use-session.js';
 import { useAuth } from '../auth/provider.js';
 import { useApi } from '../api-context.js';
@@ -20,6 +21,11 @@ import { timeRemaining, terminal } from '../lifecycle.js';
 import { Failure } from '../components/failure.js';
 import { navigate } from '../navigation.js';
 export function SessionEntry({ id }: { id: string }) {
+  const lastProposal = useRef<string | null>(null);
+  const proposalControl = useRef<((id: string, queryOnly?: boolean) => boolean) | null>(null);
+  const [proposalStatus, setProposalStatus] = useState<{ id: string; status: PublicTypes['ProposalStatus'] } | null>(
+    null,
+  );
   const alive = useAlive();
   const wide = useMediaQuery('(min-width: 1100px)');
   const [tab, setTab] = useState<string | null>('terminal');
@@ -172,7 +178,14 @@ export function SessionEntry({ id }: { id: string }) {
                       id={id}
                       enabled={!ending && !endError}
                       refresh={session.refresh}
-                      onFrame={telemetry.frame}
+                      proposalControl={proposalControl}
+                      onFrame={(frame) => {
+                        telemetry.frame(frame);
+                        if (frame.type === 'error' && frame.code === 'TERMINAL_BUSY' && lastProposal.current)
+                          setProposalStatus({ id: lastProposal.current, status: 'pending' });
+                        if (frame.type === 'proposal_status')
+                          setProposalStatus({ id: frame.proposalId, status: frame.status });
+                      }}
                       onConnection={telemetry.connection}
                     />
                   </Suspense>
@@ -205,7 +218,15 @@ export function SessionEntry({ id }: { id: string }) {
                   <Timeline items={telemetry.events} />
                 </Tabs.Panel>
                 <Tabs.Panel value="assistant" className="workspace-evidence">
-                  <AssistantPanel key={id + (auth.identity?.sub ?? '')} id={id} />
+                  <AssistantPanel
+                    key={id + (auth.identity?.sub ?? '')}
+                    id={id}
+                    proposalStatus={proposalStatus}
+                    confirmProposal={(proposalId, queryOnly) => {
+                      lastProposal.current = proposalId;
+                      return !ending && !endError && (proposalControl.current?.(proposalId, queryOnly) ?? false);
+                    }}
+                  />
                 </Tabs.Panel>
                 <Tabs.Panel value="hints" className="workspace-evidence">
                   <Hints view={view} now={now} refresh={session.refresh} disabled={ending || Boolean(endError)} />

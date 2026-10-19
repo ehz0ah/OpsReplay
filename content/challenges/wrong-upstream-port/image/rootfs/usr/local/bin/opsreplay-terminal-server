@@ -23,6 +23,8 @@ import termios
 import threading
 import time
 
+from opsreplay_terminal_proposals import ProposalLedger, valid as valid_proposal
+
 from opsreplay_terminal_recording import (
     INITIAL_COLUMNS,
     INITIAL_ROWS,
@@ -207,6 +209,7 @@ class TerminalState:
     def __init__(self):
         self.lock = threading.RLock()
         self.input_lock = threading.Lock()
+        self.proposals = ProposalLedger()
         self.stopping = threading.Event()
         self.generation = 0
         self.active = None
@@ -391,6 +394,7 @@ class TerminalState:
                 if self.child_exit_detected.is_set():
                     self.exit_tail_bytes += len(data)
                 self.recording.bytes_event("output", data)
+                self.proposals.output(data)
             return data
 
     def _drain_output(self):
@@ -497,6 +501,7 @@ class TerminalState:
                     "generation": generation,
                     "resumed": self.ever_attached,
                     "replayTruncated": self.replay_truncated,
+                    "proposals": True,
                 }
                 self.output_condition.notify_all()
 
@@ -548,6 +553,7 @@ class TerminalState:
                 if invalid is not None:
                     return invalid
                 master_fd = self.master_fd
+                self.proposals.input(data)
             deadline = time.monotonic() + INPUT_TIMEOUT_SECONDS
             offset = 0
             while offset < len(data):
@@ -703,6 +709,20 @@ class TerminalHandler(socketserver.BaseRequestHandler):
                     if failure is not None:
                         raise ProtocolError(failure)
                     if not connection.send({"type": "input_accepted", "generation": frame_generation}):
+                        return
+                elif frame_type == "proposal":
+                    exact_keys(frame, {"type", "generation", "token", "proposalId", "command", "query"})
+                    frame_generation = integer(frame["generation"], 1, MAX_GENERATION)
+                    if not valid_proposal(frame):
+                        raise ProtocolError("INVALID_FRAME")
+                    if not isinstance(frame["query"], bool):
+                        raise ProtocolError("INVALID_FRAME")
+                    if frame["query"]:
+                        with state.input_lock:
+                            status = state.proposals.status(frame["token"]) if state._validate_owner(connection, frame_generation) is None else "unknown"
+                    else:
+                        status = state.proposals.dispatch(state, connection, frame_generation, frame)
+                    if not connection.send({"type": "proposal_receipt", "generation": frame_generation, "token": frame["token"], "status": status}):
                         return
                 elif frame_type == "resize":
                     exact_keys(frame, {"type", "generation", "columns", "rows"})

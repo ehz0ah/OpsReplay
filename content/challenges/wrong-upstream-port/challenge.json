@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.2",
   "id": "wrong-upstream-port",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "title": "Storefront returns 502",
   "summary": "Users see 502 Bad Gateway after an application change. Find why the proxy cannot reach the application and restore checkout without taking the proxy down.",
   "status": "draft",

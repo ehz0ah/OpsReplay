@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { DynamoProposalRunner, type ProposalRunner } from './proposal-store.js';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { createGatewayAwsClients, type GatewayAwsClients } from './aws.js';
 import {
@@ -69,6 +70,7 @@ export interface GatewayRuntimeDependencies {
   ) => RecordingSupervisor;
   createAdmissions: (client: DynamoDBDocumentClient, tableName: string) => TerminalAdmissionStore;
   createTelemetry: (client: DynamoDBDocumentClient, tableName: string) => GatewayLiveTelemetryStore;
+  createProposals?: (client: DynamoDBDocumentClient, tableName: string) => ProposalRunner;
   createRelay: (server: HttpServer, options: GatewayBrowserTerminalRelayOptions) => BrowserTerminalRelay;
   createHttpServer: (listener: (request: IncomingMessage, response: ServerResponse) => void) => HttpServer;
   createRecorderId: () => string;
@@ -240,6 +242,7 @@ const defaultDependencies: GatewayRuntimeDependencies = {
   createClients: createGatewayAwsClients,
   createSupervisor: createGatewayRecordingSupervisor,
   createAdmissions: (client, tableName) => new DynamoTerminalAdmissionStore(client, tableName),
+  createProposals: (client, tableName) => new DynamoProposalRunner(client, tableName),
   createTelemetry: (client, tableName) => new DynamoGatewayLiveTelemetryStore(client, tableName),
   createRelay: (server, options) => new GatewayBrowserTerminalRelay(server, options),
   createHttpServer: (listener) =>
@@ -325,6 +328,9 @@ export async function runGatewayRuntime(
         allowedOrigins: configuration.terminal.allowedOrigins,
         admissions,
         telemetry,
+        ...(dependencies.createProposals
+          ? { proposals: dependencies.createProposals(clients.dynamo, configuration.sessionTableName) }
+          : {}),
         maxConnections: configuration.terminal.maximumConnections,
         maxPendingAuthentications: configuration.terminal.maximumPendingAuthentications,
         terminalPort: configuration.terminal.terminalPort,

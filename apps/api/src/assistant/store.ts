@@ -9,6 +9,7 @@ import type { PublicTypes } from '../../../../packages/contracts/public-types.js
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import schema from '../../../../packages/contracts/schemas/public.schema.json';
+import { createProposal, type SavedProposal } from '../../../../packages/contracts/private/assistant-proposal.js';
 import { ActionError } from '../shared/action.js';
 export class AssistantError extends Error {
   constructor(
@@ -88,7 +89,8 @@ export class AssistantStore {
       typeof value.view.text !== 'string' ||
       value.view.text.length > 20000 ||
       !Array.isArray(value.view.proposals) ||
-      value.view.proposals.length !== 0 ||
+      value.view.proposals.length > 1 ||
+      (value.view.status !== 'completed' && value.view.proposals.length !== 0) ||
       typeof value.view.expiresAt !== 'string' ||
       !Number.isFinite(Date.parse(value.view.expiresAt)) ||
       typeof value.userText !== 'string' ||
@@ -275,6 +277,7 @@ export class AssistantStore {
     text: string,
     status: 'completed' | 'failed',
     signal: AbortSignal,
+    proposed?: unknown,
   ): Promise<PublicTypes['Turn']> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const session = await this.owned(id, turn.ownerId, signal);
@@ -292,11 +295,28 @@ export class AssistantStore {
       if (text.length > 20000) throw new Error('Assistant result exceeds its bound.');
       if (session.view.status !== 'ready' || !session.view.endsAt || Date.parse(session.view.endsAt) <= this.now())
         throw new AssistantError('TURN_INTERRUPTED');
+      const proposal =
+        status === 'completed'
+          ? createProposal(
+              proposed,
+              new Date(Math.min(this.now() + 600000, Date.parse(session.view.endsAt))).toISOString(),
+            )
+          : undefined;
+      const proposalRecord: SavedProposal | undefined = proposal
+        ? {
+            schemaVersion: 1,
+            ownerId: turn.ownerId,
+            sessionId: id,
+            turnId: turn.view.id,
+            view: proposal,
+            delivery: null,
+          }
+        : undefined;
       const view: PublicTypes['Turn'] = {
         ...current.view,
         status,
         text: status === 'completed' ? text : '',
-        proposals: [],
+        proposals: proposal ? [proposal] : [],
       };
       try {
         await this.client.send(
@@ -304,6 +324,9 @@ export class AssistantStore {
             ClientRequestToken: randomUUID(),
             TransactItems: [
               this.unchanged(id, 'STATE', session),
+              ...(proposalRecord
+                ? [this.write(id, 'PROPOSAL#' + proposalRecord.view.id, proposalRecord, undefined)]
+                : []),
               this.write(id, 'TURN#' + turn.view.id, { ...current, view }, current),
               this.write(id, 'CONVERSATION', { ...slot, activeId: null, expiresAt: null }, slot),
             ],

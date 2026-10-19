@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { setTimeout as delay } from 'node:timers/promises';
+import { ProposalError, type ProposalRunner } from './proposal-store.js';
 import { ShellMarkerFilter } from './shell-marker-filter.js';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -38,7 +39,7 @@ type GatewayClientMessage =
   | { type: 'auth'; sessionId: string; ticket: string }
   | { type: 'heartbeat' }
   | { type: 'resize'; cols: number; rows: number }
-  | { type: 'run_proposal'; proposalId: string };
+  | { type: 'run_proposal' | 'query_proposal'; proposalId: string };
 
 type GatewayErrorCode =
   | 'AUTH_FAILED'
@@ -47,6 +48,7 @@ type GatewayErrorCode =
   | 'SESSION_TERMINAL'
   | 'REPLACED'
   | 'TELEMETRY_UNAVAILABLE'
+  | 'TERMINAL_BUSY'
   | 'PROPOSAL_UNAVAILABLE'
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
@@ -71,6 +73,7 @@ const errorMessages: Record<GatewayErrorCode, string> = {
   SESSION_TERMINAL: 'The terminal session has ended.',
   REPLACED: 'This terminal connection was replaced.',
   TELEMETRY_UNAVAILABLE: 'Live telemetry is temporarily unavailable. Use the session API for current status.',
+  TERMINAL_BUSY: 'The shell is busy or has typed input. Clear it before confirming.',
   PROPOSAL_UNAVAILABLE: 'Proposal execution is not available.',
   RATE_LIMITED: 'Terminal input is arriving too quickly.',
   INTERNAL_ERROR: 'The terminal connection failed.',
@@ -119,6 +122,7 @@ export interface GatewayBrowserTerminalConnectionOptions {
   heartbeatIntervalMs?: number;
   telemetryIntervalMs?: number;
   telemetry?: GatewayLiveTelemetryStore;
+  proposals?: ProposalRunner;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
@@ -458,8 +462,27 @@ export class GatewayBrowserTerminalConnection {
         await session.resize(message.cols, message.rows, this.lifetime.signal);
         this.scheduleHeartbeat();
         return;
+      case 'query_proposal':
       case 'run_proposal':
-        await this.sendJson(publicError('PROPOSAL_UNAVAILABLE'));
+        if (!this.options.proposals) {
+          await this.sendJson(publicError('PROPOSAL_UNAVAILABLE'));
+          return;
+        }
+        try {
+          const status = await this.options.proposals.run(
+            session,
+            message.proposalId,
+            this.lifetime.signal,
+            message.type === 'query_proposal',
+          );
+          await this.sendJson({ type: 'proposal_status', proposalId: message.proposalId, status });
+        } catch (error) {
+          if (error instanceof ProposalError) {
+            await this.sendJson(publicError(error.code));
+            return;
+          }
+          throw error;
+        }
     }
   }
 
@@ -783,6 +806,7 @@ export interface GatewayBrowserTerminalRelayOptions {
   heartbeatIntervalMs?: number;
   telemetryIntervalMs?: number;
   telemetry?: GatewayLiveTelemetryStore;
+  proposals?: ProposalRunner;
   initialColumns?: number;
   initialRows?: number;
   terminalPort?: number;
@@ -993,6 +1017,7 @@ export class GatewayBrowserTerminalRelay {
         ? {}
         : { telemetryIntervalMs: this.options.telemetryIntervalMs }),
       ...(this.options.telemetry === undefined ? {} : { telemetry: this.options.telemetry }),
+      ...(this.options.proposals === undefined ? {} : { proposals: this.options.proposals }),
       ...(this.options.initialColumns === undefined ? {} : { initialColumns: this.options.initialColumns }),
       ...(this.options.initialRows === undefined ? {} : { initialRows: this.options.initialRows }),
       ...(this.options.terminalPort === undefined ? {} : { terminalPort: this.options.terminalPort }),

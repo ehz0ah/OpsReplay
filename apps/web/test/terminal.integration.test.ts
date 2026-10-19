@@ -232,3 +232,20 @@ test('a delayed output failure on a detached socket cannot overwrite its replace
     await run;
   }
 });
+test('proposal confirmation and status query are separate explicit controls', async () => {
+  const f = fixture(),
+    run = f.attachment.start();
+  try {
+    assert.equal(f.attachment.confirmProposal(id), false);
+    await until(() => f.sockets.length === 1);
+    f.sockets[0]!.admitted();
+    await until(() => f.states.some((v) => v.state === 'ready'));
+    assert.equal(f.attachment.confirmProposal(id), true);
+    assert.deepEqual(JSON.parse(f.sockets[0]!.sent.at(-1) as string), { type: 'run_proposal', proposalId: id });
+    assert.equal(f.attachment.confirmProposal(id, true), true);
+    assert.deepEqual(JSON.parse(f.sockets[0]!.sent.at(-1) as string), { type: 'query_proposal', proposalId: id });
+  } finally {
+    f.attachment.stop();
+    await run;
+  }
+});
