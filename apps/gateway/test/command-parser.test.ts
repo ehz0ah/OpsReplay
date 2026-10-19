@@ -179,3 +179,14 @@ test('long editor input and no-echo secrets never enter command text or mark par
   assert.equal(secret.commands[0]!.command, 'read -s password');
   assert.equal(JSON.stringify(secret).includes('private-password'), false);
 });
+
+test('confirmed proposal command markers retain attribution without affecting exit evidence', () => {
+  const id = randomUUID(),
+    command = 'cat /var/log/nginx/error.log';
+  const result = parseCommandEvents(initialCommandParser(randomUUID()), [
+    output(mark('C;' + Buffer.from(command).toString('base64') + ';' + id) + 'failures' + mark('D;0')),
+  ]);
+  assert.equal(result.commands[0]?.source, 'assistant');
+  assert.equal(result.commands[0]?.proposalId, id);
+  assert.equal(result.commands[0]?.exitStatus, 0);
+});

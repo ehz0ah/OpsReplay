@@ -3,7 +3,8 @@
 Status: implemented locally. AWS streaming and a paid provider remain unverified.
 
 The optional assistant explains recorded public evidence during a ready Challenge.
-It does not execute commands or change outcomes. Terminal and hints remain available
+It does not execute commands or change outcomes. The later
+[proposal increment](confirmed-proposals.md) adds explicit learner confirmation. Terminal and hints remain available
 when it fails. Code Review chat and proposals are separate increments.
 
 Context contains the alert, title, tier, up to eight completed recorded commands,

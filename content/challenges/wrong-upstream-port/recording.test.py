@@ -90,6 +90,7 @@ def real_pty_tail_bound():
     try:
         os.set_blocking(master, False)
         state = terminal.TerminalState.__new__(terminal.TerminalState)
+        state.proposals = terminal.ProposalLedger()
         state.lock = threading.RLock()
         state.output_condition = threading.Condition(state.lock)
         state.stopping = threading.Event()
@@ -235,6 +236,7 @@ def helpers():
             assert str(error) == "INVALID_CURSOR"
 
     state = terminal.TerminalState.__new__(terminal.TerminalState)
+    state.proposals = terminal.ProposalLedger()
     state.lock = threading.RLock()
     state.input_lock = threading.Lock()
     state.recording = recording.RecordingJournal()

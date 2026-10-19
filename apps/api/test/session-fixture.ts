@@ -8,7 +8,7 @@ export function sessionRecord(id: string): SessionRecord {
       id,
       challenge: {
         id: 'wrong-upstream-port',
-        version: '0.1.1',
+        version: '0.1.2',
         title: 'Storefront returns 502',
         tier: 'easy',
         category: 'networking',

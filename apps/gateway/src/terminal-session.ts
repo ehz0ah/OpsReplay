@@ -9,6 +9,10 @@ import {
 
 export interface TerminalConnection {
   readonly ended: Promise<TerminalClientEnd>;
+  proposal?(
+    frame: { token: string; proposalId: string; command: string; query?: boolean },
+    signal?: AbortSignal,
+  ): Promise<'accepted' | 'busy' | 'unknown'>;
   input(data: Uint8Array, signal?: AbortSignal): Promise<void>;
   resize(columns: number, rows: number, signal?: AbortSignal): Promise<void>;
   heartbeat(signal?: AbortSignal): Promise<void>;
@@ -111,6 +115,16 @@ export class GatewayTerminalSession {
     await this.authorize(signal);
     await this.recordLearnerSeen(signal);
     await this.terminal.input(data, signal);
+  }
+
+  async proposal(
+    frame: { token: string; proposalId: string; command: string; query?: boolean },
+    signal?: AbortSignal,
+  ): Promise<'accepted' | 'busy' | 'unknown'> {
+    await this.authorize(signal);
+    if (!this.terminal.proposal) return frame.query ? 'unknown' : 'busy';
+    await this.recordLearnerSeen(signal);
+    return this.terminal.proposal(frame, signal);
   }
 
   async resize(columns: number, rows: number, signal?: AbortSignal): Promise<void> {

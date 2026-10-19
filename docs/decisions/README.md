@@ -273,3 +273,8 @@ Configure exact API, Cognito and terminal connection origins before publication.
 Challenge chat from public evidence. One turn owns a worker-fenced slot. Retries read
 saved results. Separate send/read Lambdas remain disabled or bounded by configuration.
 Command proposals and Code Review chat remain separate work.
+
+20 October 2026: [confirmed proposals](confirmed-proposals.md) saves at most one
+proposal with turn completion. Explicit confirmation uses a serialized Readline check
+and a consumed delivery token. Status queries cannot dispatch. Unknown delivery never
+resends. Challenge candidates advance to 0.1.2 before immutable publication.

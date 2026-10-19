@@ -27,7 +27,7 @@
     "gateway:runtime:image:build": "docker build --platform linux/amd64 --provenance=false --target runtime -t opsreplay/gateway-recording:dev -f apps/gateway/Dockerfile .",
     "gateway:runtime:image:test": "node --test apps/gateway/test/runtime-image.test.mjs",
     "challenge:build": "docker build --platform linux/amd64 --provenance=false -t opsreplay/challenge-wrong-upstream-port:dev content/challenges/wrong-upstream-port/image",
-    "challenge:test": "node --import tsx --test content/challenges/wrong-upstream-port/image.test.mjs content/challenges/wrong-upstream-port/recording-wire.test.mjs",
+    "challenge:test": "node --import tsx --test content/challenges/wrong-upstream-port/image.test.mjs content/challenges/wrong-upstream-port/recording-wire.test.mjs content/challenges/wrong-upstream-port/proposals-wire.test.mjs",
     "check": "node scripts/check.mjs && node --import tsx --test packages/contracts/private/*.test.ts && node --test scripts/*.test.mjs",
     "contracts:sync": "node scripts/sync-openapi.mjs && prettier --write packages/contracts/openapi.json",
     "typecheck": "npm run contracts:check && tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.test.json",

@@ -1,4 +1,4 @@
-import { Button, Textarea } from '@mantine/core';
+import { Button, Textarea, Modal, Group } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { parseMutation } from '../../../../packages/contracts/public-validation.js';
@@ -7,10 +7,22 @@ import { useApi } from '../api-context.js';
 import { useAlive } from '../use-alive.js';
 import { ApiError } from '../api.js';
 import { streamAssistant } from './stream.js';
-export function AssistantPanel({ id }: { id: string }) {
+export function AssistantPanel({
+  id,
+  confirmProposal,
+  proposalStatus,
+}: {
+  id: string;
+  confirmProposal?: (id: string, queryOnly?: boolean) => boolean;
+  proposalStatus?: { id: string; status: PublicTypes['ProposalStatus'] } | null;
+}) {
   const auth = useAuth(),
     api = useApi(),
     alive = useAlive();
+  const [confirmation, setConfirmation] = useState<PublicTypes['Proposal'] | null>(null);
+  const deliveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(deliveryTimer.current), []);
+  const [delivery, setDelivery] = useState<PublicTypes['ProposalStatus'] | null>(null);
   const stream = useRef<AbortController | null>(null);
   const finished = useRef(false);
   useEffect(() => () => stream.current?.abort(), []);
@@ -28,6 +40,9 @@ export function AssistantPanel({ id }: { id: string }) {
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState<string | null>(null);
   const [turn, setTurn] = useState<PublicTypes['Turn'] | null>(null);
+  useEffect(() => {
+    if (proposalStatus?.id === turn?.proposals[0]?.id) setDelivery(proposalStatus?.status ?? null);
+  }, [proposalStatus, turn?.proposals[0]?.id]);
   function saved(value: PublicTypes['Turn']) {
     setTurn(value);
     if (value.status !== 'running') finished.current = true;
@@ -80,6 +95,8 @@ export function AssistantPanel({ id }: { id: string }) {
     setMessage(null);
     setAnswer('');
     setTurn(null);
+    setDelivery(null);
+    clearTimeout(deliveryTimer.current);
     finished.current = false;
     const controller = new AbortController();
     stream.current = controller;
@@ -122,6 +139,35 @@ export function AssistantPanel({ id }: { id: string }) {
   }
   return (
     <section className="assistant-panel">
+      <Modal opened={!!confirmation} onClose={() => setConfirmation(null)} title="Run this command?" centered>
+        <pre>{confirmation?.command}</pre>
+        <p>
+          {confirmation?.caution
+            ? 'This command can change or stop services. Check its effect before running it.'
+            : 'The command runs in your current shell. Confirm only after checking it.'}
+        </p>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setConfirmation(null)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              const proposal = confirmation;
+              setConfirmation(null);
+              if (!proposal) return;
+              if (confirmProposal?.(proposal.id)) {
+                setDelivery('dispatching');
+                clearTimeout(deliveryTimer.current);
+                deliveryTimer.current = setTimeout(() => {
+                  if (alive.current) setDelivery((v) => (v === 'dispatching' ? 'unknown' : v));
+                }, 6000);
+              } else setMessage('Terminal is unavailable. Reconnect before confirming.');
+            }}
+          >
+            Confirm and run
+          </Button>
+        </Group>
+      </Modal>
       <h2>Investigation assistant</h2>
       <p className="muted">
         Ask about your recorded output or metrics. Replies can be wrong. Check the evidence before acting.
@@ -140,7 +186,7 @@ export function AssistantPanel({ id }: { id: string }) {
         onChange={(event) => setText(event.currentTarget.value)}
       />
       <div className="actions">
-        <Button disabled={busy || (!pending && !text.trim())} onClick={() => void send()}>
+        <Button disabled={busy || delivery === 'dispatching' || (!pending && !text.trim())} onClick={() => void send()}>
           {busy ? 'Answering…' : pending ? 'Recover question' : 'Ask'}
         </Button>
       </div>
@@ -154,6 +200,37 @@ export function AssistantPanel({ id }: { id: string }) {
           The connection ended before the reply was saved. Recover this question to check its result.
         </p>
       )}
+      {turn?.status === 'completed' &&
+        turn.proposals.map((proposal) => (
+          <div className="proposal" key={proposal.id}>
+            <h3>Suggested command</h3>
+            <pre>{proposal.command}</pre>
+            <p>{proposal.rationale}</p>
+            {proposal.caution && <p className="notice">This command can change or stop services.</p>}
+            <p role="status">
+              {delivery === 'accepted'
+                ? 'Sent to the shell. Check its output to see the result.'
+                : delivery === 'unknown' || delivery === 'dispatching'
+                  ? 'Delivery is uncertain. Check terminal output before acting again.'
+                  : delivery === 'expired' || Date.parse(proposal.expiresAt) <= Date.now()
+                    ? 'This proposal has expired.'
+                    : 'Waiting for your confirmation.'}
+            </p>
+            <Button
+              disabled={
+                delivery === 'accepted' ||
+                delivery === 'dispatching' ||
+                delivery === 'expired' ||
+                (delivery !== 'unknown' && Date.parse(proposal.expiresAt) <= Date.now())
+              }
+              onClick={() =>
+                delivery === 'unknown' ? confirmProposal?.(proposal.id, true) : setConfirmation(proposal)
+              }
+            >
+              {delivery === 'unknown' ? 'Check delivery status' : 'Review and run'}
+            </Button>
+          </div>
+        ))}
       {answer && (
         <div className="assistant-answer" aria-live="polite">
           <p>{answer}</p>

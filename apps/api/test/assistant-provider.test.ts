@@ -55,3 +55,39 @@ test('missing DONE, invalid text, and provider failures never become completed r
     () => new ChatProvider({ endpoint: 'http://localhost/v1/chat/completions', model: 'test', key: async () => 'key' }),
   );
 });
+test('split typed tool arguments produce one proposal while invalid calls remain text-only', async () => {
+  for (const name of ['propose_command', 'execute']) {
+    const data =
+      [
+        {
+          choices: [
+            {
+              delta: {
+                content: 'Read the error log.',
+                tool_calls: [{ index: 0, id: 'call', function: { name, arguments: '{"command":"cat /var/' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, function: { arguments: 'log/nginx/error.log","rationale":"Inspect failures"}' } },
+                ],
+              },
+            },
+          ],
+        },
+      ]
+        .map((v) => 'data: ' + JSON.stringify(v) + '\n\n')
+        .join('') + 'data: [DONE]\n\n';
+    const provider = new ChatProvider(
+      { endpoint: 'https://api.example/v1/chat/completions', model: 'test', key: async () => 'key' },
+      async () => new Response(data),
+    );
+    const result = await provider.reply(context, [], 'help', () => {}, AbortSignal.timeout(1000));
+    assert.equal(result.proposal?.command, name === 'propose_command' ? 'cat /var/log/nginx/error.log' : undefined);
+  }
+});

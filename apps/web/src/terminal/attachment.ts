@@ -288,6 +288,23 @@ export class TerminalAttachment {
       rows: Math.max(5, Math.min(200, Math.floor(rows))),
     });
   }
+  confirmProposal(id: string, queryOnly = false): boolean {
+    if (
+      !/^[a-f0-9-]{36}$/.test(id) ||
+      !this.writable ||
+      this.socket?.readyState !== 1 ||
+      this.socket.bufferedAmount > 65536
+    )
+      return false;
+    try {
+      this.socket.send(JSON.stringify({ type: queryOnly ? 'query_proposal' : 'run_proposal', proposalId: id }));
+      return true;
+    } catch {
+      this.writable = false;
+      this.socket.close();
+      return false;
+    }
+  }
   heartbeat() {
     this.control({ type: 'heartbeat' });
   }

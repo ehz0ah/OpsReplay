@@ -29,6 +29,7 @@ def verify_terminal_helpers():
         assert module.read_master(0) is None
 
     state = module.TerminalState.__new__(module.TerminalState)
+    state.proposals = module.ProposalLedger()
     state.lock = module.threading.RLock()
     state.output_condition = module.threading.Condition(state.lock)
     state.stopping = module.threading.Event()
@@ -90,6 +91,7 @@ def verify_terminal_helpers():
             self.closed = True
 
     exit_state = module.TerminalState.__new__(module.TerminalState)
+    exit_state.proposals = module.ProposalLedger()
     exit_state.lock = module.threading.RLock()
     exit_state.output_condition = module.threading.Condition(exit_state.lock)
     exit_state.stopping = module.threading.Event()

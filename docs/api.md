@@ -7,7 +7,7 @@ Gateway frames. The reference Challenge handlers from session start through resu
 are implemented. An operator-seeded AWS checkpoint on 15 October 2026 exercised the real
 CloudFront terminal path and invoked ticket and result handlers locally against managed
 data. It did not exercise Cognito, API Gateway, or session start. Catalogue, account
-Challenge assistant turns are implemented locally. Code Review assistant routes and command proposals are not implemented. Session and review history reads are implemented locally. Code Review reads and submissions are implemented locally. Learn reads are implemented locally.
+Challenge assistant turns are implemented locally. Code Review assistant routes are not implemented. Confirmed Challenge command proposals are implemented locally. Session and review history reads are implemented locally. Code Review reads and submissions are implemented locally. Learn reads are implemented locally.
 All runtime routes remain default-off, and no public API or Gateway is currently deployed.
 
 Version 0.2 replaces the pre-implementation 0.1 contract, which described a simulated
@@ -417,9 +417,10 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
 5. `run_proposal` requests delivery of a confirmed proposal. The gateway checks the
    owner, session, expiry, and input generation. It conditionally changes `pending` to
    `dispatching` with a fixed delivery token before sending anything. The terminal
-   server serializes this request with manual input, checks a verified empty prompt,
-   and records the token before attempting one PTY write. It records `accepted` only
-   after the PTY accepts the complete command and Enter. The resulting command event
+   server serializes this request with manual input and checks foreground Bash and prompt state.
+   A private Readline binding checks the actual empty edit buffer. The token is recorded
+   before one binding trigger is written. The binding records `accepted` before evaluating
+   the command in the current shell. It never appends command text or Enter to typed input. The resulting command event
    has `source: assistant` and the proposal ID. Acceptance is not command success.
 
 The terminal server rejects every input batch from an older generation after a new
@@ -436,6 +437,7 @@ restore `pending` using the same delivery token. Never append a proposal to type
 A later explicit confirmation after definite non-delivery creates a new token. Late
 acknowledgements for the old token cannot change that new delivery.
 
+`query_proposal` only reads delivery status and never dispatches a pending proposal.
 `proposal_status` returns the proposal ID and current delivery status. Repeated
 confirmation reads that status or queries the terminal's receipt, never resends the
 command. A crash, partial PTY write, or lost acknowledgement leaves `unknown` unless a
@@ -492,11 +494,11 @@ authorization header.
 
 Reattaching to an interrupted turn sends `turn_failed` with `TURN_INTERRUPTED`.
 `GET` returns that saved terminal state. Starting another turn requires a new request
-ID. The current implementation saves text-only Challenge turns. Command proposals remain the next increment.
+ID. Completed Challenge turns may contain one saved command proposal. Failed or interrupted turns contain none.
 
 This route never runs a command. A proposal waits for the learner to confirm it in the
 workspace, which sends `run_proposal` through the gateway. Proposals expire after ten
-minutes (proposed) or when the session ends. See [LLM integration](llm.md).
+minutes or when the session ends. See [LLM integration](llm.md).
 
 `POST /v1/review-submissions/{id}/messages` follows the same stream rules for Code
 Review debriefs and is available only after submission. Its turns never propose

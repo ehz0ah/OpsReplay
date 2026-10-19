@@ -1,4 +1,5 @@
 import type { AssistantContext } from './context.js';
+import { proposalCommand } from '../../../../packages/contracts/private/assistant-proposal.js';
 import { assistantInstruction } from './context.js';
 export interface AssistantReply {
   text: string;
@@ -56,6 +57,23 @@ export class ChatProvider implements AssistantProvider {
         model: this.configuration.model,
         stream: true,
         stream_options: { include_usage: true },
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'propose_command',
+              description: 'Suggest one single-line shell command for learner confirmation. Never executes it.',
+              strict: true,
+              parameters: {
+                type: 'object',
+                additionalProperties: false,
+                properties: { command: { type: 'string' }, rationale: { type: 'string' } },
+                required: ['command', 'rationale'],
+              },
+            },
+          },
+        ],
+        parallel_tool_calls: false,
         max_completion_tokens: this.configuration.maximumOutputTokens ?? 1200,
         messages: [
           { role: 'system', content: assistantInstruction },
@@ -75,6 +93,10 @@ export class ChatProvider implements AssistantProvider {
       bytes = 0,
       output = '',
       done = false;
+    let toolName = '',
+      toolArguments = '',
+      toolId = '',
+      invalidTool = false;
     let usage = { inputTokens: 0, outputTokens: 0 };
     const line = (value: string) => {
       if (!value.startsWith('data:')) return;
@@ -86,6 +108,19 @@ export class ChatProvider implements AssistantProvider {
       if (!data) return;
       const event = JSON.parse(data);
       if (event.error) throw new Error('Assistant provider failed.');
+      const calls = event.choices?.[0]?.delta?.tool_calls;
+      if (calls !== undefined) {
+        if (!Array.isArray(calls) || calls.length > 1) invalidTool = true;
+        else
+          for (const call of calls) {
+            if (call.index !== 0 || (call.id && toolId && call.id !== toolId)) invalidTool = true;
+            if (typeof call.id === 'string') toolId = call.id;
+            if (typeof call.function?.name === 'string') toolName += call.function.name;
+            if (typeof call.function?.arguments === 'string') toolArguments += call.function.arguments;
+            if (toolName.length > 100 || toolArguments.length > 8000)
+              throw new Error('Provider tool exceeds its bound.');
+          }
+      }
       const token = event.choices?.[0]?.delta?.content;
       if (token !== undefined && token !== null) {
         if (typeof token !== 'string') throw new Error('Invalid provider text.');
@@ -117,8 +152,24 @@ export class ChatProvider implements AssistantProvider {
       }
       pending += decoder.decode();
       if (pending.trim()) line(pending);
+      let proposal: AssistantReply['proposal'];
+      if (!invalidTool && toolName === 'propose_command') {
+        try {
+          const value = JSON.parse(toolArguments);
+          if (
+            value &&
+            Object.keys(value).length === 2 &&
+            proposalCommand(value.command) &&
+            typeof value.rationale === 'string' &&
+            value.rationale.trim() &&
+            value.rationale.length <= 1000
+          )
+            proposal = value;
+        } catch {}
+      }
+      if (!output.trim() && proposal) output = 'Review the proposed command before you confirm it.';
       if (!done || !output.trim()) throw new Error('Incomplete assistant reply.');
-      return { text: output, usage };
+      return { text: output, usage, ...(proposal ? { proposal } : {}) };
     } finally {
       await reader.cancel().catch(() => {});
       reader.releaseLock();

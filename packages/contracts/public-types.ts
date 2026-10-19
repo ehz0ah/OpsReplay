@@ -251,6 +251,10 @@ export type GatewayClientMessage =
   | {
       type: 'run_proposal';
       proposalId: string;
+    }
+  | {
+      type: 'query_proposal';
+      proposalId: string;
     };
 export type GatewayServerMessage =
   | {
