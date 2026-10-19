@@ -15,7 +15,6 @@ import '@mantine/core/styles/CloseButton.css';
 import '@mantine/core/styles/Progress.css';
 import '@mantine/core/styles/Tabs.css';
 import '@mantine/core/styles/Input.css';
-import '@mantine/core/styles/Textarea.css';
 import '@mantine/core/styles/InlineInput.css';
 import '@mantine/core/styles/Switch.css';
 import { MantineProvider } from '@mantine/core';
