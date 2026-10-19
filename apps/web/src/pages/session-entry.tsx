@@ -4,6 +4,7 @@ import { useTelemetry } from '../telemetry/use-telemetry.js';
 import { freshSample } from '../telemetry/state.js';
 import { Metric } from '../components/metric.js';
 import { Timeline } from '../components/timeline.js';
+import { AssistantPanel } from '../assistant/panel.js';
 import { Hints } from '../components/hints.js';
 import { lazy, Suspense } from 'react';
 const TerminalView = lazy(() => import('../terminal/view.js'));
@@ -163,6 +164,7 @@ export function SessionEntry({ id }: { id: string }) {
                   <Tabs.Tab value="telemetry">Telemetry</Tabs.Tab>
                   <Tabs.Tab value="timeline">Timeline</Tabs.Tab>
                   <Tabs.Tab value="hints">Hints</Tabs.Tab>
+                  <Tabs.Tab value="assistant">Assistant</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="terminal" className="workspace-terminal">
                   <Suspense fallback={<p role="status">Opening terminal…</p>}>
@@ -201,6 +203,9 @@ export function SessionEntry({ id }: { id: string }) {
                 </Tabs.Panel>
                 <Tabs.Panel value="timeline" className="workspace-evidence">
                   <Timeline items={telemetry.events} />
+                </Tabs.Panel>
+                <Tabs.Panel value="assistant" className="workspace-evidence">
+                  <AssistantPanel key={id + (auth.identity?.sub ?? '')} id={id} />
                 </Tabs.Panel>
                 <Tabs.Panel value="hints" className="workspace-evidence">
                   <Hints view={view} now={now} refresh={session.refresh} disabled={ending || Boolean(endError)} />

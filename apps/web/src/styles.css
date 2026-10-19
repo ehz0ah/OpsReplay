@@ -748,3 +748,13 @@ button.diff-number:focus-visible {
   padding-left: 1rem;
   border-left: 3px solid #8caa81;
 }
+
+.assistant-panel .actions {
+  margin-top: 0.75rem;
+}
+.assistant-answer {
+  margin-top: 1.5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}

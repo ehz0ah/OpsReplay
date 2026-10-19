@@ -36,7 +36,7 @@ const ajv = new Ajv2020({ strict: true, allowUnionTypes: true, code: { source: t
 addFormats(ajv);
 ajv.addSchema(schema);
 const groups = {
-  requests: ['StartSessionRequest', 'MutationRequest', 'ReviewSubmitRequest'],
+  requests: ['StartSessionRequest', 'MutationRequest', 'ReviewSubmitRequest', 'MessageRequest'],
   entry: ['Error', 'Catalog', 'Account', 'LearnEntry', 'SessionPage'],
   session: [
     'SessionView',
@@ -48,6 +48,7 @@ const groups = {
     'GatewayClientMessage',
     'GatewayServerMessage',
   ],
+  assistant: ['Turn', 'StreamEvent'],
   reviews: ['ReviewExercise', 'ReviewSubmission', 'ReviewSubmissionPage'],
   results: ['Debrief', 'Playback', 'PlaybackMetrics', 'PlaybackCapture'],
 };

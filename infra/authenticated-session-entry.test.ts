@@ -90,11 +90,11 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     assert.deepEqual(authorizer[1].Properties?.ProviderARNs, [{ Ref: 'CognitoUserPoolArn' }]);
 
     const methods = ofType('AWS::ApiGateway::Method');
-    assert.equal(methods.length, 31);
+    assert.equal(methods.length, 35);
     const actions = methods.filter(([, value]) => value.Properties?.HttpMethod !== 'OPTIONS');
     const options = methods.filter(([, value]) => value.Properties?.HttpMethod === 'OPTIONS');
-    assert.equal(actions.length, 16);
-    assert.equal(options.length, 15);
+    assert.equal(actions.length, 18);
+    assert.equal(options.length, 17);
     for (const [, method] of actions) {
       assert.equal(method.Condition, 'GatewayPathEnabled');
       if (method.Properties?.OperationName === 'listCatalog') {
@@ -140,7 +140,7 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     const permissions = ofType('AWS::Lambda::Permission').filter(
       ([, value]) => value.Properties?.Principal === 'apigateway.amazonaws.com',
     );
-    assert.equal(permissions.length, 16);
+    assert.equal(permissions.length, 18);
     const startPermission = permissions.find(([, value]) =>
       JSON.stringify(value.Properties?.SourceArn).includes('/*/POST/v1/sessions'),
     );
@@ -195,7 +195,7 @@ test('authenticated session entry uses a durable pool and optional disposable cl
     );
     const [deployment] = ofType('AWS::ApiGateway::Deployment');
     assert.ok(deployment);
-    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV11');
+    assert.equal(deployment[0], 'TerminalTicketApiDeploymentV12');
     const dependencies = [deployment[1].DependsOn].flat();
     for (const [id] of methods) assert.ok(dependencies.includes(id));
 

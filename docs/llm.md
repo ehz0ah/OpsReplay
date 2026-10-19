@@ -1,7 +1,8 @@
 # Optional LLM integration
 
-Status: proposed implementation. The provider and model remain open. The plan assumes
-a provider with function calling.
+Status: live Challenge chat is implemented locally and disabled by default. The
+provider and model remain open. Command proposals and Code Review assistant turns
+remain planned. No deployed streaming or paid provider validation is claimed.
 
 ## Responsibilities
 

@@ -3,6 +3,7 @@ import {
   ArnFormat,
   Aws,
   CfnCondition,
+  CfnResource as CloudFormationResource,
   CfnOutput,
   CfnParameter,
   CfnRule as CloudFormationRule,
@@ -30,7 +31,7 @@ import { CfnService, CfnTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { CfnListener, CfnListenerRule, CfnLoadBalancer, CfnTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { CfnRule, Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
-import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Effect, PolicyStatement, Policy, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { CfnPermission, CfnEventSourceMapping, Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { SqsDestination } from 'aws-cdk-lib/aws-lambda-destinations';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
@@ -47,7 +48,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 11;
+const terminalTicketApiDeploymentVersion = 12;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -800,7 +801,7 @@ export class SessionStartStack extends Stack {
       new PolicyStatement({
         actions: ['dynamodb:Query'],
         resources: [`${table.tableArn}/index/${unfinishedWorkIndex.name}`],
-        conditions: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['LIFECYCLE'] } },
+        conditions: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['LIFECYCLE', 'ASSISTANT'] } },
       }),
     );
     sweepRole.addToPolicy(
@@ -1348,6 +1349,75 @@ export class SessionStartStack extends Stack {
       pathPart: '{id}',
     });
     terminalApiSession.cfnOptions.condition = gatewayEnabled;
+    const assistantEnabled = new CfnParameter(this, 'AssistantEnabled', {
+      type: 'String',
+      default: 'false',
+      allowedValues: ['true', 'false'],
+    });
+    const assistantEndpoint = new CfnParameter(this, 'AssistantEndpoint', {
+      type: 'String',
+      default: '',
+      allowedPattern: '^(?:|https://[A-Za-z0-9.-]+/v1/chat/completions)$',
+    });
+    const assistantModel = new CfnParameter(this, 'AssistantModel', { type: 'String', default: '', maxLength: 100 });
+    const assistantSecret = new CfnParameter(this, 'AssistantSecretArn', {
+      type: 'String',
+      default: '',
+      allowedPattern: '^(?:|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+)$',
+    });
+    const assistantActive = new CfnCondition(this, 'AssistantActive', {
+      expression: Fn.conditionAnd(
+        Fn.conditionEquals(assistantEnabled.valueAsString, 'true'),
+        Fn.conditionNot(Fn.conditionEquals(assistantSecret.valueAsString, '')),
+        Fn.conditionNot(Fn.conditionEquals(assistantEndpoint.valueAsString, '')),
+        Fn.conditionNot(Fn.conditionEquals(assistantModel.valueAsString, '')),
+        gatewayEnabled,
+      ),
+    });
+    const messagesResource = featureResource(
+      this,
+      'SessionMessagesResource',
+      featureApi,
+      'messages',
+      terminalApiSession.ref,
+    );
+    const turnResource = featureResource(this, 'SessionTurnResource', featureApi, '{turnId}', messagesResource.ref);
+    const assistantApi = {
+      ...featureApi,
+      enabled: gatewayEnabled,
+      environment: {
+        ...featureApi.environment,
+        ASSISTANT_ENDPOINT: Fn.conditionIf(assistantActive.logicalId, assistantEndpoint.valueAsString, '').toString(),
+        ASSISTANT_MODEL: Fn.conditionIf(assistantActive.logicalId, assistantModel.valueAsString, '').toString(),
+        ASSISTANT_SECRET_ARN: Fn.conditionIf(assistantActive.logicalId, assistantSecret.valueAsString, '').toString(),
+      },
+    };
+    const sendMessageAction = featureAction(this, 'SendSessionMessage', assistantApi, {
+      bundle: 'send-session-message',
+      resourceId: messagesResource.ref,
+      path: '/v1/sessions/*/messages',
+      method: 'POST',
+      leadingKeys: ['SESSION#*'],
+      actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
+      timeoutSeconds: 70,
+      streaming: true,
+      concurrency: 1,
+      runtimeEnabled: assistantActive,
+    });
+    const getTurnAction = featureAction(this, 'GetSessionTurn', featureApi, {
+      bundle: 'get-session-turn',
+      resourceId: turnResource.ref,
+      path: '/v1/sessions/*/messages/*',
+      leadingKeys: ['SESSION#*'],
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
+    });
+    const secretPolicy = new Policy(this, 'AssistantCredentialPolicy', {
+      statements: [
+        new PolicyStatement({ actions: ['secretsmanager:GetSecretValue'], resources: [assistantSecret.valueAsString] }),
+      ],
+    });
+    secretPolicy.attachToRole(sendMessageAction.role);
+    (secretPolicy.node.defaultChild as CloudFormationResource).cfnOptions.condition = assistantActive;
     const getSessionMethod = new CfnMethod(this, 'GetSessionMethod', {
       restApiId: terminalApi.ref,
       resourceId: terminalApiSession.ref,
@@ -1666,6 +1736,8 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      corsPreflight('SessionMessagesCors', messagesResource, ['OPTIONS', 'POST']),
+      corsPreflight('SessionTurnCors', turnResource, ['GET', 'OPTIONS']),
       corsPreflight('SavedReviewsCors', savedReviewsResource, ['GET', 'OPTIONS']),
       corsPreflight('SavedReviewCors', savedReviewResource, ['GET', 'OPTIONS']),
       corsPreflight('ReviewCors', reviewResource, ['GET', 'OPTIONS']),
@@ -1755,6 +1827,8 @@ export class SessionStartStack extends Stack {
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     for (const { method } of bootstrapRoutes) terminalTicketDeployment.addResourceDependency(method);
+    terminalTicketDeployment.addResourceDependency(sendMessageAction.method);
+    terminalTicketDeployment.addResourceDependency(getTurnAction.method);
     terminalTicketDeployment.addResourceDependency(listSessionsAction.method);
     terminalTicketDeployment.addResourceDependency(listReviewsAction.method);
     terminalTicketDeployment.addResourceDependency(getSavedReviewAction.method);
@@ -1776,6 +1850,24 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1sessions~1{id}~1messages',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 1,
+          throttlingRateLimit: 1,
+        },
+        {
+          httpMethod: 'GET',
+          resourcePath: '/~1v1~1sessions~1{id}~1messages~1{turnId}',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        },
         ...['/~1v1~1sessions', '/~1v1~1review-submissions', '/~1v1~1review-submissions~1{id}'].map((resourcePath) => ({
           httpMethod: 'GET',
           resourcePath,

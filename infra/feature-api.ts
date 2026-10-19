@@ -29,6 +29,9 @@ export function featureAction(
     actions?: string[];
     objectArn?: string;
     timeoutSeconds?: number;
+    streaming?: boolean;
+    concurrency?: number;
+    runtimeEnabled?: CfnCondition;
   },
 ) {
   const logs = new LogGroup(scope, `${id}Logs`, {
@@ -55,7 +58,11 @@ export function featureAction(
     environment: options.environment,
     memorySize: 256,
     timeout: Duration.seconds(input.timeoutSeconds ?? 10),
-    reservedConcurrentExecutions: Fn.conditionIf(options.enabled.logicalId, 2, 0) as unknown as number,
+    reservedConcurrentExecutions: Fn.conditionIf(
+      (input.runtimeEnabled ?? options.enabled).logicalId,
+      input.concurrency ?? 2,
+      0,
+    ) as unknown as number,
   });
   const method = new CfnMethod(scope, `${id}Method`, {
     restApiId: options.apiId,
@@ -68,15 +75,16 @@ export function featureAction(
     integration: {
       type: 'AWS_PROXY',
       integrationHttpMethod: 'POST',
-      timeoutInMillis: 8000,
+      timeoutInMillis: input.streaming ? 60000 : 8000,
+      ...(input.streaming ? { responseTransferMode: 'STREAM' } : {}),
       uri: Fn.join('', [
         'arn:',
         Aws.PARTITION,
         ':apigateway:',
         Aws.REGION,
-        ':lambda:path/2015-03-31/functions/',
+        input.streaming ? ':lambda:path/2021-11-15/functions/' : ':lambda:path/2015-03-31/functions/',
         fn.functionArn,
-        '/invocations',
+        input.streaming ? '/response-streaming-invocations' : '/invocations',
       ]),
     },
   });
