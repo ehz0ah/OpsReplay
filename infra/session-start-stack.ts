@@ -47,7 +47,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 9;
+const terminalTicketApiDeploymentVersion = 10;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -1194,6 +1194,29 @@ export class SessionStartStack extends Stack {
       leadingKeys: ['CONTENT#learn#*', 'USER#*'],
       objectArn: recordings.arnForObjects('content/learn/*'),
     });
+    const reviewsResource = featureResource(this, 'ReviewsResource', featureApi, 'reviews');
+    const reviewResource = featureResource(this, 'ReviewResource', featureApi, '{id}', reviewsResource.ref);
+    const reviewSubmitResource = featureResource(
+      this,
+      'ReviewSubmissionsResource',
+      featureApi,
+      'submissions',
+      reviewResource.ref,
+    );
+    const getReviewAction = featureAction(this, 'GetReview', featureApi, {
+      bundle: 'get-review',
+      resourceId: reviewResource.ref,
+      path: '/v1/reviews/*',
+      leadingKeys: ['CONTENT#code_review#*', 'USER#*'],
+    });
+    const submitReviewAction = featureAction(this, 'SubmitReview', featureApi, {
+      bundle: 'submit-review',
+      resourceId: reviewSubmitResource.ref,
+      path: '/v1/reviews/*/submissions',
+      method: 'POST',
+      leadingKeys: ['CONTENT#code_review#*', 'USER#*', 'REVIEW#*'],
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
+    });
     const bootstrapRoutes = bootstrapActions.map(({ id, action, authenticated, path }) => {
       const resource = new ApiGatewayResource(this, `${id}Resource`, {
         restApiId: terminalApi.ref,
@@ -1615,6 +1638,8 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      corsPreflight('ReviewCors', reviewResource, ['GET', 'OPTIONS']),
+      corsPreflight('ReviewSubmissionCors', reviewSubmitResource, ['OPTIONS', 'POST']),
       corsPreflight('LessonCors', lessonResource, ['GET', 'OPTIONS']),
       ...bootstrapRoutes.map(({ id, resource }) => corsPreflight(`${id}Cors`, resource, ['GET', 'OPTIONS'])),
       corsPreflight('Sessions', terminalApiSessions, ['OPTIONS', 'POST']),
@@ -1700,6 +1725,8 @@ export class SessionStartStack extends Stack {
     );
     terminalTicketDeployment.cfnOptions.condition = gatewayEnabled;
     for (const { method } of bootstrapRoutes) terminalTicketDeployment.addResourceDependency(method);
+    terminalTicketDeployment.addResourceDependency(getReviewAction.method);
+    terminalTicketDeployment.addResourceDependency(submitReviewAction.method);
     terminalTicketDeployment.addResourceDependency(learnAction.method);
     terminalTicketDeployment.addResourceDependency(startSessionMethod);
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
@@ -1716,6 +1743,24 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'GET',
+          resourcePath: '/~1v1~1reviews~1{id}',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        },
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1reviews~1{id}~1submissions',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        },
         {
           httpMethod: 'GET',
           resourcePath: '/~1v1~1learn~1{id}',

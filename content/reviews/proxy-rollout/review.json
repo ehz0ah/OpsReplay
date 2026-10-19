@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "0.2",
+  "id": "proxy-rollout",
+  "version": "0.1.0",
+  "title": "Apply a proxy configuration change",
+  "summary": "Review a rollout that changes a proxy target and restarts nginx without checking the configuration.",
+  "status": "draft",
+  "tier": "easy",
+  "category": "deployment",
+  "plan": "free",
+  "language": "shell",
+  "context": "A deployment script replaces the checkout upstream port in nginx configuration. The shop listens on port 8080. nginx is already running and serves the storefront. A configuration change can be invalid. A reload validates the new configuration while old workers continue serving if the reload fails. A restart stops the running service before the new process starts.",
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Original review exercise for deployment validation and safe proxy changes.",
+    "sources": []
+  },
+  "relatedChallenges": ["wrong-upstream-port"],
+  "files": [
+    {
+      "path": "deploy.sh",
+      "lines": [
+        {
+          "kind": "context",
+          "oldLine": 1,
+          "newLine": 1,
+          "text": "#!/bin/sh"
+        },
+        {
+          "kind": "context",
+          "oldLine": 2,
+          "newLine": 2,
+          "text": "set -eu"
+        },
+        {
+          "kind": "removed",
+          "oldLine": 3,
+          "newLine": null,
+          "text": "echo \"configure nginx manually\""
+        },
+        {
+          "kind": "added",
+          "oldLine": null,
+          "newLine": 3,
+          "text": "sed -i 's/:8081/:8080/' /etc/nginx/nginx.conf"
+        },
+        {
+          "kind": "added",
+          "oldLine": null,
+          "newLine": 4,
+          "text": "service nginx restart"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "missing-config-validation",
+      "title": "Validate configuration before applying it",
+      "explanation": "The script applies the edited file without nginx -t. A bad change can therefore stop the service during restart. Validate the resulting configuration and stop the rollout if it fails.",
+      "file": "deploy.sh",
+      "side": "new",
+      "startLine": 3,
+      "endLine": 4
+    },
+    {
+      "id": "restart-impact",
+      "title": "Use reload to preserve running workers",
+      "explanation": "Restart stops nginx before starting it again. A reload allows old workers to continue if the new configuration is rejected and avoids the same service interruption for a valid change.",
+      "file": "deploy.sh",
+      "side": "new",
+      "startLine": 4,
+      "endLine": 4
+    }
+  ]
+}

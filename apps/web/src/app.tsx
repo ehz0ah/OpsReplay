@@ -2,6 +2,7 @@ import { Button } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 import { CataloguePage } from './pages/catalogue.js';
+import { ReviewCatalogue, ReviewPage } from './pages/review.js';
 import { LearnCatalogue, LearnPage } from './pages/learn.js';
 import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
@@ -46,6 +47,16 @@ export function App() {
           >
             Learn
           </a>
+          <a
+            className="site-navigation"
+            href="/reviews"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('/reviews');
+            }}
+          >
+            Code Review
+          </a>
           <Button
             variant="default"
             disabled={auth.loading}
@@ -72,6 +83,10 @@ export function App() {
         )}
         {path === '/' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
+        ) : path === '/reviews' ? (
+          <ReviewCatalogue />
+        ) : /^\/reviews\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path) ? (
+          <ReviewPage key={path + (auth.identity?.sub ?? '')} id={path.split('/')[2]!} />
         ) : path === '/learn' ? (
           <LearnCatalogue />
         ) : /^\/learn\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path) ? (

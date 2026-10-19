@@ -48,7 +48,8 @@
     "monitor:dns:image:build": "docker build --platform linux/amd64 --provenance=false --target stale-dns -t opsreplay/monitor-stale-dns:dev -f apps/monitor/Dockerfile .",
     "monitor:dns:image:test": "OPSREPLAY_TEST_CHALLENGE=stale-dns-record OPSREPLAY_CHALLENGE_IMAGE=opsreplay/challenge-stale-dns-record:dev OPSREPLAY_MONITOR_IMAGE=opsreplay/monitor-stale-dns:dev OPSREPLAY_MONITOR_CLIENT_IMAGE=opsreplay/monitor-test:dev node --import tsx --test apps/monitor/test/image.test.mjs",
     "learn:build": "node --import tsx scripts/build-learn.mjs",
-    "learn:publish": "node --import tsx scripts/publish-learn.ts"
+    "learn:publish": "node --import tsx scripts/publish-learn.ts",
+    "review:publish": "node --import tsx scripts/publish-review.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
