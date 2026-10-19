@@ -693,3 +693,58 @@ select {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.review-file {
+  margin: 2rem 0;
+}
+.review-diff {
+  overflow-x: auto;
+  border: 1px solid #d9ded8;
+  background: #fafbf9;
+}
+.diff-row {
+  display: grid;
+  grid-template-columns: 3rem 3rem minmax(max-content, 1fr);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+.diff-row code {
+  padding: 0.3rem 0.75rem;
+  white-space: pre;
+}
+.diff-number {
+  padding: 0.3rem;
+  text-align: right;
+  border: 0;
+  border-right: 1px solid #d9ded8;
+  background: transparent;
+  color: #53614f;
+  cursor: pointer;
+}
+button.diff-number:hover,
+button.diff-number:focus-visible {
+  background: #dce8d8;
+  outline: 2px solid #476942;
+  outline-offset: -2px;
+}
+.diff-added {
+  background: #edf6e9;
+}
+.diff-removed {
+  background: #fbeeed;
+}
+.review-finding {
+  padding: 1.25rem 0;
+  border-top: 1px solid #d9ded8;
+}
+.review-flag {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.review-result blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #8caa81;
+}

@@ -22,7 +22,8 @@ focused follow-up before a learner pilot.
 | Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts |
 | AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                  |
 | Learn library                            | Implemented and checked locally; AWS publication is pending                        |
-| Code Review and assistant APIs           | Not implemented                                                                    |
+| Code Review reads and submissions        | Implemented and checked locally; publication is pending                            |
+| Assistant APIs                           | Not implemented                                                                    |
 | Additional Challenges and evaluation     | Pending                                                                            |
 
 The [17 October browser checkpoint](docs/checkpoints/2026-10-17-browser.md) records

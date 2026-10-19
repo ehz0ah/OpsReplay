@@ -12,6 +12,7 @@
     "packages/session/**/*.ts",
     "packages/content/**/*.ts",
     "scripts/publish-reference-release.ts",
-    "scripts/publish-learn.ts"
+    "scripts/publish-learn.ts",
+    "scripts/publish-review.ts"
   ]
 }

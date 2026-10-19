@@ -2,12 +2,16 @@ import * as requests from '../../.local/contracts/requests-validators.js';
 import type { PublicTypes } from './public-types.js';
 const entry = () => import('../../.local/contracts/entry-validators.js');
 const session = () => import('../../.local/contracts/session-validators.js');
+const reviews = () => import('../../.local/contracts/reviews-validators.js');
 const results = () => import('../../.local/contracts/results-validators.js');
 const loaders = {
   Error: entry,
   Catalog: entry,
   Account: entry,
   LearnEntry: entry,
+  ReviewExercise: reviews,
+  ReviewSubmission: reviews,
+  ReviewSubmissionPage: reviews,
   SessionView: session,
   SessionResponse: session,
   EndSessionResponse: session,
