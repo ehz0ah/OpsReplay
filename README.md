@@ -23,6 +23,7 @@ focused follow-up before a learner pilot.
 | AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                  |
 | Learn library                            | Implemented and checked locally; AWS publication is pending                        |
 | Code Review reads and submissions        | Implemented and checked locally; publication is pending                            |
+| Learner history                          | Implemented and checked locally; existing-record migration is pending              |
 | Assistant APIs                           | Not implemented                                                                    |
 | Additional Challenges and evaluation     | Pending                                                                            |
 

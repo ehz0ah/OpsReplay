@@ -210,7 +210,7 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.equal((await f.store.active(owner))?.sessionId, session.id);
   assert.equal((await f.store.receipt(owner, input.requestId))?.sessionId, session.id);
   assert.deepEqual(f.provisions, [session.id]);
-  assert.equal((await f.rows()).length, 5); // One content fixture plus session, lifecycle, receipt, and lock.
+  assert.equal((await f.rows()).length, 6); // One content fixture plus session, lifecycle, receipt, lock, and history.
   assert.equal(/taskDefinition|sha256|ownerId|accessGrant|pins/.test(response.body), false);
   assert.deepEqual(Object.keys(f.logs[0] as object).sort(), ['durationMs', 'operation', 'requestId', 'result']);
 });
@@ -232,7 +232,7 @@ test('whitespace, property order, and UUID case do not create a new request', as
   const second = bodyOf(await f.handler(next, context));
   assert.equal(second.replayed, true);
   assert.deepEqual(second.session, first.session);
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
 });
 
 test('a saved receipt is resolved before publication, plan, and attempt limits', async () => {
@@ -256,7 +256,7 @@ test('same request ID with different content conflicts before checking new conte
   const response = await f.handler(event({ ...input, challengeVersion: '99.0.0' }), context);
   assert.equal(response.statusCode, 409);
   assert.equal(bodyOf(response).code, 'IDEMPOTENCY_CONFLICT');
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
 });
 
 test('a receipt committed during access checks wins over a new-operation rejection', async () => {
@@ -275,7 +275,7 @@ test('a receipt committed during access checks wins over a new-operation rejecti
   const response = await handler(event(input), context);
   assert.equal(response.statusCode, 200);
   assert.equal(bodyOf(response).replayed, true);
-  assert.equal((await f.rows()).length, 4);
+  assert.equal((await f.rows()).length, 5);
 });
 
 test('identity and request validation reject bad input before any database access', async () => {
@@ -485,7 +485,7 @@ test('concurrent copies of one request all resolve to one session', async () => 
   for (const response of responses) assert.equal(response.statusCode, 200, response.body);
   assert.equal(new Set(responses.map((response) => bodyOf(response).session.id)).size, 1);
   assert.equal(responses.filter((response) => !bodyOf(response).replayed).length, 1);
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
 });
 
 test('competing requests create one session and no losing receipts', async () => {
@@ -496,7 +496,7 @@ test('competing requests create one session and no losing receipts', async () =>
     assert.equal(response.statusCode, 409, response.body);
     assert.equal(bodyOf(response).code, 'ACTIVE_SESSION_EXISTS');
   }
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
 });
 
 test('different learners can use the same request ID without sharing a session', async () => {
@@ -554,7 +554,7 @@ test('a lost write response returns the committed session without writing again'
   assert.equal(response.statusCode, 200);
   assert.equal(bodyOf(response).replayed, true);
   assert.equal(commits, 1);
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
   assert.equal(JSON.stringify(f.logs).includes('secret'), false);
 });
 
@@ -613,7 +613,7 @@ test('a lost response followed by a failed receipt read is recoverable on the ne
   const response = await f.handler(event(input), context);
   assert.equal(response.statusCode, 200);
   assert.equal(bodyOf(response).replayed, true);
-  assert.equal((await f.rows()).length, 5);
+  assert.equal((await f.rows()).length, 6);
 });
 
 test('receipts cannot expose a different owner session', async () => {

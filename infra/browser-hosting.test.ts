@@ -9,6 +9,8 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
   for (const uri of [
     '/',
     '/auth/callback',
+    '/history',
+    '/review-submissions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '/reviews',
     '/reviews/proxy-rollout',
     '/learn',

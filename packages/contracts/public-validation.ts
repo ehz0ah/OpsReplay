@@ -9,6 +9,7 @@ const loaders = {
   Catalog: entry,
   Account: entry,
   LearnEntry: entry,
+  SessionPage: entry,
   ReviewExercise: reviews,
   ReviewSubmission: reviews,
   ReviewSubmissionPage: reviews,

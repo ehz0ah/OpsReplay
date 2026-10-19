@@ -1,3 +1,4 @@
+import { historyKey } from '../../../../packages/session/src/history.js';
 import { sendOptions } from '../shared/aws.js';
 import { randomUUID } from 'node:crypto';
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
@@ -93,6 +94,11 @@ export class StartStore {
         put(keys.receipt(owner, request.requestId), receipt),
         put(keys.active(owner), { sessionId: session.view.id, requestId: request.requestId }),
         put(keys.session(session.view.id), session),
+        put(historyKey(owner, 'session', session.view.createdAt, session.view.id), {
+          schemaVersion: 1,
+          id: session.view.id,
+          at: session.view.createdAt,
+        }),
         {
           Put: {
             TableName: this.table,

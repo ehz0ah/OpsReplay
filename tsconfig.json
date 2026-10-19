@@ -13,6 +13,7 @@
     "packages/content/**/*.ts",
     "scripts/publish-reference-release.ts",
     "scripts/publish-learn.ts",
-    "scripts/publish-review.ts"
+    "scripts/publish-review.ts",
+    "scripts/backfill-history.ts"
   ]
 }
