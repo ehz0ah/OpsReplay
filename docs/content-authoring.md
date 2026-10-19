@@ -107,7 +107,7 @@ deployment, and runtime activation.
 
 ## Learn
 
-A Learn entry is Markdown with metadata: title, category, access plan, summary,
+A Learn entry is Markdown with strict YAML front matter (aliases are disabled): title, category, access plan, summary,
 lessons, official source links, and related exercises. A build step renders free
 entries as static pages for CloudFront and puts Pro entries in private S3, where the API
 returns them after an entitlement check. The build sanitises HTML and fails on missing
@@ -120,3 +120,10 @@ with a diff, context, language, tier, plan, and reference findings with line ran
 explanations. Each finding must cover lines that exist on its side of the diff. Some
 diffs introduce faults that later appear in Challenges. Link them with
 `relatedChallenges`. Do not add a language option without published content.
+
+Run `npm run learn:build` and inspect the ignored `.local/learn/<id>.json` file.
+`npm run learn:publish -- --prepare FILE` prints its reference and catalogue.
+After content review, an authorised operator can use
+`npm run learn:publish -- --apply FILE TABLE BUCKET REGION`. The identity needs
+content GetItem/PutItem/ConditionCheckItem and the exact Learn object prefix
+GetObject/PutObject permissions. Publication is separate from deployment.

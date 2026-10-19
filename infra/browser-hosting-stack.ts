@@ -12,7 +12,7 @@ import { PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
 export const browserRouteCode = `function handler(event) {
   var request=event.request;
-  if (request.uri==='/' || request.uri==='/auth/callback' || /^\\/sessions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\\/debrief)?$/.test(request.uri)) request.uri='/index.html';
+  if (request.uri==='/' || request.uri==='/auth/callback' || /^\\/learn(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)?$/.test(request.uri) || /^\\/sessions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\\/debrief)?$/.test(request.uri)) request.uri='/index.html';
   return request;
 }`;
 export class BrowserHostingStack extends Stack {
@@ -125,6 +125,7 @@ export class BrowserHostingStack extends Stack {
           bucket.arnForObjects('index.html'),
           bucket.arnForObjects('config.json'),
           bucket.arnForObjects('assets/*'),
+          bucket.arnForObjects('learn/*'),
         ],
         conditions: {
           StringEquals: {

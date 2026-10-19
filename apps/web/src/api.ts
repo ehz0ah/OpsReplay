@@ -38,7 +38,8 @@ export class ApiClient {
     signal?: AbortSignal,
   ): Promise<PublicTypes[K]> {
     if (!path.startsWith('/v1/') || path.startsWith('//') || path.includes('#')) throw new Error('Invalid API path.');
-    const token = path.split('?')[0] === '/v1/catalog' ? null : await this.token();
+    const publicRead = path.split('?')[0] === '/v1/catalog';
+    const token = publicRead ? null : await this.token();
     if (path.split('?')[0] !== '/v1/catalog' && !token) throw new Error('Sign in to continue.');
     const timeout = AbortSignal.timeout(25000);
     let response: Response;

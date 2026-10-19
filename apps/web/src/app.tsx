@@ -2,6 +2,7 @@ import { Button } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 import { CataloguePage } from './pages/catalogue.js';
+import { LearnCatalogue, LearnPage } from './pages/learn.js';
 import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
 import { usePath, navigate } from './navigation.js';
@@ -35,6 +36,16 @@ export function App() {
           >
             Challenges
           </a>
+          <a
+            className="site-navigation"
+            href="/learn"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('/learn');
+            }}
+          >
+            Learn
+          </a>
           <Button
             variant="default"
             disabled={auth.loading}
@@ -61,6 +72,10 @@ export function App() {
         )}
         {path === '/' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
+        ) : path === '/learn' ? (
+          <LearnCatalogue />
+        ) : /^\/learn\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path) ? (
+          <LearnPage key={path + (auth.identity?.sub ?? '')} id={path.split('/')[2]!} />
         ) : /^\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\/debrief)?$/.test(
             path,
           ) ? (
