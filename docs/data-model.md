@@ -290,9 +290,13 @@ only after the session is terminal, recording is `complete` or `incomplete`, rec
 work is retired, and the owner's active lock does not name the session. It deletes the
 S3 prefix before the `SESSION#<sessionId>` partition, then deletes the matching
 `USER#<ownerId>/START#<requestId>` receipt. It verifies all three locations before it
-confirms deletion and never changes a lock for another session. The owner-authorized
-deletion action and retention periods for non-recording data remain required before the
-external pilot.
+confirms deletion and never changes a lock for another session. The
+[operator-authorized deletion action](runbooks/delete-session-data.md) is implemented
+locally and disabled by default. It fences `STATE` into a `DELETION` marker, waits for
+bounded in-flight workers, deletes objects and session records, and removes the marker,
+start receipt and history reference atomically. It does not change progress counts or
+other records. AWS validation and retention periods for non-recording data remain
+required before the external pilot.
 
 ## Versioning
 
