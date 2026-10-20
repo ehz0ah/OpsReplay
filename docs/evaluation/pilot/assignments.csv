@@ -1,0 +1,11 @@
+participant,first_incident,first_condition,second_incident,second_condition
+P01,wrong-upstream-port,interactive,stale-dns-record,static
+P02,stale-dns-record,static,wrong-upstream-port,interactive
+P03,wrong-upstream-port,static,stale-dns-record,interactive
+P04,stale-dns-record,interactive,wrong-upstream-port,static
+P05,wrong-upstream-port,interactive,stale-dns-record,static
+P06,stale-dns-record,static,wrong-upstream-port,interactive
+P07,wrong-upstream-port,static,stale-dns-record,interactive
+P08,stale-dns-record,interactive,wrong-upstream-port,static
+P09,wrong-upstream-port,interactive,stale-dns-record,static
+P10,stale-dns-record,static,wrong-upstream-port,interactive
