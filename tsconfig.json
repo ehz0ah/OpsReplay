@@ -14,6 +14,7 @@
     "scripts/publish-reference-release.ts",
     "scripts/publish-learn.ts",
     "scripts/publish-review.ts",
-    "scripts/backfill-history.ts"
+    "scripts/backfill-history.ts",
+    "scripts/evaluation/**/*.ts"
   ]
 }

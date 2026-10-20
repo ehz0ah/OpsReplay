@@ -3,6 +3,11 @@
 The project needs system and user evaluation. Results must identify Challenge image
 versions, deployment settings, provider and model, workload, and sample size.
 
+The [evaluation tools](runbooks/evaluation-tools.md) provide local scenario repeats,
+explicit existing-session API/terminal measurements, and a labelled synthetic assistant
+benchmark. They do not publish performance or learning results. Their tests use local
+fixtures. Managed transport and paid-provider runs remain part of the AWS checkpoint.
+
 ## System correctness, reliability, and performance
 
 | Area                 | Evidence required                                                                                                                                                                                                                                                          |
