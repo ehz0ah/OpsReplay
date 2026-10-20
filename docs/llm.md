@@ -100,6 +100,16 @@ request ID reads the saved turn instead of calling the provider again.
 
 ## Provider boundary
 
+The configured provider receives questions, recent recorded command/output excerpts,
+visible metrics, released hints and recent chat. The browser states this before the
+question field. The operator must evaluate retention, training and data-handling
+terms before enabling the endpoint. No provider policy is assumed.
+
+AssistantConcurrencyLimit sets shared send concurrency and POST burst;
+AssistantRateLimit sets shared POST requests per second. Both default to one and
+allow 1-64. One turn per session remains enforced. Raising these values requires
+quota and load checks, including the separately bounded saved-turn GET route.
+
 Use one small adapter for messages, the function schema, streaming deltas, function
 calls, usage, and errors. Do not build a general agent framework. Keep provider
 credentials server-side. Log timings and token counts, not prompts, terminal content, or

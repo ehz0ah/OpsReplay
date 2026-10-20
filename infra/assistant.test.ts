@@ -12,8 +12,26 @@ test('assistant has isolated streaming action, optional configuration and bounde
   const get = find('GetSessionTurn', 'AWS::Lambda::Function')[1];
   assert.notDeepEqual(send.Properties.Role, get.Properties.Role);
   assert.equal(send.Properties.Timeout, 70);
-  assert.deepEqual(send.Properties.ReservedConcurrentExecutions, { 'Fn::If': ['AssistantActive', 1, 0] });
+  assert.deepEqual(send.Properties.ReservedConcurrentExecutions, {
+    'Fn::If': ['AssistantActive', { Ref: 'AssistantConcurrencyLimit' }, 0],
+  });
   assert.equal(template.Parameters.AssistantEnabled.Default, 'false');
+  for (const name of ['AssistantConcurrencyLimit', 'AssistantRateLimit']) {
+    assert.equal(template.Parameters[name].Default, 1);
+    assert.equal(template.Parameters[name].MinValue, 1);
+    assert.equal(template.Parameters[name].MaxValue, 64);
+  }
+  const stage = find('TerminalTicketApiStage', 'AWS::ApiGateway::Stage')[1];
+  const post = stage.Properties.MethodSettings.find(
+    (setting: any) => setting.HttpMethod === 'POST' && setting.ResourcePath === '/~1v1~1sessions~1{id}~1messages',
+  );
+  assert.deepEqual(post.ThrottlingBurstLimit, { Ref: 'AssistantConcurrencyLimit' });
+  assert.deepEqual(post.ThrottlingRateLimit, { Ref: 'AssistantRateLimit' });
+  assert.equal(post.DataTraceEnabled, false);
+  const getLimit = stage.Properties.MethodSettings.find(
+    (setting: any) => setting.ResourcePath === '/~1v1~1sessions~1{id}~1messages~1{turnId}',
+  );
+  assert.equal(getLimit.ThrottlingBurstLimit, 2);
   const method = find('SendSessionMessageMethod', 'AWS::ApiGateway::Method')[1];
   assert.equal(method.Condition, 'GatewayPathEnabled');
   assert.equal(method.Properties.Integration.ResponseTransferMode, 'STREAM');

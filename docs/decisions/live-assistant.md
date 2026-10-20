@@ -22,10 +22,20 @@ deadline. Late workers cannot overwrite a later turn.
 Each API action has its own Lambda and role. POST uses API Gateway REST streaming
 and Lambda's proxy metadata delimiter. GET reads saved turns. The send action stays
 at zero concurrency until AssistantEnabled, endpoint, model, secret ARN, and gateway
-runtime are configured. Its active concurrency is one. Secrets Manager supplies the
+runtime are configured. `AssistantConcurrencyLimit` sets shared send concurrency and POST burst.
+`AssistantRateLimit` sets POST requests per second. Both default to one and allow 1-64.
+The per-session slot remains one. Saved-turn GET retains concurrency/burst two and
+rate one. Larger settings need Lambda quota, provider quota, polling and load checks;
+these parameters alone do not establish classroom capacity. Secrets Manager supplies the
 server-side raw API key; prompts and responses are excluded from logs. Logs record
 turn duration, status, and provider token counts. Secret rotation requires a fresh
 execution environment because the successful credential read is cached.
+
+Before enabling an endpoint, the operator must evaluate the provider's retention,
+training and data-handling terms. Questions, recent command/output excerpts, visible
+metrics, released hints and recent chat leave AWS for that configured endpoint. The
+browser states this before the question field. It does not assert unverified provider
+policies. Gameplay remains available without the assistant.
 
 The browser treats streamed text as provisional and polls the owned saved turn.
 A disconnect retains the request ID. Recovery uses that ID; a new question creates

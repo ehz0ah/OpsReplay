@@ -126,6 +126,10 @@ export function AssistantPanel({ id }: { id: string }) {
       <p className="muted">
         Ask about your recorded output or metrics. Replies can be wrong. Check the evidence before acting.
       </p>
+      <p className="muted">
+        Questions, recent chat, Challenge details, recorded commands and output, visible metrics, and released hints go
+        to the configured AI provider. Do not include secrets or personal data.
+      </p>
       <Textarea
         label="Your question"
         value={text}

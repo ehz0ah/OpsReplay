@@ -1354,6 +1354,21 @@ export class SessionStartStack extends Stack {
       default: 'false',
       allowedValues: ['true', 'false'],
     });
+    const assistantConcurrencyLimit = new CfnParameter(this, 'AssistantConcurrencyLimit', {
+      type: 'Number',
+      default: 1,
+      minValue: 1,
+      maxValue: 64,
+      description:
+        'Shared assistant send concurrency and POST burst limit. Increase only within Lambda and provider quotas.',
+    });
+    const assistantRateLimit = new CfnParameter(this, 'AssistantRateLimit', {
+      type: 'Number',
+      default: 1,
+      minValue: 1,
+      maxValue: 64,
+      description: 'Shared assistant POST requests per second. This does not change the one-turn-per-session limit.',
+    });
     const assistantEndpoint = new CfnParameter(this, 'AssistantEndpoint', {
       type: 'String',
       default: '',
@@ -1401,7 +1416,7 @@ export class SessionStartStack extends Stack {
       actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
       timeoutSeconds: 70,
       streaming: true,
-      concurrency: 1,
+      concurrency: assistantConcurrencyLimit.valueAsNumber,
       runtimeEnabled: assistantActive,
     });
     const getTurnAction = featureAction(this, 'GetSessionTurn', featureApi, {
@@ -1856,8 +1871,8 @@ export class SessionStartStack extends Stack {
           cachingEnabled: false,
           dataTraceEnabled: false,
           metricsEnabled: true,
-          throttlingBurstLimit: 1,
-          throttlingRateLimit: 1,
+          throttlingBurstLimit: assistantConcurrencyLimit.valueAsNumber,
+          throttlingRateLimit: assistantRateLimit.valueAsNumber,
         },
         {
           httpMethod: 'GET',
