@@ -69,14 +69,22 @@ The session must be terminal, its recording must be `complete` or `incomplete`, 
 recording-work entry must be retired, and no `USER#<ownerId>/ACTIVE` lock may name it.
 Never alter an active lock that names another session.
 
+The operator-only [session deletion action](../runbooks/delete-session-data.md) first
+fences a finalised session by atomically removing `STATE` and saving a private deletion
+marker. It waits two minutes for bounded in-flight workers. It requires retired work,
+finished playback, and confirmed task and schedule cleanup before fencing.
+
 Delete every object under `sessions/<sessionId>/` first so a failed operation remains
 discoverable and can be retried. Then delete every item under `SESSION#<sessionId>` and
 the matching `USER#<ownerId>/START#<requestId>` receipt whose value names the session.
+Delete its immutable learner history reference in the same final transaction.
 The receipt is removed because it points to the deleted session and cannot be replayed
 without that session record. Verify the S3 prefix, session partition, and receipt are all
 absent before confirming deletion to the learner. The recording worker has no list,
 delete, or existing-object retag permission. A separate operator-authorized deletion
-action must implement this path before the external pilot.
+action implements this path locally. It is disabled by default and requires managed
+IAM and S3 checks before the external pilot. It rejects versioned buckets and preserves
+progress counters and unrelated sessions. Backup expiry remains separate.
 
 ## Validation
 

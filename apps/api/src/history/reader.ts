@@ -1,4 +1,4 @@
-import { QueryCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { createHash } from 'node:crypto';
 import { ActionError } from '../shared/action.js';
@@ -97,6 +97,27 @@ export class HistoryReader {
         throw new Error('Invalid history reference.');
       if (kind === 'session') {
         const saved = await start.session(row.data.id, signal);
+        if (!saved) {
+          const deletion = (
+            await this.client.send(
+              new GetCommand({
+                TableName: this.table,
+                Key: { PK: 'SESSION#' + row.data.id, SK: 'DELETION' },
+                ConsistentRead: true,
+              }),
+              { abortSignal: signal },
+            )
+          ).Item?.data;
+          // Deletion removes STATE first and the history reference in its final pass.
+          // A reader can also straddle that final transaction.
+          const reference = (
+            await this.client.send(
+              new GetCommand({ TableName: this.table, Key: { PK: row.PK, SK: row.SK }, ConsistentRead: true }),
+              { abortSignal: signal },
+            )
+          ).Item;
+          if (!reference || (deletion?.ownerId === owner && deletion?.sessionId === row.data.id)) continue;
+        }
         if (!saved || saved.ownerId !== owner || saved.view.id !== row.data.id || saved.view.createdAt !== row.data.at)
           throw new Error('Invalid history ownership.');
         const view = saved.view;

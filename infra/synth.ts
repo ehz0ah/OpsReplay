@@ -7,6 +7,7 @@ import { GitHubOidcProviderStack } from './github-oidc-provider-stack.js';
 import { ReferenceEnvironmentStack } from './reference-environment-stack.js';
 import { SessionStartStack } from './session-start-stack.js';
 import { TerminalEdgeProtectionStack } from './terminal-edge-protection-stack.js';
+import { SessionDeletionStack } from './session-deletion-stack.js';
 
 // CDK library synthesis only: no CLI credential lookup, bootstrap, or AWS API calls.
 const app = new App({ outdir: process.env.CDK_OUTDIR ?? 'cdk.out' });
@@ -24,6 +25,7 @@ if (durableResourceNames) {
 new CheckpointFoundationStack(app, 'OpsReplayCheckpointFoundation', deployment);
 new ContentPublicationStack(app, 'OpsReplayContentPublication', deployment);
 new SessionStartStack(app, 'OpsReplaySessionStart', deployment);
+new SessionDeletionStack(app, 'OpsReplaySessionDeletion', deployment);
 new BrowserHostingStack(app, 'OpsReplayBrowserHosting', deployment);
 // Explicit output-to-parameter handoff avoids cross-Region CloudFormation exports.
 new TerminalEdgeProtectionStack(app, 'OpsReplayTerminalEdgeProtection', {
