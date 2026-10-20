@@ -51,10 +51,10 @@
     "learn:publish": "node --import tsx scripts/publish-learn.ts",
     "review:publish": "node --import tsx scripts/publish-review.ts",
     "history:backfill": "node --import tsx scripts/backfill-history.ts",
-    "evaluation:scenarios": "node --import tsx scripts/evaluation/main.ts scenarios",
-    "evaluation:load": "node --import tsx scripts/evaluation/main.ts load",
-    "evaluation:assistant": "node --import tsx scripts/evaluation/main.ts assistant",
-    "evaluation:test": "node --import tsx --test scripts/evaluation/*.test.ts"
+    "evaluation:scenarios": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts scenarios",
+    "evaluation:load": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts load",
+    "evaluation:assistant": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts assistant",
+    "evaluation:test": "npm run contracts:check && node --import tsx --test scripts/evaluation/*.test.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
