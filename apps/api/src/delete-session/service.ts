@@ -134,23 +134,34 @@ export class SessionDeletion {
     if (lock && !validLock(lock.data)) throw new DeletionError('INVALID_STORE');
     if (
       ['provisioning', 'ready'].includes(session.view.status) ||
-      !session.view.debriefAvailable ||
       !session.view.endedAt ||
       !isTerminalTimestamp(session.view.endedAt) ||
       !isSessionLifecycleState(lifecycle?.data, id) ||
       !lifecycle.data.taskStoppedAt ||
       !lifecycle.data.schedulesDeleted ||
-      !isMonitorRecordingState(recording?.data, id) ||
-      !['complete', 'incomplete'].includes(recording.data.status) ||
-      recording.data.status !== session.view.recording.status ||
-      recording.data.cutoffAt !== session.view.endedAt ||
-      !isPlaybackExportState(playback?.data) ||
-      !playback.data.complete ||
       lock?.data.sessionId === id ||
       state.WorkPK !== undefined ||
       state.WorkSK !== undefined ||
       lifecycle.WorkPK !== undefined ||
       lifecycle.WorkSK !== undefined
+    )
+      throw new DeletionError('NOT_QUIESCENT');
+    if (session.view.readyAt === null) {
+      const neverRecorded = !recording && session.view.recording.status === 'pending';
+      const stoppedBeforeReady =
+        isMonitorRecordingState(recording?.data, id) &&
+        recording.data.status === 'incomplete' &&
+        session.view.recording.status === 'incomplete' &&
+        recording.data.cutoffAt === session.view.endedAt;
+      if (playback || (!neverRecorded && !stoppedBeforeReady)) throw new DeletionError('NOT_QUIESCENT');
+    } else if (
+      !session.view.debriefAvailable ||
+      !isMonitorRecordingState(recording?.data, id) ||
+      !['complete', 'incomplete'].includes(recording.data.status) ||
+      recording.data.status !== session.view.recording.status ||
+      recording.data.cutoffAt !== session.view.endedAt ||
+      !isPlaybackExportState(playback?.data) ||
+      !playback.data.complete
     )
       throw new DeletionError('NOT_QUIESCENT');
     // All remaining producers must be retired, including an expired assistant turn.
@@ -209,8 +220,8 @@ export class SessionDeletion {
               ConditionExpression: '#d = :before AND attribute_not_exists(WorkPK) AND attribute_not_exists(WorkSK)',
             },
           },
-          this.condition(key(id, 'RECORDING'), recording.data),
-          this.condition(key(id, 'PLAYBACK_EXPORT'), playback.data),
+          this.condition(key(id, 'RECORDING'), recording?.data),
+          this.condition(key(id, 'PLAYBACK_EXPORT'), playback?.data),
           this.condition({ PK: 'USER#' + owner, SK: 'ACTIVE' }, lock?.data),
           this.condition(receipt, receiptData),
           {

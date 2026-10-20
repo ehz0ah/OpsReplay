@@ -32,6 +32,13 @@ export async function sweepAssistantTurns(
       turnId = row.SK.slice(5);
     if (!validUuid(id) || !validUuid(turnId)) throw new Error('Invalid assistant work identity.');
     const saved = await store.get(id, 'STATE', signal);
+    if (!saved) {
+      const marker = await store.get(id, 'DELETION', signal);
+      // GSI discovery can lag the deletion fence or completed erasure.
+      // Do not let an intentionally removed session block every later turn.
+      if (marker && typeof marker === 'object' && 'sessionId' in marker && marker.sessionId === id) continue;
+      if ((await store.get(id, 'TURN#' + turnId, signal)) === undefined) continue;
+    }
     if (!saved || typeof saved !== 'object' || !('ownerId' in saved) || typeof saved.ownerId !== 'string')
       throw new Error('Assistant owner missing.');
     await store.read(id, turnId, saved.ownerId, signal);
