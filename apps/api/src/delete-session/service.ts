@@ -138,6 +138,7 @@ export class SessionDeletion {
       !isTerminalTimestamp(session.view.endedAt) ||
       !isSessionLifecycleState(lifecycle?.data, id) ||
       !lifecycle.data.taskStoppedAt ||
+      lifecycle.data.taskStoppedAt < session.view.endedAt ||
       !lifecycle.data.schedulesDeleted ||
       lock?.data.sessionId === id ||
       state.WorkPK !== undefined ||
