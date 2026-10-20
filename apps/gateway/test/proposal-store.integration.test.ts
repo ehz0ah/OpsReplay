@@ -58,12 +58,17 @@ async function fixture() {
   };
   await put('INPUT', input);
   let calls = 0;
+  const receipts = new Set<string>();
   const session = {
     sessionId: state.view.id,
     connectionId: 'connection',
     generation: 1,
-    proposal: async () => {
+    proposal: async (frame: { token: string; query?: boolean }) => {
+      // A duplicate confirmation may query the installed receipt. Queries
+      // do not dispatch the command and cannot accept an unseen delivery.
+      if (frame.query) return receipts.has(frame.token) ? ('accepted' as const) : ('unknown' as const);
       calls++;
+      receipts.add(frame.token);
       return 'accepted' as const;
     },
   } as unknown as BrowserTerminalSession;
