@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, after, test } from 'node:test';
 import { CreateTableCommand } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  TransactWriteCommand,
+  type DynamoDBDocumentClient,
+} from '@aws-sdk/lib-dynamodb';
 import {
   DeleteObjectsCommand,
   GetBucketVersioningCommand,
@@ -16,6 +23,7 @@ import { startLocalDatabase } from './local-dynamodb.js';
 import { initialSessionLifecycle } from '../../../packages/contracts/private/session-lifecycle.js';
 import { historyKey } from '../../../packages/session/src/history.js';
 import { HistoryReader } from '../src/history/reader.js';
+import { sweepAssistantTurns } from '../src/assistant/sweep.js';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 let database: Awaited<ReturnType<typeof startLocalDatabase>>;
@@ -305,4 +313,39 @@ test('operator handler validates exact payload and hides provider errors', async
     status: 'rejected',
     code: 'RETRY_REQUIRED',
   });
+});
+test('cleaned never-ready attempts can be erased without a debrief or playback', async () => {
+  const f = await fixture();
+  const saved = sessionRecord(f.id);
+  saved.view.status = 'error';
+  saved.view.statusReason = 'start_failed';
+  saved.view.endedAt = saved.provisioningDeadline;
+  await f.put(f.Key('STATE'), saved);
+  await f.put(f.Key('LIFECYCLE'), {
+    ...initialSessionLifecycle(f.id, saved.view.createdAt),
+    taskStoppedAt: saved.provisioningDeadline,
+    schedulesDeleted: true,
+  });
+  for (const SK of ['RECORDING', 'PLAYBACK_EXPORT'])
+    await database.document.send(new DeleteCommand({ TableName: f.table, Key: f.Key(SK) }));
+  assert.equal(await f.service.run(f.owner, f.id, signal()), 'pending');
+  f.advance();
+  assert.equal(await f.service.run(f.owner, f.id, signal()), 'deleted');
+});
+test('stale assistant GSI discovery cannot block sweeps after erasure', async () => {
+  const f = await fixture(),
+    turn = randomUUID();
+  const db = {
+    send: async (command: any, options: any) =>
+      command instanceof QueryCommand && command.input.IndexName
+        ? { Items: [{ PK: 'SESSION#' + f.id, SK: 'TURN#' + turn }] }
+        : database.document.send(command, options),
+  } as unknown as DynamoDBDocumentClient;
+  await f.service.run(f.owner, f.id, signal());
+  await sweepAssistantTurns(db, f.table, signal());
+  f.advance();
+  await f.service.run(f.owner, f.id, signal());
+  await sweepAssistantTurns(db, f.table, signal());
+  await f.put(f.Key('TURN#' + turn), { text: 'unexplained orphan' });
+  await assert.rejects(sweepAssistantTurns(db, f.table, signal()), /Assistant owner missing/);
 });

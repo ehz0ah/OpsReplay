@@ -20,7 +20,8 @@ The payload owner is a target check, not an authentication credential.
 The session must have a terminal outcome and debrief, complete or incomplete recording,
 finished playback export, confirmed stopped task, deleted schedules, no recording or
 assistant work, and no active lock naming it. Resolve `NOT_QUIESCENT` through normal
-finalisation. Do not edit records to bypass the check. Versioned or suspended-versioning
+finalisation. Cleaned attempts that never became ready need no debrief or playback.
+Do not edit records to bypass the check. Versioned or suspended-versioning
 buckets are rejected because a delete marker would not erase older object versions.
 
 ## Invocation
