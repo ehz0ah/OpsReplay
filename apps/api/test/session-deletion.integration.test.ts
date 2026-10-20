@@ -214,7 +214,7 @@ test('deletion fences reads, waits for late writes, deletes objects first and pr
   assert.equal(await f.service.run(f.owner, f.id, signal()), 'absent');
 });
 test('ownership, unfinished work, versioned buckets and active locks reject before deletion', async () => {
-  for (const variant of ['owner', 'active', 'work', 'playback', 'versioned'] as const) {
+  for (const variant of ['owner', 'active', 'ready', 'recording', 'work', 'playback', 'versioned'] as const) {
     const f = await fixture();
     if (variant === 'active')
       await f.put({ PK: 'USER#' + f.owner, SK: 'ACTIVE' }, { sessionId: f.id, requestId: randomUUID() });
@@ -222,6 +222,17 @@ test('ownership, unfinished work, versioned buckets and active locks reject befo
       await f.put(f.Key('TURN#' + randomUUID()), { text: 'private' }, { WorkPK: 'ASSISTANT', WorkSK: at });
     if (variant === 'playback') await f.put(f.Key('PLAYBACK_EXPORT'), { incomplete: true });
     if (variant === 'versioned') f.versioned();
+    if (variant === 'ready') {
+      f.saved.view.status = 'ready';
+      f.saved.view.statusReason = null;
+      f.saved.view.endedAt = null;
+      f.saved.view.debriefAvailable = false;
+      await f.put(f.Key('STATE'), f.saved);
+    }
+    if (variant === 'recording') {
+      f.saved.view.recording = { status: 'draining', reason: null };
+      await f.put(f.Key('STATE'), f.saved);
+    }
     await assert.rejects(f.service.run(variant === 'owner' ? 'someone-else' : f.owner, f.id, signal()));
     assert.ok(await f.get(f.Key('STATE')));
     assert.equal(await f.get(f.Key('DELETION')), undefined);
