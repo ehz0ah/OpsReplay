@@ -41,3 +41,7 @@ origins, identity setup and signed-recording CORS.
 Decision files preserve the reason and scope of an increment. Their historical status
 statements are not the current project status. Use this index, the root README, and the
 implementation plan for current status.
+
+The [formative pilot package](evaluation/pilot/README.md) supplies consent, static
+comparison cases, assignments, learning questions, manual scoring and usability forms.
+Completed participant files remain private.
