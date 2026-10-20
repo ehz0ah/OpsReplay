@@ -15,6 +15,8 @@ Deploy `OpsReplaySessionDeletion` with the existing `SessionTableName` and
 public route, trigger, data resource or automatic workflow. Concurrency defaults to
 zero. Enable it only for the approved operator window with `EnableSessionDeletion=true`.
 Grant the operator `lambda:InvokeFunction` on the exact `DeleteSessionFunctionArn`.
+Keep invoke access out of routine CI and shared administration roles. Check inherited
+and wildcard permissions before enabling the function.
 The payload owner is a target check, not an authentication credential.
 
 The session must have a terminal outcome and debrief, complete or incomplete recording,
