@@ -24,7 +24,10 @@ markers remain learner-controlled reflection evidence, never scoring proof.
 Each token is consumed once. A definite busy rejection permits a later explicit
 confirmation with a new token. Missing acknowledgement is unknown and never resends.
 Recovery queries only the terminal receipt and can publish an accepted status and
-assistance count atomically. The terminal keeps at most 100 delivery receipts and
+assistance count atomically. The request and receipt files are learner-writable as
+root. The debrief labels the count as proposal acknowledgements, which can be forged
+or suppressed. These acknowledgements and command-source markers are reflection
+data, not proof of execution, and do not change numeric score components. The terminal keeps at most 100 delivery receipts and
 blocks later dispatch while a trigger remains uncertain. This binding evaluates commands in a function frame, so assignments persist but commands
 that inspect Bash function scope can behave differently from a typed top-level command.
 Receipt loss or a modified

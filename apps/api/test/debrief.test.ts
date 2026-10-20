@@ -116,3 +116,25 @@ test('duplicate commands, mismatched content, active sessions and missing comple
   assert.throws(() => deriveDebrief(manifest, active, commands, events, counters));
   assert.throws(() => deriveDebrief(manifest, session(), commands, events, null));
 });
+
+test('learner-controlled proposal attribution cannot change numeric score components', () => {
+  const unassisted = session();
+  const baseline = deriveDebrief(manifest, unassisted, commands, events, counters);
+  const attributed = session();
+  attributed.view.assistance.proposalsRun = 500;
+  const reflected = deriveDebrief(
+    manifest,
+    attributed,
+    commands.map((command) => ({
+      ...command,
+      source: 'assistant',
+      proposalId: '77777777-7777-4777-8777-777777777777',
+    })),
+    events,
+    counters,
+  );
+  assert.deepEqual(reflected.score, baseline.score);
+  assert.equal(reflected.assistance.proposalsRun, 500);
+  assert.equal(reflected.assisted, true);
+  assert.equal(baseline.assisted, false);
+});
