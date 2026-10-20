@@ -178,7 +178,11 @@ export function DebriefPage({ id }: { id: string }) {
             )}
             <p>
               Assistance: {debrief.assistance.hintsReleased} hints, {debrief.assistance.assistantTurns} assistant turns,{' '}
-              {debrief.assistance.proposalsRun} proposals.
+              {debrief.assistance.proposalsRun} proposal acknowledgements.
+            </p>
+            <p className="muted">
+              Proposal acknowledgements come from the learner-controlled shell. They do not prove command execution or
+              affect the score.
             </p>
           </section>
           <div className="debrief-grid">

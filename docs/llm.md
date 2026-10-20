@@ -53,7 +53,9 @@ with manual input. It checks foreground Bash and prompt markers, then uses a pri
 Readline binding to check the actual empty edit buffer before evaluation. If the terminal adapter
 cannot verify that state, the learner can copy the command manually. See the
 [gateway protocol](api.md#terminal-gateway-protocol). The resulting
-command event records the proposal ID. The learner can also copy, edit, and run a
+command event records the proposal ID. Learners can write the shell request and
+receipt files as root. Proposal acknowledgements and source markers are untrusted
+reflection data. They do not prove execution or alter numeric score components. The learner can also copy, edit, and run a
 command manually. That counts as a learner command.
 
 ## Bounded turn
