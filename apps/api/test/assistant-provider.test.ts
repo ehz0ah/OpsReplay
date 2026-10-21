@@ -55,6 +55,44 @@ test('missing DONE, invalid text, and provider failures never become completed r
     () => new ChatProvider({ endpoint: 'http://localhost/v1/chat/completions', model: 'test', key: async () => 'key' }),
   );
 });
+test('Ark Chat Completions uses the configured URL and the existing bounded protocol', async () => {
+  const endpoint = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+  let sent: any;
+  const provider = new ChatProvider(
+    { endpoint, model: 'test-model', key: async () => 'test-key' },
+    async (url, options) => {
+      assert.equal(url, endpoint);
+      assert.equal(options?.redirect, 'error');
+      sent = JSON.parse(String(options?.body));
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"Inspect logs."}}]}\n\n' +
+          'data: {"usage":{"prompt_tokens":40,"completion_tokens":10},"choices":[]}\n\n' +
+          'data: [DONE]\n\n',
+      );
+    },
+  );
+  const reply = await provider.reply(context, [], 'help', () => {}, AbortSignal.timeout(1000));
+  assert.equal(reply.text, 'Inspect logs.');
+  assert.deepEqual(reply.usage, { inputTokens: 40, outputTokens: 10 });
+  assert.equal(sent.max_completion_tokens, 1200);
+  assert.deepEqual(sent.stream_options, { include_usage: true });
+  assert.equal(sent.tools[0].function.name, 'propose_command');
+  assert.equal(sent.parallel_tool_calls, false);
+});
+test('endpoint validation rejects unsupported protocols, paths and credential-bearing URLs', () => {
+  for (const endpoint of [
+    'http://api.example/api/v3/chat/completions',
+    'https://user:secret@api.example/api/v3/chat/completions',
+    'https://api.example/api/v3/chat/completions?key=secret',
+    'https://api.example/api/v3/chat/completions#fragment',
+    'https://localhost/api/v3/chat/completions',
+    'https://api.example/api/v3/responses',
+    'https://api.example/v1/responses',
+    'https://api.example/api/v3/chat/completions/',
+    'https://api.example/other/chat/completions',
+  ])
+    assert.throws(() => new ChatProvider({ endpoint, model: 'test', key: async () => 'key' }));
+});
 test('split typed tool arguments produce one proposal while invalid calls remain text-only', async () => {
   for (const name of ['propose_command', 'execute']) {
     const data =
