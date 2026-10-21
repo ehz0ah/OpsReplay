@@ -11,7 +11,14 @@ test('confirmed proposals preserve real shell input and do not resend delivery t
     return value.stdout.trim();
   };
   const script = fileURLToPath(new URL('./run-local.sh', import.meta.url));
-  const id = run('sh', [script, 'opsreplay-proposal-' + randomUUID()]);
+  const image = run('docker', [
+    'image',
+    'inspect',
+    process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev',
+    '--format',
+    '{{.Id}}',
+  ]);
+  const id = run('sh', [script, 'opsreplay-proposal-' + randomUUID(), image]);
   try {
     run('docker', ['exec', '-i', id, 'python3', '-'], {
       input: readFileSync(new URL('./proposals.test.py', import.meta.url), 'utf8'),
