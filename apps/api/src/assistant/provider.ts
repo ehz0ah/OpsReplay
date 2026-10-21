@@ -32,7 +32,7 @@ export class ChatProvider implements AssistantProvider {
       url.password ||
       url.search ||
       url.hash ||
-      url.pathname !== '/v1/chat/completions' ||
+      !['/v1/chat/completions', '/api/v3/chat/completions'].includes(url.pathname) ||
       url.hostname === 'localhost' ||
       !configuration.model ||
       configuration.model.length > 100

@@ -16,6 +16,22 @@ test('assistant has isolated streaming action, optional configuration and bounde
     'Fn::If': ['AssistantActive', { Ref: 'AssistantConcurrencyLimit' }, 0],
   });
   assert.equal(template.Parameters.AssistantEnabled.Default, 'false');
+  const endpoint = new RegExp(template.Parameters.AssistantEndpoint.AllowedPattern);
+  for (const value of [
+    '',
+    'https://api.example/v1/chat/completions',
+    'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+  ])
+    assert.equal(endpoint.test(value), true);
+  for (const value of [
+    'http://api.example/api/v3/chat/completions',
+    'https://user:secret@api.example/api/v3/chat/completions',
+    'https://api.example/api/v3/chat/completions?key=secret',
+    'https://api.example/api/v3/chat/completions#fragment',
+    'https://api.example/api/v3/responses',
+    'https://api.example/other/chat/completions',
+  ])
+    assert.equal(endpoint.test(value), false);
   for (const name of ['AssistantConcurrencyLimit', 'AssistantRateLimit']) {
     assert.equal(template.Parameters[name].Default, 1);
     assert.equal(template.Parameters[name].MinValue, 1);

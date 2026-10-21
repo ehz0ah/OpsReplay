@@ -1372,7 +1372,7 @@ export class SessionStartStack extends Stack {
     const assistantEndpoint = new CfnParameter(this, 'AssistantEndpoint', {
       type: 'String',
       default: '',
-      allowedPattern: '^(?:|https://[A-Za-z0-9.-]+/v1/chat/completions)$',
+      allowedPattern: '^(?:|https://[A-Za-z0-9.-]+/(?:v1|api/v3)/chat/completions)$',
     });
     const assistantModel = new CfnParameter(this, 'AssistantModel', { type: 'String', default: '', maxLength: 100 });
     const assistantSecret = new CfnParameter(this, 'AssistantSecretArn', {

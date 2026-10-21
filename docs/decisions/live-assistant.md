@@ -32,6 +32,10 @@ server-side raw API key; prompts and responses are excluded from logs. Logs reco
 turn duration, status, and provider token counts. Secret rotation requires a fresh
 execution environment because the successful credential read is cached.
 
+Configure a full HTTPS Chat Completions endpoint at `/v1/chat/completions` or Ark's
+`/api/v3/chat/completions`. The adapter uses the same request and stream format for
+both paths. Responses API endpoints use a different protocol and are unsupported.
+
 Before enabling an endpoint, the operator must evaluate the provider's retention,
 training and data-handling terms. Questions, recent command/output excerpts, visible
 metrics, released hints and recent chat leave AWS for that configured endpoint. The
