@@ -1,5 +1,22 @@
 """Real Bash confirmation tests. Runs inside the isolated local Challenge."""
 import base64,json,os,socket,time,uuid
+from pathlib import Path
+
+def wait_for_file(path, expected=None):
+    path=Path(path)
+    deadline=time.monotonic()+3
+    while not path.exists() or (expected is not None and path.read_text()!=expected):
+        assert time.monotonic()<deadline, 'Confirmed command effect did not appear: '+str(path)
+        time.sleep(.02)
+
+def dispatch_when_ready(sock,reader,frame):
+    deadline=time.monotonic()+3
+    while True:
+        value=request(sock,reader,frame,'proposal_receipt')
+        if value['status']!='busy':return value
+        assert time.monotonic()<deadline,value
+        frame['token']=str(uuid.uuid4())
+        time.sleep(.05)
 
 def attach(generation):
     deadline=time.monotonic()+10
@@ -44,26 +61,17 @@ assert not os.path.exists('/tmp/proposal-partial')
 input(s,r,b'\x15')
 # One confirmed command. Repeat the exact delivery frame, with the same identity.
 frame={'type':'proposal','query':False,'generation':1,'token':str(uuid.uuid4()),'proposalId':str(uuid.uuid4()),'command':'echo once >> /tmp/proposal-count'}
-deadline=time.monotonic()+3
-while True:
-    value=request(s,r,frame,'proposal_receipt')
-    if value['status']!='busy':break
-    assert time.monotonic()<deadline,value
-    frame['token']=str(uuid.uuid4())
-    time.sleep(.05)
+value=dispatch_when_ready(s,r,frame)
 assert value['status']=='accepted',value
-time.sleep(.1)
+wait_for_file('/tmp/proposal-count','once\n')
 value=request(s,r,frame,'proposal_receipt')
 assert value['status']=='accepted',value
-time.sleep(.1)
-assert open('/tmp/proposal-count').read()=='once\n'
 # A later distinct proposal works after the first binding returns.
 second={**frame,'token':str(uuid.uuid4()),'proposalId':str(uuid.uuid4()),'command':'touch /tmp/proposal-second'}
-time.sleep(.1)
-value=request(s,r,second,'proposal_receipt')
+value=dispatch_when_ready(s,r,second)
 assert value['status']=='accepted',value
-time.sleep(.1)
-assert os.path.exists('/tmp/proposal-second')
+wait_for_file('/tmp/proposal-second')
+assert Path('/tmp/proposal-count').read_text()=='once\n'
 # Same token with another command cannot execute.
 value=request(s,r,{**frame,'command':'touch /tmp/proposal-conflict'},'proposal_receipt')
 assert value['status']=='unknown'
