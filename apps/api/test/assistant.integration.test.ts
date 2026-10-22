@@ -185,6 +185,20 @@ test('context includes recorded public evidence and never private session data o
   assert.equal(encoded.includes('hintPlan'), false);
   assert.equal(encoded.includes('plantedFault'), false);
 });
+test('assistant receives exact-version public service context without hidden fault or listener values', async () => {
+  const f = await fixture();
+  f.saved.view.challenge.id = 'wrong-upstream-port';
+  f.saved.view.challenge.version = '0.1.2';
+  const value = await buildAssistantContext(db.document, f.table, f.saved, null, AbortSignal.timeout(10000));
+  assert.equal(value.environment?.kind, 'isolated-linux');
+  assert.equal(value.environment?.services[0]?.name, 'nginx');
+  assert.deepEqual(value.environment?.services[0]?.logFiles, ['/var/log/nginx/access.log', '/var/log/nginx/error.log']);
+  const encoded = JSON.stringify(value.environment);
+  assert.doesNotMatch(encoded, /8080|8081|proxy_pass|referenceFix|plantedFault|validators/);
+  f.saved.view.challenge.version = '9.0.0';
+  const missing = await buildAssistantContext(db.document, f.table, f.saved, null, AbortSignal.timeout(10000));
+  assert.deepEqual(missing.environment, { kind: 'isolated-linux', overview: null, services: [] });
+});
 test('saved reply remains recoverable when provider is disabled and session ends', async () => {
   const f = await fixture(),
     body = { requestId: randomUUID(), text: 'question' };
