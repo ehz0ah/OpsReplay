@@ -98,18 +98,21 @@ export function AttemptRules() {
   return (
     <section className="attempt-rules">
       <h3>Before you start</h3>
-      <p>
-        You have root access inside an isolated Linux environment. Use the terminal to inspect and repair real services.
-      </p>
-      <p>
-        The clock starts when the environment is ready. Leaving this page does not pause the incident or its time limit.
-      </p>
-      <p>Return within five minutes if you leave the workspace. Longer disconnection ends the attempt as abandoned.</p>
-      <p>
-        Commands, terminal output and service measurements are recorded for your debrief. Keep credentials out of the
-        terminal.
-      </p>
-      <p>Recovery is confirmed automatically. End attempt stops this attempt permanently.</p>
+      <ul>
+        <li>
+          You have root access inside an isolated Linux environment. Use the terminal to inspect and repair real
+          services.
+        </li>
+        <li>
+          The clock starts when the environment is ready. Leaving this page does not pause the incident or its time
+          limit. Return within five minutes. Longer disconnection ends the attempt as abandoned.
+        </li>
+        <li>
+          Commands, terminal output and service measurements are recorded for your debrief. Keep credentials out of the
+          terminal.
+        </li>
+        <li>Recovery is confirmed automatically. End attempt stops this attempt permanently.</li>
+      </ul>
     </section>
   );
 }

@@ -175,6 +175,19 @@ p:last-child {
   margin: 20px 0 12px;
   justify-content: flex-end;
 }
+.briefing-clock {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.attempt-rules ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.attempt-rules li {
+  margin: 8px 0;
+}
 .notice {
   border-left: 3px solid var(--accent);
   padding: 14px 16px;
