@@ -179,6 +179,7 @@ export function createStartHandler({
           return await rejectNew('ACTIVE_SESSION_EXISTS', active.sessionId);
         }
         const createdAt = clock.toISOString();
+        const launchPins = snapshot.deployment?.pins ?? content.pins;
         const id = newId();
         const monitorSecret = newSecret();
         const provisioningDeadline = new Date(clock.getTime() + 180_000);
@@ -206,10 +207,10 @@ export function createStartHandler({
           view,
           accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
           hintPlan: structuredClone(content.hintPlan),
-          pins: { ...content.pins },
+          pins: { ...launchPins },
           launchArguments: {
             cluster: launchConfiguration.clusterArn,
-            taskDefinition: content.pins.taskDefinitionArn,
+            taskDefinition: launchPins.taskDefinitionArn,
             clientToken: id,
             startedBy: id,
             count: 1,

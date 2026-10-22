@@ -14,6 +14,7 @@ import {
   validSessionRelations,
 } from './validation.js';
 import type { Admission, StartRequest } from './types.js';
+import { validDeploymentBinding } from './deployment-binding.js';
 import {
   initialSessionLifecycle,
   lifecycleWorkItem,
@@ -25,6 +26,7 @@ export const keys = {
   plan: (owner: string) => ({ PK: `USER#${owner}`, SK: 'PLAN' }),
   progress: (owner: string, challenge: string) => ({ PK: `USER#${owner}`, SK: `PROGRESS#${challenge}` }),
   content: (id: string, version: string) => ({ PK: `CONTENT#${id}`, SK: `VERSION#${version}` }),
+  deployment: (id: string, version: string) => ({ PK: `CONTENT#${id}`, SK: `DEPLOYMENT#${version}` }),
   session: (id: string) => ({ PK: `SESSION#${id}`, SK: 'STATE' }),
 };
 type Key = { PK: string; SK: string };
@@ -56,12 +58,24 @@ export class StartStore {
   }
 
   async snapshot(owner: string, request: StartRequest, abortSignal?: AbortSignal) {
-    const [content, plan, progress] = await Promise.all([
+    const [content, plan, progress, deployment] = await Promise.all([
       this.get(keys.content(request.challengeId, request.challengeVersion), validContent, abortSignal),
       this.get(keys.plan(owner), validPlan, abortSignal),
       this.get(keys.progress(owner, request.challengeId), validProgress, abortSignal),
+      this.get(keys.deployment(request.challengeId, request.challengeVersion), validDeploymentBinding, abortSignal),
     ]);
-    return { content, plan, progress };
+    if (deployment) {
+      if (
+        !content ||
+        Object.entries(content.pins).some(
+          ([key, value]) => deployment.contentPins[key as keyof typeof content.pins] !== value,
+        ) ||
+        deployment.pins.taskDefinitionArn.split(':').slice(0, -1).join(':') !==
+          content.pins.taskDefinitionArn.split(':').slice(0, -1).join(':')
+      )
+        throw new Error('Deployment binding does not match published content');
+    }
+    return { content, plan, progress, deployment };
   }
 
   async commit(admission: Admission, abortSignal?: AbortSignal): Promise<void> {
@@ -107,6 +121,7 @@ export class StartStore {
           },
         },
         unchanged(keys.content(request.challengeId, request.challengeVersion), snapshot.content),
+        unchanged(keys.deployment(request.challengeId, request.challengeVersion), snapshot.deployment),
         unchanged(keys.plan(owner), snapshot.plan),
         unchanged(keys.progress(owner, request.challengeId), snapshot.progress),
       ],

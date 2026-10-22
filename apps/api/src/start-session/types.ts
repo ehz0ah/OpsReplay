@@ -75,6 +75,13 @@ export interface ContentVersion {
   timeLimits: { free: number; pro: number | null };
   pins: { taskDefinitionArn: string; challengeImageDigest: string; monitorImageDigest: string; manifestSha256: string };
 }
+// An operator validates a replacement task and images before binding future admissions.
+// The published version and existing session pins remain immutable.
+export interface DeploymentBinding {
+  schemaVersion: 1;
+  contentPins: ContentVersion['pins'];
+  pins: ContentVersion['pins'];
+}
 export interface Plan {
   plan: PlanName;
   expiresAt: string | null;
@@ -173,6 +180,7 @@ export interface Snapshot {
   content: ContentVersion | undefined;
   plan: Plan | undefined;
   progress: Progress | undefined;
+  deployment?: DeploymentBinding | undefined;
 }
 export interface Admission {
   request: StartRequest;

@@ -215,6 +215,83 @@ test('valid admission writes the session, receipt, and lock atomically', async (
   assert.deepEqual(Object.keys(f.logs[0] as object).sort(), ['durationMs', 'operation', 'requestId', 'result']);
 });
 
+test('new admissions use deployment pins while published content and old retry receipts remain unchanged', async () => {
+  const f = await fixture();
+  const published = content();
+  const first = bodyOf(await f.handler(event(request()), context)).session;
+  const firstSaved = await f.store.session(first.id);
+  assert.deepEqual(firstSaved?.pins, published.pins);
+  const firstReceipt = (await f.rows()).find((row) => row.SK.startsWith('START#'));
+  assert.ok(firstReceipt);
+  const deployment = {
+    schemaVersion: 1,
+    contentPins: published.pins,
+    pins: { ...published.pins, taskDefinitionArn: published.pins.taskDefinitionArn.replace(/:1$/, ':2') },
+  };
+  await f.put(keys.deployment('wrong-upstream-port', '0.1.0'), deployment);
+  await f.remove(keys.active(owner));
+  const second = bodyOf(await f.handler(event(request()), context)).session;
+  const secondSaved = await f.store.session(second.id);
+  assert.deepEqual(secondSaved?.pins, deployment.pins);
+  assert.equal(secondSaved?.launchArguments.taskDefinition, deployment.pins.taskDefinitionArn);
+  assert.deepEqual(await f.get(keys.content('wrong-upstream-port', '0.1.0')), published);
+  const replay = bodyOf(
+    await f.handler(
+      event({ requestId: firstReceipt.data.requestId, challengeId: 'wrong-upstream-port', challengeVersion: '0.1.0' }),
+      context,
+    ),
+  );
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.session.id, first.id);
+  assert.deepEqual((await f.store.session(first.id))?.pins, published.pins);
+});
+
+test('binding replacement during admission retries the snapshot and launches only the new pinned task', async () => {
+  const f = await fixture();
+  const published = content();
+  const key = keys.deployment('wrong-upstream-port', '0.1.0');
+  const binding = {
+    schemaVersion: 1,
+    contentPins: published.pins,
+    pins: { ...published.pins, taskDefinitionArn: published.pins.taskDefinitionArn.replace(/:1$/, ':2') },
+  };
+  await f.put(key, binding);
+  let changed = false;
+  const next = {
+    ...binding,
+    pins: { ...binding.pins, taskDefinitionArn: published.pins.taskDefinitionArn.replace(/:1$/, ':3') },
+  };
+  const handler = f.makeHandler({
+    commit: async (admission, signal) => {
+      if (!changed) {
+        changed = true;
+        await f.put(key, next);
+      }
+      return f.store.commit(admission, signal);
+    },
+  });
+  const response = await handler(event(request()), context);
+  assert.equal(response.statusCode, 200);
+  const saved = await f.store.session(bodyOf(response).session.id);
+  assert.deepEqual(saved?.pins, next.pins);
+  assert.deepEqual(f.provisions, [saved!.view.id]);
+});
+
+test('mismatched publication pins and a different task family fail closed without admission', async () => {
+  for (const wrong of ['pins', 'family']) {
+    const f = await fixture();
+    const published = content();
+    const binding = { schemaVersion: 1, contentPins: { ...published.pins }, pins: { ...published.pins } };
+    if (wrong === 'pins') binding.contentPins.manifestSha256 = 'd'.repeat(64);
+    else binding.pins.taskDefinitionArn = binding.pins.taskDefinitionArn.replace('opsreplay-test', 'opsreplay-other');
+    await f.put(keys.deployment('wrong-upstream-port', '0.1.0'), binding);
+    const response = await f.handler(event(request()), context);
+    assert.equal(response.statusCode, 500);
+    assert.equal(await f.get(keys.active(owner)), undefined);
+    assert.deepEqual(f.provisions, []);
+  }
+});
+
 test('whitespace, property order, and UUID case do not create a new request', async () => {
   const f = await fixture();
   const input = request();
