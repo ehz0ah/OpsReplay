@@ -109,8 +109,11 @@ export function CataloguePage() {
       >
         {selected && (
           <>
-            <AttemptRules />
+            <p className="briefing-clock">
+              The clock starts when the environment is ready. Leaving the workspace does not pause it.
+            </p>
             <ChallengeBriefing key={selected.id + '@' + selected.version} id={selected.id} version={selected.version} />
+            <AttemptRules />
             <div className="actions briefing-actions">
               <Button variant="default" disabled={busy} onClick={() => setSelected(null)}>
                 Back to Challenges

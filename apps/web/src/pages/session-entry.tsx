@@ -222,8 +222,11 @@ export function SessionEntry({ id }: { id: string }) {
                 <Tabs.Panel value="briefing" className="workspace-evidence">
                   <section aria-label="Challenge briefing">
                     <h2>Challenge briefing</h2>
-                    <AttemptRules />
                     <ChallengeBriefing id={view.challenge.id} version={view.challenge.version} />
+                    <details className="command-reference">
+                      <summary>Attempt rules</summary>
+                      <AttemptRules />
+                    </details>
                   </section>
                 </Tabs.Panel>
                 <Tabs.Panel value="assistant" className="workspace-evidence">
