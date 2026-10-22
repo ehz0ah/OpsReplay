@@ -25,7 +25,10 @@ revision, findings and limits. No runtime remains deployed.
 https://<browser-host> .local/config.json`. The output must not already exist.
 5. Run `npm ci`, `npm run quality`, `npm run check`, `npm run web:test` and
    `npm run web:build`. Publish only hashed files under `dist/web/assets/`, then
-   `index.html`, then the validated `config.json`. Keep old hashed files for active tabs.
+   all Free lesson bodies and their index, `index.html`, then the validated `config.json`.
+   Use `node scripts/browser-upload-plan.mjs dist/web` to validate and list the exact
+   ordered files before uploading. It rejects missing/mismatched Free lessons and
+   excludes prepared Pro bodies and example configuration. Keep old hashed files for active tabs.
    Use immutable caching for assets and `Cache-Control: no-store` for HTML/config.
 6. Verify login/callback, start/resume, terminal reconnect, hints, end, debrief and
    playback with the deployed browser. Check the browser console and failed requests.

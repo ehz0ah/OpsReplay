@@ -6,32 +6,43 @@ import { useApi } from '../api-context.js';
 import { useRead } from '../use-read.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
-import { readFreeLesson, readFreeLessonIndex, type FreeLessonSummary } from '../learn.js';
+import { WorkingState } from '../components/working-state.js';
+import { lessonCatalogueState, readFreeLesson, readFreeLessonIndex, type FreeLessonSummary } from '../learn.js';
 export function LearnCatalogue() {
   const catalogue = useRead('Catalog', '/v1/catalog?mode=learn&limit=100');
   const [free, setFree] = useState<FreeLessonSummary[]>([]);
   const [error, setError] = useState<Error | null>(null);
+  const [freeLoading, setFreeLoading] = useState(true),
+    [revision, setRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
+    setError(null);
+    setFreeLoading(true);
     void readFreeLessonIndex(controller.signal)
-      .then(setFree)
+      .then((value) => {
+        if (!controller.signal.aborted) setFree(value);
+      })
       .catch((value) => {
         if (!controller.signal.aborted) setError(value instanceof Error ? value : new Error('Lessons unavailable.'));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFreeLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [revision]);
   const entries = new Map<string, FreeLessonSummary & { plan: 'free' | 'pro' }>(
     free.map((entry) => [entry.id, { ...entry, plan: 'free' as const }]),
   );
   for (const entry of catalogue.data?.items ?? []) if (!entries.has(entry.id)) entries.set(entry.id, entry);
+  const state = lessonCatalogueState(entries.size, freeLoading || catalogue.loading, error || catalogue.error);
   return (
     <>
       <p className="eyebrow">Learn</p>
       <h1>Understand the failure.</h1>
       <p className="intro">Read an incident explanation, examine its lessons, then practise in a Challenge.</p>
-      <Failure error={error} />
+      <Failure error={error} retry={() => setRevision((value) => value + 1)} />
       <Failure error={catalogue.error} retry={catalogue.reload} />
-      {catalogue.loading && !entries.size && <p role="status">Loading lessons…</p>}
+      {state === 'loading' && <WorkingState title="Loading lessons" />}
       {[...entries.values()].map((entry) => (
         <article className="challenge-row" key={entry.id}>
           <div>
@@ -46,7 +57,7 @@ export function LearnCatalogue() {
           </Button>
         </article>
       ))}
-      {!catalogue.loading && !entries.size && <p>No lessons are available.</p>}
+      {state === 'empty' && <p>No lessons are available.</p>}
     </>
   );
 }
