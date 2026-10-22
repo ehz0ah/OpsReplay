@@ -53,6 +53,14 @@ test('briefing contract rejects private fields and unsafe file paths at every le
     assert.equal(valid({ ...value, [field]: 'private' }), false, field);
   for (const field of ['listens', 'contents', 'solution', 'image'])
     assert.equal(valid({ ...value, services: [{ ...value.services[0], [field]: 'private' }] }), false, field);
-  for (const path of ['/etc/../secret', '/etc//nginx.conf', 'https://example.com', '/etc/config\nsecret'])
+  for (const path of [
+    '/etc/../secret',
+    '/../secret',
+    '/./etc/config',
+    '/etc/.',
+    '/etc//nginx.conf',
+    'https://example.com',
+    '/etc/config\nsecret',
+  ])
     assert.equal(valid({ ...value, services: [{ ...value.services[0], configFiles: [path] }] }), false, path);
 });
