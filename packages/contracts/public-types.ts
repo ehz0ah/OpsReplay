@@ -360,6 +360,7 @@ export interface PublicTypes {
   EndSessionResponse: EndSessionResponse;
   PlaybackMetrics: PlaybackMetrics;
   PlaybackCapture: PlaybackCapture;
+  ChallengeBriefing: ChallengeBriefing;
 }
 export interface Error {
   code:
@@ -748,4 +749,25 @@ export interface PlaybackCapture {
   metrics: MetricSample | null;
   incomplete: boolean;
   unavailable: boolean;
+}
+export interface ChallengeBriefing {
+  id: string;
+  version: string;
+  overview: string;
+  /**
+   * @minItems 1
+   * @maxItems 12
+   */
+  services: {
+    name: string;
+    role: string;
+    /**
+     * @maxItems 12
+     */
+    configFiles: string[];
+    /**
+     * @maxItems 12
+     */
+    logFiles: string[];
+  }[];
 }

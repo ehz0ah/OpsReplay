@@ -1,4 +1,5 @@
-import { Badge, Button, NativeSelect } from '@mantine/core';
+import { Badge, Button, Modal, NativeSelect } from '@mantine/core';
+import { AttemptRules, ChallengeBriefing } from '../components/challenge-briefing.js';
 import { useAlive } from '../use-alive.js';
 import { startAttempt } from '../start-attempt.js';
 import { useEffect, useMemo, useState } from 'react';
@@ -33,6 +34,7 @@ export function CataloguePage() {
     }
   });
   const [busy, setBusy] = useState(false),
+    [selected, setSelected] = useState<PublicTypes['CatalogEntry'] | null>(null),
     [error, setError] = useState<Error | null>(null),
     [retryAt, setRetryAt] = useState(0);
   const [clock, setClock] = useState(Date.now);
@@ -96,6 +98,56 @@ export function CataloguePage() {
   }
   return (
     <>
+      <Modal
+        opened={selected !== null}
+        onClose={() => {
+          if (!busy) setSelected(null);
+        }}
+        title={selected?.title ?? 'Challenge briefing'}
+        size="lg"
+        centered
+      >
+        {selected && (
+          <>
+            <AttemptRules />
+            <ChallengeBriefing key={selected.id + '@' + selected.version} id={selected.id} version={selected.version} />
+            <div className="actions briefing-actions">
+              <Button variant="default" disabled={busy} onClick={() => setSelected(null)}>
+                Back to Challenges
+              </Button>
+              <Button
+                loading={busy}
+                disabled={
+                  cooldown ||
+                  !!pending ||
+                  auth.loading ||
+                  (!!auth.identity && !account.data) ||
+                  (selected.plan === 'pro' && account.data?.plan !== 'pro' && !!auth.identity)
+                }
+                onClick={() => void start(selected)}
+              >
+                {!auth.identity
+                  ? 'Sign in to start'
+                  : selected.plan === 'pro' && account.data?.plan !== 'pro'
+                    ? 'Pro required'
+                    : account.data?.activeSessionId
+                      ? 'Resume current attempt'
+                      : 'Start Challenge'}
+              </Button>
+            </div>
+            <Failure error={error} />
+            {pending && !busy && (
+              <div className="notice" role="status">
+                <p>The start response is uncertain. Recover the same request before starting another attempt.</p>
+                <Button disabled={cooldown || !account.data} onClick={() => void start(null)}>
+                  Recover start request
+                </Button>
+              </div>
+            )}
+            {busy && <p role="status">Confirming your start request. Your environment will open automatically.</p>}
+          </>
+        )}
+      </Modal>
       <div className="actions">
         <h2>Challenges</h2>
         {account.data && <span className="badge">{account.data.plan === 'pro' ? 'Pro' : 'Free'} access</span>}
@@ -164,23 +216,13 @@ export function CataloguePage() {
             <p className="muted">{entry.summary}</p>
           </div>
           <Button
-            disabled={
-              busy ||
-              cooldown ||
-              !!pending ||
-              auth.loading ||
-              (!!auth.identity && !account.data) ||
-              (entry.plan === 'pro' && account.data?.plan !== 'pro' && !!auth.identity)
-            }
-            onClick={() => void start(entry)}
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              setSelected(entry);
+            }}
           >
-            {!auth.identity
-              ? 'Sign in to start'
-              : entry.plan === 'pro' && account.data?.plan !== 'pro'
-                ? 'Pro required'
-                : account.data?.activeSessionId
-                  ? 'Resume current attempt'
-                  : 'Start Challenge'}
+            Read briefing
           </Button>
         </article>
       ))}

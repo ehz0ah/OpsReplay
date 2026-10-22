@@ -8,6 +8,7 @@ const results = () => import('../../.local/contracts/results-validators.js');
 const loaders = {
   Error: entry,
   Catalog: entry,
+  ChallengeBriefing: entry,
   Account: entry,
   LearnEntry: entry,
   SessionPage: entry,

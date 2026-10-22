@@ -1,0 +1,25 @@
+{
+  "id": "wrong-upstream-port",
+  "version": "0.1.2",
+  "overview": "Requests pass through an nginx proxy to a shop application backed by PostgreSQL. The terminal gives you access to this service stack.",
+  "services": [
+    {
+      "name": "nginx",
+      "role": "Receives storefront requests and forwards them to the shop application.",
+      "configFiles": ["/etc/nginx/nginx.conf"],
+      "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
+    },
+    {
+      "name": "shop",
+      "role": "Handles storefront pages, checkout requests and order data.",
+      "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
+      "logFiles": ["/var/log/shop/app.log"]
+    },
+    {
+      "name": "postgres",
+      "role": "Stores orders for the shop application.",
+      "configFiles": ["/etc/postgresql/postgresql.conf"],
+      "logFiles": ["/var/log/postgresql/postgresql.log"]
+    }
+  ]
+}

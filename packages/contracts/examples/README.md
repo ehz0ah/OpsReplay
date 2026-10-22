@@ -3,6 +3,9 @@
 These JSON examples are synthetic fixtures for schema validation and frontend work. They
 are not captured sessions.
 
+The [Challenge briefing](challenge-briefing.json) is public service documentation for
+version 0.1.2. It contains only service roles and file paths. It is not the private manifest.
+
 Most examples describe one first attempt of the Wrong upstream port Challenge. The
 learner reads the proxy error log, checks listening sockets, edits `nginx.conf` with a
 syntax error, and restarts nginx, which takes the proxy down. They then validate the

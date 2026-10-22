@@ -20,6 +20,7 @@ import { endAttempt } from '../end-attempt.js';
 import { timeRemaining, terminal } from '../lifecycle.js';
 import { Failure } from '../components/failure.js';
 import { navigate } from '../navigation.js';
+import { AttemptRules, ChallengeBriefing } from '../components/challenge-briefing.js';
 export function SessionEntry({ id }: { id: string }) {
   const lastProposal = useRef<string | null>(null);
   const proposalControl = useRef<((id: string, queryOnly?: boolean) => boolean) | null>(null);
@@ -168,6 +169,7 @@ export function SessionEntry({ id }: { id: string }) {
                     Terminal
                   </Tabs.Tab>
                   <Tabs.Tab value="telemetry">Telemetry</Tabs.Tab>
+                  <Tabs.Tab value="briefing">Briefing</Tabs.Tab>
                   <Tabs.Tab value="timeline">Timeline</Tabs.Tab>
                   <Tabs.Tab value="hints">Hints</Tabs.Tab>
                   <Tabs.Tab value="assistant">Assistant</Tabs.Tab>
@@ -216,6 +218,13 @@ export function SessionEntry({ id }: { id: string }) {
                 </Tabs.Panel>
                 <Tabs.Panel value="timeline" className="workspace-evidence">
                   <Timeline items={telemetry.events} />
+                </Tabs.Panel>
+                <Tabs.Panel value="briefing" className="workspace-evidence">
+                  <section aria-label="Challenge briefing">
+                    <h2>Challenge briefing</h2>
+                    <AttemptRules />
+                    <ChallengeBriefing id={view.challenge.id} version={view.challenge.version} />
+                  </section>
                 </Tabs.Panel>
                 <Tabs.Panel value="assistant" className="workspace-evidence">
                   <AssistantPanel

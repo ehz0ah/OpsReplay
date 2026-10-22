@@ -3554,6 +3554,72 @@
           "incomplete",
           "unavailable"
         ]
+      },
+      "ChallengeBriefing": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 100
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "maxLength": 50
+          },
+          "overview": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "services": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "maxLength": 80
+                },
+                "role": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "configFiles": {
+                  "type": "array",
+                  "maxItems": 12,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^/(?!.*(?:^|/)\\.{1,2}(?:/|$))(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+$"
+                  }
+                },
+                "logFiles": {
+                  "type": "array",
+                  "maxItems": 12,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^/(?!.*(?:^|/)\\.{1,2}(?:/|$))(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+$"
+                  }
+                }
+              },
+              "required": ["name", "role", "configFiles", "logFiles"]
+            }
+          }
+        },
+        "required": ["id", "version", "overview", "services"]
       }
     }
   }
