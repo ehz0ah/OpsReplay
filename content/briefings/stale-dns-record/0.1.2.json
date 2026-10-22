@@ -1,0 +1,31 @@
+{
+  "id": "stale-dns-record",
+  "version": "0.1.2",
+  "overview": "The storefront uses an nginx proxy, a shop API, internal DNS and a PostgreSQL database. Service names and addresses connect these layers.",
+  "services": [
+    {
+      "name": "nginx",
+      "role": "Receives storefront requests and forwards them to the shop application.",
+      "configFiles": ["/etc/nginx/nginx.conf"],
+      "logFiles": ["/var/log/nginx/access.log", "/var/log/nginx/error.log"]
+    },
+    {
+      "name": "shop",
+      "role": "Handles storefront pages, checkout requests and order data.",
+      "configFiles": ["/etc/shop/gunicorn.conf.py", "/etc/shop/shop.env"],
+      "logFiles": ["/var/log/shop/app.log"]
+    },
+    {
+      "name": "coredns",
+      "role": "Resolves internal service names used by the application stack.",
+      "configFiles": ["/etc/coredns/Corefile", "/etc/coredns/internal.db"],
+      "logFiles": ["/var/log/coredns/coredns.log"]
+    },
+    {
+      "name": "postgres",
+      "role": "Stores orders for the shop application.",
+      "configFiles": ["/etc/postgresql/postgresql.conf"],
+      "logFiles": ["/var/log/postgresql/postgresql.log"]
+    }
+  ]
+}

@@ -18,6 +18,10 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+22 October 2026: [Challenge briefings](learner-briefing.md) provide reviewed public
+service documentation before launch and during the attempt. Exact-version assets stay
+separate from private manifests. The launch screen explains recording and clock rules.
+
 18 October 2026: saved timeline commands provide chart markers and seek targets.
 Selection shows saved command output with explicit timing and non-causality labels.
 Charts bound markers to 120; the paginated timeline retains all loaded commands.

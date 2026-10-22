@@ -26,6 +26,7 @@ for (const name of Object.keys(publicSchema.$defs)) assert.ok(validateType(name)
 const example = (file) => read('packages/contracts/examples/' + file);
 const typedExamples = [
   ['catalog.json', 'Catalog'],
+  ['challenge-briefing.json', 'ChallengeBriefing'],
   ['start-session-request.json', 'StartSessionRequest'],
   ['session.json', 'SessionView'],
   ['timeline.json', 'TimelinePage'],

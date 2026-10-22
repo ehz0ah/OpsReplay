@@ -18,6 +18,10 @@ behaviour, not from authored rules. Automated validators decide recovery.
 Time is wall-clock time. Traffic continues while the learner reads logs, waits for the
 assistant, or leaves the tab, so failed requests accumulate while the fault remains.
 
+The [public briefing](decisions/learner-briefing.md) supplies service roles and known
+file locations before launch and in a workspace tab. It does not disclose the planted
+fault, current file values or recovery commands. Reading a briefing launches no task.
+
 ## Environment task
 
 Starting a Challenge runs one Fargate task with two containers:

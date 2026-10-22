@@ -126,6 +126,55 @@ p:last-child {
   color: var(--muted);
   font-size: 0.8rem;
 }
+.challenge-briefing h3,
+.attempt-rules h3 {
+  margin: 20px 0 10px;
+  font-size: 0.95rem;
+}
+.briefing-service {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.briefing-service h4 {
+  margin: 0 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.briefing-service dl,
+.command-reference dl {
+  margin: 12px 0 0;
+}
+.briefing-service dl > div,
+.command-reference dl > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  margin: 8px 0;
+}
+.briefing-service dt {
+  color: var(--muted);
+}
+.briefing-service dd,
+.command-reference dd {
+  margin: 0;
+  min-width: 0;
+}
+.briefing-service code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.command-reference summary {
+  cursor: pointer;
+  padding: 12px 0;
+  color: var(--accent);
+}
+.command-reference dl > div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.briefing-actions {
+  margin: 20px 0 12px;
+  justify-content: flex-end;
+}
 .notice {
   border-left: 3px solid var(--accent);
   padding: 14px 16px;

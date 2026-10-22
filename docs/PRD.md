@@ -53,6 +53,12 @@ and P13 to P14 for one reference Challenge before Learn and Code Review are adde
 
 ## Initial Challenges
 
+Before starting, learners can read a public briefing with service roles, known log and
+configuration paths, and basic investigation guidance. The same exact-version briefing
+remains available during the attempt. It contains no fault, answer, expected listener
+values or unreleased hints. The start screen explains that the clock starts at readiness,
+continues after navigation, and long disconnection can abandon the attempt.
+
 | Challenge                                                                           | Tier   | Planted misconfiguration                                                                               | Why action order matters                                                                                           |
 | ----------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | [Wrong upstream port](../content/challenges/wrong-upstream-port/challenge.json)     | Easy   | nginx `proxy_pass` targets port 8081, but the app listens on 8080, so users see 502 errors             | Editing `nginx.conf` without `nginx -t` risks a syntax error. A reload fails safely, but a restart stops the proxy |
