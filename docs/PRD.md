@@ -53,6 +53,11 @@ and P13 to P14 for one reference Challenge before Learn and Code Review are adde
 
 ## Initial Challenges
 
+The home page explains the learner workflow and leads to the Challenge catalogue.
+Provisioning and debrief preparation show visible progress and the next action.
+Outside the workspace, a current-attempt notice reads server state and explains
+that navigation does not pause the incident. UI controls use in-app dropdowns.
+
 Before starting, learners can read a public briefing with service roles, known log and
 configuration paths, and basic investigation guidance. The same exact-version briefing
 remains available during the attempt. It contains no fault, answer, expected listener
