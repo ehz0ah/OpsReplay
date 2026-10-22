@@ -1,4 +1,6 @@
-import { Badge, Button, Modal, NativeSelect } from '@mantine/core';
+import { Badge, Button, Modal, Select } from '@mantine/core';
+import { ActiveAttempt } from '../components/attempt-notice.js';
+import { WorkingState } from '../components/working-state.js';
 import { AttemptRules, ChallengeBriefing } from '../components/challenge-briefing.js';
 import { useAlive } from '../use-alive.js';
 import { startAttempt } from '../start-attempt.js';
@@ -140,7 +142,7 @@ export function CataloguePage() {
             </div>
             <Failure error={error} />
             <Failure error={account.error} retry={account.reload} />
-            {account.loading && auth.identity && <p role="status">Loading your account…</p>}
+            {account.loading && auth.identity && <WorkingState title="Loading your account" />}
             {cooldown && <p role="status">Try again in {Math.max(1, Math.ceil((retryAt - clock) / 1000))} seconds.</p>}
             {pending && !busy && (
               <div className="notice" role="status">
@@ -150,33 +152,35 @@ export function CataloguePage() {
                 </Button>
               </div>
             )}
-            {busy && <p role="status">Confirming your start request. Your environment will open automatically.</p>}
+            {busy && (
+              <WorkingState title="Confirming your start request">
+                Your environment will open automatically. Keep this page open until the request is confirmed.
+              </WorkingState>
+            )}
           </>
         )}
       </Modal>
       <div className="actions">
-        <h2>Challenges</h2>
+        <h2>Available Challenges</h2>
         {account.data && <span className="badge">{account.data.plan === 'pro' ? 'Pro' : 'Free'} access</span>}
       </div>
       {account.data?.activeSessionId && !pending && (
-        <div className="notice">
-          <p>You have an attempt in progress or awaiting cleanup.</p>
-          <Button onClick={() => navigate('/sessions/' + account.data!.activeSessionId)}>Resume attempt</Button>
-        </div>
+        <ActiveAttempt key={account.data.activeSessionId} id={account.data.activeSessionId} />
       )}
-      {account.loading && <p role="status">Loading your account…</p>}
+      {account.loading && <WorkingState title="Loading your account" />}
       <Failure error={account.error} retry={account.reload} />
       {account.error instanceof ApiError && account.error.status === 401 && (
         <Button onClick={() => void auth.signIn()}>Sign in again</Button>
       )}
       <div className="actions">
         {(['tier', 'category', 'plan'] as const).map((name) => (
-          <NativeSelect
+          <Select
             key={name}
             label={name === 'tier' ? 'Difficulty' : name === 'category' ? 'Category' : 'Access'}
             value={filters[name]}
-            onChange={(e) => {
-              setFilters({ ...filters, [name]: e.currentTarget.value });
+            allowDeselect={false}
+            onChange={(value) => {
+              setFilters({ ...filters, [name]: value ?? '' });
               setCursor(null);
             }}
             data={[
@@ -190,7 +194,7 @@ export function CataloguePage() {
           />
         ))}
       </div>
-      {catalog.loading && <p role="status">Loading published Challenges…</p>}
+      {catalog.loading && <WorkingState title="Loading published Challenges" />}
       <Failure
         error={catalog.error}
         retry={() => {
@@ -203,7 +207,7 @@ export function CataloguePage() {
       {pending && (
         <div className="notice">
           <p>A start request is waiting for confirmation. Retry the same request to recover its result.</p>
-          <Button disabled={busy || cooldown || !account.data} onClick={() => void start(null)}>
+          <Button loading={busy} disabled={cooldown || !account.data} onClick={() => void start(null)}>
             Recover start request
           </Button>
         </div>

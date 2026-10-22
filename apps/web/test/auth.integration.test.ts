@@ -62,9 +62,11 @@ test('expired or mismatched ID tokens cannot be used as the displayed identity',
 });
 test('return navigation accepts served session routes and rejects unsupported or malformed paths', () => {
   const session = '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-  for (const path of ['/', session, session + '/debrief']) assert.equal(returnPath(path), path);
+  for (const path of ['/', '/challenges', session, session + '/debrief']) assert.equal(returnPath(path), path);
   for (const path of [
     '//other.example',
+    '/challenges?next=other',
+    '/challenges/private',
     'https://other.example',
     session + '/playback',
     session + '/private',

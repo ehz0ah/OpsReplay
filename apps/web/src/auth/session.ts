@@ -54,6 +54,7 @@ export function returnPath(value: unknown): string {
     ) ||
       /^\/(?:learn|reviews)(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?$/.test(value) ||
       value === '/history' ||
+      value === '/challenges' ||
       /^\/review-submissions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value) ||
       value === '/')
     ? value

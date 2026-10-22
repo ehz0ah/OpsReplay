@@ -18,6 +18,10 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+22 October 2026: [Learner flow feedback](learner-flow-feedback.md) adds a home entry,
+in-app selects and visible lifecycle progress. Outside-workspace notices read server
+state and explain the continuing clock. Course branding is omitted from product pages.
+
 22 October 2026: [Challenge briefings](learner-briefing.md) provide reviewed public
 service documentation before launch and during the attempt. Exact-version assets stay
 separate from private manifests. The launch screen explains recording and clock rules.

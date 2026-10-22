@@ -8,6 +8,9 @@ import { LearnCatalogue, LearnPage } from './pages/learn.js';
 import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
 import { usePath, navigate } from './navigation.js';
+import { HomePage } from './pages/home.js';
+import { CurrentAttemptNotice } from './components/attempt-notice.js';
+import { WorkingState } from './components/working-state.js';
 export function App() {
   const path = usePath();
   const auth = useAuth();
@@ -30,10 +33,10 @@ export function App() {
         <div className="actions">
           <a
             className="site-navigation"
-            href="/"
+            href="/challenges"
             onClick={(event) => {
               event.preventDefault();
-              navigate('/');
+              navigate('/challenges');
             }}
           >
             Challenges
@@ -77,22 +80,30 @@ export function App() {
           </Button>
         </div>
       </header>
-      <main id="main" tabIndex={-1} className={path === '/' ? 'page catalogue-page' : 'page workspace-page'}>
+      <main
+        id="main"
+        tabIndex={-1}
+        className={path === '/' || path === '/challenges' ? 'page catalogue-page' : 'page workspace-page'}
+      >
         {auth.message && (
           <p role="alert" className="notice error">
             {auth.message}
           </p>
         )}
-        {path === '/' && (
+        {!path.startsWith('/sessions/') && path !== '/challenges' && path !== '/auth/callback' && (
+          <CurrentAttemptNotice key={path + (auth.identity?.sub ?? 'public')} />
+        )}
+        {path === '/challenges' && (
           <>
-            <p className="eyebrow">Production engineering</p>
-            <h1>Practice incident response.</h1>
+            <h1>Challenges</h1>
             <p className="intro">
               Investigate a live failure in an isolated environment. Repair it, then review your evidence and response.
             </p>
           </>
         )}
         {path === '/' ? (
+          <HomePage />
+        ) : path === '/challenges' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
         ) : path === '/history' ? (
           <HistoryPage key={auth.identity?.sub ?? 'public'} />
@@ -112,10 +123,10 @@ export function App() {
             path,
           ) ? (
           auth.loading ? (
-            <p role="status">Connecting your account…</p>
+            <WorkingState title="Connecting your account" />
           ) : auth.identity ? (
             path.endsWith('/debrief') ? (
-              <Suspense fallback={<p>Opening debrief…</p>}>
+              <Suspense fallback={<WorkingState title="Opening debrief" />}>
                 <DebriefPage key={auth.identity.sub + path} id={path.split('/')[2]!} />
               </Suspense>
             ) : (
@@ -131,10 +142,10 @@ export function App() {
         ) : (
           <section className="panel">
             <h2>Page not found</h2>
-            <a href="/">Return to Challenges</a>
+            <a href="/challenges">Return to Challenges</a>
           </section>
         )}
-        <footer>OpsReplay · NUS CS5224</footer>
+        <footer>OpsReplay · Incident practice</footer>
       </main>
     </>
   );

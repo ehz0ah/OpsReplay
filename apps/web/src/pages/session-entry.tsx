@@ -21,6 +21,7 @@ import { timeRemaining, terminal } from '../lifecycle.js';
 import { Failure } from '../components/failure.js';
 import { navigate } from '../navigation.js';
 import { AttemptRules, ChallengeBriefing } from '../components/challenge-briefing.js';
+import { WorkingState } from '../components/working-state.js';
 export function SessionEntry({ id }: { id: string }) {
   const lastProposal = useRef<string | null>(null);
   const proposalControl = useRef<((id: string, queryOnly?: boolean) => boolean) | null>(null);
@@ -75,7 +76,7 @@ export function SessionEntry({ id }: { id: string }) {
           </Button>
         </Group>
       </Modal>
-      <Button variant="default" onClick={() => navigate('/')}>
+      <Button variant="default" onClick={() => navigate('/challenges')}>
         All Challenges
       </Button>
       <Failure error={session.error} retry={session.refresh} />
@@ -83,7 +84,7 @@ export function SessionEntry({ id }: { id: string }) {
         <Button onClick={() => void auth.signIn()}>Sign in again</Button>
       )}
       <Failure error={endError} retry={() => setConfirmEnd(true)} />
-      {!view && !session.error && <p role="status">Reading your attempt…</p>}
+      {!view && !session.error && <WorkingState title="Reading your attempt" />}
       {view && (
         <>
           <header className="workspace-heading">
@@ -111,10 +112,10 @@ export function SessionEntry({ id }: { id: string }) {
             </Group>
           </header>
           {view.status === 'provisioning' ? (
-            <Alert title="Starting your environment" role="status">
-              This can take tens of seconds. The incident clock starts when the environment is ready. You can leave this
-              page and resume the attempt.
-            </Alert>
+            <WorkingState title="Starting your environment">
+              This can take tens of seconds. The clock starts when the environment is ready. Keep this workspace open;
+              the terminal will appear automatically.
+            </WorkingState>
           ) : terminal(view.status) ? (
             <Alert title={`Attempt ${view.status}`} role="status" color="gray">
               <p>{view.statusReason?.replaceAll('_', ' ') ?? 'The attempt has ended.'}</p>
@@ -123,7 +124,9 @@ export function SessionEntry({ id }: { id: string }) {
               ) : view.debriefAvailable ? (
                 <Button onClick={() => navigate(`/sessions/${id}/debrief`)}>Open debrief</Button>
               ) : (
-                <p>Your debrief is being prepared. Status updates continue automatically.</p>
+                <WorkingState title="Preparing your debrief">
+                  The environment is stopping and your recording is being saved. Open debrief will appear automatically.
+                </WorkingState>
               )}
             </Alert>
           ) : null}
@@ -155,7 +158,8 @@ export function SessionEntry({ id }: { id: string }) {
           {view.status === 'ready' && (
             <>
               <p className="workspace-note">
-                Traffic and failures continue while you read or reconnect. Recovery is confirmed by the server.
+                The incident is running. Leaving this workspace does not pause the clock. Return within five minutes if
+                disconnected. Recovery is confirmed automatically.
               </p>
               <Tabs
                 value={wide && tab === 'terminal' ? 'telemetry' : tab}
@@ -175,7 +179,7 @@ export function SessionEntry({ id }: { id: string }) {
                   <Tabs.Tab value="assistant">Assistant</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="terminal" className="workspace-terminal">
-                  <Suspense fallback={<p role="status">Opening terminal…</p>}>
+                  <Suspense fallback={<WorkingState title="Opening terminal" />}>
                     <TerminalView
                       id={id}
                       enabled={!ending && !endError}
@@ -247,10 +251,12 @@ export function SessionEntry({ id }: { id: string }) {
             </>
           )}
           {remaining === 0 && !terminal(view.status) && (
-            <p role="status">The displayed time budget has elapsed. Waiting for the server outcome.</p>
+            <WorkingState title="Confirming the attempt outcome">
+              The displayed time budget has elapsed. The server is checking the final outcome.
+            </WorkingState>
           )}
           {!terminal(view.status) && (
-            <Button variant="default" disabled={ending} onClick={() => setConfirmEnd(true)}>
+            <Button variant="default" loading={ending} onClick={() => setConfirmEnd(true)}>
               {ending ? 'Confirming outcome…' : 'End attempt'}
             </Button>
           )}

@@ -49,7 +49,11 @@ permission. Keep public access blocked and the existing retention rules.
 
 ## Routes and caching
 
-Only `/`, `/auth/callback`, and valid `/sessions/<uuid>` paths with optional `/debrief`
+The home entry is `/`; the Challenge catalogue is `/challenges`. Publish the updated
+CloudFront route function before the new browser assets so direct navigation and
+sign-in returns can reach the catalogue. Existing session routes keep their meaning.
+
+Only `/`, `/challenges`, `/auth/callback`, and valid `/sessions/<uuid>` paths with optional `/debrief`
 map to `index.html`. Unknown paths, missing assets and backend paths keep their error
 status. There is no global 403/404-to-HTML fallback. The browser supports strict CSP
 without script evaluation. xterm requires inline styles. Connection origins are exact;

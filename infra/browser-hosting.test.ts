@@ -8,6 +8,7 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
   const run = runInNewContext(browserRouteCode + ';handler');
   for (const uri of [
     '/',
+    '/challenges',
     '/auth/callback',
     '/history',
     '/review-submissions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -27,6 +28,8 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
     '/learn/../private',
     '/v1/terminal',
     '/other',
+    '/challenges/private',
+    '/challenges/',
     '/sessions/not-a-session',
     '/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/private',
   ])

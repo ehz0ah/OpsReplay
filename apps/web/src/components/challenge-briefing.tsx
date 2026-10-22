@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { Failure } from './failure.js';
+import { WorkingState } from './working-state.js';
 
 const commands = [
   ['pwd', 'Show your current directory.'],
@@ -82,7 +83,7 @@ export function ChallengeBriefing({ id, version }: { id: string; version: string
   }, [id, version, revision]);
   return (
     <>
-      {loading && <p role="status">Loading Challenge briefing…</p>}
+      {loading && <WorkingState title="Loading Challenge briefing" />}
       <Failure error={error} retry={() => setRevision((current) => current + 1)} />
       {!loading && !error && !value && (
         <p role="status">

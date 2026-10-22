@@ -13,6 +13,7 @@ import { Failure } from '../components/failure.js';
 import { Timeline } from '../components/timeline.js';
 import { navigate } from '../navigation.js';
 import { PlaybackWorkspace } from '../playback/workspace.js';
+import { WorkingState } from '../components/working-state.js';
 export function DebriefPage({ id }: { id: string }) {
   const api = useApi(),
     auth = useAuth(),
@@ -122,7 +123,7 @@ export function DebriefPage({ id }: { id: string }) {
   }
   return (
     <>
-      <Button variant="default" onClick={() => navigate('/')}>
+      <Button variant="default" onClick={() => navigate('/challenges')}>
         All Challenges
       </Button>
       <Failure
@@ -131,7 +132,11 @@ export function DebriefPage({ id }: { id: string }) {
           if (!busy) setRevision((value) => value + 1);
         }}
       />
-      {!debrief && !error && <p role="status">Preparing your saved debrief…</p>}
+      {!debrief && !error && (
+        <WorkingState title="Preparing your saved debrief">
+          Your recording and response results are being saved. This page updates automatically when they are ready.
+        </WorkingState>
+      )}
       {debrief && (
         <>
           <header className="workspace-heading">

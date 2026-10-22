@@ -1,4 +1,4 @@
-import { Button, NativeSelect } from '@mantine/core';
+import { Button, Select } from '@mantine/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -125,17 +125,21 @@ export default function RecordedTerminal({
           <Button variant="default" disabled={!state} onClick={() => void player.current?.seek(range!.start)}>
             Reset
           </Button>
-          <NativeSelect
+          <Select
             label="Speed"
             value={String(state?.speed ?? rate.current)}
             disabled={!state}
+            allowDeselect={false}
             data={playbackSpeeds.map((speed) => ({ value: String(speed), label: `${speed}×` }))}
-            onChange={(event) => player.current?.setSpeed(Number(event.currentTarget.value))}
+            onChange={(value) => {
+              if (value !== null) player.current?.setSpeed(Number(value));
+            }}
           />
-          <NativeSelect
+          <Select
             label="Jump to evidence"
             value={from}
             disabled={!range}
+            allowDeselect={false}
             data={[
               { value: '', label: 'Select a moment' },
               ...evidence.map((item, index) => ({
@@ -143,8 +147,8 @@ export default function RecordedTerminal({
                 label: `${new Date(item.at).toLocaleTimeString()} ${item.label}`,
               })),
             ]}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
+            onChange={(selected) => {
+              const value = selected ?? '';
               setFrom(value);
               if (value !== '' && evidence[Number(value)])
                 void player.current?.seek(Date.parse(evidence[Number(value)]!.at));
