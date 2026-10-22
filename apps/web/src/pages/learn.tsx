@@ -122,10 +122,10 @@ export function LearnPage({ id }: { id: string }) {
               {entry.relatedExercises.map((exercise) => (
                 <p key={exercise.mode + exercise.id}>
                   <a
-                    href="/"
+                    href={exercise.mode === 'challenge' ? '/challenges' : '/reviews/' + exercise.id}
                     onClick={(event) => {
                       event.preventDefault();
-                      navigate('/');
+                      navigate(exercise.mode === 'challenge' ? '/challenges' : '/reviews/' + exercise.id);
                     }}
                   >
                     {exercise.title}
