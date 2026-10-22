@@ -118,3 +118,6 @@ reference image target, and their checks/docs. It changes no running sessions.
 After future deployment, retain any revision/image referenced by an active session;
 stop and confirm cleanup before deregistering unused candidate revisions. Never
 rewrite a published version to point at a different runtime.
+
+For an equivalent task in a later temporary deployment, use the separate
+[deployment binding](challenge-deployment-binding.md) for new admissions.
