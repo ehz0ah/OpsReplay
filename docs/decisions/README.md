@@ -22,6 +22,9 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 new admissions use a checked replacement task without rewriting published releases
 or existing session pins.
 
+22 October 2026: [Learner content delivery](learner-content-delivery.md) requires the
+Free lesson assets in deployment and distinguishes failed reads from an empty library.
+
 22 October 2026: [Learner flow feedback](learner-flow-feedback.md) adds a home entry,
 in-app selects and visible lifecycle progress. Outside-workspace notices read server
 state and explain the continuing clock. Course branding is omitted from product pages.

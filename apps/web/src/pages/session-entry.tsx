@@ -144,6 +144,7 @@ export function SessionEntry({ id }: { id: string }) {
               <strong>Recovery: {view.recovery.state}</strong>
               <Progress
                 aria-label="Sustained recovery"
+                transitionDuration={400}
                 value={Math.min(
                   100,
                   (view.recovery.sustainedSeconds / Math.max(1, view.recovery.requiredSeconds)) * 100,
@@ -151,8 +152,13 @@ export function SessionEntry({ id }: { id: string }) {
                 color="teal"
               />
               <span>
-                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds}s sustained
+                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds}s confirmed
               </span>
+              {view.status === 'ready' && view.recovery.state === 'sustaining' && (
+                <span className="recovery-update-note">
+                  Server checks continue. Progress updates about every 5 seconds.
+                </span>
+              )}
             </div>
           )}
           {view.status === 'ready' && (

@@ -7,6 +7,11 @@ export interface FreeLessonSummary {
   category: string;
   summary: string;
 }
+export function lessonCatalogueState(entries: number, loading: boolean, error: Error | null) {
+  if (entries > 0) return 'ready';
+  if (loading) return 'loading';
+  return error ? 'unavailable' : 'empty';
+}
 async function assetJson(response: Response, maximumBytes: number): Promise<unknown> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Missing lesson data.');

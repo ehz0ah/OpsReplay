@@ -334,6 +334,10 @@ select {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.recovery-strip .recovery-update-note {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+}
 .workspace-note {
   font-size: 0.75rem;
   color: var(--muted);
