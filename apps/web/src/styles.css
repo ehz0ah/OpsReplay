@@ -561,7 +561,7 @@ select {
   .investigation-workspace {
     display: grid;
     grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
-    grid-template-rows: 38px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     height: max(480px, calc(100dvh - 340px));
   }
   .investigation-workspace > [role='tablist'] {
