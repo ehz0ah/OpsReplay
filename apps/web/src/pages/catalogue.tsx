@@ -139,6 +139,9 @@ export function CataloguePage() {
               </Button>
             </div>
             <Failure error={error} />
+            <Failure error={account.error} retry={account.reload} />
+            {account.loading && auth.identity && <p role="status">Loading your account…</p>}
+            {cooldown && <p role="status">Try again in {Math.max(1, Math.ceil((retryAt - clock) / 1000))} seconds.</p>}
             {pending && !busy && (
               <div className="notice" role="status">
                 <p>The start response is uncertain. Recover the same request before starting another attempt.</p>
