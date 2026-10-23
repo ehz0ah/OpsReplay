@@ -78,6 +78,7 @@ export function App() {
           >
             {auth.loading ? 'Connecting…' : auth.identity ? 'Sign out' : 'Sign in'}
           </Button>
+          {!auth.loading && !auth.identity && <Button onClick={() => void auth.signUp()}>Create account</Button>}
         </div>
       </header>
       <main

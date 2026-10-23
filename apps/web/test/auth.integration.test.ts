@@ -11,6 +11,28 @@ const config = {
   callbackUrl: 'https://app.example/auth/callback',
   logoutUrl: 'https://app.example/',
 };
+test('signup uses the hosted signup endpoint with the same stored PKCE state and safe callback boundary', async () => {
+  const storage = new InMemoryWebStorage();
+  const signup = new OidcClient(authSettings(config, storage, 'sign_up'));
+  const request = await signup.createSigninRequest({
+    nonce: 'signup-nonce',
+    state: { path: '/reviews/proxy-rollout' },
+  });
+  const url = new URL(request.url);
+  assert.equal(url.origin, config.cognitoLoginUrl);
+  assert.equal(url.pathname, '/signup');
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(url.searchParams.get('nonce'), 'signup-nonce');
+  assert.equal(url.searchParams.get('redirect_uri'), config.callbackUrl);
+  assert.equal(url.searchParams.get('client_secret'), null);
+  const login = new OidcClient(authSettings(config, storage));
+  const callback = await login.readSigninResponseState(
+    config.callbackUrl + '?code=test-code&state=' + url.searchParams.get('state'),
+    false,
+  );
+  assert.equal(callback.state.code_verifier, request.state.code_verifier);
+  assert.deepEqual(callback.state.data, { path: '/reviews/proxy-rollout' });
+});
 test('authorization requests use code flow, S256 PKCE, stored state and an explicit nonce', async () => {
   const client = new OidcClient(authSettings(config, new InMemoryWebStorage()));
   const request = await client.createSigninRequest({

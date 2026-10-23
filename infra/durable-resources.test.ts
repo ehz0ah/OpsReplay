@@ -176,7 +176,7 @@ test('the durable stack owns only retained state and its storage controls', () =
     assert.equal(userPool[1].UpdateReplacePolicy, 'Retain');
     assert.deepEqual(userPool[1].Properties, {
       AccountRecoverySetting: { RecoveryMechanisms: [{ Name: 'verified_email', Priority: 1 }] },
-      AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false },
       AutoVerifiedAttributes: ['email'],
       DeletionProtection: 'ACTIVE',
       UserPoolName: 'opsreplay-retained-users',

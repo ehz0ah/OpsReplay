@@ -54,6 +54,12 @@ and P13 to P14 for one reference Challenge before Learn and Code Review are adde
 ## Initial Challenges
 
 The home page explains the learner workflow and leads to the Challenge catalogue.
+
+Create account opens Cognito's hosted sign-up and email confirmation flow. New
+accounts receive Free access. Code Review supports inline comments and restores
+the exact learner's version-bound draft after refresh. Submission opens a stable
+saved-result URL; written concerns remain ungraded.
+
 Provisioning and debrief preparation show visible progress and the next action.
 Outside the workspace, a current-attempt notice reads server state and explains
 that navigation does not pause the incident. UI controls use in-app dropdowns.
