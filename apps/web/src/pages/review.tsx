@@ -1,4 +1,4 @@
-import { Button, Textarea } from '@mantine/core';
+import { Button } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 import { useAuth } from '../auth/provider.js';
@@ -8,6 +8,8 @@ import { useAlive } from '../use-alive.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
 import { ReviewAttempt } from '../review-attempt.js';
+import { ReviewWorkspace } from '../components/review-workspace.js';
+import { ReviewDraft } from '../review-draft.js';
 export function ReviewCatalogue() {
   const catalogue = useRead('Catalog', '/v1/catalog?mode=code_review&limit=100');
   return (
@@ -43,7 +45,8 @@ export function ReviewResult({ result }: { result: PublicTypes['ReviewSubmission
         {result.summary.found} reference findings flagged · {result.summary.missed} missed
       </p>
       <p className="muted">
-        Written concerns are saved for reflection. They are not graded. Unmatched flags carry no penalty.
+        A line match means your comment overlaps a reference range. It does not grade your written diagnosis. Compare
+        your reasoning below. Unmatched comments carry no penalty.
       </p>
       {result.answerInformed && (
         <p className="notice">You have already submitted this exercise. This attempt is answer-informed.</p>
@@ -51,7 +54,7 @@ export function ReviewResult({ result }: { result: PublicTypes['ReviewSubmission
       {result.findings.map((finding) => (
         <article className="review-finding" key={finding.id}>
           <p className="eyebrow">
-            {finding.found ? 'Flagged' : 'Missed'} · {finding.file}:{finding.startLine}
+            {finding.found ? 'Line matched' : 'Not flagged'} · {finding.file}:{finding.startLine}
             {finding.endLine === finding.startLine ? '' : '-' + finding.endLine}
           </p>
           <h3>{finding.title}</h3>
@@ -79,10 +82,7 @@ export function ReviewPage({ id }: { id: string }) {
     api = useApi(),
     alive = useAlive();
   const read = useRead('ReviewExercise', '/v1/reviews/' + id, !!auth.identity && !auth.loading);
-  const [flags, setFlags] = useState<PublicTypes['Flag'][]>([]),
-    [selected, setSelected] = useState<Omit<PublicTypes['Flag'], 'concern'> | null>(null);
-  const [concern, setConcern] = useState(''),
-    [busy, setBusy] = useState(false),
+  const [busy, setBusy] = useState(false),
     [error, setError] = useState<Error | null>(null);
   const [result, setResult] = useState<PublicTypes['ReviewSubmission'] | null>(null);
   const attempt = useMemo(
@@ -96,7 +96,7 @@ export function ReviewPage({ id }: { id: string }) {
       return null;
     }
   });
-  async function submit() {
+  async function submit(flags: PublicTypes['Flag'][] = []) {
     if (!attempt || busy || (!read.data && !pending)) return;
     setBusy(true);
     setError(null);
@@ -107,6 +107,14 @@ export function ReviewPage({ id }: { id: string }) {
       if (alive.current) {
         setResult(saved);
         setPending(null);
+        if (read.data && auth.identity) {
+          try {
+            new ReviewDraft(sessionStorage, auth.identity.sub, read.data).clear();
+          } catch {
+            /* The result is already saved on the server. */
+          }
+        }
+        navigate('/review-submissions/' + saved.id);
       }
     } catch (value) {
       if (alive.current) {
@@ -144,93 +152,35 @@ export function ReviewPage({ id }: { id: string }) {
           </p>
           <h1>{read.data.title}</h1>
           <p className="intro">{read.data.context}</p>
-          <p>Choose a line on either side of the diff. Explain the risk you see.</p>
-          {read.data.files.map((file) => (
-            <section className="review-file" key={file.path}>
-              <h2>{file.path}</h2>
-              <div className="review-diff" role="region" aria-label={'Diff for ' + file.path} tabIndex={0}>
-                {file.lines.map((line, index) => (
-                  <div className={'diff-row diff-' + line.kind} key={index}>
-                    {(['old', 'new'] as const).map((side) => {
-                      const number = side === 'old' ? line.oldLine : line.newLine;
-                      return number === null ? (
-                        <span className="diff-number" key={side} />
-                      ) : (
-                        <button
-                          className="diff-number"
-                          key={side}
-                          disabled={!!result || !!pending || busy}
-                          aria-label={`Flag ${file.path} ${side} line ${number}`}
-                          onClick={() => {
-                            setSelected({ file: file.path, side, line: number });
-                            setConcern('');
-                          }}
-                        >
-                          {number}
-                        </button>
-                      );
-                    })}
-                    <code>
-                      {line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}
-                      {line.text}
-                    </code>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-          {selected && !result && !pending && (
-            <section className="panel">
-              <h2>
-                Concern at {selected.file}:{selected.line} ({selected.side})
-              </h2>
-              <Textarea
-                label="Your concern"
-                value={concern}
-                maxLength={2000}
-                onChange={(event) => setConcern(event.currentTarget.value)}
-                autosize
-                minRows={3}
+          {(!pending || pending.exerciseVersion === read.data.version) &&
+            (!result || result.exerciseVersion === read.data.version) && (
+              <ReviewWorkspace
+                key={read.data.id + '@' + read.data.version + auth.identity.sub}
+                exercise={read.data}
+                owner={auth.identity.sub}
+                pending={pending}
+                busy={busy}
+                result={result}
+                submit={(values) => void submit(values)}
               />
-              <Button
-                disabled={!concern.trim() || flags.length >= 50}
-                onClick={() => {
-                  setFlags((values) => [...values, { ...selected, concern: concern.trim() }]);
-                  setSelected(null);
-                  setConcern('');
-                }}
-              >
-                Add flag
-              </Button>
-            </section>
-          )}
-          {!result && (
-            <section>
-              <h2>{flags.length} flags</h2>
-              {flags.map((flag, index) => (
-                <div className="review-flag" key={index}>
-                  <p>
-                    {flag.file}:{flag.line} ({flag.side}) · {flag.concern}
-                  </p>
-                  <Button
-                    variant="subtle"
-                    disabled={!!pending || busy}
-                    onClick={() => setFlags((values) => values.filter((_, item) => item !== index))}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </section>
+            )}
+          {result && result.exerciseVersion !== read.data.version && (
+            <p className="notice">
+              This saved submission uses exercise version {result.exerciseVersion}. The current diff has changed. Your
+              original result remains below.
+            </p>
           )}
         </>
       )}
       {pending && !result && (
-        <p className="notice">A saved submission is pending. Retry the same request to recover its result.</p>
+        <p className="notice">
+          A submission for version {pending.exerciseVersion} is pending. Recover the same request before reviewing
+          another version.
+        </p>
       )}
-      {!result && (read.data || pending) && (
-        <Button disabled={busy} onClick={() => void submit()}>
-          {busy ? 'Saving review…' : pending ? 'Recover submission' : 'Submit review'}
+      {!result && pending && (!read.data || pending.exerciseVersion !== read.data.version) && (
+        <Button loading={busy} onClick={() => void submit()}>
+          Recover submission
         </Button>
       )}
       {result && <ReviewResult result={result} />}

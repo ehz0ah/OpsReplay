@@ -8,6 +8,7 @@ interface AuthState {
   loading: boolean;
   message: string | null;
   signIn: () => Promise<void>;
+  signUp: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 const AuthContext = createContext<AuthState | null>(null);
@@ -80,5 +81,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       navigate('/');
     }
   };
-  return <AuthContext value={{ session, identity, loading, message, signIn, signOut }}>{children}</AuthContext>;
+  const signUp = async () => {
+    setMessage(null);
+    try {
+      await session.signUp(location.pathname);
+    } catch {
+      setMessage('Account creation is unavailable. Please try again.');
+    }
+  };
+  return <AuthContext value={{ session, identity, loading, message, signIn, signUp, signOut }}>{children}</AuthContext>;
 }

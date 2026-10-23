@@ -5,6 +5,8 @@ import { useRead } from '../use-read.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
 import { ReviewResult } from './review.js';
+import { ReviewWorkspace } from '../components/review-workspace.js';
+import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
 export function HistoryPage() {
   const auth = useAuth();
   const [sessionCursor, setSessionCursor] = useState<string | null>(null),
@@ -136,13 +138,41 @@ export function SavedReviewPage({ id }: { id: string }) {
       <Failure error={read.error} retry={read.reload} />
       {read.data && (
         <>
-          <h1>{read.data.exerciseId}</h1>
+          <h1>Code Review result</h1>
           <p>
-            {new Date(read.data.submittedAt).toLocaleString()} · Version {read.data.exerciseVersion}
+            {read.data.exerciseId} · {new Date(read.data.submittedAt).toLocaleString()} · Version{' '}
+            {read.data.exerciseVersion}
           </p>
+          <SavedReviewDiff result={read.data} owner={auth.identity.sub} />
           <ReviewResult result={read.data} />
         </>
       )}
+    </>
+  );
+}
+
+function SavedReviewDiff({ result, owner }: { result: PublicTypes['ReviewSubmission']; owner: string }) {
+  const exercise = useRead('ReviewExercise', '/v1/reviews/' + result.exerciseId);
+  if (exercise.loading) return <p role="status">Loading the exercise diff…</p>;
+  if (!exercise.data || exercise.data.version !== result.exerciseVersion)
+    return (
+      <p className="muted">
+        The original diff is unavailable. Your saved comments and reference findings remain below.
+      </p>
+    );
+  return (
+    <>
+      <h2>{exercise.data.title}</h2>
+      <p className="intro">{exercise.data.context}</p>
+      <ReviewWorkspace
+        key={result.id}
+        exercise={exercise.data}
+        owner={owner}
+        result={result}
+        pending={null}
+        busy={false}
+        submit={() => {}}
+      />
     </>
   );
 }

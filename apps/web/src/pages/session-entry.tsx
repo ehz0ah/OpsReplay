@@ -1,5 +1,6 @@
 import type { PublicTypes } from '../../../../packages/contracts/public-types.js';
-import { Alert, Badge, Button, Group, Modal, Progress, Tabs } from '@mantine/core';
+import { Alert, Badge, Button, Group, Modal, Tabs } from '@mantine/core';
+import { RecoveryProgress } from '../components/recovery-progress.js';
 import { useMediaQuery } from '@mantine/hooks';
 import { useTelemetry } from '../telemetry/use-telemetry.js';
 import { freshSample } from '../telemetry/state.js';
@@ -139,28 +140,7 @@ export function SessionEntry({ id }: { id: string }) {
               <p>{view.alert.summary}</p>
             </div>
           </div>
-          {view.recovery && (
-            <div className="recovery-strip" role="status">
-              <strong>Recovery: {view.recovery.state}</strong>
-              <Progress
-                aria-label="Sustained recovery"
-                transitionDuration={400}
-                value={Math.min(
-                  100,
-                  (view.recovery.sustainedSeconds / Math.max(1, view.recovery.requiredSeconds)) * 100,
-                )}
-                color="teal"
-              />
-              <span>
-                {view.recovery.sustainedSeconds} / {view.recovery.requiredSeconds}s confirmed
-              </span>
-              {view.status === 'ready' && view.recovery.state === 'sustaining' && (
-                <span className="recovery-update-note">
-                  Server checks continue. Progress updates about every 5 seconds.
-                </span>
-              )}
-            </div>
-          )}
+          {view.recovery && <RecoveryProgress recovery={view.recovery} running={view.status === 'ready'} />}
           {view.status === 'ready' && (
             <>
               <p className="workspace-note">

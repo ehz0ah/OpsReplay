@@ -14,6 +14,9 @@ revision, findings and limits. No runtime remains deployed.
 2. Use those exact URLs for the runtime's API CORS origin, terminal allowed origins and
    Cognito callback/logout settings. Use the existing managed/external identity contract.
    Do not create a second user pool. Verify runtime and identity before opening starts.
+   Apply the durable pool's self-registration setting before publishing Create account.
+   Verify hosted sign-up, email confirmation and the PKCE callback. New accounts must
+   have Free access. Preserve existing identities when changing that pool policy.
 3. Set the browser stack's `ApiOrigin`, `CognitoAuthorityOrigin`, `CognitoLoginOrigin`
    `TerminalOrigin`, and `RecordingOrigin` to the exact origins from that runtime. The API parameter is
    its HTTPS host, without the stage path. The terminal parameter is the WSS host,

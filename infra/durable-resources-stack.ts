@@ -121,7 +121,7 @@ export class DurableResourcesStack extends Stack {
 
     const userPool = new CfnUserPool(this, 'UserPool', {
       userPoolName: resourceNames.cognitoUserPool,
-      adminCreateUserConfig: { allowAdminCreateUserOnly: true },
+      adminCreateUserConfig: { allowAdminCreateUserOnly: false },
       autoVerifiedAttributes: ['email'],
       usernameAttributes: ['email'],
       usernameConfiguration: { caseSensitive: false },

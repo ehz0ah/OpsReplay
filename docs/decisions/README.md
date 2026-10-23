@@ -18,6 +18,10 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+23 October 2026: [Learner sign-up and review flow](learner-review-and-signup.md)
+adds hosted verified-email registration, inline version-bound review drafts,
+stable saved-result navigation and animation of confirmed recovery progress.
+
 22 October 2026: [Challenge deployment bindings](challenge-deployment-binding.md) let
 new admissions use a checked replacement task without rewriting published releases
 or existing session pins.

@@ -1,6 +1,10 @@
 import { UserManager, WebStorageStateStore, type User, type UserManagerSettings } from 'oidc-client-ts';
 import type { WebConfig } from '../config.js';
-export function authSettings(config: WebConfig, storage: Storage): UserManagerSettings {
+export function authSettings(
+  config: WebConfig,
+  storage: Storage,
+  mode: 'sign_in' | 'sign_up' = 'sign_in',
+): UserManagerSettings {
   return {
     authority: config.cognitoAuthority,
     client_id: config.cognitoClientId,
@@ -18,7 +22,7 @@ export function authSettings(config: WebConfig, storage: Storage): UserManagerSe
     userStore: new WebStorageStateStore({ store: storage }),
     metadata: {
       issuer: config.cognitoAuthority,
-      authorization_endpoint: config.cognitoLoginUrl + '/oauth2/authorize',
+      authorization_endpoint: config.cognitoLoginUrl + (mode === 'sign_up' ? '/signup' : '/oauth2/authorize'),
       token_endpoint: config.cognitoLoginUrl + '/oauth2/token',
       revocation_endpoint: config.cognitoLoginUrl + '/oauth2/revoke',
       jwks_uri: config.cognitoAuthority + '/.well-known/jwks.json',
@@ -65,7 +69,7 @@ export class AuthSession {
   private refreshing: Promise<User | null> | undefined;
   constructor(
     readonly config: WebConfig,
-    storage: Storage,
+    private readonly storage: Storage,
   ) {
     this.manager = new UserManager(authSettings(config, storage));
   }
@@ -95,6 +99,10 @@ export class AuthSession {
   }
   signIn(path: string) {
     return this.manager.signinRedirect({ nonce: crypto.randomUUID(), state: { path: returnPath(path) } });
+  }
+  signUp(path: string) {
+    const manager = new UserManager(authSettings(this.config, this.storage, 'sign_up'));
+    return manager.signinRedirect({ nonce: crypto.randomUUID(), state: { path: returnPath(path) } });
   }
   async signOut() {
     try {
