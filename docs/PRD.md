@@ -105,6 +105,12 @@ The prototype represents plans through server-side grants. Payment collection, r
 tax, and institutional seat administration are not required to prove the product. A
 production billing system needs a separate decision.
 
+For the presentation, an approved learner can activate a fixed-window Pro grant
+through a clearly labelled demo checkout. No payment, subscription or invoice is
+created. Activation is disabled by default, enforced by the server, and limited to
+operator-approved accounts. It never changes an existing attempt or current Pro
+grant. See [presentation-only Pro activation](decisions/demo-pro-grants.md).
+
 ## Quality criteria
 
 - The same image version and commands produce the same qualitative result: the fault is

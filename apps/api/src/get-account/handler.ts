@@ -4,11 +4,13 @@ import { bootstrapHandler, BootstrapError } from '../bootstrap/handler.js';
 import { keys } from '../start-session/store.js';
 import { validLock, validPlan, validSession, validSessionRelations } from '../start-session/validation.js';
 import { effectivePlan } from '../shared/plan.js';
+import { demoUpgradeDeadline, type DemoUpgradePolicy } from '../demo-upgrade/policy.js';
 export function createGetAccountHandler(
   client: DynamoDBDocumentClient,
   table: string,
   now = Date.now,
   log?: (value: object) => void,
+  demoPolicy?: DemoUpgradePolicy,
 ) {
   return bootstrapHandler(
     'get_account',
@@ -44,7 +46,12 @@ export function createGetAccountHandler(
         )
           throw new Error('Invalid active session reference');
       }
-      return { ...effectivePlan(plan, now()), activeSessionId: active?.sessionId ?? null };
+      const clock = now();
+      return {
+        ...effectivePlan(plan, clock),
+        activeSessionId: active?.sessionId ?? null,
+        ...(demoPolicy ? { demoUpgradeExpiresAt: demoUpgradeDeadline(demoPolicy, owner, clock) } : {}),
+      };
     },
     log,
   );

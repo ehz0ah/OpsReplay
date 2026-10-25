@@ -15,6 +15,7 @@ for (const [entryPoint, outfile] of [
   ['apps/api/src/get-learn/index.ts', 'dist/get-learn/index.cjs'],
   ['apps/api/src/list-catalog/index.ts', 'dist/list-catalog/index.cjs'],
   ['apps/api/src/get-account/index.ts', 'dist/get-account/index.cjs'],
+  ['apps/api/src/demo-upgrade/index.ts', 'dist/demo-upgrade/index.cjs'],
   ['apps/api/src/start-session/index.ts', 'dist/start-session/index.cjs'],
   ['apps/api/src/get-session/index.ts', 'dist/get-session/index.cjs'],
   ['apps/api/src/get-debrief/index.ts', 'dist/get-debrief/index.cjs'],

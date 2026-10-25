@@ -371,9 +371,23 @@
         "activeSessionId": {
           "type": ["string", "null"],
           "format": "uuid"
+        },
+        "demoUpgradeExpiresAt": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Optional fixed demo window deadline for this learner. Missing or null means demo upgrade is unavailable."
         }
       },
       "required": ["plan", "planSource", "planExpiresAt", "activeSessionId"]
+    },
+    "DemoUpgradeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": { "type": "boolean" },
+        "expiresAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "required": ["changed", "expiresAt"]
     },
     "StartSessionRequest": {
       "type": "object",

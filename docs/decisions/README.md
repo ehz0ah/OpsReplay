@@ -186,6 +186,12 @@ and paste size are bounded; no clipboard or automatic-command addon is enabled.
 
 ## Product decisions
 
+26 October 2026: [Presentation-only Pro activation](demo-pro-grants.md) adds an
+operator-allowlisted, fixed-window server-side grant without payment collection.
+It is disabled by default, preserves existing Pro grants and saved attempt access,
+and does not launch environments. SaaS presentation and proposed commercial prices
+are separate changes. Cloud integration remains pending.
+
 | ID  | Decision                                                                                                          | Source                                           |
 | --- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | D01 | Learn, Challenges, and Code Review, with Challenges the main focus                                                | Report v5                                        |
