@@ -1,9 +1,14 @@
 # Challenge content
 
-Each directory holds one Challenge manifest. Wrong upstream port also has a
-[local image and integration tests](wrong-upstream-port/README.md). The other images
-are not implemented. All three manifests remain synthetic drafts with no published image digests, taken from the
-preliminary report's initial Challenges:
+Each directory holds one source Challenge manifest. Wrong upstream port and
+Stale DNS record have implemented images and integration tests. Their version
+`0.1.2` releases have retained published metadata, checked on 26 October 2026.
+No ECS runtime is currently deployed.
+
+The source manifests remain synthetic draft build inputs with no image digests.
+Publication creates separate immutable releases with checked digests and task
+pins. A source draft is not the operational published release. Connection
+exhaustion remains unimplemented and unpublished.
 
 | Challenge                                                     | Tier   | Plan |
 | ------------------------------------------------------------- | ------ | ---- |

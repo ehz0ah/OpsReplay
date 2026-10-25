@@ -1,7 +1,9 @@
 # Code Review content
 
 The original `proxy-rollout` Free exercise and `pool-settings` Pro exercise are
-synthetic drafts. No review content is published on AWS. Each private bundle has
+synthetic source drafts. The retained catalogue includes `proxy-rollout` as checked
+on 26 October 2026, and the 23 October checkpoint exercised its Free review flow.
+`pool-settings` remains unpublished. Each private bundle has
 a diff, context, access plan, and reference findings. The API returns the public
 exercise before submission and releases findings only after the result is saved.
 

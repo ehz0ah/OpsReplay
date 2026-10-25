@@ -1,6 +1,6 @@
 # Stale DNS record
 
-Draft networking Challenge. The storefront responds, but checkout fails because
+Implemented networking Challenge with a synthetic source draft. The storefront responds, but checkout fails because
 `api.internal` still points to a retired loopback address. nginx keeps the address
 it resolved at startup. Correcting DNS alone does not repair the proxy connection.
 
@@ -37,8 +37,11 @@ read-only Monitor mount. Session launch and recording use the existing backend.
 Select `stale-dns-record` in the manual checkpoint image workflow to build and test the
 matching Challenge and Monitor images. Publication checks the embedded manifest, exact
 image digests, and task family before admission. The existing content-review, repeat,
-playback, secrecy, and Fargate-isolation gates still apply. This PR does not publish or
-deploy the Challenge. It remains Pro/Medium as defined by the original draft.
+playback, secrecy, and Fargate-isolation gates still apply. Its version `0.1.2`
+release has retained published metadata, checked on 26 October 2026. The
+23 October developer checkpoint exercised real DNS-only partial repair, full
+repair, sustained recovery and playback on AWS. No runtime is currently deployed.
+It remains Pro/Medium as defined by the original draft.
 
 The incident is synthetic. It is not attributed to a specific public postmortem.
 CoreDNS is Apache-2.0 software. Its licence is included under
