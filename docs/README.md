@@ -15,13 +15,13 @@ Later decisions and implemented contracts take precedence.
 
 ## Engineering contracts
 
-| Document                                  | Responsibility                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| [Challenge environments](challenges.md)   | Isolation, monitoring, recording, scoring, debrief, and playback        |
-| [API](api.md)                             | REST routes, Gateway protocol, errors, and limits                       |
-| [Data model](data-model.md)               | DynamoDB and S3 records, ownership, consistency, and retention          |
-| [LLM integration](llm.md)                 | Planned assistant boundaries, context, failure handling, and evaluation |
-| [Content authoring](content-authoring.md) | Challenge, Learn, and Code Review publication rules                     |
+| Document                                  | Responsibility                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| [Challenge environments](challenges.md)   | Isolation, monitoring, recording, scoring, debrief, and playback |
+| [API](api.md)                             | REST routes, Gateway protocol, errors, and limits                |
+| [Data model](data-model.md)               | DynamoDB and S3 records, ownership, consistency, and retention   |
+| [LLM integration](llm.md)                 | Assistant boundaries, context, failure handling, and evaluation  |
+| [Content authoring](content-authoring.md) | Challenge, Learn, and Code Review publication rules              |
 
 Machine-readable contracts are under `packages/contracts/`. A contract change must update
 the normative document, schema, examples, and validation together.
@@ -31,12 +31,14 @@ origins, identity setup and signed-recording CORS.
 
 ## Delivery and evaluation
 
-| Document                                                               | Responsibility                             |
-| ---------------------------------------------------------------------- | ------------------------------------------ |
-| [Evaluation](evaluation.md)                                            | System, learner, LLM, and cost evaluation  |
-| [AWS checkpoint runbook](runbooks/aws-checkpoint-activation.md)        | Safe activation, drain, and teardown       |
-| [17 October AWS browser checkpoint](checkpoints/2026-10-17-browser.md) | Verified browser flow, findings and limits |
-| [Decision register](decisions/README.md)                               | Accepted decisions and later refinements   |
+| Document                                                                      | Responsibility                                           |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [Evaluation](evaluation.md)                                                   | System, learner, LLM, and cost evaluation                |
+| [AWS checkpoint runbook](runbooks/aws-checkpoint-activation.md)               | Safe activation, drain, and teardown                     |
+| [17 October AWS browser checkpoint](checkpoints/2026-10-17-browser.md)        | Verified browser flow, findings and limits               |
+| [23 October learner checkpoint](checkpoints/2026-10-23-learner-experience.md) | Sign-up, review, Challenge and assistant checks          |
+| [26 October local SaaS status](checkpoints/2026-10-26-saas-local.md)          | Current implementation, publication and unverified gates |
+| [Decision register](decisions/README.md)                                      | Accepted decisions and later refinements                 |
 
 Decision files preserve the reason and scope of an increment. Their historical status
 statements are not the current project status. Use this index, the root README, and the

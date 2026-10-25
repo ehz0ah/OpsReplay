@@ -9,38 +9,45 @@ and session playback.
 
 ## Current status
 
-**Current phase:** one reference Challenge passed the real AWS browser flow on
-17 October 2026: Cognito sign-in, start, investigation, harmful action, repair,
-sustained recovery, debrief, playback and a fresh retry. All temporary resources
-were removed. Debrief command matching and unsupported dashboard signals need
-focused follow-up before a learner pilot.
+**Current phase, 26 October 2026:** the learner workflows are implemented. The
+23 October developer checkpoint checked hosted sign-up, inline Code Review,
+Challenge investigation, recovery, debrief and playback against AWS. No ECS
+runtime remains. The new SaaS identity, account page and default-off demo upgrade
+are locally checked, but their browser and grouped AWS validation are pending.
 
-| Area                                     | Status                                                                             |
-| ---------------------------------------- | ---------------------------------------------------------------------------------- |
-| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                |
-| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS        |
-| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts |
-| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                  |
-| Learn library                            | Implemented and checked locally; AWS publication is pending                        |
-| Code Review reads and submissions        | Implemented and checked locally; publication is pending                            |
-| Learner history                          | Implemented and checked locally; existing-record migration is pending              |
-| Assistant APIs                           | Not implemented                                                                    |
-| Additional Challenges and evaluation     | Pending                                                                            |
+| Area                                     | Status                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                   |
+| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS           |
+| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts    |
+| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                     |
+| Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata             |
+| Code Review reads and submissions        | Implemented; Free review checked in the 23 October browser checkpoint                 |
+| Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint       |
+| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                   |
+| SaaS identity and demo upgrade           | Implemented and locally checked; rendered and AWS validation pending                  |
+| Scenario and system evaluation           | Preliminary local repeats passed; full repeats, load, costs and learner pilot pending |
 
 The [17 October browser checkpoint](docs/checkpoints/2026-10-17-browser.md) records
 the revision, results, findings and limits. It does not establish classroom
 capacity, learning effectiveness or complete failure-path coverage.
+See the [23 October learner checkpoint](docs/checkpoints/2026-10-23-learner-experience.md)
+and [26 October local status](docs/checkpoints/2026-10-26-saas-local.md) for later
+evidence, current publication limits and remaining gates.
 
 ## Product scope
 
 | Mode        | Learner activity                                                          | Current priority |
 | ----------- | ------------------------------------------------------------------------- | ---------------- |
 | Challenges  | Diagnose and repair a live failure, then review the evidence and playback | Primary MVP path |
-| Learn       | Read curated incident explanations and related exercises                  | Planned          |
-| Code Review | Find risky changes and compare them with reviewed findings                | Planned          |
+| Learn       | Read curated incident explanations and related exercises                  | Implemented      |
+| Code Review | Find risky changes and compare them with reviewed findings                | Implemented      |
 
-Free access will include complete introductory experiences. Paid individual and
-institutional access will add content and progress features. Exact prices are not set.
+Free includes introductory content, full Challenge debrief, playback and fresh
+retries. Pro grants unlock published paid content and longer sessions. S$12/month
+is a [pricing proposal](docs/decisions/pricing-proposal.md), not a validated price.
+The demo collects no payment. Institutional administration and real billing are
+not implemented.
 
 ## How a Challenge works
 
@@ -52,9 +59,10 @@ Sign in -> start isolated task -> investigate terminal and telemetry
 
 The Challenge, monitor, and Gateway run as separate containers. The learner receives a
 root shell only inside the Challenge container. The monitor decides recovery from
-external checks. The deterministic backend owns session state, consequences, evidence,
-and scoring. The planned assistant can explain or propose a command, but it does not own
-scenario truth and is not required to complete a Challenge.
+external checks. The backend owns session state, recorded evidence and scoring.
+Real service behaviour determines consequences. The optional Challenge assistant can explain or propose a command,
+which requires learner confirmation. It does not own scenario truth and is not
+required to complete a Challenge. Code Review assistant turns remain planned.
 
 ## Repository checks
 

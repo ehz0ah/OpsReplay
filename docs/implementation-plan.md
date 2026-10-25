@@ -8,21 +8,27 @@ Gateway, terminal, debrief and S3 playback. All temporary runtime resources were
 removed. The durable stack retains data resources. See the
 [checkpoint report](checkpoints/2026-10-17-browser.md) for findings and untested cases.
 
+The [23 October learner checkpoint](checkpoints/2026-10-23-learner-experience.md)
+adds verified-email sign-up, inline review drafts/results, the DNS Challenge and
+one confirmed assistant proposal. The [26 October status](checkpoints/2026-10-26-saas-local.md)
+records locally checked SaaS changes and the remaining browser, AWS and evaluation
+gates. No runtime is currently deployed.
+
 ## Work packages
 
-| ID  | State                         | Work                                                                                      | Completion evidence                                                                                         |
-| --- | ----------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| I01 | Implemented                   | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                        |
-| I02 | Implemented                   | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                        |
-| I03 | Core implemented              | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local tests and AWS browser resume/recording; assistant proposals remain with I08                           |
-| I04 | Implemented                   | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Local failure-injection tests and two browser-started AWS attempts                                          |
-| I05 | Browser checkpoint complete   | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [17 October checkpoint](checkpoints/2026-10-17-browser.md). Load and remaining failure cases are unverified |
-| I06 | Browser checked on AWS        | Browser terminal, dashboard, timeline, hints, and outcome                                 | Real alert-to-outcome flow; command matching and telemetry follow-ups remain                                |
-| I07 | Browser checked on AWS        | Debrief, score components, playback, and retry                                            | Real debrief, recorded terminal, metrics/captures and fresh retry; expiry/pagination limits remain          |
-| I08 | Not started                   | Optional assistant and confirmed proposals                                                | Benchmark, leakage tests, and provider-failure recovery                                                     |
-| I09 | Catalogue/account implemented | Catalogue, account, and plans; later Learn and Code Review                                | Free and Pro access enforcement and matching tests                                                          |
-| I10 | Not started                   | Additional validated Challenges                                                           | Scenario evidence and independent content review                                                            |
-| I11 | Not started                   | System and user evaluation, cost comparison, demo, and report                             | Reproducible measurements and pilot results                                                                 |
+| ID  | State                           | Work                                                                                      | Completion evidence                                                                                         |
+| --- | ------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| I01 | Implemented                     | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                        |
+| I02 | Implemented                     | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                        |
+| I03 | Core implemented                | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local tests and AWS browser resume/recording; assistant proposals remain with I08                           |
+| I04 | Implemented                     | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Local failure-injection tests and two browser-started AWS attempts                                          |
+| I05 | Browser checkpoint complete     | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [17 October checkpoint](checkpoints/2026-10-17-browser.md). Load and remaining failure cases are unverified |
+| I06 | Browser checked on AWS          | Browser terminal, dashboard, timeline, hints, and outcome                                 | Real alert-to-outcome flow; command matching and telemetry follow-ups remain                                |
+| I07 | Browser checked on AWS          | Debrief, score components, playback, and retry                                            | Real debrief, recorded terminal, metrics/captures and fresh retry; expiry/pagination limits remain          |
+| I08 | Challenge assistant implemented | Optional assistant and confirmed proposals; Code Review assistant remains planned         | Local boundary/recovery tests and one AWS proposal; model benchmark remains pending                         |
+| I09 | Learner workflows implemented   | Catalogue, account, plans, Learn, inline Code Review and History                          | Local access tests and 23 October browser checkpoint; new SaaS/upgrade cloud checks remain pending          |
+| I10 | DNS Challenge implemented       | Two implemented Challenges; connection-exhaustion draft remains blocked                   | 23 October DNS browser checkpoint and preliminary local repeats; full repeats remain pending                |
+| I11 | Evaluation in progress          | System and user evaluation, cost comparison, demo, and report                             | Tools and pilot materials exist; full results, measured costs and participant study remain pending          |
 
 The browser and bootstrap reads share the public contracts. AWS verification remains
 separate from local implementation. Shared contract changes are coordinated, not
@@ -37,10 +43,11 @@ Start -> task ready -> alert -> terminal investigation -> configuration fix
       -> validators sustained -> debrief -> playback -> retry in a fresh task
 ```
 
-Before the pilot, correct compound-command evidence matching and reconcile
-dashboard descriptors with measured signals. Review existing tests before adding
-coverage for uncertain start, cross-owner access, expiry and playback continuation.
-These checks remain separate from the completed normal browser flow.
+Later changes address compound-command evidence and reduce dashboards to measured
+signals. The current version is still subject to the full evaluation gates.
+Before the pilot, verify uncertain start, cross-owner access, expiry and playback
+continuation on the deployed revision. A normal browser checkpoint is not proof
+of all failure paths or classroom capacity.
 
 The checkpoint demonstrated the required trap: restarting nginx with invalid
 configuration stopped the proxy. Keep this real consequence in the demonstration.
