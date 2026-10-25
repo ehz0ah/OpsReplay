@@ -40,18 +40,32 @@ If you find an exposed credential, an isolation gap, or an access-control issue,
 the project owner privately through the team's agreed channel. Do not post secrets or
 learner data in a public issue. Revoke exposed credentials before cleaning Git history.
 
-## Current npm dependency finding
+## Current npm dependency findings
 
-As checked on 5 October 2026, CDK `2.272.0` bundles `brace-expansion` `5.0.9`. The full npm audit
-reports a high-severity denial-of-service finding in this development dependency:
+As checked on 26 October 2026, the lockfile resolves Ajv's `fast-uri` dependency to
+`3.1.9`. This compatible patch fixes the URI-normalization and scheme/host findings
+reported for `3.1.8`:
+[GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg) and
+[GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp).
+`npm audit --omit=dev` reports no known findings. The production audit remains a CI gate.
+
+The full npm audit still reports two high-severity development dependency findings.
+CDK `2.272.0` bundles `brace-expansion` `5.0.9`, with a denial-of-service finding:
 [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7). It also reports
 related brace-expansion advisories. The package is used by CDK file-pattern handling,
-not included in the Lambda bundle. `npm audit --omit=dev` reports no known findings.
+not included in the Lambda bundle.
 
-The current CDK release bundles the affected package. `npm audit fix` and a nested npm
+The pinned CDK release bundles the affected package. `npm audit fix` and a nested npm
 override do not replace it. Do not patch `node_modules`, hide the finding, or process
 untrusted file patterns through CDK. Recheck for a fixed CDK release before the next AWS
 deployment that uses CDK application assets.
+
+The development-only Swagger parser also resolves `undici` `8.10.2`. The full audit
+reports a high-severity content-encoding denial-of-service finding:
+[GHSA-xjj6-f33q-929c](https://github.com/advisories/GHSA-xjj6-f33q-929c), plus related
+EventSource and integrity advisories. It is not a production dependency. Do not pass
+untrusted remote documents to the contract-checking tool. Track its compatible fix
+separately from the runtime `fast-uri` patch.
 
 ## Checkpoint image findings
 
