@@ -11,6 +11,9 @@ demo upgrade. The backend grant is default-off, operator-allowlisted and fixed-w
 It stores an atomic request receipt and preserves existing effective Pro access.
 Activation does not start an environment or change a saved attempt.
 
+The contract-check script now lists separate browser checks instead of saying
+the web app is unimplemented. Its validation logic is unchanged.
+
 The focused review stack is #116, #119, #117, #115 and draft #118. All current
 pushed heads passed repository CI. The integrated head passed nine repository
 jobs and its title check. No PR was merged as part of this delivery.
