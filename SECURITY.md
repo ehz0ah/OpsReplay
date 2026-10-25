@@ -49,23 +49,19 @@ reported for `3.1.8`:
 [GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp).
 `npm audit --omit=dev` reports no known findings. The production audit remains a CI gate.
 
-The full npm audit still reports two high-severity development dependency findings.
-CDK `2.272.0` bundles `brace-expansion` `5.0.9`, with a denial-of-service finding:
-[GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7). It also reports
-related brace-expansion advisories. The package is used by CDK file-pattern handling,
-not included in the Lambda bundle.
+The development dependency fixes are also available. CDK `2.274.0` bundles
+`brace-expansion` `5.0.12`, replacing the affected `5.0.9` in CDK `2.272.0`.
+The development-only Swagger parser resolves compatible `undici` `8.12.3`, replacing
+affected `8.10.2`. These address the previously reported brace-expansion recursion
+and undici content-encoding findings:
+[GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7) and
+[GHSA-xjj6-f33q-929c](https://github.com/advisories/GHSA-xjj6-f33q-929c), plus the
+related advisories. The full npm audit reports no known findings for this lockfile.
 
-The pinned CDK release bundles the affected package. `npm audit fix` and a nested npm
-override do not replace it. Do not patch `node_modules`, hide the finding, or process
-untrusted file patterns through CDK. Recheck for a fixed CDK release before the next AWS
-deployment that uses CDK application assets.
-
-The development-only Swagger parser also resolves `undici` `8.10.2`. The full audit
-reports a high-severity content-encoding denial-of-service finding:
-[GHSA-xjj6-f33q-929c](https://github.com/advisories/GHSA-xjj6-f33q-929c), plus related
-EventSource and integrity advisories. It is not a production dependency. Do not pass
-untrusted remote documents to the contract-checking tool. Track its compatible fix
-separately from the runtime `fast-uri` patch.
+This audit result is a dated dependency check, not proof of application security or
+an image-scan result. Recheck before deployment. Do not patch `node_modules`, hide
+findings, pass untrusted remote documents to contract tools, or process untrusted
+file patterns through CDK.
 
 ## Checkpoint image findings
 
