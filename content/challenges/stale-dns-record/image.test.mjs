@@ -97,7 +97,18 @@ const status = (id, path, method = 'GET') =>
 const dns = (id) => success(exec(id, 'dig', 'api.internal', '+short', '+time=1', '+tries=1'));
 async function repair(id) {
   for (const command of manifest.referenceFix.commands) success(exec(id, 'sh', '-ec', command));
-  await eventually(() => status(id, '/api/checkout', 'POST') === 201, 'Checkout did not recover');
+  // Reload is asynchronous. One successful request does not establish that the
+  // old workers have drained. Require an observed healthy interval before the
+  // separate persistence assertions. Persistent failures still hit the deadline.
+  let healthySince = null;
+  await eventually(() => {
+    if (status(id, '/api/checkout', 'POST') !== 201) {
+      healthySince = null;
+      return false;
+    }
+    healthySince ??= Date.now();
+    return Date.now() - healthySince >= 1000;
+  }, 'Checkout did not remain healthy after DNS repair and proxy reload');
 }
 
 test('real DNS fault, partial repair, persisted checkout and a fresh reset', { timeout: 120_000 }, async (t) => {
@@ -114,10 +125,34 @@ test('real DNS fault, partial repair, persisted checkout and a fresh reset', { t
   await repair(id);
   const order = JSON.parse(
     success(
-      exec(id, 'curl', '--silent', '--fail', '--json', '{"reference":"dns-test"}', 'http://127.0.0.1/api/checkout'),
+      exec(
+        id,
+        'curl',
+        '--silent',
+        '--show-error',
+        '--fail-with-body',
+        '--max-time',
+        '4',
+        '--json',
+        '{"reference":"dns-test"}',
+        'http://127.0.0.1/api/checkout',
+      ),
     ),
   );
-  const stored = JSON.parse(success(exec(id, 'curl', '--silent', '--fail', `http://127.0.0.1/api/orders/${order.id}`)));
+  const stored = JSON.parse(
+    success(
+      exec(
+        id,
+        'curl',
+        '--silent',
+        '--show-error',
+        '--fail-with-body',
+        '--max-time',
+        '4',
+        `http://127.0.0.1/api/orders/${order.id}`,
+      ),
+    ),
+  );
   assert.equal(stored.reference, 'dns-test');
   assert.equal(stored.status, 'confirmed');
   const reset = await fresh(t);
