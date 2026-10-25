@@ -10,6 +10,7 @@ const loaders = {
   Catalog: entry,
   ChallengeBriefing: entry,
   Account: entry,
+  DemoUpgradeResult: entry,
   LearnEntry: entry,
   SessionPage: entry,
   Turn: assistant,

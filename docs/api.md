@@ -83,6 +83,7 @@ validator or probe definitions, unreleased hints, or review findings.
 | --------------------------------------------------- | ---------------------------------------------------------------- |
 | `GET /v1/catalog`                                   | Public metadata for published Free and Pro content, with filters |
 | `GET /v1/me`                                        | Current plan and active session                                  |
+| `POST /v1/demo-upgrade`                             | Approved presentation-only Pro activation without payment        |
 | `GET /v1/learn/{id}`                                | A published Learn entry after an entitlement check               |
 | `POST /v1/sessions`                                 | Start a Challenge attempt in a dedicated environment task        |
 | `GET /v1/sessions`                                  | List owned first attempts and retries                            |
@@ -122,6 +123,18 @@ bootstrap routes remain default-off until the runtime is enabled. See the
 Free Learn entries are static pages served through CloudFront. `GET /v1/learn/{id}`
 returns any published entry the caller's plan includes, and `403` for a Pro entry on
 the Free plan. Entry HTML is rendered and sanitised at build time.
+
+## Presentation-only upgrade
+
+Presentation-only activation uses `POST /v1/demo-upgrade` with `MutationRequest`.
+It is default-off and permits only an operator-approved learner allowlist until a
+fixed UTC expiry. Its transaction saves a duplicate-safe receipt and updates only
+that learner's Free or expired plan. Current Pro grants remain unchanged. Responses
+contain `changed` and `expiresAt`, not payment or subscription status. The browser
+reads `GET /v1/me` before displaying current Pro access. Its optional
+`demoUpgradeExpiresAt` field advertises a matching open demo window; missing or null
+means unavailable. Activation does not start a task or change existing attempts.
+See [demo Pro grants](decisions/demo-pro-grants.md).
 
 ## Challenge sessions
 

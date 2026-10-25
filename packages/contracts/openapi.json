@@ -138,6 +138,53 @@
         }
       }
     },
+    "/v1/demo-upgrade": {
+      "post": {
+        "operationId": "activateDemoPro",
+        "summary": "Activate a fixed demo Pro grant for an operator-approved learner, without payment",
+        "description": "Default-off, Cognito-authenticated and allowlisted. Does not launch a Challenge, extend an existing Pro grant, or create a subscription. Read GET /v1/me after success or an uncertain response.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved activation result. Existing Pro access is preserved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoUpgradeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/learn/{id}": {
       "get": {
         "operationId": "getLearnEntry",
@@ -1484,9 +1531,28 @@
           "activeSessionId": {
             "type": ["string", "null"],
             "format": "uuid"
+          },
+          "demoUpgradeExpiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Optional fixed demo window deadline for this learner. Missing or null means demo upgrade is unavailable."
           }
         },
         "required": ["plan", "planSource", "planExpiresAt", "activeSessionId"]
+      },
+      "DemoUpgradeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": ["changed", "expiresAt"]
       },
       "StartSessionRequest": {
         "type": "object",

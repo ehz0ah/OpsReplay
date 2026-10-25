@@ -48,7 +48,7 @@ const gatewayPort = 8080;
 const terminalPort = 7681;
 const maximumTerminalConnections = 256;
 const maximumPendingTerminalAuthentications = 64;
-const terminalTicketApiDeploymentVersion = 12;
+const terminalTicketApiDeploymentVersion = 13;
 const reconcileSessionConcurrency = 4;
 const sweepSessionsConcurrency = 1;
 const ownerEndConcurrency = 4;
@@ -164,6 +164,30 @@ export class SessionStartStack extends Stack {
       maxValue: 64,
       description: 'Sustained requests per second for each catalogue/account read route, shared by its callers.',
     });
+    const demoUpgradeEnabled = new CfnParameter(this, 'EnableDemoUpgrade', {
+      type: 'String',
+      default: 'false',
+      allowedValues: ['true', 'false'],
+      description: 'Permit fixed-window Pro grants only for approved presentation learners. No billing.',
+    });
+    const demoUpgradeOwners = new CfnParameter(this, 'DemoUpgradeOwners', {
+      type: 'String',
+      default: '',
+      noEcho: true,
+      allowedPattern: '^(?:|[A-Za-z0-9_-]{1,128}(?:,[A-Za-z0-9_-]{1,128}){0,19})$',
+      description: 'Exact comma-separated Cognito subjects allowed to activate demo Pro. Maximum 20.',
+    });
+    const demoUpgradeExpiresAt = new CfnParameter(this, 'DemoUpgradeExpiresAt', {
+      type: 'String',
+      default: '',
+      allowedPattern: '^(?:|[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z)$',
+      description: 'Fixed UTC demo grant expiry. Repeated activation never extends this time.',
+    });
+    const demoUpgradeEnvironment = {
+      DEMO_UPGRADE_ENABLED: demoUpgradeEnabled.valueAsString,
+      DEMO_UPGRADE_OWNERS: demoUpgradeOwners.valueAsString,
+      DEMO_UPGRADE_EXPIRES_AT: demoUpgradeExpiresAt.valueAsString,
+    };
     const terminalTicketBurstLimit = new CfnParameter(this, 'TerminalTicketBurstLimit', {
       type: 'Number',
       default: 16,
@@ -279,6 +303,29 @@ export class SessionStartStack extends Stack {
     });
     const gatewayEnabled = new CfnCondition(this, 'GatewayPathEnabled', {
       expression: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+    });
+    const demoUpgradeRuntimeEnabled = new CfnCondition(this, 'DemoUpgradeRuntimeEnabled', {
+      expression: Fn.conditionAnd(
+        Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+        Fn.conditionEquals(demoUpgradeEnabled.valueAsString, 'true'),
+      ),
+    });
+    new CloudFormationRule(this, 'DemoUpgradeRequiresApprovedWindow', {
+      ruleCondition: Fn.conditionEquals(demoUpgradeEnabled.valueAsString, 'true'),
+      assertions: [
+        {
+          assert: Fn.conditionEquals(gatewayPathEnabled.valueAsString, 'true'),
+          assertDescription: 'Demo upgrades require the enabled runtime.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(demoUpgradeOwners.valueAsString, '')),
+          assertDescription: 'Demo upgrades require an exact learner allowlist.',
+        },
+        {
+          assert: Fn.conditionNot(Fn.conditionEquals(demoUpgradeExpiresAt.valueAsString, '')),
+          assertDescription: 'Demo upgrades require a fixed UTC expiry.',
+        },
+      ],
     });
     const admissionEnabled = new CfnCondition(this, 'SessionAdmissionEnabled', {
       expression: Fn.conditionAnd(
@@ -1140,7 +1187,11 @@ export class SessionStartStack extends Stack {
         code: Code.fromAsset(fileURLToPath(new URL(`../dist/${bundle}/`, import.meta.url))),
         role: actionRole,
         logGroup: actionLogs,
-        environment: { ...publicApiEnvironment, SESSION_TABLE_NAME: table.tableName },
+        environment: {
+          ...publicApiEnvironment,
+          SESSION_TABLE_NAME: table.tableName,
+          ...(authenticated ? demoUpgradeEnvironment : {}),
+        },
         memorySize: 256,
         timeout: Duration.seconds(10),
         reservedConcurrentExecutions: Fn.conditionIf(
@@ -1186,6 +1237,24 @@ export class SessionStartStack extends Stack {
         RECORDING_BUCKET_NAME: recordings.bucketName,
       },
     };
+    const demoUpgradeResource = featureResource(this, 'DemoUpgradeResource', featureApi, 'demo-upgrade');
+    const demoUpgradeAction = featureAction(
+      this,
+      'DemoUpgrade',
+      {
+        ...featureApi,
+        environment: { ...featureApi.environment, ...demoUpgradeEnvironment },
+      },
+      {
+        bundle: 'demo-upgrade',
+        resourceId: demoUpgradeResource.ref,
+        path: '/v1/demo-upgrade',
+        method: 'POST',
+        leadingKeys: ['USER#*'],
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:ConditionCheckItem'],
+        runtimeEnabled: demoUpgradeRuntimeEnabled,
+      },
+    );
     const learnResource = featureResource(this, 'LearnResource', featureApi, 'learn');
     const lessonResource = featureResource(this, 'LessonResource', featureApi, '{id}', learnResource.ref);
     const learnAction = featureAction(this, 'GetLearn', featureApi, {
@@ -1751,6 +1820,7 @@ export class SessionStartStack extends Stack {
       return method;
     };
     const corsMethods = [
+      corsPreflight('DemoUpgradeCors', demoUpgradeResource, ['OPTIONS', 'POST']),
       corsPreflight('SessionMessagesCors', messagesResource, ['OPTIONS', 'POST']),
       corsPreflight('SessionTurnCors', turnResource, ['GET', 'OPTIONS']),
       corsPreflight('SavedReviewsCors', savedReviewsResource, ['GET', 'OPTIONS']),
@@ -1850,6 +1920,7 @@ export class SessionStartStack extends Stack {
     terminalTicketDeployment.addResourceDependency(getReviewAction.method);
     terminalTicketDeployment.addResourceDependency(submitReviewAction.method);
     terminalTicketDeployment.addResourceDependency(learnAction.method);
+    terminalTicketDeployment.addResourceDependency(demoUpgradeAction.method);
     terminalTicketDeployment.addResourceDependency(startSessionMethod);
     terminalTicketDeployment.addResourceDependency(terminalTicketMethod);
     terminalTicketDeployment.addResourceDependency(getSessionMethod);
@@ -1865,6 +1936,15 @@ export class SessionStartStack extends Stack {
       deploymentId: terminalTicketDeployment.ref,
       stageName: 'checkpoint',
       methodSettings: [
+        {
+          httpMethod: 'POST',
+          resourcePath: '/~1v1~1demo-upgrade',
+          cachingEnabled: false,
+          dataTraceEnabled: false,
+          metricsEnabled: true,
+          throttlingBurstLimit: 2,
+          throttlingRateLimit: 1,
+        },
         {
           httpMethod: 'POST',
           resourcePath: '/~1v1~1sessions~1{id}~1messages',

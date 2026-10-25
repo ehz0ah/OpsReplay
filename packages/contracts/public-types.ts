@@ -315,6 +315,7 @@ export interface PublicTypes {
   RelatedExercise: RelatedExercise;
   LearnEntry: LearnEntry;
   Account: Account;
+  DemoUpgradeResult: DemoUpgradeResult;
   StartSessionRequest: StartSessionRequest;
   MutationRequest: MutationRequest;
   ChallengeRef: ChallengeRef;
@@ -458,6 +459,14 @@ export interface Account {
   planSource: 'default' | 'grant' | 'institution';
   planExpiresAt: string | null;
   activeSessionId: string | null;
+  /**
+   * Optional fixed demo window deadline for this learner. Missing or null means demo upgrade is unavailable.
+   */
+  demoUpgradeExpiresAt?: string | null;
+}
+export interface DemoUpgradeResult {
+  changed: boolean;
+  expiresAt: string | null;
 }
 export interface StartSessionRequest {
   requestId: string;

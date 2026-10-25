@@ -13,7 +13,7 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::Lambda::Function', 22);
+    template.resourceCountIs('AWS::Lambda::Function', 23);
     template.resourceCountIs('AWS::DynamoDB::Table', 0);
     template.resourceCountIs('AWS::S3::Bucket', 0);
     template.resourceCountIs('AWS::S3::BucketPolicy', 0);
