@@ -5,7 +5,7 @@ export function PricingPage() {
   return (
     <div className="saas-page">
       <header className="saas-heading">
-        <p className="eyebrow">Access / 02</p>
+        <p className="eyebrow">Access options</p>
         <h1>
           Start with one incident.
           <br />
@@ -19,7 +19,6 @@ export function PricingPage() {
       </div>
       <div className="pricing-grid">
         <section className="price-option" aria-labelledby="free-heading">
-          <p className="eyebrow">First response</p>
           <h2 id="free-heading">Free</h2>
           <p className="plan-price">
             S$0<span> / month</span>
@@ -37,7 +36,6 @@ export function PricingPage() {
           </Button>
         </section>
         <section className="price-option price-pro" aria-labelledby="pro-heading">
-          <p className="eyebrow">Keep practising</p>
           <h2 id="pro-heading">Pro</h2>
           <p className="plan-price">
             S$12<span> / month, proposed</span>

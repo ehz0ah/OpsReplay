@@ -1085,7 +1085,7 @@ button.diff-number:disabled {
 .home-intro h1 > span {
   color: var(--accent);
 }
-.home-copy > p:not(.eyebrow):not(.home-footnote) {
+.home-copy > p:not(.eyebrow) {
   font-size: 1.1rem;
   color: var(--muted);
   max-width: 40ch;
@@ -1101,10 +1101,6 @@ button.diff-number:disabled {
 .home-cta > a {
   color: #49463e;
   font-size: 0.9rem;
-}
-.home-footnote {
-  font-size: 0.78rem;
-  color: var(--muted);
 }
 .replay-map {
   background: #eeebe3;

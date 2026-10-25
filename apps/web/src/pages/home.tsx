@@ -14,8 +14,8 @@ export function HomePage() {
             <span>production breaks.</span>
           </h1>
           <p>
-            Learn production failures by investigating them. Real services, incomplete evidence, and a recovery that you
-            have to prove.
+            Investigate real services with incomplete evidence. Repair the fault, prove recovery, then replay your
+            response.
           </p>
           <div className="home-cta">
             <Button size="md" onClick={() => navigate('/challenges')}>
@@ -25,7 +25,6 @@ export function HomePage() {
               Compare access <span aria-hidden="true">↗</span>
             </a>
           </div>
-          <p className="home-footnote">Start Free. No production credentials required.</p>
         </div>
         <div className="replay-map" aria-label="Challenge workflow diagram">
           <div className="replay-map-heading">
@@ -76,7 +75,6 @@ export function HomePage() {
       </div>
       <section className="home-practice" aria-labelledby="practice-heading">
         <div>
-          <p className="eyebrow">Practice / 01</p>
           <h2 id="practice-heading">
             The fix is only
             <br />
@@ -104,35 +102,29 @@ export function HomePage() {
       </section>
       <section className="practice-modes" aria-labelledby="modes-heading">
         <header>
-          <p className="eyebrow">One learning loop</p>
           <h2 id="modes-heading">Read it. Review it. Repair it.</h2>
         </header>
         <a className="mode-link" href="/learn">
-          <span className="mode-index">01 / Learn</span>
+          <span className="mode-index">Learn</span>
           <strong>Understand the failure pattern</strong>
           <span>Original, source-linked incident lessons.</span>
           <span aria-hidden="true">↗</span>
         </a>
         <a className="mode-link" href="/reviews">
-          <span className="mode-index">02 / Code Review</span>
+          <span className="mode-index">Code Review</span>
           <strong>Find the risk before rollout</strong>
           <span>Review a diff and explain your concerns.</span>
           <span aria-hidden="true">↗</span>
         </a>
         <a className="mode-link" href="/challenges">
-          <span className="mode-index">03 / Challenge</span>
+          <span className="mode-index">Challenge</span>
           <strong>Investigate a running failure</strong>
           <span>Repair real services, then replay your response.</span>
           <span aria-hidden="true">↗</span>
         </a>
       </section>
       <section className="home-details">
-        <p className="eyebrow">Start where you are</p>
-        <h2>
-          You do not need
-          <br />
-          your first on-call shift.
-        </h2>
+        <h2>Start before your first on-call shift.</h2>
         <p>
           You do not need to know every Linux command. Each Challenge includes service documentation and a basic command
           reference.

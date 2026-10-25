@@ -17,6 +17,12 @@ Visual-reference screenshots remain pending. The fonts are pinned Fontsource
 packages under the OFL-1.1 licence, self-hosted as WOFF2. No external font or image
 request is added. Existing terminal, telemetry, review and playback logic stays intact.
 
+Marketing copy uses one section label per page, short supporting text and plain
+mode names. Repeated decorative labels and the extra hero footnote are omitted. This
+reduces visual noise without changing navigation or learner behaviour. Native text
+token pairs pass a static 4.5:1 contrast calculation; computed styles, viewport fit
+and keyboard behaviour still require browser validation.
+
 ## Customer journey
 
 `/pricing` gives two access options and labels S$12/month as a proposal. Free
