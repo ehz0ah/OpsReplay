@@ -1,4 +1,5 @@
 import { readFile, readdir, lstat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -9,18 +10,39 @@ export async function browserUploadPlan(directory) {
     const stat = await lstat(join(root, name));
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Browser upload directories cannot be symlinks.');
   }
-  const file = async (key, cacheControl) => {
+  const file = async (key, cacheControl, maximumBytes) => {
     const path = join(root, key);
     const stat = await lstat(path);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Browser upload requires regular files.');
+    if (maximumBytes !== undefined && (stat.size === 0 || stat.size > maximumBytes))
+      throw new Error('Browser font license notice is empty or too large.');
     return { path, key, cacheControl };
   };
   const assets = [];
+  let hasFonts = false,
+    hasFontLicenses = false;
   for (const name of (await readdir(join(root, 'assets'))).sort()) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:js|css|woff2)$/.test(name)) throw new Error('Unexpected browser asset name.');
-    assets.push(await file('assets/' + name, 'public,max-age=31536000,immutable'));
+    const fontLicenses = /^font-licenses-[a-f0-9]{64}\.txt$/.test(name);
+    if (!fontLicenses && !/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:js|css|woff2)$/.test(name))
+      throw new Error('Unexpected browser asset name.');
+    const asset = await file(
+      'assets/' + name,
+      'public,max-age=31536000,immutable',
+      fontLicenses ? 32 * 1024 : undefined,
+    );
+    if (fontLicenses) {
+      const checksum = createHash('sha256')
+        .update(await readFile(asset.path))
+        .digest('hex');
+      if (name !== 'font-licenses-' + checksum + '.txt')
+        throw new Error('Browser font license checksum does not match.');
+    }
+    assets.push(asset);
+    hasFonts ||= name.endsWith('.woff2');
+    hasFontLicenses ||= fontLicenses;
   }
-  if (!assets.length) throw new Error('Browser assets are missing.');
+  if (hasFonts && !hasFontLicenses) throw new Error('Browser font license notice is missing.');
+  if (!assets.some(({ key }) => !key.endsWith('.txt'))) throw new Error('Browser assets are missing.');
   const indexFile = await file('learn/index.json', 'no-store');
   const indexText = await readFile(indexFile.path, 'utf8');
   if (Buffer.byteLength(indexText) > 256 * 1024) throw new Error('Lesson index exceeds its bound.');
