@@ -186,6 +186,11 @@ and paste size are bounded; no clipboard or automatic-command addon is enabled.
 
 ## Product decisions
 
+26 October 2026: [Presentation SaaS experience](saas-experience.md) adds the
+incident-lab identity, labelled demo checkout and server-owned account view.
+[S$12/month pricing](pricing-proposal.md) is a proposal with cost assumptions and
+sensitivity, not a validated price or an operating subscription.
+
 26 October 2026: [Presentation-only Pro activation](demo-pro-grants.md) adds an
 operator-allowlisted, fixed-window server-side grant without payment collection.
 It is disabled by default, preserves existing Pro grants and saved attempt access,

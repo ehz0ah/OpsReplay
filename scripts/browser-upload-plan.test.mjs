@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { browserUploadPlan } from './browser-upload-plan.mjs';
@@ -53,4 +53,30 @@ test('lesson index cannot select paths outside the public lesson directory', asy
   const root = await fixture(t);
   await writeFile(join(root, 'learn/index.json'), JSON.stringify([{ id: '../private', version: '0.1.0' }]));
   await assert.rejects(browserUploadPlan(root), /identity/);
+});
+test('WOFF2 fonts are immutable assets while unsafe names and symlinks block publication', async (t) => {
+  await t.test('self-hosted font publishes with other assets before lesson data and HTML', async (t) => {
+    const root = await fixture(t);
+    await writeFile(join(root, 'assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2'), 'wOF2');
+    const plan = await browserUploadPlan(root);
+    const font = plan.find((x) => x.key.endsWith('.woff2'));
+    assert.ok(font);
+    assert.equal(font.cacheControl, 'public,max-age=31536000,immutable');
+    assert.ok(plan.indexOf(font) < plan.findIndex((x) => x.key === 'learn/index.json'));
+    assert.equal(plan.at(-1).key, 'index.html');
+  });
+  await t.test('unsupported or hidden asset types fail closed', async (t) => {
+    for (const name of ['font.woff', 'font.woff2.js.map', '.font.woff2', 'font.WOFF2', 'private.json']) {
+      const root = await fixture(t);
+      await writeFile(join(root, 'assets', name), 'invalid');
+      await assert.rejects(browserUploadPlan(root), /Unexpected browser asset name/);
+    }
+  });
+  await t.test('a font extension cannot turn a symlink into a publishable file', async (t) => {
+    const root = await fixture(t);
+    const target = join(root, 'private.txt');
+    await writeFile(target, 'private');
+    await symlink(target, join(root, 'assets/font-abcd.woff2'));
+    await assert.rejects(browserUploadPlan(root), /regular files/);
+  });
 });

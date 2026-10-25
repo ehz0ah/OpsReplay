@@ -1,6 +1,9 @@
 import { Button } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
+const PricingPage = lazy(() => import('./pages/pricing.js').then((module) => ({ default: module.PricingPage })));
+const AccountPage = lazy(() => import('./pages/account.js').then((module) => ({ default: module.AccountPage })));
+const UpgradePage = lazy(() => import('./pages/upgrade.js').then((module) => ({ default: module.UpgradePage })));
 import { CataloguePage } from './pages/catalogue.js';
 import { HistoryPage, SavedReviewPage } from './pages/history.js';
 import { ReviewCatalogue, ReviewPage } from './pages/review.js';
@@ -9,6 +12,7 @@ import { SessionEntry } from './pages/session-entry.js';
 import { useAuth } from './auth/provider.js';
 import { usePath, navigate } from './navigation.js';
 import { HomePage } from './pages/home.js';
+import { BrandMark } from './components/brand-mark.js';
 import { CurrentAttemptNotice } from './components/attempt-notice.js';
 import { WorkingState } from './components/working-state.js';
 export function App() {
@@ -28,12 +32,38 @@ export function App() {
           }}
           className="wordmark"
         >
-          OpsReplay<span>Incident practice</span>
+          <BrandMark />
+          OpsReplay
         </a>
-        <div className="actions">
+        <nav className="actions" aria-label="Main navigation">
+          <a
+            className="site-navigation"
+            href="/pricing"
+            aria-current={path === '/pricing' ? 'page' : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('/pricing');
+            }}
+          >
+            Pricing
+          </a>
+          {auth.identity && (
+            <a
+              className="site-navigation"
+              href="/account"
+              aria-current={path === '/account' ? 'page' : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate('/account');
+              }}
+            >
+              Account
+            </a>
+          )}
           <a
             className="site-navigation"
             href="/challenges"
+            aria-current={path === '/challenges' ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               navigate('/challenges');
@@ -44,6 +74,7 @@ export function App() {
           <a
             className="site-navigation"
             href="/learn"
+            aria-current={path.startsWith('/learn') ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               navigate('/learn');
@@ -54,6 +85,7 @@ export function App() {
           <a
             className="site-navigation"
             href="/reviews"
+            aria-current={path.startsWith('/reviews') ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               navigate('/reviews');
@@ -64,6 +96,7 @@ export function App() {
           <a
             className="site-navigation"
             href="/history"
+            aria-current={path === '/history' ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               navigate('/history');
@@ -79,12 +112,16 @@ export function App() {
             {auth.loading ? 'Connecting…' : auth.identity ? 'Sign out' : 'Sign in'}
           </Button>
           {!auth.loading && !auth.identity && <Button onClick={() => void auth.signUp()}>Create account</Button>}
-        </div>
+        </nav>
       </header>
       <main
         id="main"
         tabIndex={-1}
-        className={path === '/' || path === '/challenges' ? 'page catalogue-page' : 'page workspace-page'}
+        className={
+          ['/', '/challenges', '/pricing', '/upgrade', '/account'].includes(path)
+            ? 'page catalogue-page'
+            : 'page workspace-page'
+        }
       >
         {auth.message && (
           <p role="alert" className="notice error">
@@ -104,6 +141,18 @@ export function App() {
         )}
         {path === '/' ? (
           <HomePage />
+        ) : path === '/pricing' ? (
+          <Suspense fallback={<WorkingState title="Opening access options" />}>
+            <PricingPage />
+          </Suspense>
+        ) : path === '/account' ? (
+          <Suspense fallback={<WorkingState title="Opening your account" />}>
+            <AccountPage key={auth.identity?.sub ?? 'public'} />
+          </Suspense>
+        ) : path === '/upgrade' ? (
+          <Suspense fallback={<WorkingState title="Opening demo checkout" />}>
+            <UpgradePage key={auth.identity?.sub ?? 'public'} />
+          </Suspense>
         ) : path === '/challenges' ? (
           <CataloguePage key={auth.identity?.sub ?? 'public'} />
         ) : path === '/history' ? (
@@ -146,7 +195,10 @@ export function App() {
             <a href="/challenges">Return to Challenges</a>
           </section>
         )}
-        <footer>OpsReplay · Incident practice</footer>
+        <footer className="site-footer">
+          <span>OpsReplay · Learn production failures by investigating them.</span>
+          <a href="/pricing">Access and pricing</a>
+        </footer>
       </main>
     </>
   );

@@ -11,6 +11,9 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
     '/challenges',
     '/auth/callback',
     '/history',
+    '/pricing',
+    '/upgrade',
+    '/account',
     '/review-submissions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '/reviews',
     '/reviews/proxy-rollout',
@@ -22,6 +25,11 @@ test('browser routes rewrite valid learner pages and keep assets, config, unknow
     assert.equal(run({ request: { uri } }).uri, '/index.html');
   for (const uri of [
     '/assets/app.js',
+    '/assets/ibm-plex-sans-latin-400-normal.woff2',
+    '/pricing/',
+    '/upgrade/private',
+    '/account/another',
+    '/%75pgrade',
     '/config.json',
     '/learn/index.json',
     '/learn/safe-incident-recovery.json',

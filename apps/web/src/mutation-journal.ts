@@ -3,7 +3,7 @@ import type { PublicTypes } from '../../../packages/contracts/public-types.js';
 import { ApiError } from './api.js';
 export type PendingMutation =
   | { kind: 'start'; path: '/v1/sessions'; body: PublicTypes['StartSessionRequest'] }
-  | { kind: 'end' | 'hint'; path: string; body: PublicTypes['MutationRequest'] };
+  | { kind: 'end' | 'hint' | 'upgrade'; path: string; body: PublicTypes['MutationRequest'] };
 export class MutationJournal {
   constructor(
     private readonly storage: Storage,
@@ -22,6 +22,10 @@ export class MutationJournal {
       parseMutation(kind === 'start' ? 'StartSessionRequest' : 'MutationRequest', value.body);
       return value as PendingMutation;
     } catch {
+      if (kind === 'upgrade')
+        throw new Error(
+          'The saved activation request could not be read. Refresh your account to check current access.',
+        );
       throw new Error('The saved request could not be read. Resume your active attempt before starting another.');
     }
   }

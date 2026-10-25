@@ -17,7 +17,7 @@ export async function browserUploadPlan(directory) {
   };
   const assets = [];
   for (const name of (await readdir(join(root, 'assets'))).sort()) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:js|css)$/.test(name)) throw new Error('Unexpected browser asset name.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:js|css|woff2)$/.test(name)) throw new Error('Unexpected browser asset name.');
     assets.push(await file('assets/' + name, 'public,max-age=31536000,immutable'));
   }
   if (!assets.length) throw new Error('Browser assets are missing.');
