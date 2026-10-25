@@ -12,7 +12,7 @@ import { PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
 export const browserRouteCode = `function handler(event) {
   var request=event.request;
-  if (request.uri==='/' || request.uri==='/challenges' || request.uri==='/auth/callback' || request.uri==='/history' || /^\\/review-submissions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(request.uri) || /^\\/(?:learn|reviews)(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)?$/.test(request.uri) || /^\\/sessions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\\/debrief)?$/.test(request.uri)) request.uri='/index.html';
+  if (request.uri==='/' || request.uri==='/challenges' || request.uri==='/auth/callback' || request.uri==='/history' || request.uri==='/pricing' || request.uri==='/upgrade' || request.uri==='/account' || /^\\/review-submissions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(request.uri) || /^\\/(?:learn|reviews)(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)?$/.test(request.uri) || /^\\/sessions\\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:\\/debrief)?$/.test(request.uri)) request.uri='/index.html';
   return request;
 }`;
 export class BrowserHostingStack extends Stack {

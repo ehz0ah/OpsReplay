@@ -42,7 +42,7 @@
     "contracts:check": "node scripts/generate-public-contracts.mjs --check",
     "web:dev": "npm run learn:build && npm run contracts:check && vite --config apps/web/vite.config.ts",
     "web:build": "npm run learn:build && npm run contracts:check && vite build --config apps/web/vite.config.ts",
-    "web:test": "npm run contracts:check && node --import tsx --test apps/web/test/*.test.ts",
+    "web:test": "npm run contracts:check && TSX_TSCONFIG_PATH=apps/web/tsconfig.json node --import tsx --test apps/web/test/*.test.ts",
     "challenge:dns:build": "node scripts/build-dns-challenge.mjs",
     "challenge:dns:test": "node --import tsx --test content/challenges/stale-dns-record/image.test.mjs",
     "monitor:dns:image:build": "docker build --platform linux/amd64 --provenance=false --target stale-dns -t opsreplay/monitor-stale-dns:dev -f apps/monitor/Dockerfile .",

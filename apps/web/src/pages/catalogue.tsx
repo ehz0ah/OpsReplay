@@ -142,6 +142,12 @@ export function CataloguePage() {
             </div>
             <Failure error={error} />
             <Failure error={account.error} retry={account.reload} />
+            {selected.plan === 'pro' && account.data?.plan === 'free' && (
+              <p className="notice">
+                This Challenge needs Pro access. <a href="/upgrade">View the demo upgrade</a>. Your current attempt is
+                preserved.
+              </p>
+            )}
             {account.loading && auth.identity && <WorkingState title="Loading your account" />}
             {cooldown && <p role="status">Try again in {Math.max(1, Math.ceil((retryAt - clock) / 1000))} seconds.</p>}
             {pending && !busy && (

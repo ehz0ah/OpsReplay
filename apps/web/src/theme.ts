@@ -1,13 +1,25 @@
 import { Button, createTheme } from '@mantine/core';
 
 export const theme = createTheme({
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontFamilyMonospace: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  primaryColor: 'ink',
+  fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  fontFamilyMonospace: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  primaryColor: 'signal',
   colors: {
-    ink: ['#f0f3f5', '#dde4e9', '#bccbd6', '#97afbf', '#7495ab', '#557a94', '#3d637f', '#294e6a', '#1c3c55', '#142d41'],
+    signal: [
+      '#fff4ee',
+      '#ffe9dc',
+      '#ffd2b5',
+      '#f9ad81',
+      '#e88857',
+      '#d76d3b',
+      '#bd5128',
+      '#a13f1f',
+      '#80331e',
+      '#61291b',
+    ],
   },
-  defaultRadius: 'sm',
+  primaryShade: 7,
+  defaultRadius: 4,
   cursorType: 'pointer',
   respectReducedMotion: true,
   components: {

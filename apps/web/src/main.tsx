@@ -31,6 +31,7 @@ import { App } from './app.js';
 import { loadConfig } from './config.js';
 import { WorkingState } from './components/working-state.js';
 import './styles.css';
+import './fonts.css';
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
