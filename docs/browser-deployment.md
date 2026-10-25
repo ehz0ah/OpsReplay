@@ -27,12 +27,19 @@ revision, findings and limits. No runtime remains deployed.
    Validate it with `node --import tsx scripts/prepare-browser-config.ts input.json
 https://<browser-host> .local/config.json`. The output must not already exist.
 5. Run `npm ci`, `npm run quality`, `npm run check`, `npm run web:test` and
-   `npm run web:build`. Publish only hashed files under `dist/web/assets/`, then
+   `npm run web:build`. Publish hashed files under `dist/web/assets/`, including
+   the checked `font-licenses-<sha256>.txt` notice, then
    all Free lesson bodies and their index, `index.html`, then the validated `config.json`.
    Use `node scripts/browser-upload-plan.mjs dist/web` to validate and list the exact
    ordered files before uploading. It rejects missing/mismatched Free lessons and
    excludes prepared Pro bodies and example configuration. Keep old hashed files for active tabs.
-   Use immutable caching for assets and `Cache-Control: no-store` for HTML/config.
+   Use immutable caching for hashed assets and `Cache-Control: no-store` for
+   HTML/config. Upload the font notice as `text/plain`. It contains the full
+   upstream OFL texts for the bundled IBM Plex fonts, not a licence for OpsReplay
+   code. Font builds without a nonempty regular notice file (maximum 32 KiB) fail
+   the upload plan. Its SHA-256 must match its filename. The Font licenses footer
+   link opens it in a new tab without leaving an active attempt. Other text assets
+   remain unsupported.
 6. Verify login/callback, start/resume, terminal reconnect, hints, end, debrief and
    playback with the deployed browser. Check the browser console and failed requests.
    Local fixtures do not prove Cognito, CORS, CloudFront or AWS behavior.
