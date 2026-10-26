@@ -15,18 +15,18 @@ Challenge investigation, recovery, debrief and playback against AWS. No ECS
 runtime remains. The new SaaS identity, account page and default-off demo upgrade
 are locally checked, but their browser and grouped AWS validation are pending.
 
-| Area                                     | Status                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------- |
-| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                   |
-| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS           |
-| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts    |
-| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                     |
-| Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata             |
-| Code Review reads and submissions        | Implemented; Free review checked in the 23 October browser checkpoint                 |
-| Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint       |
-| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                   |
-| SaaS identity and demo upgrade           | Implemented and locally checked; rendered and AWS validation pending                  |
-| Scenario and system evaluation           | Preliminary local repeats passed; full repeats, load, costs and learner pilot pending |
+| Area                                     | Status                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                  |
+| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS          |
+| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts   |
+| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                    |
+| Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata            |
+| Code Review reads and submissions        | Implemented; Free review checked in the 23 October browser checkpoint                |
+| Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint      |
+| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                  |
+| SaaS identity and demo upgrade           | Implemented and locally checked; rendered and AWS validation pending                 |
+| Scenario and system evaluation           | Full local repeats passed for both Challenges; load, costs and learner pilot pending |
 
 The [17 October browser checkpoint](docs/checkpoints/2026-10-17-browser.md) records
 the revision, results, findings and limits. It does not establish classroom

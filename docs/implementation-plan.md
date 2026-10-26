@@ -27,7 +27,7 @@ gates. No runtime is currently deployed.
 | I07 | Browser checked on AWS          | Debrief, score components, playback, and retry                                            | Real debrief, recorded terminal, metrics/captures and fresh retry; expiry/pagination limits remain          |
 | I08 | Challenge assistant implemented | Optional assistant and confirmed proposals; Code Review assistant remains planned         | Local boundary/recovery tests and one AWS proposal; model benchmark remains pending                         |
 | I09 | Learner workflows implemented   | Catalogue, account, plans, Learn, inline Code Review and History                          | Local access tests and 23 October browser checkpoint; new SaaS/upgrade cloud checks remain pending          |
-| I10 | DNS Challenge implemented       | Two implemented Challenges; connection-exhaustion draft remains blocked                   | 23 October DNS browser checkpoint and preliminary local repeats; full repeats remain pending                |
+| I10 | DNS Challenge implemented       | Two implemented Challenges; connection-exhaustion draft remains blocked                   | 23 October DNS browser checkpoint and full 20-repeat local reports; new AWS acceptance remains pending      |
 | I11 | Evaluation in progress          | System and user evaluation, cost comparison, demo, and report                             | Tools and pilot materials exist; full results, measured costs and participant study remain pending          |
 
 The browser and bootstrap reads share the public contracts. AWS verification remains
