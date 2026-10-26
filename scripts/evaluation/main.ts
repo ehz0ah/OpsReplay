@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { repeatScenarios } from './scenarios.js';
-import { runLoad } from './load.js';
+import { runLoad, runReadLoad } from './load.js';
 import { assistantConfiguration, benchmarkAssistant, type BenchmarkCase } from './assistant.js';
 const [mode, input, output, execute, ...extra] = process.argv.slice(2);
 try {
@@ -15,12 +15,13 @@ try {
     if (bytes.length > 256 * 1024) throw new Error('Configuration exceeds bound.');
     const config = JSON.parse(bytes.toString());
     if (mode === 'load') passed = await runLoad(config, output);
+    else if (mode === 'read-load') passed = await runReadLoad(config, output);
     else if (mode === 'assistant') {
       const cases = JSON.parse(
         await readFile(new URL('./assistant-cases.json', import.meta.url), 'utf8'),
       ) as BenchmarkCase[];
       passed = await benchmarkAssistant(assistantConfiguration(config), cases, output);
-    } else throw new Error('Select scenarios, load or assistant.');
+    } else throw new Error('Select scenarios, load, read-load or assistant.');
   }
   console.log(
     passed

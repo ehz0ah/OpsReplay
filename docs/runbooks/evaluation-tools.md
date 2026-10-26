@@ -81,6 +81,32 @@ and miss paraphrases. They are not accuracy scores. Report denominators and fail
 Adapter latency excludes the deployed API, state and context-building round trip.
 Measure those separately during the AWS checkpoint.
 
+## GET-only existing-session load
+
+Use `evaluation:read-load` when measuring catalogue, account and owned-session
+reads without terminal control. It sends only `GET /v1/catalog`, `GET /v1/me` and
+`GET /v1/sessions/{id}`. It does not request terminal tickets, open sockets, send
+commands, refresh learner activity or change session state. An assigned session
+can be ready, completed or in another valid lifecycle state. Its returned ID must
+still match the configured session.
+
+Use the same private configuration fields and bounds as terminal load. `origin`
+is validated for configuration compatibility but is not sent in this mode.
+Each worker must have a distinct operator-owned learner and existing session.
+Live reads still require an approved test window and request-volume budget.
+No ready Fargate task is needed for reads of completed sessions.
+
+```sh
+npm run evaluation:read-load -- .local/evaluation/read-config.json .local/evaluation/read-result.json --run
+```
+
+The report kind is `existing-session-read-load`. It includes the three GET
+operation distributions and omits terminal latency fields. Failed HTTP, schema
+or identity checks stop that worker without retries. Requests per second and
+latency describe this read mix only, not terminal performance, provisioning,
+maximum SaaS capacity or paid-customer limits. The existing `evaluation:load`
+command retains its ready-session requirement and terminal-control behavior.
+
 ## Verification and cost
 
 `npm run evaluation:test` uses local fixtures and a fake provider. CI runs it without
