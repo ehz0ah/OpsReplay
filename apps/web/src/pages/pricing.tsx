@@ -44,7 +44,7 @@ export function PricingPage() {
           <ul>
             <li>Free features plus the Pro content set</li>
             <li>Longer Challenge sessions, shown in each briefing</li>
-            <li>Expanded lessons and Code Review exercises</li>
+            <li>Access to Pro lessons and Challenges</li>
             <li>The same full debrief and playback for Pro Challenges</li>
           </ul>
           <Button onClick={() => navigate('/upgrade')}>Preview Pro upgrade</Button>
