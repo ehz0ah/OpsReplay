@@ -14,8 +14,8 @@ Activation does not start an environment or change a saved attempt.
 The contract-check script now lists separate browser checks instead of saying
 the web app is unimplemented. Its validation logic is unchanged.
 
-The focused review stack is #116, #119, #117, #115 and draft #118. All current
-pushed heads passed repository CI. The integrated head passed nine repository
+The initial focused review stack is #116, #119, #117, #115 and draft #118.
+The then-current pushed heads passed repository CI. The integrated head passed nine repository
 jobs and its title check. No PR was merged as part of this delivery.
 
 Local checks passed: 341 API, 35 infrastructure, 89 browser-code, 37 private
@@ -25,9 +25,17 @@ separate gate. The production web build retains a large-chunk warning.
 
 Two preliminary local repeats per implemented Challenge passed their Challenge
 and Monitor suites with unchanged image IDs and matching manifest hashes. Their
-test-owned containers, networks and volumes were absent afterward. Full
-20-repeat validation is running, not yet passed. Suite duration is not learner
-recovery time or Fargate performance.
+test-owned containers, networks and volumes were absent afterward.
+
+At 08:01 SGT, both full 20-repeat reports were independently verified at the
+unchanged `f89e2583ce346099cb53679b150ada4538044224` revision. Each report has 40
+successful Challenge/Monitor suite executions, matching ordered repeats,
+version `0.1.2`, manifest hashes and current image IDs. The original combined
+process exited 0. No test-owned Docker containers, networks or volumes remained;
+the two preexisting volumes were preserved. The subsequent offer correction and
+font/status follow-ups do not change the Challenge or Monitor images.
+The full reports remain in operator-local evaluation artifacts. Suite duration
+is not learner recovery time, AWS Fargate performance or a cost measurement.
 
 ## Retained catalogue and runtime
 
