@@ -12,6 +12,12 @@ The Pro content and time limits are server-owned differences, not cosmetic badge
 The demo has no payment, recurring charge or automatic renewal.
 It activates only an operator-approved fixed-window grant.
 
+The retained published catalogue was checked on 26 October 2026. It contains one
+Free and one Pro Challenge, one Free and one Pro lesson, and one Free Code Review.
+The Pro Code Review in the source tree is still unpublished. Do not advertise
+expanded Code Review access until reviewed content is actually published. This
+catalogue check does not mean that the currently removed runtime is available.
+
 Do not advertise a large library, unlimited compute, monthly usage meters or
 institution management that the prototype does not provide. Institutional seats
 remain a future sales model with no invented price.
