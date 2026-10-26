@@ -6,8 +6,23 @@ import { loadConfiguration, jsonRequest } from './http.js';
 import { terminalProbe } from './terminal.js';
 import { distribution, reserveReport } from './report.js';
 export async function runLoad(input: unknown, path: string, transport = fetch, probe = terminalProbe) {
+  return runSessionLoad(input, path, 'terminal', transport, probe);
+}
+/** Only catalogue, account and assigned-session GETs. Never takes terminal control. */
+export async function runReadLoad(input: unknown, path: string, transport = fetch) {
+  return runSessionLoad(input, path, 'read-only', transport);
+}
+async function runSessionLoad(
+  input: unknown,
+  path: string,
+  mode: 'terminal' | 'read-only',
+  transport: typeof fetch,
+  probe = terminalProbe,
+) {
   const config = loadConfiguration(input),
     started = performance.now();
+  const operations =
+    mode === 'terminal' ? ['catalog', 'account', 'session', 'terminal'] : ['catalog', 'account', 'session'];
   const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const write = await reserveReport(path);
   const measurements: {
@@ -20,7 +35,10 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
   }[] = [];
   const probes: { admissionMs: number; roundTripMs: number }[] = [];
   const lifetime = AbortSignal.timeout(
-    Math.min(60 * 60_000, config.rounds * (config.timeoutMs * 5 + config.thinkTimeMs) + 10000),
+    Math.min(
+      60 * 60_000,
+      config.rounds * (config.timeoutMs * (mode === 'terminal' ? 5 : 3) + config.thinkTimeMs) + 10000,
+    ),
   );
   await Promise.all(
     config.participants.map(async (participant, worker) => {
@@ -28,7 +46,7 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
         let readsPassed = true;
         for (const [operation, route, type] of [
           ['catalog', '/v1/catalog', 'Catalog'],
-          ['account', '/v1/account', 'Account'],
+          ['account', '/v1/me', 'Account'],
           ['session', '/v1/sessions/' + participant.sessionId, 'SessionView'],
         ] as const) {
           const at = performance.now();
@@ -48,7 +66,7 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
               await parsePublic(type, result.value);
               if (
                 operation === 'session' &&
-                (result.value.id !== participant.sessionId || result.value.status !== 'ready')
+                (result.value.id !== participant.sessionId || (mode === 'terminal' && result.value.status !== 'ready'))
               )
                 throw new Error('Session is not the assigned ready attempt.');
               passed = true;
@@ -68,36 +86,38 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
           }
         }
         if (!readsPassed) break;
-        const at = performance.now();
-        let status: number | null = null,
-          passed = false;
-        try {
-          const signal = AbortSignal.any([lifetime, AbortSignal.timeout(config.timeoutMs)]);
-          const result = await jsonRequest(
-            config.baseUrl,
-            '/v1/sessions/' + participant.sessionId + '/terminal-tickets',
-            participant.token,
-            'POST',
-            signal,
-            transport,
-          );
-          status = result.status;
-          if (status === 200) {
-            const ticket = await parsePublic('TerminalTicket', result.value);
-            if (ticket.sessionId !== participant.sessionId) throw new Error('Wrong ticket.');
-            probes.push(await probe(ticket.url, config.origin, participant.sessionId, ticket.ticket, signal));
-            passed = true;
-          }
-        } catch {}
-        measurements.push({
-          worker: worker + 1,
-          round,
-          operation: 'terminal',
-          passed,
-          status,
-          durationMs: performance.now() - at,
-        });
-        if (!passed) break;
+        if (mode === 'terminal') {
+          const at = performance.now();
+          let status: number | null = null,
+            passed = false;
+          try {
+            const signal = AbortSignal.any([lifetime, AbortSignal.timeout(config.timeoutMs)]);
+            const result = await jsonRequest(
+              config.baseUrl,
+              '/v1/sessions/' + participant.sessionId + '/terminal-tickets',
+              participant.token,
+              'POST',
+              signal,
+              transport,
+            );
+            status = result.status;
+            if (status === 200) {
+              const ticket = await parsePublic('TerminalTicket', result.value);
+              if (ticket.sessionId !== participant.sessionId) throw new Error('Wrong ticket.');
+              probes.push(await probe(ticket.url, config.origin, participant.sessionId, ticket.ticket, signal));
+              passed = true;
+            }
+          } catch {}
+          measurements.push({
+            worker: worker + 1,
+            round,
+            operation: 'terminal',
+            passed,
+            status,
+            durationMs: performance.now() - at,
+          });
+          if (!passed) break;
+        }
         if (round < config.rounds) await delay(config.thinkTimeMs, undefined, { signal: lifetime }).catch(() => {});
       }
     }),
@@ -105,7 +125,7 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
   const seconds = (performance.now() - started) / 1000;
   const report = {
     schemaVersion: 1,
-    kind: 'existing-session-load',
+    kind: mode === 'terminal' ? 'existing-session-load' : 'existing-session-read-load',
     revision,
     concurrency: config.concurrency,
     rounds: config.rounds,
@@ -114,7 +134,7 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
     timedOut: lifetime.aborted,
     requestsPerSecond: measurements.length / seconds,
     operations: Object.fromEntries(
-      ['catalog', 'account', 'session', 'terminal'].map((operation) => {
+      operations.map((operation) => {
         const values = measurements.filter((m) => m.operation === operation);
         return [
           operation,
@@ -126,12 +146,20 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
         ];
       }),
     ),
-    terminalAdmissionMs: distribution(probes.map((p) => p.admissionMs)),
-    terminalRoundTripMs: distribution(probes.map((p) => p.roundTripMs)),
+    ...(mode === 'terminal'
+      ? {
+          terminalAdmissionMs: distribution(probes.map((p) => p.admissionMs)),
+          terminalRoundTripMs: distribution(probes.map((p) => p.roundTripMs)),
+        }
+      : {}),
     measurements,
     limits: [
       'Existing test sessions only. Does not measure task launch or ready latency.',
-      'Connections replace any current terminal owner and send Ctrl-C plus a harmless printf.',
+      ...(mode === 'terminal'
+        ? ['Connections replace any current terminal owner and send Ctrl-C plus a harmless printf.']
+        : [
+            'Only catalogue, account and assigned-session GETs. No terminal ticket, connection or input; no session state changes.',
+          ]),
       'No deployment, task start/end, proposal, provider call or automatic retry.',
       'No tokens, session IDs, terminal output or endpoint URLs are saved.',
     ],
@@ -139,7 +167,7 @@ export async function runLoad(input: unknown, path: string, transport = fetch, p
   await write(report);
   return (
     !report.timedOut &&
-    measurements.length === config.concurrency * config.rounds * 4 &&
+    measurements.length === config.concurrency * config.rounds * operations.length &&
     measurements.every((m) => m.passed)
   );
 }

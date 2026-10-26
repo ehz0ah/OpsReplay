@@ -53,6 +53,7 @@
     "history:backfill": "node --import tsx scripts/backfill-history.ts",
     "evaluation:scenarios": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts scenarios",
     "evaluation:load": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts load",
+    "evaluation:read-load": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts read-load",
     "evaluation:assistant": "npm run contracts:check && node --import tsx scripts/evaluation/main.ts assistant",
     "evaluation:test": "npm run contracts:check && node --import tsx --test scripts/evaluation/*.test.ts"
   },
