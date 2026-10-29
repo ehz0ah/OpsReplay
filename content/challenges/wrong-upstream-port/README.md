@@ -5,8 +5,10 @@ This implements the service stack and private terminal endpoint in
 [separate monitor test](../../../apps/monitor/README.md) runs traffic and recovery
 checks beside this image. The Gateway browser relay is implemented separately and
 is tested locally. This standalone run deploys no AWS resources.
-The current candidate is version `0.1.2`, which shows only the Monitor's request
-rate, error rate and p95 latency. It remains unpublished. Version `0.1.0` was used
+Version `0.1.2` shows only the Monitor's request rate, error rate and p95 latency.
+Its immutable release has retained published metadata as checked on 26 October
+2026; the source manifest remains a draft build input. No runtime is deployed.
+Version `0.1.0` was used
 in the 17 October AWS checkpoint. Existing attempts retain their pinned manifest.
 
 ## Build and enter
@@ -40,7 +42,7 @@ read-only recording mode, not another browser relay.
 
 ```text
 Bash PTY -> terminal server -> interactive connection -> Gateway -> browser
-                           -> recording connection -> future Gateway persistence
+                           -> recording connection -> Gateway persistence
 ```
 
 The source records original output, successfully written input bytes, dimensions,
@@ -50,13 +52,13 @@ The journal retains a prefix bounded by 20,000,000 encoded event bytes and 100,0
 events for the whole attempt, including a reserved 128 bytes and one event for exit.
 Overflow permanently stops normal data recording, even with current readers, but leaves
 the shell usable. Final exit is retained with the next sequence and does not clear loss.
-Relevant loss makes the future recording incomplete with a null score under P09.
+Relevant loss makes the recording incomplete with a null score under P09.
 Pages have at most 100 events and 24 KiB. This learner-controlled temporary memory
 is not durable storage or tamper-proof evidence. See the
 [source contract and bounds](../../../docs/challenges.md#bounded-terminal-source).
 
-Gateway terminal persistence, command markers, captures, scoring, and playback are
-not implemented by this image change.
+Gateway persistence, command markers, captures, scoring and playback are supplied
+by the separate platform modules, not by this standalone image command.
 
 The container includes `nano`, `vi` / `vim` (Vim tiny), `curl`, `ss`, `ps`, `less`,
 and `psql`. Inspect the real services and logs:
@@ -103,7 +105,8 @@ After changing `shop.env`, use `service shop restart` to apply the new environme
 Files and database data stay in this container's writable layer. Restarting a service
 or this same container preserves edits and orders. Creating a new container restores
 the original fault and empty database. Interrupted database initialisation requires a
-fresh container. Shared watched-file volumes are deferred to monitor integration.
+fresh container. The integrated environment supplies watched-file volumes for
+Monitor access; this standalone script does not.
 
 The terminal process does not open a replacement shell after it stops or after the same
 container restarts. Its generation fence is process memory. Losing that state makes the

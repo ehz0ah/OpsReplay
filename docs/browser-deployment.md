@@ -27,12 +27,19 @@ revision, findings and limits. No runtime remains deployed.
    Validate it with `node --import tsx scripts/prepare-browser-config.ts input.json
 https://<browser-host> .local/config.json`. The output must not already exist.
 5. Run `npm ci`, `npm run quality`, `npm run check`, `npm run web:test` and
-   `npm run web:build`. Publish only hashed files under `dist/web/assets/`, then
+   `npm run web:build`. Publish hashed files under `dist/web/assets/`, including
+   the checked `font-licenses-<sha256>.txt` notice, then
    all Free lesson bodies and their index, `index.html`, then the validated `config.json`.
    Use `node scripts/browser-upload-plan.mjs dist/web` to validate and list the exact
    ordered files before uploading. It rejects missing/mismatched Free lessons and
    excludes prepared Pro bodies and example configuration. Keep old hashed files for active tabs.
-   Use immutable caching for assets and `Cache-Control: no-store` for HTML/config.
+   Use immutable caching for hashed assets and `Cache-Control: no-store` for
+   HTML/config. Upload the font notice as `text/plain`. It contains the full
+   upstream OFL texts for the bundled IBM Plex fonts, not a licence for OpsReplay
+   code. Font builds without a nonempty regular notice file (maximum 32 KiB) fail
+   the upload plan. Its SHA-256 must match its filename. The Font licenses footer
+   link opens it in a new tab without leaving an active attempt. Other text assets
+   remain unsupported.
 6. Verify login/callback, start/resume, terminal reconnect, hints, end, debrief and
    playback with the deployed browser. Check the browser console and failed requests.
    Local fixtures do not prove Cognito, CORS, CloudFront or AWS behavior.
@@ -43,7 +50,7 @@ they make no AWS calls. The reviewed live follow-up uses the
 [browser verification checklist](runbooks/browser-checkpoint-verification.md).
 
 The asset bucket is private. CloudFront has signed reads limited to `index.html`,
-`config.json` and `assets/*`, bound to that distribution ARN. An operator needs only
+`config.json`, `assets/*` and `learn/*`, bound to that distribution ARN. An operator needs only
 upload permissions for those paths. The stack creates no publisher Lambda.
 
 ## Recording CORS
@@ -59,9 +66,14 @@ The home entry is `/`; the Challenge catalogue is `/challenges`. Publish the upd
 CloudFront route function before the new browser assets so direct navigation and
 sign-in returns can reach the catalogue. Existing session routes keep their meaning.
 
-Only `/`, `/challenges`, `/auth/callback`, and valid `/sessions/<uuid>` paths with optional `/debrief`
-map to `index.html`. Unknown paths, missing assets and backend paths keep their error
-status. There is no global 403/404-to-HTML fallback. The browser supports strict CSP
+Only `/`, `/challenges`, `/auth/callback`, `/history`, `/pricing`, `/upgrade`,
+`/account`, `/learn`, `/reviews`, valid `/learn/<id>` and `/reviews/<id>` pages,
+`/review-submissions/<uuid>`, and `/sessions/<uuid>` with optional `/debrief`
+map to `index.html`. IDs are lowercase kebab-case slugs, and UUIDs must match the
+route validator. Trailing slashes on non-root paths and extra path segments are not accepted.
+Unknown paths, missing assets and backend paths keep their error status. In
+particular, `/learn/index.json` and Free lesson JSON paths remain asset reads,
+not page rewrites. There is no global 403/404-to-HTML fallback. The browser supports strict CSP
 without script evaluation. xterm requires inline styles. Connection origins are exact;
 S3 GET links are bounded to AWS S3 hosts in both CSP and the asset reader.
 

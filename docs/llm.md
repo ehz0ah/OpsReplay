@@ -1,8 +1,10 @@
 # Optional LLM integration
 
-Status: live Challenge chat is implemented locally and disabled by default. The
-provider and model remain open. Confirmed Challenge command proposals are implemented locally. Code Review assistant
-turns remain planned. No deployed streaming or paid provider validation is claimed.
+Status: Challenge chat and confirmed command proposals are implemented and
+disabled by default. The 23 October developer checkpoint exercised one relevant
+assistant response and confirmed command on AWS. That is not a model benchmark,
+latency distribution or cost result. Code Review assistant turns remain planned.
+Provider selection for evaluation remains open; no runtime is currently deployed.
 
 ## Responsibilities
 

@@ -198,6 +198,14 @@ export function App() {
         <footer className="site-footer">
           <span>OpsReplay · Learn production failures by investigating them.</span>
           <a href="/pricing">Access and pricing</a>
+          <a
+            href="/assets/font-licenses-51ccfb748053470fef44380455b1fb87aad161f6581a8997bb2bbed0dc37061b.txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Font licenses (opens in a new tab)"
+          >
+            Font licenses
+          </a>
         </footer>
       </main>
     </>
