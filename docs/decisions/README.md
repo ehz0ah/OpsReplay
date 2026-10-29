@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+29 October 2026: [Minimal Node runtimes](minimal-node-runtime.md) remove unused
+service-image packages while preserving Node, identity, deployment settings and
+learner tools. Local package/behaviour checks and OS scans are separate from ECR
+and AWS validation. Challenge findings remain open.
+
 23 October 2026: [Learner sign-up and review flow](learner-review-and-signup.md)
 adds hosted verified-email registration, inline version-bound review drafts,
 stable saved-result navigation and animation of confirmed recovery progress.

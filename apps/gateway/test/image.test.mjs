@@ -139,9 +139,9 @@ function runGateway(challenge, secret, certificate, expectTlsFailure = false) {
       '--cpus',
       '0.25',
       '--memory',
-      '64m',
+      '128m',
       '--memory-swap',
-      '64m',
+      '128m',
       '--pids-limit',
       '32',
       '--tmpfs',
@@ -165,6 +165,9 @@ function runGateway(challenge, secret, certificate, expectTlsFailure = false) {
   try {
     assert.equal(id.length, 64);
     const result = run('docker', ['start', '--attach', name], 45_000);
+    if (result.status !== 0) {
+      result.stderr += '\nContainer state: ' + success(docker('inspect', '--format', '{{json .State}}', name));
+    }
     return JSON.parse(success(result));
   } finally {
     removeContainer(name);
@@ -191,9 +194,9 @@ function runTerminalClient(challenge, recordingMode) {
       '--cpus',
       '0.25',
       '--memory',
-      '64m',
+      '128m',
       '--memory-swap',
-      '64m',
+      '128m',
       '--pids-limit',
       '32',
       '--tmpfs',
@@ -213,6 +216,9 @@ function runTerminalClient(challenge, recordingMode) {
   try {
     assert.equal(id.length, 64);
     const result = run('docker', ['start', '--attach', name], recordingMode === undefined ? 30_000 : 60_000);
+    if (result.status !== 0) {
+      result.stderr += '\nContainer state: ' + success(docker('inspect', '--format', '{{json .State}}', name));
+    }
     return JSON.parse(success(result));
   } finally {
     removeContainer(name);

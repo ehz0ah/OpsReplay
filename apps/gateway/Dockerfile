@@ -3,6 +3,12 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+RUN install -d /runtime-files/var/lib/dpkg/status.d \
+    && cp --parents -L /usr/lib/*-linux-gnu/libstdc++.so.6 \
+       /usr/lib/*-linux-gnu/libgcc_s.so.1 /usr/share/doc/gcc-12-base/copyright /runtime-files \
+    && dpkg-query -s libstdc++6 > /runtime-files/var/lib/dpkg/status.d/libstdc++6 \
+    && dpkg-query -s libgcc-s1 > /runtime-files/var/lib/dpkg/status.d/libgcc-s1 \
+    && dpkg-query -s gcc-12-base > /runtime-files/var/lib/dpkg/status.d/gcc-12-base
 
 FROM base AS build
 WORKDIR /build
@@ -16,7 +22,13 @@ COPY apps/gateway/src/ apps/gateway/src/
 COPY scripts/build-gateway.mjs scripts/build-gateway.mjs
 RUN node scripts/build-gateway.mjs
 
-FROM base AS runtime
+FROM gcr.io/distroless/base-nossl-debian12:nonroot@sha256:be40c00dfabd86576d92666e87e406714d5618342de1a0c213ad232de255172e AS runtime
+COPY --from=base /runtime-files/ /
+COPY --from=base /usr/local/bin/node /usr/local/bin/node
+COPY --from=base /usr/local/LICENSE /usr/share/doc/node/LICENSE
+# Preserve the existing node UID/GID, including ECS overrides by user name.
+COPY --from=base /etc/passwd /etc/group /etc/
+ENV PATH=/usr/local/bin:/usr/bin:/bin
 WORKDIR /app
 COPY --from=build /build/dist/gateway/runtime.cjs /app/runtime.cjs
 USER node

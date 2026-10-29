@@ -65,6 +65,16 @@ file patterns through CDK.
 
 ## Checkpoint image findings
 
+The [minimal Node runtime change](docs/decisions/minimal-node-runtime.md) removes
+unused util-linux and system-zlib packages from Gateway and Monitor candidates.
+Node's version and UID/GID remain unchanged. The final local OS scans report zero
+HIGH/CRITICAL for the Gateway and both Monitor targets, with 21 MEDIUM, 11 LOW and
+three UNKNOWN findings in each. The metadata remains available to scanners.
+These local results are not new ECR scans or production clearance. The Challenge
+image is unchanged and its reported findings remain open.
+
+### 29 October checkpoint and initial triage
+
 The [29 October AWS checkpoint](docs/checkpoints/2026-10-29-saas-aws.md) scanned six
 exact published images. Each Gateway and Monitor image had seven HIGH findings;
 each Challenge image had 27. No CRITICAL finding was reported in those scans.
@@ -72,7 +82,7 @@ The explicit exception covered only two controlled attempts and those exact imag
 It has ended and does not approve another test window, external pilot or production.
 Temporary repositories and images were removed after the run.
 
-A fresh local build on 29 October still resolves the same reported HIGH-package
+The initial fresh local build on 29 October still resolved the same reported HIGH-package
 versions. The Dockerfiles already apply available Bookworm updates. Vim Tiny omits
 several affected features and plugins, and the Challenge has no DIGEST-MD5 plugin.
 These facts do not clear the entire source-package finding set. Swap recovery remains

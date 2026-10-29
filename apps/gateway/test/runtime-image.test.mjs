@@ -13,6 +13,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { WebSocket } from 'ws';
+import { verifyRuntimeImage } from '../../../scripts/runtime-image-check.mjs';
 
 const dynamoImage = 'amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4';
 const gatewayImage = process.env.OPSREPLAY_GATEWAY_IMAGE ?? 'opsreplay/gateway-recording:dev';
@@ -107,20 +108,8 @@ function terminalError(address, sessionId, ticket) {
   });
 }
 
-test('the gateway runtime image includes the available Debian Perl security update', () => {
-  const version = docker(
-    'run',
-    '--rm',
-    '--network',
-    'none',
-    '--entrypoint',
-    'sh',
-    gatewayImage,
-    '-c',
-    "version=$(dpkg-query -W -f='${Version}' perl-base) && " +
-      'dpkg --compare-versions "$version" ge "5.36.0-7+deb12u4" && printf "%s" "$version"',
-  );
-  assert.notEqual(version, '');
+test('the gateway runtime preserves Node and identity without unused vulnerable OS packages', (t) => {
+  t.diagnostic(JSON.stringify(verifyRuntimeImage(gatewayImage)));
 });
 
 test('the gateway runtime image discovers work and stops cleanly', { timeout: 60_000 }, async () => {
