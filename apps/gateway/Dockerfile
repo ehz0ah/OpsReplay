@@ -1,6 +1,7 @@
 FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS base
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tzdata \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 RUN install -d /runtime-files/var/lib/dpkg/status.d \
@@ -22,13 +23,24 @@ COPY apps/gateway/src/ apps/gateway/src/
 COPY scripts/build-gateway.mjs scripts/build-gateway.mjs
 RUN node scripts/build-gateway.mjs
 
-FROM gcr.io/distroless/base-nossl-debian12:nonroot@sha256:be40c00dfabd86576d92666e87e406714d5618342de1a0c213ad232de255172e AS runtime
-COPY --from=base /runtime-files/ /
+FROM gcr.io/distroless/base-nossl-debian12:nonroot@sha256:be40c00dfabd86576d92666e87e406714d5618342de1a0c213ad232de255172e AS runtime-os
+FROM base AS runtime-files
+COPY --from=runtime-os / /runtime-files/
+RUN rm -rf /runtime-files/etc/ssl/certs /runtime-files/usr/share/ca-certificates /runtime-files/usr/share/zoneinfo \
+    && cp -a --parents /etc/ssl/certs /etc/ca-certificates.conf /usr/share/ca-certificates /usr/share/zoneinfo \
+       /usr/share/doc/ca-certificates /usr/share/doc/tzdata /runtime-files \
+    && dpkg-query -s ca-certificates > /runtime-files/var/lib/dpkg/status.d/ca-certificates \
+    && dpkg-query -s tzdata > /runtime-files/var/lib/dpkg/status.d/tzdata \
+    && cp /var/lib/dpkg/info/ca-certificates.md5sums /runtime-files/var/lib/dpkg/status.d/ca-certificates.md5sums \
+    && cp /var/lib/dpkg/info/tzdata.md5sums /runtime-files/var/lib/dpkg/status.d/tzdata.md5sums
+FROM scratch AS runtime
+COPY --from=runtime-files /runtime-files/ /
 COPY --from=base /usr/local/bin/node /usr/local/bin/node
 COPY --from=base /usr/local/LICENSE /usr/share/doc/node/LICENSE
 # Preserve the existing node UID/GID, including ECS overrides by user name.
 COPY --from=base /etc/passwd /etc/group /etc/
-ENV PATH=/usr/local/bin:/usr/bin:/bin
+ENV PATH=/usr/local/bin:/usr/bin:/bin \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /app
 COPY --from=build /build/dist/gateway/runtime.cjs /app/runtime.cjs
 USER node

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 const check = String.raw`
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { X509Certificate } = require('node:crypto');
 const path = require('node:path');
 const tls = require('node:tls');
 const zlib = require('node:zlib');
@@ -21,12 +22,19 @@ assert.equal(process.version, 'v22.23.3');
 assert.equal(process.getuid(), 1000);
 assert.equal(process.getgid(), 1000);
 assert.ok(tls.rootCertificates.length > 0);
-assert.ok(fs.existsSync('/etc/ssl/certs/ca-certificates.crt'));
-tls.createSecureContext();
+assert.equal(process.env.SSL_CERT_FILE, '/etc/ssl/certs/ca-certificates.crt');
+const ca = fs.readFileSync(process.env.SSL_CERT_FILE, 'utf8');
+const certificates = ca.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
+assert.ok(certificates.length > 100, 'System CA bundle must contain the current trust store');
+for (const certificate of certificates) new X509Certificate(certificate);
+tls.createSecureContext({ ca });
+assert.ok(fs.existsSync('/usr/share/zoneinfo/Asia/Singapore'));
+process.env.TZ = 'Asia/Singapore';
+assert.equal(new Date('2026-10-29T00:00:00Z').getTimezoneOffset(), -480);
 const payload = Buffer.from('opsreplay-runtime-compression');
 assert.deepEqual(zlib.gunzipSync(zlib.gzipSync(payload)), payload);
 console.log(JSON.stringify({ node: process.version, uid: process.getuid(), gid: process.getgid(),
-  packages: packages.sort(), nodeZlib: process.versions.zlib }));
+  packages: packages.sort(), caCertificates: certificates.length, nodeZlib: process.versions.zlib }));
 `;
 
 export function verifyRuntimeImage(image) {
