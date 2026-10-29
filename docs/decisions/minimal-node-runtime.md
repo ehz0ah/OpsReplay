@@ -13,10 +13,19 @@ the system zlib library. Learners use a separate Challenge image.
 ## Change
 
 Build bundles with the existing pinned Node 22.23.3 Bookworm image and package
-updates. Run them on a digest-pinned distroless `base-nossl-debian12` image. Copy
-the exact Node binary, its required libstdc++/libgcc libraries and their truthful
+updates. Assemble the runtime root from digest-pinned distroless
+`base-nossl-debian12`. Replace its older CA certificates and timezone files with
+current Bookworm data before copying that root into the final `scratch` stage.
+Copy the exact Node binary, its required libstdc++/libgcc libraries and their truthful
 Debian package records. Preserve distribution metadata and licence notices.
 Do not remove metadata to hide scanner findings.
+
+The build explicitly installs CA certificates, which the slim Node base omits.
+The copied CA/timezone data, package records, file hashes and licence notices all
+come from those installed packages. The final runtime contains CA certificates
+`20250419~deb12u2` and timezone data `2026e-0+deb12u1`. Removed certificates and
+older zoneinfo files do not remain in the assembled root. Build-only OpenSSL,
+package scripts and shell utilities do not enter that root.
 
 The runtime omits util-linux, system zlib, Perl, the package manager and shell.
 It also omits the unused system OpenSSL library. Node's built-in TLS and compression
@@ -38,8 +47,9 @@ Write-denial checks require actual `EROFS` or `EACCES`, not a missing `touch` bi
 ## Verification and limits
 
 The image check verifies exact Node version, UID/GID, distribution metadata,
-unwanted package and utility absence, TLS setup and compression. Gateway runtime
-tests cover DynamoDB Local discovery, health, ticket consumption, failure handling
+unwanted package and utility absence, parsing of all 148 system CA certificates,
+TLS setup with that trust store, Singapore timezone behaviour and compression.
+Gateway runtime tests cover DynamoDB Local discovery, health, ticket consumption, failure handling
 and shutdown. Real Challenge/Monitor suites exercise startup rejection, TLS,
 read-only storage, captures, traps, alternative repairs and sustained recovery.
 
@@ -57,7 +67,12 @@ No Gateway or Monitor deployment allocation, queue bound or timeout was increase
 These fixtures are not capacity or memory-performance measurements.
 
 Trivy 0.76.1 scanned the final Gateway, reference Monitor and DNS Monitor candidates:
-each had zero HIGH/CRITICAL, 21 MEDIUM, 11 LOW and three UNKNOWN OS findings.
+each had zero HIGH/CRITICAL/UNKNOWN, 21 MEDIUM and 11 LOW OS findings.
+No remaining finding has a listed fixed version. Updating CA/timezone payloads
+removed the three UNKNOWN advisories in the earlier minimal candidate. A comparison
+with the full Node baseline using the same scanner database found no introduced
+package/advisory pair in these final candidates. This is a local OS comparison,
+not a comparison of ECR and Trivy severity counts.
 This scan used preserved Debian metadata. It did not scan bundled application
 dependencies or establish Node's complete security status. The unchanged production
 npm lockfile audit separately reported no known findings.

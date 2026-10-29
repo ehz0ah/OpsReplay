@@ -68,8 +68,11 @@ file patterns through CDK.
 The [minimal Node runtime change](docs/decisions/minimal-node-runtime.md) removes
 unused util-linux and system-zlib packages from Gateway and Monitor candidates.
 Node's version and UID/GID remain unchanged. The final local OS scans report zero
-HIGH/CRITICAL for the Gateway and both Monitor targets, with 21 MEDIUM, 11 LOW and
-three UNKNOWN findings in each. The metadata remains available to scanners.
+HIGH/CRITICAL/UNKNOWN for the Gateway and both Monitor targets, with 21 MEDIUM and
+11 LOW findings in each. No remaining finding has a listed fixed version in this
+scan. Current CA/timezone payloads and matching records replace the older files
+that introduced three UNKNOWN advisories in the earlier candidate. The metadata
+remains available to scanners.
 These local results are not new ECR scans or production clearance. The Challenge
 image is unchanged and its reported findings remain open.
 
