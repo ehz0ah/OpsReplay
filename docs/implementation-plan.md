@@ -11,24 +11,26 @@ removed. The durable stack retains data resources. See the
 The [23 October learner checkpoint](checkpoints/2026-10-23-learner-experience.md)
 adds verified-email sign-up, inline review drafts/results, the DNS Challenge and
 one confirmed assistant proposal. The [26 October status](checkpoints/2026-10-26-saas-local.md)
-records locally checked SaaS changes and the remaining browser, AWS and evaluation
-gates. No runtime is currently deployed.
+records the local SaaS changes. The [29 October checkpoint](checkpoints/2026-10-29-saas-aws.md)
+checks those changes on AWS, including lost-response recovery, both Challenges,
+recording pagination and 450 bounded GETs. Temporary resources were removed. Image
+risks, remaining hosted failures, the assistant benchmark, costs and pilot stay open.
 
 ## Work packages
 
-| ID  | State                           | Work                                                                                      | Completion evidence                                                                                         |
-| --- | ------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| I01 | Implemented                     | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                        |
-| I02 | Implemented                     | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                        |
-| I03 | Core implemented                | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local tests and AWS browser resume/recording; assistant proposals remain with I08                           |
-| I04 | Implemented                     | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Local failure-injection tests and two browser-started AWS attempts                                          |
-| I05 | Browser checkpoint complete     | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [17 October checkpoint](checkpoints/2026-10-17-browser.md). Load and remaining failure cases are unverified |
-| I06 | Browser checked on AWS          | Browser terminal, dashboard, timeline, hints, and outcome                                 | Real alert-to-outcome flow; command matching and telemetry follow-ups remain                                |
-| I07 | Browser checked on AWS          | Debrief, score components, playback, and retry                                            | Real debrief, recorded terminal, metrics/captures and fresh retry; expiry/pagination limits remain          |
-| I08 | Challenge assistant implemented | Optional assistant and confirmed proposals; Code Review assistant remains planned         | Local boundary/recovery tests and one AWS proposal; model benchmark remains pending                         |
-| I09 | Learner workflows implemented   | Catalogue, account, plans, Learn, inline Code Review and History                          | Local access tests and 23 October browser checkpoint; new SaaS/upgrade cloud checks remain pending          |
-| I10 | DNS Challenge implemented       | Two implemented Challenges; connection-exhaustion draft remains blocked                   | 23 October DNS browser checkpoint and full 20-repeat local reports; new AWS acceptance remains pending      |
-| I11 | Evaluation in progress          | System and user evaluation, cost comparison, demo, and report                             | Tools and pilot materials exist; full results, measured costs and participant study remain pending          |
+| ID  | State                            | Work                                                                                      | Completion evidence                                                                                                |
+| --- | -------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| I01 | Implemented                      | Reference Challenge image, planted fault, shell markers, and terminal server              | Local image tests and AWS checkpoint                                                                               |
+| I02 | Implemented                      | Monitor traffic, validators, probes, captures, and authenticated control                  | Local image tests and AWS checkpoint                                                                               |
+| I03 | Core implemented                 | Gateway tickets, terminal relay, live telemetry, recording, and heartbeats                | Local tests and AWS browser resume/recording; assistant proposals remain with I08                                  |
+| I04 | Implemented                      | Start, readiness, end, time limit, sweep, finalisation, and reconciliation                | Local failure-injection tests and two browser-started AWS attempts                                                 |
+| I05 | Grouped checkpoint complete      | VPC, endpoints, ECS, digest-pinned tasks, Cognito, CloudFront, internal ALB, and teardown | [29 October checkpoint](checkpoints/2026-10-29-saas-aws.md). Image gate, capacity and remaining failures stay open |
+| I06 | Browser checked on AWS           | Browser terminal, dashboard, timeline, hints, and outcome                                 | Real alert-to-outcome flow; command matching and telemetry follow-ups remain                                       |
+| I07 | Browser checked on AWS           | Debrief, score components, playback, and retry                                            | Complete exports for both Challenges; pagination, expired-link refresh and browser seeking checked                 |
+| I08 | Challenge assistant implemented  | Optional assistant and confirmed proposals; Code Review assistant remains planned         | Local boundary/recovery tests and one AWS proposal; model benchmark remains pending                                |
+| I09 | Learner workflows checked on AWS | Catalogue, account, plans, Learn, inline Code Review and History                          | Verified-email sign-up, demo Pro, owner boundaries, inline drafts/results and response recovery checked            |
+| I10 | DNS Challenge checked on AWS     | Two implemented Challenges; connection-exhaustion draft remains blocked                   | Full 20-repeat local reports; AWS partial repair, restart trap, recovery, hint and complete playback checked       |
+| I11 | Evaluation in progress           | System and user evaluation, cost comparison, demo, and report                             | Tools and pilot materials exist; full results, measured costs and participant study remain pending                 |
 
 The browser and bootstrap reads share the public contracts. AWS verification remains
 separate from local implementation. Shared contract changes are coordinated, not

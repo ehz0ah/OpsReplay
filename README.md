@@ -9,31 +9,32 @@ and session playback.
 
 ## Current status
 
-**Current phase, 26 October 2026:** the learner workflows are implemented. The
-23 October developer checkpoint checked hosted sign-up, inline Code Review,
-Challenge investigation, recovery, debrief and playback against AWS. No ECS
-runtime remains. The new SaaS identity, account page and default-off demo upgrade
-are locally checked, but their browser and grouped AWS validation are pending.
+**Current phase, 29 October 2026:** the grouped AWS checkpoint checked verified-email
+sign-up, the SaaS interface, no-payment Pro activation, inline Code Review, both
+Challenges, debrief and playback. All temporary resources from that campaign were
+removed. Image findings remain unresolved. The assistant benchmark, additional hosted
+failure paths, learner pilot and final cost comparison remain pending.
 
-| Area                                     | Status                                                                               |
-| ---------------------------------------- | ------------------------------------------------------------------------------------ |
-| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                  |
-| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS          |
-| Web application and account APIs         | Real Cognito/API/browser flow checked for one learner with two sequential attempts   |
-| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                    |
-| Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata            |
-| Code Review reads and submissions        | Implemented; Free review checked in the 23 October browser checkpoint                |
-| Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint      |
-| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                  |
-| SaaS identity and demo upgrade           | Implemented and locally checked; rendered and AWS validation pending                 |
-| Scenario and system evaluation           | Full local repeats passed for both Challenges; load, costs and learner pilot pending |
+| Area                                     | Status                                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                 |
+| Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS         |
+| Web application and account APIs         | Fresh inbox sign-up checked; two test learners used for access and ownership checks |
+| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                   |
+| Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata           |
+| Code Review reads and submissions        | Inline editing, draft persistence, saved result and lost-response recovery checked  |
+| Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint     |
+| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                 |
+| SaaS identity and demo upgrade           | Checked on AWS; default-off, fixed-window grant, no payment or subscription created |
+| Scenario and system evaluation           | Full local repeats and 450 AWS GETs passed; capacity, final costs and pilot pending |
 
 The [17 October browser checkpoint](docs/checkpoints/2026-10-17-browser.md) records
 the revision, results, findings and limits. It does not establish classroom
 capacity, learning effectiveness or complete failure-path coverage.
 See the [23 October learner checkpoint](docs/checkpoints/2026-10-23-learner-experience.md)
-and [26 October local status](docs/checkpoints/2026-10-26-saas-local.md) for later
-evidence, current publication limits and remaining gates.
+and [26 October local status](docs/checkpoints/2026-10-26-saas-local.md) for earlier
+evidence. The [29 October AWS checkpoint](docs/checkpoints/2026-10-29-saas-aws.md)
+records the latest results, image risks, cleanup and remaining gates.
 
 ## Product scope
 

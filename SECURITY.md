@@ -65,6 +65,28 @@ file patterns through CDK.
 
 ## Checkpoint image findings
 
+The [29 October AWS checkpoint](docs/checkpoints/2026-10-29-saas-aws.md) scanned six
+exact published images. Each Gateway and Monitor image had seven HIGH findings;
+each Challenge image had 27. No CRITICAL finding was reported in those scans.
+The explicit exception covered only two controlled attempts and those exact images.
+It has ended and does not approve another test window, external pilot or production.
+Temporary repositories and images were removed after the run.
+
+A fresh local build on 29 October still resolves the same reported HIGH-package
+versions. The Dockerfiles already apply available Bookworm updates. Vim Tiny omits
+several affected features and plugins, and the Challenge has no DIGEST-MD5 plugin.
+These facts do not clear the entire source-package finding set. Swap recovery remains
+an open Vim concern. The zlib affected-range discrepancy also remains open. See the
+checkpoint for exact versions and source references.
+
+Before another runtime campaign, inspect fresh scans of its exact image digests,
+apply available fixes, and record unresolved findings. Any new temporary exception
+needs explicit owner approval for its targets and window. Do not suppress findings,
+remove supported investigation tools just to reduce counts, or treat isolation as
+proof that every finding is harmless. The local builds are not new ECR scan results.
+
+### Historical 10 October findings
+
 The first ECR scan on 10 October 2026 reported six critical findings in each Node runtime
 image. Five were attributed to the Debian Perl source package at
 `5.36.0-7+deb12u3`. One was GnuTLS `CVE-2026-95210` at `3.7.9-2+deb12u7`. The Challenge
