@@ -217,8 +217,12 @@ Inspect alarms, dead-letter queues, the lifecycle and recording indexes, ECS tas
 retained table and bucket contents. Do not use reserved concurrency zero as a drain
 operation and do not clear locks or records manually.
 
-Only then set `EnableGatewayPath=false`, review the diff, and deploy. Wait for CloudFront
-distribution and VPC-origin removal before disabling or destroying
+Only then set `EnableGatewayPath=false` and `EnableDemoUpgrade=false`, review the
+diff, and deploy. Keep all other parameters unchanged. CloudFormation rejects
+runtime shutdown while demo activation remains enabled. Disabling activation does
+not delete existing plan grants, users, results or recordings.
+
+Wait for CloudFront distribution and VPC-origin removal before disabling or destroying
 `OpsReplayTerminalEdgeProtection` in `us-east-1`. Check that no other distribution uses
 the ACL. Remove disposable foundation resources only under their separate ownership
 procedure. Keep `OpsReplayDurableResources`; its table, buckets, and user pool are not
