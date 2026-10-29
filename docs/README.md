@@ -38,6 +38,7 @@ origins, identity setup and signed-recording CORS.
 | [17 October AWS browser checkpoint](checkpoints/2026-10-17-browser.md)        | Verified browser flow, findings and limits               |
 | [23 October learner checkpoint](checkpoints/2026-10-23-learner-experience.md) | Sign-up, review, Challenge and assistant checks          |
 | [26 October local SaaS status](checkpoints/2026-10-26-saas-local.md)          | Current implementation, publication and unverified gates |
+| [29 October AWS SaaS checkpoint](checkpoints/2026-10-29-saas-aws.md)          | Grouped hosted results, image risks, cleanup and limits  |
 | [Decision register](decisions/README.md)                                      | Accepted decisions and later refinements                 |
 
 Decision files preserve the reason and scope of an increment. Their historical status
