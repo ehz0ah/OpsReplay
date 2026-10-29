@@ -10,6 +10,7 @@ import test from 'node:test';
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { ReferenceEnvironmentStack } from '../../../infra/reference-environment-stack.js';
+import { verifyRuntimeImage } from '../../../scripts/runtime-image-check.mjs';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const challengeId = process.env.OPSREPLAY_TEST_CHALLENGE ?? 'wrong-upstream-port';
@@ -156,27 +157,23 @@ async function eventually(check, message, timeoutMs = 20_000) {
   assert.fail(message);
 }
 
-test('the Monitor runtime image includes the available Debian Perl security update', () => {
-  const version = success(
+test('the Monitor runtime preserves Node and identity without unused vulnerable OS packages', (t) => {
+  t.diagnostic(JSON.stringify(verifyRuntimeImage(monitorImage)));
+});
+
+test('reference runtime contains only the private manifest and runtime, not test clients or credentials', () => {
+  const bytes = success(
     docker(
       'run',
       '--rm',
       '--network',
       'none',
       '--entrypoint',
-      'sh',
+      'node',
       monitorImage,
-      '-c',
-      "version=$(dpkg-query -W -f='${Version}' perl-base) && " +
-        'dpkg --compare-versions "$version" ge "5.36.0-7+deb12u4" && printf "%s" "$version"',
+      '-e',
+      'process.stdout.write(require("node:fs").readFileSync("/app/challenge.json", "utf8"))',
     ),
-  );
-  assert.notEqual(version, '');
-});
-
-test('reference runtime contains only the private manifest and runtime, not test clients or credentials', () => {
-  const bytes = success(
-    docker('run', '--rm', '--network', 'none', '--entrypoint', 'cat', monitorImage, '/app/challenge.json'),
   );
   assert.deepEqual(JSON.parse(bytes), manifest);
   if (monitorImage !== clientImage) {
@@ -187,10 +184,12 @@ test('reference runtime contains only the private manifest and runtime, not test
         '--network',
         'none',
         '--entrypoint',
-        'sh',
+        'node',
         monitorImage,
-        '-ec',
-        'test ! -e /app/client.cjs && test ! -e /app/capture-check.cjs',
+        '-e',
+        'const fs = require("node:fs"); const assert = require("node:assert/strict"); ' +
+          'for (const path of ["/app/client.cjs", "/app/capture-check.cjs", "/test-tools"]) ' +
+          'assert.equal(fs.existsSync(path), false);',
       ),
     );
   }
@@ -598,9 +597,17 @@ test(
     assert.equal(inspect.HostConfig.Init, true);
     assert.ok(inspect.HostConfig.CapDrop.includes('ALL'));
     assert.equal(Object.keys(inspect.HostConfig.PortBindings ?? {}).length, 0);
-    assert.equal(success(exec(monitor.id, 'id', '-u')), '1000');
-    assert.notEqual(exec(monitor.id, 'touch', '/opsreplay/watched/monitor-write-test').status, 0);
-    assert.notEqual(exec(monitor.id, 'touch', '/tmp/monitor-write-test').status, 0);
+    assert.equal(success(exec(monitor.id, 'node', '-e', 'process.stdout.write(String(process.getuid()))')), '1000');
+    success(
+      exec(
+        monitor.id,
+        'node',
+        '-e',
+        'const fs = require("node:fs"); const assert = require("node:assert/strict"); ' +
+          'for (const path of ["/opsreplay/watched/monitor-write-test", "/tmp/monitor-write-test"]) ' +
+          'assert.throws(() => fs.writeFileSync(path, "probe"), error => ["EROFS", "EACCES"].includes(error.code));',
+      ),
+    );
     success(exec(shop, 'test', '!', '-e', '/app/challenge.json'));
     const privateEnvironment = success(exec(shop, 'cat', '/proc/1/environ'));
     assert.equal(privateEnvironment.includes('OPSREPLAY_MONITOR_SECRET='), false);
