@@ -18,6 +18,12 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+31 October 2026: assistant benchmark reports distinguish attempted and completed
+latency, first visible streamed text, failed calls, missing usage and reserved cost.
+An exact-budget final reply completes the run; another call still requires its
+reservation to fit. These are offline tooling changes, not provider-cap proof or
+measured model accuracy. See [evaluation tools](../runbooks/evaluation-tools.md).
+
 31 October 2026: [Neobrutalist discovery pages](neobrutalist-discovery.md) apply the
 approved visual direction to Home, the server-backed Challenge catalogue, and shared
 navigation. Search stays within the loaded page; access and session behaviour remain

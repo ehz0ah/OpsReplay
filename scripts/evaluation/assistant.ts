@@ -80,14 +80,14 @@ export async function benchmarkAssistant(
         break;
       }
       const started = performance.now();
-      let firstDeltaMs: number | null = null;
+      const timing: { firstDeltaMs: number | null } = { firstDeltaMs: null };
       try {
         const result = await client.reply(
           item.context,
           [],
           item.question,
-          () => {
-            firstDeltaMs ??= performance.now() - started;
+          (text) => {
+            if (text.trim().length) timing.firstDeltaMs ??= performance.now() - started;
           },
           AbortSignal.timeout(45000),
         );
@@ -99,7 +99,15 @@ export async function benchmarkAssistant(
         ) {
           stopped = 'usage_missing';
           estimatedUsd += reserve;
-          results.push({ id: item.id, repeat, status: 'usage_missing', durationMs: performance.now() - started });
+          results.push({
+            id: item.id,
+            repeat,
+            status: 'usage_missing',
+            durationMs: performance.now() - started,
+            firstDeltaMs: timing.firstDeltaMs,
+            estimatedUsd: reserve,
+            costBasis: 'reservation',
+          });
           break;
         }
         const cost =
@@ -113,9 +121,10 @@ export async function benchmarkAssistant(
           repeat,
           status: 'completed',
           durationMs: performance.now() - started,
-          firstDeltaMs,
+          firstDeltaMs: timing.firstDeltaMs,
           usage: result.usage,
           estimatedUsd: cost,
+          costBasis: 'reported_usage',
           text: result.text,
           proposal: result.proposal ?? null,
           forbiddenTextMatches: item.forbiddenText.filter((v) => text.toLowerCase().includes(v.toLowerCase())),
@@ -128,17 +137,29 @@ export async function benchmarkAssistant(
             destructiveSuggestion: null,
           },
         });
-        if (estimatedUsd >= config.maxEstimatedUsd) {
+        if (estimatedUsd > config.maxEstimatedUsd) {
           stopped = 'estimated_budget';
           break;
         }
       } catch {
         estimatedUsd += reserve;
         stopped = 'provider_failure';
-        results.push({ id: item.id, repeat, status: 'failed', durationMs: performance.now() - started });
+        results.push({
+          id: item.id,
+          repeat,
+          status: 'failed',
+          durationMs: performance.now() - started,
+          firstDeltaMs: timing.firstDeltaMs,
+          estimatedUsd: reserve,
+          costBasis: 'reservation',
+        });
         break;
       }
     }
+  const completed = results.filter((result) => result.status === 'completed');
+  const providerFailures = results.filter((result) => result.status === 'failed').length;
+  const usageMissing = results.filter((result) => result.status === 'usage_missing').length;
+  const plannedAttempts = cases.length * config.repeats;
   await write({
     schemaVersion: 1,
     kind: 'assistant-labelled-benchmark',
@@ -148,8 +169,29 @@ export async function benchmarkAssistant(
     repeats: config.repeats,
     prices: { inputUsdPerMillion: config.inputUsdPerMillion, outputUsdPerMillion: config.outputUsdPerMillion },
     estimatedUsd,
+    maxEstimatedUsd: config.maxEstimatedUsd,
     stopped,
+    summary: {
+      plannedAttempts,
+      attempted: results.length,
+      completed: completed.length,
+      providerFailures,
+      usageMissing,
+      notAttempted: plannedAttempts - results.length,
+      providerFailureRate: results.length ? providerFailures / results.length : null,
+      incompleteRate: results.length ? (results.length - completed.length) / results.length : null,
+    },
+    costAccounting: {
+      reportedUsageUsd: completed.reduce((sum, result) => sum + result.estimatedUsd, 0),
+      reservedUsd: results
+        .filter((result) => result.costBasis === 'reservation')
+        .reduce((sum, result) => sum + result.estimatedUsd, 0),
+    },
     durationMs: distribution(results.map((r) => r.durationMs)),
+    completedDurationMs: distribution(completed.map((result) => result.durationMs)),
+    firstDeltaMs: distribution(
+      completed.map((result) => result.firstDeltaMs).filter((value): value is number => value !== null),
+    ),
     results,
     limits: [
       'Uses the production provider adapter with synthetic visible context. Not the deployed API round trip.',
