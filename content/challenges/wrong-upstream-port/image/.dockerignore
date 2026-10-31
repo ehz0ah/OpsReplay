@@ -1,4 +1,6 @@
 *
 !Dockerfile
+!security/
+!security/**
 !rootfs/
 !rootfs/**

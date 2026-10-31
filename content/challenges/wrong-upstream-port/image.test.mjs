@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { verifyEditorCompatibility } from '../../../scripts/editor-image-check.mjs';
 
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
@@ -37,6 +38,10 @@ const terminal = (id, ...args) =>
   });
 // Pin the built image for the entire run, even if another build changes the dev tag.
 const imageId = success(docker('image', 'inspect', imageTag, '--format', '{{.Id}}'));
+
+test('editor backport preserves aliases, Unicode editing and valid swap recovery', (t) => {
+  t.diagnostic(JSON.stringify(verifyEditorCompatibility(imageId)));
+});
 
 process.once('exit', () => {
   for (const id of containers) docker('rm', '--force', id);
