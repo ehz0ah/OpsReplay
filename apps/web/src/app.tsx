@@ -1,10 +1,10 @@
 import { Button } from '@mantine/core';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 const DebriefPage = lazy(() => import('./pages/debrief.js').then((module) => ({ default: module.DebriefPage })));
 const PricingPage = lazy(() => import('./pages/pricing.js').then((module) => ({ default: module.PricingPage })));
 const AccountPage = lazy(() => import('./pages/account.js').then((module) => ({ default: module.AccountPage })));
 const UpgradePage = lazy(() => import('./pages/upgrade.js').then((module) => ({ default: module.UpgradePage })));
-import { CataloguePage } from './pages/catalogue.js';
+const CataloguePage = lazy(() => import('./pages/catalogue.js').then((module) => ({ default: module.CataloguePage })));
 import { HistoryPage, SavedReviewPage } from './pages/history.js';
 import { ReviewCatalogue, ReviewPage } from './pages/review.js';
 import { LearnCatalogue, LearnPage } from './pages/learn.js';
@@ -18,16 +18,20 @@ import { WorkingState } from './components/working-state.js';
 export function App() {
   const path = usePath();
   const auth = useAuth();
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => setNavigationOpen(false), [path]);
   return (
     <>
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <header className="site-header">
+      <header className="site-header neo-header">
         <a
           href="/"
           onClick={(event) => {
             event.preventDefault();
+            setNavigationOpen(false);
             navigate('/');
           }}
           className="wordmark"
@@ -35,7 +39,34 @@ export function App() {
           <BrandMark />
           OpsReplay
         </a>
-        <nav className="actions" aria-label="Main navigation">
+        <button
+          className="navigation-toggle"
+          ref={menuButton}
+          type="button"
+          aria-controls="site-navigation"
+          aria-expanded={navigationOpen}
+          onClick={() => setNavigationOpen((open) => !open)}
+        >
+          Menu <span aria-hidden="true">{navigationOpen ? '−' : '+'}</span>
+        </button>
+        <nav
+          className={`actions site-links${navigationOpen ? ' is-open' : ''}`}
+          id="site-navigation"
+          aria-label="Main navigation"
+          onClickCapture={(event) => {
+            if (navigationOpen && event.target instanceof Element && event.target.closest('a, button')) {
+              setNavigationOpen(false);
+              if (menuButton.current?.offsetParent) menuButton.current.focus();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (navigationOpen && event.key === 'Escape') {
+              event.preventDefault();
+              setNavigationOpen(false);
+              if (menuButton.current?.offsetParent) menuButton.current.focus();
+            }
+          }}
+        >
           <a
             className="site-navigation"
             href="/pricing"
@@ -111,16 +142,24 @@ export function App() {
           >
             {auth.loading ? 'Connecting…' : auth.identity ? 'Sign out' : 'Sign in'}
           </Button>
-          {!auth.loading && !auth.identity && <Button onClick={() => void auth.signUp()}>Create account</Button>}
+          {!auth.loading && !auth.identity && (
+            <Button className="header-create-account" onClick={() => void auth.signUp()}>
+              Create account
+            </Button>
+          )}
         </nav>
       </header>
       <main
         id="main"
         tabIndex={-1}
         className={
-          ['/', '/challenges', '/pricing', '/upgrade', '/account'].includes(path)
-            ? 'page catalogue-page'
-            : 'page workspace-page'
+          path === '/'
+            ? 'page public-page public-home'
+            : path === '/challenges'
+              ? 'page public-page public-challenges'
+              : ['/pricing', '/upgrade', '/account'].includes(path)
+                ? 'page catalogue-page'
+                : 'page workspace-page'
         }
       >
         {auth.message && (
@@ -130,14 +169,6 @@ export function App() {
         )}
         {!path.startsWith('/sessions/') && path !== '/challenges' && path !== '/auth/callback' && (
           <CurrentAttemptNotice key={path + (auth.identity?.sub ?? 'public')} />
-        )}
-        {path === '/challenges' && (
-          <>
-            <h1>Challenges</h1>
-            <p className="intro">
-              Investigate a live failure in an isolated environment. Repair it, then review your evidence and response.
-            </p>
-          </>
         )}
         {path === '/' ? (
           <HomePage />
@@ -154,7 +185,9 @@ export function App() {
             <UpgradePage key={auth.identity?.sub ?? 'public'} />
           </Suspense>
         ) : path === '/challenges' ? (
-          <CataloguePage key={auth.identity?.sub ?? 'public'} />
+          <Suspense fallback={<WorkingState title="Opening Challenges" />}>
+            <CataloguePage key={auth.identity?.sub ?? 'public'} />
+          </Suspense>
         ) : path === '/history' ? (
           <HistoryPage key={auth.identity?.sub ?? 'public'} />
         ) : /^\/review-submissions\/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(

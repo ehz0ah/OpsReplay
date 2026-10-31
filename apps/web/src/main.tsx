@@ -15,6 +15,7 @@ import '@mantine/core/styles/CloseButton.css';
 import '@mantine/core/styles/Progress.css';
 import '@mantine/core/styles/Tabs.css';
 import '@mantine/core/styles/Input.css';
+import '@mantine/core/styles/Popover.css';
 import '@mantine/core/styles/Combobox.css';
 import '@mantine/core/styles/ScrollArea.css';
 import '@mantine/core/styles/InlineInput.css';
@@ -32,6 +33,7 @@ import { loadConfig } from './config.js';
 import { WorkingState } from './components/working-state.js';
 import './styles.css';
 import './fonts.css';
+import './neobrutalist.css';
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {

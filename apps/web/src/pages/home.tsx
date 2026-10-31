@@ -4,141 +4,182 @@ import { navigate } from '../navigation.js';
 
 export function HomePage() {
   return (
-    <div className="home-page">
-      <section className="home-intro">
-        <div className="home-copy">
-          <p className="eyebrow">The incident practice lab</p>
-          <h1>
-            Practise before
-            <br />
-            <span>production breaks.</span>
-          </h1>
-          <p>
-            Investigate real services with incomplete evidence. Repair the fault, prove recovery, then replay your
-            response.
+    <div className="lab-home">
+      <section className="lab-hero lab-width">
+        <div className="lab-hero-copy">
+          <p className="lab-label">
+            <span aria-hidden="true" />
+            The incident practice lab
           </p>
-          <div className="home-cta">
-            <Button size="md" onClick={() => navigate('/challenges')}>
-              Explore Challenges
+          <h1>
+            Good engineers
+            <br />
+            practise <span className="lab-marker">bad days.</span>
+          </h1>
+          <p className="lab-description">Investigate real services. Fix the fault. Replay your decisions.</p>
+          <div className="lab-hero-actions">
+            <Button className="lab-button lab-button-yellow" size="md" onClick={() => navigate('/challenges')}>
+              Explore Challenges <span aria-hidden="true">↗</span>
             </Button>
-            <a href="/pricing">
-              Compare access <span aria-hidden="true">↗</span>
+            <a className="lab-text-link" href="#how-it-works">
+              How it works <span aria-hidden="true">↓</span>
             </a>
           </div>
         </div>
-        <div className="replay-map" aria-label="Challenge workflow diagram">
-          <div className="replay-map-heading">
-            <span>Incident / response / replay</span>
-            <span aria-hidden="true">↺</span>
+        <div
+          className="lab-poster"
+          role="img"
+          aria-label="Incident practice includes investigation, recovery, and replay."
+        >
+          <div className="lab-poster-top">
+            <span>
+              PRACTICE MAKES
+              <br />
+              BETTER ON-CALL.
+            </span>
+            <span aria-hidden="true">↗</span>
           </div>
-          <ol className="replay-stations">
-            <li>
-              <span className="station-number">01</span>
-              <div>
-                <strong>Observe the failure</strong>
-                <p>Alert · services · briefing</p>
-              </div>
-              <span className="station-label">Signal</span>
-            </li>
-            <li>
-              <span className="station-number">02</span>
-              <div>
-                <strong>Follow the evidence</strong>
-                <p>Terminal · logs · telemetry</p>
-              </div>
-              <span className="station-label">Investigate</span>
-            </li>
-            <li>
-              <span className="station-number">03</span>
-              <div>
-                <strong>Prove recovery</strong>
-                <p>Change · consequence · validation</p>
-              </div>
-              <span className="station-label">Recover</span>
-            </li>
-            <li>
-              <span className="station-number">04</span>
-              <div>
-                <strong>Replay your response</strong>
-                <p>Recorded path · causal debrief</p>
-              </div>
-              <span className="station-label">Learn</span>
-            </li>
-          </ol>
-          <p className="replay-map-caption">Your decisions become the learning material.</p>
+          <div className="lab-poster-steps" aria-hidden="true">
+            <div className="lab-poster-step lab-yellow">
+              Investigate.<span>↗</span>
+            </div>
+            <div className="lab-poster-step lab-paper">
+              Recover.<span>↗</span>
+            </div>
+            <div className="lab-poster-step lab-pink">
+              Replay.<span>↺</span>
+            </div>
+          </div>
+          <div className="lab-poster-bottom">
+            <span>Real tools. Real consequences.</span>
+            <span aria-hidden="true">[ ↺ ]</span>
+          </div>
         </div>
       </section>
-      <div className="home-principles">
-        <span>Real isolated services</span>
-        <span>Evidence-grounded assistance</span>
-        <span>Recorded causal feedback</span>
+      <div className="lab-band">
+        <div className="lab-width">
+          <span>Isolated services</span>
+          <span aria-hidden="true">✳</span>
+          <span>Your investigation</span>
+          <span aria-hidden="true">✳</span>
+          <span>Causal debrief</span>
+          <span aria-hidden="true">✳</span>
+          <span>Session playback</span>
+        </div>
       </div>
-      <section className="home-practice" aria-labelledby="practice-heading">
-        <div>
+      <section className="lab-workflow lab-width" id="how-it-works" aria-labelledby="practice-heading">
+        <div className="lab-section-heading">
           <h2 id="practice-heading">
             The fix is only
             <br />
-            part of the story.
+            <span className="lab-underline">half the story.</span>
           </h2>
-          <p>
-            Practise with an isolated Linux environment, service telemetry and the tools engineers use. Then see how you
-            reached the result.
-          </p>
+          <p>Learn how you reached the result, not just which change restored the service.</p>
         </div>
-        <ol className="practice-steps">
-          <li>
-            <h3>Read the briefing</h3>
-            <p>Understand the services, find the log and configuration paths, and learn how the attempt works.</p>
-          </li>
-          <li>
-            <h3>Investigate and repair</h3>
-            <p>Inspect real evidence in the terminal. Test your explanation and watch how the system responds.</p>
-          </li>
-          <li>
-            <h3>Review your response</h3>
-            <p>Compare your investigation with the causal chain, measured impact and recorded playback.</p>
-          </li>
-        </ol>
+        <div className="lab-workflow-list">
+          <article className="lab-workflow-row">
+            <span className="lab-symbol lab-yellow" aria-hidden="true">
+              ?
+            </span>
+            <div>
+              <h3>Read the briefing</h3>
+              <p>
+                Start with the alert, service documentation, and command reference. Choose which evidence to inspect.
+              </p>
+            </div>
+          </article>
+          <article className="lab-workflow-row">
+            <span className="lab-symbol lab-blue" aria-hidden="true">
+              !
+            </span>
+            <div>
+              <h3>Investigate and repair</h3>
+              <p>
+                Explore logs, telemetry, and configuration. See the consequences of each change while the incident runs.
+              </p>
+            </div>
+          </article>
+          <article className="lab-workflow-row">
+            <span className="lab-symbol lab-pink" aria-hidden="true">
+              ↺
+            </span>
+            <div>
+              <h3>Review your response</h3>
+              <p>Replay your recorded path beside the evidence, service impact, and recommended recovery.</p>
+            </div>
+          </article>
+        </div>
       </section>
-      <section className="practice-modes" aria-labelledby="modes-heading">
-        <header>
-          <h2 id="modes-heading">Read it. Review it. Repair it.</h2>
-        </header>
-        <a className="mode-link" href="/learn">
-          <span className="mode-index">Learn</span>
-          <strong>Understand the failure pattern</strong>
-          <span>Original, source-linked incident lessons.</span>
-          <span aria-hidden="true">↗</span>
-        </a>
-        <a className="mode-link" href="/reviews">
-          <span className="mode-index">Code Review</span>
-          <strong>Find the risk before rollout</strong>
-          <span>Review a diff and explain your concerns.</span>
-          <span aria-hidden="true">↗</span>
-        </a>
-        <a className="mode-link" href="/challenges">
-          <span className="mode-index">Challenge</span>
-          <strong>Investigate a running failure</strong>
-          <span>Repair real services, then replay your response.</span>
-          <span aria-hidden="true">↗</span>
-        </a>
+      <section className="lab-modes lab-width" aria-labelledby="modes-heading">
+        <div className="lab-section-heading">
+          <h2 id="modes-heading">
+            A little reading.
+            <br />A lot of doing.
+          </h2>
+          <p>Build your understanding, question a change, then practise the response.</p>
+        </div>
+        <div className="lab-mode-grid">
+          <a className="lab-mode-card lab-challenge-mode" href="/challenges">
+            <span className="lab-mode-name">
+              Challenges <span aria-hidden="true">↗</span>
+            </span>
+            <h3>
+              Meet your next
+              <br />
+              production problem.
+            </h3>
+            <p>A real environment, incomplete evidence, and a fault for you to repair.</p>
+            <span className="lab-mode-bottom">
+              Explore Challenges <span aria-hidden="true">→</span>
+            </span>
+          </a>
+          <a className="lab-mode-card lab-learn-mode" href="/learn">
+            <span className="lab-mode-name">
+              Learn <span aria-hidden="true">↗</span>
+            </span>
+            <h3>
+              Know the
+              <br />
+              failure pattern.
+            </h3>
+            <p>Original, source-linked incident lessons.</p>
+            <span className="lab-mode-bottom">
+              Read the context <span aria-hidden="true">→</span>
+            </span>
+          </a>
+          <a className="lab-mode-card lab-review-mode" href="/reviews">
+            <span className="lab-mode-name">
+              Code Review <span aria-hidden="true">↗</span>
+            </span>
+            <h3>
+              Catch the
+              <br />
+              risky change.
+            </h3>
+            <p>Flag lines and compare your concerns with reviewed findings.</p>
+            <span className="lab-mode-bottom">
+              Review a change <span aria-hidden="true">→</span>
+            </span>
+          </a>
+        </div>
       </section>
-      <section className="home-details">
-        <h2>Start before your first on-call shift.</h2>
-        <p>
-          You do not need to know every Linux command. Each Challenge includes service documentation and a basic command
-          reference.
-        </p>
-        <p>Once the environment is ready, the incident keeps running. Navigating away does not pause the clock.</p>
-        <a
-          href="/learn"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate('/learn');
-          }}
-        >
-          Read the investigation lessons
-        </a>
+      <section className="lab-closing">
+        <div className="lab-width">
+          <div>
+            <h2>
+              Your next incident
+              <br />
+              can be <span>practice.</span>
+            </h2>
+            <p>
+              Debrief and playback are included. Navigating away does not pause the clock once your environment is
+              ready.
+            </p>
+          </div>
+          <Button className="lab-button lab-button-ink" size="md" onClick={() => navigate('/challenges')}>
+            Explore Challenges <span aria-hidden="true">↗</span>
+          </Button>
+        </div>
       </section>
     </div>
   );
