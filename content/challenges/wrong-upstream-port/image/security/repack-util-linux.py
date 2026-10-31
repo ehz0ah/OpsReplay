@@ -18,7 +18,10 @@ LIBRARIES = ("libblkid", "libmount", "libsmartcols", "libuuid")
 
 
 def run(*args, **kwargs):
-    return subprocess.check_output(args, text=True, **kwargs).strip()
+    result = subprocess.run(args, text=True, capture_output=True, **kwargs)
+    if result.returncode:
+        raise RuntimeError("Build command failed: " + args[0] + "\n" + result.stdout[-8192:] + result.stderr[-8192:])
+    return result.stdout.strip()
 
 
 def elf(path):
@@ -115,6 +118,7 @@ for package in PACKAGES:
         library.write_text(re.sub(r"\(>= [^)]+\)", "(>= " + VERSION + ")", library.read_text()))
     if package.startswith("lib"):
         run("dpkg-gensymbols", "-p" + package, "-v" + VERSION, "-P" + str(target), "-c1",
+            "-I" + str(target / "DEBIAN/symbols"),
             *("-e" + str(target / relative) for relative in replaced), cwd=SOURCE)
     hashes = []
     for path in sorted(target.rglob("*")):

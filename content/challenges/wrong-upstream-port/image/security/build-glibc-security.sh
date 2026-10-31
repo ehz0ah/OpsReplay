@@ -7,7 +7,8 @@ version='2.36-9+deb12u14+opsreplay1'
 cd /build/glibc-2.36
 make -f debian/rules patch DEB_BUILD_PROFILES=nobiarch
 patch --batch --fuzz=0 -p1 < /build/security/gettext-path-restriction.patch
-make -f debian/rules build_libc DEB_BUILD_PROFILES=nobiarch DEB_BUILD_OPTIONS=parallel=2
+# Silence routine compiler commands; errors remain visible and fail the build.
+make -s -f debian/rules build_libc DEB_BUILD_PROFILES=nobiarch DEB_BUILD_OPTIONS=parallel=2
 library=/build/glibc-2.36/build-tree/amd64-libc/libc.so
 loader=/build/glibc-2.36/build-tree/amd64-libc/elf/ld.so
 test -f "$library" && test -f "$loader"

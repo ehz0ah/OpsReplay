@@ -20,7 +20,8 @@ the release's generated files otherwise request a newer Automake executable.
 Use Bookworm's build options where they affect existing tools. Check that the
 rebuilt libraries retain their original versioned symbols. Compute ELF runtime
 dependencies with `dpkg-shlibdeps`; retain existing package dependencies and add
-the computed requirements. Refresh library symbol metadata. Record the actual
+the computed requirements. Refresh library symbol metadata against each retained
+Bookworm package's ABI inventory. Record the actual
 local versions, source descriptor, licences, recipes and full package hashes.
 
 ## Libc
