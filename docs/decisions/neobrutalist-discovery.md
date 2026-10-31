@@ -17,7 +17,8 @@ keep their existing implementation.
 - Clear filters remains available after a read failure. Empty results and failed
   reads have separate messages. Pagination follows the server cursor.
 - Mobile navigation retains all existing routes and authentication actions. Escape
-  closes the menu and restores visible focus. Route selection closes it.
+  from the Menu button or a navigation link closes the menu and restores visible
+  focus. Route selection closes it.
 - Long briefing references have a bounded, keyboard-focusable scroll area so the
   confirmation controls remain visible. Existing start prerequisites, once-only
   request recovery and cooldown checks remain in place.
@@ -57,6 +58,14 @@ Screenshots use public fixture data:
 [mobile Home](../images/neobrutalist-discovery/home-390-final.png),
 [desktop catalogue](../images/neobrutalist-discovery/catalogue-1440-final.png), and
 [mobile catalogue](../images/neobrutalist-discovery/catalogue-390-final.png).
+
+Review follow-up, 31 October 2026: move Escape handling to the header so it also
+receives keyboard events from the Menu button. State summary matching in the search
+placeholder and use one category-label function for the filter and cards. Remove
+44 unused Home rules from the original stylesheet. A CSS parser comparison verified
+that all 254 remaining rules were preserved. Local browser checks reproduce the
+original Escape failure and verify dismissal from both the toggle and links, focus
+restoration, unchanged category values, and summary search without new API reads.
 
 Keep the original production paths and the server-owned access boundary. Reverting
 this frontend change restores the previous presentation without migrating data.

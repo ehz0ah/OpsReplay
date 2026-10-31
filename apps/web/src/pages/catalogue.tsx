@@ -13,6 +13,11 @@ import { useRead } from '../use-read.js';
 import { MutationJournal, type PendingMutation } from '../mutation-journal.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
+
+function categoryLabel(value: string) {
+  return value === 'dns' ? 'DNS' : value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function CataloguePage() {
   const alive = useAlive();
   const auth = useAuth(),
@@ -240,7 +245,7 @@ export function CataloguePage() {
             ref={searchInput}
             className="lab-search"
             label="Search this page"
-            placeholder="Search by title or category"
+            placeholder="Search by title, summary or category"
             value={search}
             maxLength={200}
             onChange={(event) => setSearch(event.currentTarget.value)}
@@ -266,7 +271,7 @@ export function CataloguePage() {
                     : (catalog.data?.availableFilters.plans ?? [])),
               ].map((v, i) => ({
                 value: i === 0 ? '' : v,
-                label: v === 'dns' ? 'DNS' : v.charAt(0).toUpperCase() + v.slice(1),
+                label: name === 'category' ? categoryLabel(v) : v.charAt(0).toUpperCase() + v.slice(1),
               }))}
             />
           ))}
@@ -321,11 +326,7 @@ export function CataloguePage() {
               {visibleEntries.map((entry) => (
                 <article className="lab-challenge-card" key={entry.id + '@' + entry.version}>
                   <div className={`lab-challenge-art${entry.plan === 'pro' ? ' lab-art-blue' : ''}`} aria-hidden="true">
-                    <span>
-                      {entry.category === 'dns'
-                        ? 'DNS'
-                        : entry.category.charAt(0).toUpperCase() + entry.category.slice(1)}
-                    </span>
+                    <span>{categoryLabel(entry.category)}</span>
                     <div className="lab-route-art">
                       <span>→</span>
                       <strong>?</strong>
@@ -343,11 +344,7 @@ export function CataloguePage() {
                       <Badge variant="filled" className={entry.plan === 'pro' ? 'lab-pro-tag' : 'lab-free-tag'}>
                         {entry.plan === 'pro' ? 'Pro' : 'Free'}
                       </Badge>
-                      <span>
-                        {entry.category === 'dns'
-                          ? 'DNS'
-                          : entry.category.charAt(0).toUpperCase() + entry.category.slice(1)}
-                      </span>
+                      <span>{categoryLabel(entry.category)}</span>
                     </div>
                     <h2>{entry.title}</h2>
                     <p>{entry.summary}</p>
