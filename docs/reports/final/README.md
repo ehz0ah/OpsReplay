@@ -26,6 +26,24 @@ This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
 The generated PDF and logs belong in the ignored `build` directory.
 
+The presentation source is [Slides.tex](Slides.tex), with
+[speaker notes](speaker-notes.md) and the [demo plan](demo.md). Build it with:
+
+```sh
+tectonic --only-cached --untrusted --keep-logs --outdir build Slides.tex
+```
+
+The slide build currently uses locally installed Arial and Menlo fonts. They
+are embedded in the generated PDF but are not copied into the repository. The
+TeX source requires those fonts in another build environment, or an explicitly
+reviewed substitute with a fresh layout check. Tectonic reports this portability
+limit. No font or package installation is part of the build command.
+
+The deck has fifteen main slides and three Q&A backups. Its six speaking blocks
+sum to a planned fifteen minutes, including a four-minute Challenge segment.
+This is not measured rehearsal time. Assign all six speakers and rehearse with
+the actual deployment and a redacted fallback recording before submission.
+
 The course limit is ten pages for the complete `Final.pdf`, including references
 and cover material. Check the actual PDF page count, tables, diagram labels,
 links and text extraction after each material edit. Keep the draft footer until
