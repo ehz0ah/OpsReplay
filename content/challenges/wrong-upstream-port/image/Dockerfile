@@ -107,6 +107,7 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ca-certificates curl gunicorn iproute2 less nano nginx postgresql-15 \
        procps python3-flask python3-psycopg2 supervisor vim-tiny \
+    && test "$(dpkg-query -W -f='${Version}' libc6)" = '2.36-9+deb12u14' \
     && dpkg -i /tmp/libc6-security.deb \
     && dpkg -i /tmp/util-linux-packages/*.deb \
     && dpkg -i /tmp/zlib1g-security.deb /tmp/libcurl4-security.deb /tmp/curl-security.deb /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \

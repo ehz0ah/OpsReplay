@@ -31,6 +31,8 @@ proof of image security, and existing attempts retain their original image pins.
    rebuilt ELF dependencies and check original library symbols. For glibc, review
    the [local backport limits](../decisions/challenge-core-packages.md), apply
    Debian architecture patches first and retain the matching native loader.
+   Refresh glibc when its runtime version guard detects a newer Bookworm update;
+   do not remove the guard to install an older libc over that update.
 4. Run repository checks and the complete hosted Challenge, DNS, editor,
    compression, Monitor and Gateway suites. Use hosted CI for image and editor
    tests on the work Mac. Retain licences, recipes, descriptors and package hashes.
