@@ -210,7 +210,11 @@ test('checkpoint activation has inactive, runtime-only, and runtime-plus-admissi
     );
 
     const admissionReferences = JSON.stringify(rendered.Resources).match(/SessionAdmissionEnabled/g) ?? [];
-    assert.equal(admissionReferences.length, 1, 'Admission must control only the start Lambda.');
+    assert.equal(
+      admissionReferences.length,
+      2,
+      'Admission controls start concurrency and reports status through GetAccount.',
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

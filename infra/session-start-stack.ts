@@ -1191,6 +1191,9 @@ export class SessionStartStack extends Stack {
           ...publicApiEnvironment,
           SESSION_TABLE_NAME: table.tableName,
           ...(authenticated ? demoUpgradeEnvironment : {}),
+          ...(authenticated
+            ? { SESSION_ADMISSION_ENABLED: Fn.conditionIf(admissionEnabled.logicalId, 'true', 'false').toString() }
+            : {}),
         },
         memorySize: 256,
         timeout: Duration.seconds(10),

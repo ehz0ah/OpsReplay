@@ -460,6 +460,10 @@ export interface Account {
   planExpiresAt: string | null;
   activeSessionId: string | null;
   /**
+   * Optional deployment admission status requested with include=admission. False pauses new start and recovery requests; existing attempts and saved results remain accessible. Default and older responses omit this field.
+   */
+  challengeStartsEnabled?: boolean;
+  /**
    * Optional fixed demo window deadline for this learner. Missing or null means demo upgrade is unavailable.
    */
   demoUpgradeExpiresAt?: string | null;

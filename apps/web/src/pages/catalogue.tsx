@@ -13,6 +13,7 @@ import { useRead } from '../use-read.js';
 import { MutationJournal, type PendingMutation } from '../mutation-journal.js';
 import { navigate } from '../navigation.js';
 import { Failure } from '../components/failure.js';
+import { ChallengeAdmission } from '../components/challenge-admission.js';
 
 function categoryLabel(value: string) {
   return value === 'dns' ? 'DNS' : value.charAt(0).toUpperCase() + value.slice(1);
@@ -28,7 +29,7 @@ export function CataloguePage() {
   for (const [name, value] of Object.entries(filters)) if (value) query.set(name, value);
   if (cursor) query.set('cursor', cursor);
   const catalog = useRead('Catalog', '/v1/catalog?' + query),
-    account = useRead('Account', '/v1/me', !!auth.identity && !auth.loading);
+    account = useRead('Account', '/v1/me?include=admission', !!auth.identity && !auth.loading);
   const journal = useMemo(
     () => (auth.identity ? new MutationJournal(sessionStorage, auth.identity.sub) : null),
     [auth.identity?.sub],
@@ -66,12 +67,17 @@ export function CataloguePage() {
     return () => clearInterval(timer);
   }, [retryAt]);
   const cooldown = retryAt > clock;
+  const startsClosed = account.data?.challengeStartsEnabled === false;
   async function start(entry: PublicTypes['CatalogEntry'] | null) {
     if (!auth.identity) {
       await auth.signIn();
       return;
     }
     if (!journal || busy || cooldown || !account.data) return;
+    if (startsClosed) {
+      if (account.data.activeSessionId) navigate('/sessions/' + account.data.activeSessionId);
+      return;
+    }
     if (account.data.activeSessionId && !pending) {
       navigate('/sessions/' + account.data.activeSessionId);
       return;
@@ -89,7 +95,7 @@ export function CataloguePage() {
         : journal.load('start', '/v1/sessions');
       if (!request || request.kind !== 'start') throw new Error('There is no start request to recover.');
       setPending(request);
-      const result = await startAttempt(api, journal, request);
+      const result = await startAttempt(api, journal, request, account.data.challengeStartsEnabled !== false);
       if (!alive.current) return;
       setPending(null);
       account.reload();
@@ -152,23 +158,30 @@ export function CataloguePage() {
                 loading={busy}
                 disabled={
                   cooldown ||
-                  !!pending ||
+                  (!!pending && !(startsClosed && account.data?.activeSessionId)) ||
+                  (startsClosed && !account.data?.activeSessionId) ||
                   auth.loading ||
                   (!!auth.identity && !account.data) ||
-                  (selected.plan === 'pro' && account.data?.plan !== 'pro' && !!auth.identity)
+                  (selected.plan === 'pro' &&
+                    account.data?.plan !== 'pro' &&
+                    !!auth.identity &&
+                    !account.data?.activeSessionId)
                 }
                 onClick={() => void start(selected)}
               >
                 {!auth.identity
                   ? 'Sign in to start'
-                  : selected.plan === 'pro' && account.data?.plan !== 'pro'
-                    ? 'Pro required'
-                    : account.data?.activeSessionId
-                      ? 'Resume current attempt'
-                      : 'Start Challenge'}
+                  : account.data?.activeSessionId
+                    ? 'Resume current attempt'
+                    : startsClosed
+                      ? 'Challenges unavailable'
+                      : selected.plan === 'pro' && account.data?.plan !== 'pro'
+                        ? 'Pro required'
+                        : 'Start Challenge'}
               </Button>
             </div>
             <Failure error={error} />
+            {startsClosed && <ChallengeAdmission refresh={account.reload} />}
             <Failure error={account.error} retry={account.reload} />
             {selected.plan === 'pro' && account.data?.plan === 'free' && (
               <p className="notice">
@@ -180,9 +193,16 @@ export function CataloguePage() {
             {cooldown && <p role="status">Try again in {Math.max(1, Math.ceil((retryAt - clock) / 1000))} seconds.</p>}
             {pending && !busy && (
               <div className="notice" role="status">
-                <p>The start response is uncertain. Recover the same request before starting another attempt.</p>
-                <Button disabled={cooldown || !account.data} onClick={() => void start(null)}>
-                  Recover start request
+                <p>
+                  {startsClosed
+                    ? 'Your saved start request is preserved. Check availability before retrying it.'
+                    : 'The start response is uncertain. Recover the same request before starting another attempt.'}
+                </p>
+                <Button
+                  disabled={cooldown || !account.data || (startsClosed && !account.data.activeSessionId)}
+                  onClick={() => void start(null)}
+                >
+                  {startsClosed && account.data?.activeSessionId ? 'Open current attempt' : 'Recover start request'}
                 </Button>
               </div>
             )}
@@ -195,6 +215,7 @@ export function CataloguePage() {
         )}
       </Modal>
       <div className="lab-width lab-catalogue">
+        {startsClosed && <ChallengeAdmission refresh={account.reload} />}
         <div className="lab-catalogue-heading">
           <div>
             <a className="lab-back-link" href="/">

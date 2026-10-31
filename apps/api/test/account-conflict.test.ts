@@ -55,3 +55,28 @@ test('account stops after four conflicts and never retries mixed or unrelated er
     assert.equal(result.body.includes(failure.message), false);
   }
 });
+
+test('account reports deployment admission independently of the learner plan and preserves legacy responses', async () => {
+  const client = {
+    send: async (command: TransactGetCommand) => {
+      assert.ok(command instanceof TransactGetCommand);
+      return { Responses: [{}, {}] };
+    },
+  } as unknown as DynamoDBDocumentClient;
+  for (const enabled of [false, true, undefined]) {
+    const handler = createGetAccountHandler(client, 'table-name', Date.now, undefined, undefined, enabled);
+    const legacy = await handler(event, context);
+    assert.equal(legacy.statusCode, 200);
+    assert.equal(Object.hasOwn(JSON.parse(legacy.body), 'challengeStartsEnabled'), false);
+    const result = await handler({ ...event, queryStringParameters: { include: 'admission' } }, context);
+    assert.equal(result.statusCode, 200);
+    const account = JSON.parse(result.body);
+    assert.equal(account.plan, 'free');
+    assert.equal(account.activeSessionId, null);
+    assert.equal(account.challengeStartsEnabled, enabled);
+    assert.equal(Object.hasOwn(account, 'challengeStartsEnabled'), enabled !== undefined);
+    const multi = await handler({ ...event, multiValueQueryStringParameters: { include: ['admission'] } }, context);
+    assert.equal(multi.statusCode, 200);
+    assert.equal(JSON.parse(multi.body).challengeStartsEnabled, enabled);
+  }
+});

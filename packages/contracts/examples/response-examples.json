@@ -5,6 +5,13 @@
       "planSource": "default",
       "planExpiresAt": null,
       "activeSessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    {
+      "plan": "pro",
+      "planSource": "grant",
+      "planExpiresAt": null,
+      "activeSessionId": null,
+      "challengeStartsEnabled": false
     }
   ],
   "SessionResponse": [
