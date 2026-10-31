@@ -23,6 +23,13 @@ and source remain in separate stages. The runtime records the local suffix
 hash. Package file hashes are recomputed. This is a local backport, not a claim
 that Debian published a fixed package.
 
+Debian slim excludes most documentation and lintian records during package
+installation. A package-specific dpkg include rule retains Vim Tiny's files,
+including the patch, licence and local hash records. It applies before the editor
+package is installed and keeps its complete checksum inventory verifiable. Other
+packages keep the existing slim exclusions. Do not omit checksum records to hide
+missing files.
+
 The DNS image derives from the same Challenge base. Both image suites check `vi`,
 `vim` and `vim.tiny` editing, Unicode text, genuine swap recovery created by a
 normal edit, default Nano availability and package hashes. The checks run inside

@@ -24,6 +24,7 @@ ENV LANG=C.UTF-8 \
 
 COPY --chmod=755 rootfs/usr/sbin/policy-rc.d /usr/sbin/policy-rc.d
 COPY rootfs/etc/postgresql-common/createcluster.conf /etc/postgresql-common/createcluster.conf
+COPY --chmod=644 security/retain-vim-provenance.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-vim-provenance
 COPY --from=vim-build /build/vim-tiny-security.deb /tmp/vim-tiny-security.deb
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
