@@ -11,6 +11,8 @@ const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
 const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
 const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
+const utilLinuxTest = readFileSync(new URL('../../../scripts/util-linux-compatibility.py', import.meta.url), 'utf8');
+const glibcTest = readFileSync(new URL('../../../scripts/glibc-compatibility.py', import.meta.url), 'utf8');
 const recordingTest = readFileSync(new URL('./recording.test.py', import.meta.url), 'utf8');
 const shellIntegrationTest = readFileSync(new URL('./shell-integration.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
@@ -49,6 +51,26 @@ test('fixed zlib preserves compression and its shared library ABI', async (t) =>
   const report = JSON.parse(success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: zlibTest })));
   assert.equal(report.runtimeVersion, '1.3.2');
   assert.equal(report.roundTrip, true);
+  t.diagnostic(JSON.stringify(report));
+});
+
+test('fixed utilities preserve identity, locking, mount inspection and library ABIs', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: utilLinuxTest })),
+  );
+  assert.equal(report.packagesVerified, 8);
+  assert.equal(report.ordinaryUtilities, true);
+  t.diagnostic(JSON.stringify(report));
+});
+
+test('libc backport preserves the loader, Unicode locale and package inventory', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: glibcTest })),
+  );
+  assert.equal(report.runtimeVersion, '2.36');
+  assert.equal(report.packageHashesVerified, true);
   t.diagnostic(JSON.stringify(report));
 });
 

@@ -115,10 +115,14 @@ Runtime installation still applies current Bookworm package updates. Local
 origin, source descriptors, licences, recipes and complete checksum inventories
 remain available to scanners. The derived DNS image receives the same rebuilds.
 
-Util-linux's six HIGH findings and glibc's one HIGH finding remain open. Other
-reported MEDIUM and LOW findings also require review. Fresh exact-digest ECR
-clearance remains pending after merge and publication. Hosted compatibility checks
-do not clear these findings or authorize Challenge admission.
+The [utility and libc candidate](docs/decisions/challenge-core-packages.md)
+targets util-linux's six HIGH findings with fixed `2.42.4` source and glibc's one
+HIGH finding with a narrow local backport of the pending upstream gettext
+proposal. Debian still marks that glibc issue as unfixed. The proposal is not a
+released GNU or Debian fix. Hosted compilation and compatibility are unverified
+for this candidate. Other reported MEDIUM and LOW findings also require review.
+Fresh exact-digest ECR clearance remains pending after merge and publication.
+Compatibility checks do not clear findings or authorize Challenge admission.
 
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception

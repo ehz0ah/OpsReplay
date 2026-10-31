@@ -10,6 +10,8 @@ const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta
 const image = process.env.OPSREPLAY_DNS_CHALLENGE_IMAGE ?? 'opsreplay/challenge-stale-dns-record:dev';
 const containers = new Set();
 const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
+const utilLinuxTest = readFileSync(new URL('../../../scripts/util-linux-compatibility.py', import.meta.url), 'utf8');
+const glibcTest = readFileSync(new URL('../../../scripts/glibc-compatibility.py', import.meta.url), 'utf8');
 function docker(...args) {
   return spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
 }
@@ -39,6 +41,38 @@ test('derived DNS image preserves the fixed zlib and ordinary compression', asyn
   t.diagnostic(JSON.stringify(report));
 });
 const exec = (id, ...args) => docker('exec', id, ...args);
+test('derived DNS image preserves fixed utility packages and normal operations', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(
+      spawnSync('docker', ['exec', '--interactive', id, 'python3', '-'], {
+        input: utilLinuxTest,
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      }),
+    ),
+  );
+  assert.equal(report.packagesVerified, 8);
+  assert.equal(report.ordinaryUtilities, true);
+  t.diagnostic(JSON.stringify(report));
+});
+test('derived DNS image preserves the libc backport and normal loader operations', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(
+      spawnSync('docker', ['exec', '--interactive', id, 'python3', '-'], {
+        input: glibcTest,
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      }),
+    ),
+  );
+  assert.equal(report.runtimeVersion, '2.36');
+  assert.equal(report.packageHashesVerified, true);
+  t.diagnostic(JSON.stringify(report));
+});
 process.once('exit', () => {
   for (const id of containers) docker('rm', '-f', id);
 });

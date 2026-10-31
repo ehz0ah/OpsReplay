@@ -23,10 +23,14 @@ proof of image security, and existing attempts retain their original image pins.
    that contains the chosen source versions and required original binary packages.
 2. Update the shared build archive URLs in the Dockerfile together. Update source
    versions and SHA-256 pins when changing source. Keep both upstream and Debian
-   patch archive checks for zlib.
-3. Check the original Bookworm versions in all three build recipes. Review their
+   patch archive checks for zlib, util-linux and glibc.
+3. Check the original Bookworm versions in all build recipes. Review their
    control data, dependencies, matched packages and file paths before changing a
    version guard. A missing version must fail the build.
+   Preserve the bsdutils epoch and the existing util-linux-extra tools. Compute
+   rebuilt ELF dependencies and check original library symbols. For glibc, review
+   the [local backport limits](../decisions/challenge-core-packages.md), apply
+   Debian architecture patches first and retain the matching native loader.
 4. Run repository checks and the complete hosted Challenge, DNS, editor,
    compression, Monitor and Gateway suites. Use hosted CI for image and editor
    tests on the work Mac. Retain licences, recipes, descriptors and package hashes.

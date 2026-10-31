@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+1 November 2026: [Challenge utility and libc rebuilds](challenge-core-packages.md)
+use fixed util-linux source and a narrow local backport of the pending upstream
+gettext proposal. Native hosted compilation, compatibility checks and exact-digest
+qualification are required. The proposal is not a released GNU or Debian fix.
+
 1 November 2026: the [Challenge rebuild runbook](../runbooks/challenge-security-rebuilds.md)
 pins build inputs and original packages to fixed Debian archive indexes. Runtime
 installation continues to apply current Bookworm updates. The older editor

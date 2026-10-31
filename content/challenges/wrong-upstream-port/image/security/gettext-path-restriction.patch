@@ -1,0 +1,19 @@
+From: OpsReplay Bookworm backport
+Subject: Restrict LANGUAGE catalog paths for all programs
+
+Adapted from Avinal Kumar's upstream v7 proposal for BZ 17142:
+https://inbox.sourceware.org/libc-alpha/20261012112453.47383-1-avinal.xlvii@gmail.com/
+The proposal is under review, not a released GNU or Debian fix.
+Only its production lookup change is backported to Debian 2.36-9+deb12u14.
+
+--- a/intl/dcigettext.c
++++ b/intl/dcigettext.c
+@@ -687,4 +687,4 @@
+-	  /* When this is a SUID binary we must not allow accessing files
+-	     outside the dedicated directories.  */
+-	  if (ENABLE_SECURE && IS_PATH_WITH_DIR (single_locale))
+-	    /* Ingore this entry.  */
++	  /* Do not allow accessing files outside the dedicated
++	     directories.  */
++	  if (IS_PATH_WITH_DIR (single_locale)
++	      || strcmp (single_locale, "..") == 0)
