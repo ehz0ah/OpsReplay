@@ -12,6 +12,9 @@ procedures.
 
 The [preliminary report](reports/preliminary/README.md) is a submitted project snapshot.
 Later decisions and implemented contracts take precedence.
+The [final report draft](reports/final/README.md) describes the implemented product
+and verified evidence. Learner, assistant and final cost results remain incomplete;
+it is not ready for submission.
 
 ## Engineering contracts
 
