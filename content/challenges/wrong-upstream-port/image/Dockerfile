@@ -1,12 +1,16 @@
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS debian
 
-# Retrieve the current distribution source through Debian's signed APT indexes.
+# Retrieve fixed editor source through signed APT indexes. Binary dependencies
+# stay on Bookworm; no sid binary repository is configured.
 FROM debian AS vim-source
 WORKDIR /build
-RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates \
+    && printf '%s\n' 'deb-src https://deb.debian.org/debian sid main' > /etc/apt/sources.list.d/vim-source.list \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dpkg-dev vim-tiny \
-    && apt-get source "vim=$(dpkg-query -W -f='${source:Version}' vim-tiny)"
+    && apt-get source vim=2:9.2.0858-1 \
+    && printf '%s\n' '6467695560a7a13dd2298584711f7d75623b2211f8ff7b663b16a492762791cf  vim_9.2.0858.orig.tar.xz' | sha256sum -c -
 
 FROM vim-source AS vim-build
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -25,14 +29,14 @@ ENV LANG=C.UTF-8 \
 COPY --chmod=755 rootfs/usr/sbin/policy-rc.d /usr/sbin/policy-rc.d
 COPY rootfs/etc/postgresql-common/createcluster.conf /etc/postgresql-common/createcluster.conf
 COPY --chmod=644 security/retain-vim-provenance.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-vim-provenance
-COPY --from=vim-build /build/vim-tiny-security.deb /tmp/vim-tiny-security.deb
+COPY --from=vim-build /build/vim-tiny-security.deb /build/vim-common-security.deb /tmp/
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ca-certificates curl gunicorn iproute2 less nano nginx postgresql-15 \
        procps python3-flask python3-psycopg2 supervisor vim-tiny \
-    && dpkg -i /tmp/vim-tiny-security.deb \
-    && rm /tmp/vim-tiny-security.deb \
+    && dpkg -i /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
+    && rm /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /var/lib/shop --shell /usr/sbin/nologin shop

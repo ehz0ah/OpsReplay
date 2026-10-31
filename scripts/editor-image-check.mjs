@@ -61,7 +61,7 @@ export function verifyEditorCompatibility(image, run = execFileSync) {
   if (
     result?.editingAliases !== 3 ||
     result.validSwapRecovery !== true ||
-    result.packageVersion !== '2:9.0.1378-2+deb12u2+opsreplay1' ||
+    result.packageVersion !== '2:9.2.0858-1+opsreplay1' ||
     result.packageHashesVerified !== true ||
     result.defaultEditor !== 'nano'
   )
