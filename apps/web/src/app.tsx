@@ -26,7 +26,16 @@ export function App() {
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <header className="site-header neo-header">
+      <header
+        className="site-header neo-header"
+        onKeyDown={(event) => {
+          if (navigationOpen && event.key === 'Escape') {
+            event.preventDefault();
+            setNavigationOpen(false);
+            if (menuButton.current?.offsetParent) menuButton.current.focus();
+          }
+        }}
+      >
         <a
           href="/"
           onClick={(event) => {
@@ -55,13 +64,6 @@ export function App() {
           aria-label="Main navigation"
           onClickCapture={(event) => {
             if (navigationOpen && event.target instanceof Element && event.target.closest('a, button')) {
-              setNavigationOpen(false);
-              if (menuButton.current?.offsetParent) menuButton.current.focus();
-            }
-          }}
-          onKeyDown={(event) => {
-            if (navigationOpen && event.key === 'Escape') {
-              event.preventDefault();
               setNavigationOpen(false);
               if (menuButton.current?.offsetParent) menuButton.current.focus();
             }
