@@ -75,6 +75,19 @@ estimated cost. Local budget checks are estimates, not a billing guarantee. Repo
 include response text, proposals, token counts, latency and review fields. They use no
 real learner data. Do not commit provider output or keys.
 
+The report separates planned, attempted, completed, failed and usage-missing calls.
+Failure rates use attempted calls as their denominator and remain `null` when no
+call was attempted. `durationMs` includes every attempted call;
+`completedDurationMs` includes completed replies only. `firstDeltaMs` measures the
+first non-whitespace streamed text in completed replies. A reply with no streamed
+text has no first-delta sample, even if its final text is valid.
+
+`costAccounting.reportedUsageUsd` uses returned token counts. `reservedUsd` retains
+the estimate for calls whose usage is unavailable; it is not measured spend. Each
+result records its estimate and `costBasis`. The existing `estimatedUsd` total is
+their sum. Reaching the limit exactly after the final case completes the run;
+reaching it before another case prevents that next call. Exceeding it stops the run.
+
 A reviewer must score relevance, teaching accuracy, unsupported facts, leakage and
 destructive suggestions against each rubric. Lexical flags can include negated warnings
 and miss paraphrases. They are not accuracy scores. Report denominators and failures.
