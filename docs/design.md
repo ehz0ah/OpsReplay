@@ -6,12 +6,27 @@ mockup.
 
 ## Navigation and plans
 
+Home and the Challenge catalogue follow the approved
+[neobrutalist discovery direction](decisions/neobrutalist-discovery.md). Shared
+navigation retains all existing routes and authentication actions. On narrow screens
+it opens from a labelled Menu button; Escape and route selection close it with visible
+focus restored. Workspace-specific controls retain their existing layout.
+
 The primary navigation has Learn, Challenges, and Code Review. Catalogue entries show
 title, tier, category, and plan. Code Review entries also show language. Only filters
 represented by published content appear. Pro entries stay visible on the Free plan with
 a clear locked state. Free Learn pages work without an account.
 
+Challenge search is labelled "Search this page" and filters only loaded public
+metadata. Difficulty, category and access filters use the existing server query.
+Pagination remains explicit. Empty results and failed reads have separate feedback;
+clear filters remains available while a read has failed.
+
 ## Starting a Challenge
+
+The briefing reference and rules have a bounded, keyboard-focusable scroll region.
+The sign-in/start controls remain outside it. This changes presentation, not start
+prerequisites or request recovery.
 
 Starting a Challenge shows a provisioning state while the environment starts, which can
 take tens of seconds. Say that the clock starts only when the terminal is ready. If

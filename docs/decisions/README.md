@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+31 October 2026: [Neobrutalist discovery pages](neobrutalist-discovery.md) apply the
+approved visual direction to Home, the server-backed Challenge catalogue, and shared
+navigation. Search stays within the loaded page; access and session behaviour remain
+server-owned. Local fixture checks are separate from hosted acceptance.
+
 29 October 2026: [Minimal Node runtimes](minimal-node-runtime.md) remove unused
 service-image packages while preserving Node, identity, deployment settings and
 learner tools. Local package/behaviour checks and OS scans are separate from ECR
