@@ -75,3 +75,18 @@ size=$(du -sk --exclude=DEBIAN . | cut -f1)
 sed -i "s/^Installed-Size: .*/Installed-Size: $size/" DEBIAN/control
 find . -type f ! -path './DEBIAN/*' -printf '%P\0' | sort -z | xargs -0 md5sum > DEBIAN/md5sums
 dpkg-deb --root-owner-group --build /build/patched-common /build/vim-common-security.deb
+
+# Debian slim filters documentation during dpkg installation. Retain each file
+# recorded by these two rebuilt packages, including its parent directories.
+python3 - <<'PY'
+from pathlib import Path
+paths = set()
+for package in ("patched-package", "patched-common"):
+    root = Path("/build") / package
+    for line in (root / "DEBIAN/md5sums").read_text().splitlines():
+        relative = line.split("  ", 1)[1]
+        path = Path("/") / relative
+        paths.add(str(path))
+        paths.update(str(parent) for parent in path.parents if str(parent) != "/")
+Path("/build/vim-retain-files.conf").write_text("".join("path-include " + path + "\n" for path in sorted(paths)))
+PY

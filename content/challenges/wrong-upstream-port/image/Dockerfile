@@ -14,7 +14,7 @@ RUN apt-get update \
 
 FROM vim-source AS vim-build
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       gcc autoconf debhelper libacl1-dev libselinux1-dev libncurses-dev
+       gcc autoconf debhelper libacl1-dev libselinux1-dev libncurses-dev python3
 COPY security/ /build/security/
 RUN sh /build/security/build-vim-security.sh
 
@@ -29,6 +29,7 @@ ENV LANG=C.UTF-8 \
 COPY --chmod=755 rootfs/usr/sbin/policy-rc.d /usr/sbin/policy-rc.d
 COPY rootfs/etc/postgresql-common/createcluster.conf /etc/postgresql-common/createcluster.conf
 COPY --chmod=644 security/retain-vim-provenance.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-vim-provenance
+COPY --from=vim-build /build/vim-retain-files.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-vim-files
 COPY --from=vim-build /build/vim-tiny-security.deb /build/vim-common-security.deb /tmp/
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
