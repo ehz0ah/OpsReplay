@@ -78,9 +78,13 @@ with tempfile.TemporaryDirectory(prefix="opsreplay-editor-") as temporary:
     assert (directory / "restored.txt").read_text(encoding="utf-8") == "recovered-edit\noriginal-content\n"
 
     version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "vim-tiny"], text=True)
-    assert version == "2:9.0.1378-2+deb12u2+opsreplay1", version
+    assert version == "2:9.2.0858-1+opsreplay1", version
+    common_version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "vim-common"], text=True)
+    assert common_version == version
     verification = subprocess.check_output(["dpkg", "--verify", "vim-tiny"], text=True)
     assert verification == "", verification
+    common_verification = subprocess.check_output(["dpkg", "--verify", "vim-common"], text=True)
+    assert common_verification == "", common_verification
     subprocess.run(
         ["sha256sum", "--check", "/usr/share/doc/vim-tiny/opsreplay-binary.sha256"],
         cwd="/",

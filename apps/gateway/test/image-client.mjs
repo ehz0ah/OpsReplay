@@ -177,7 +177,7 @@ async function main() {
     const terminal = new TerminalRecorder({
       connect: (signal) => TerminalRecordingClient.connect({ host: '127.0.0.1' }, signal),
       sink: terminalSink,
-      pollIntervalMs: 100,
+      // Use the production default instead of polling at the source's exact rate limit.
     });
     const terminalController = new AbortController();
     let terminalCutoff = null;
