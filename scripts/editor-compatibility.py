@@ -79,7 +79,8 @@ with tempfile.TemporaryDirectory(prefix="opsreplay-editor-") as temporary:
 
     version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "vim-tiny"], text=True)
     assert version == "2:9.0.1378-2+deb12u2+opsreplay1", version
-    assert subprocess.check_output(["dpkg", "--verify", "vim-tiny"], text=True) == ""
+    verification = subprocess.check_output(["dpkg", "--verify", "vim-tiny"], text=True)
+    assert verification == "", verification
     subprocess.run(
         ["sha256sum", "--check", "/usr/share/doc/vim-tiny/opsreplay-binary.sha256"],
         cwd="/",
