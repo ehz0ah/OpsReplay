@@ -119,8 +119,8 @@ The [utility and libc candidate](docs/decisions/challenge-core-packages.md)
 targets util-linux's six HIGH findings with fixed `2.42.4` source and glibc's one
 HIGH finding with a narrow local backport of the pending upstream gettext
 proposal. Debian still marks that glibc issue as unfixed. The proposal is not a
-released GNU or Debian fix. Hosted compilation and compatibility are unverified
-for this candidate. Other reported MEDIUM and LOW findings also require review.
+released GNU or Debian fix. Hosted compilation, compatibility checks and review
+are required before merge. Other reported MEDIUM and LOW findings also require review.
 Fresh exact-digest ECR clearance remains pending after merge and publication.
 Compatibility checks do not clear findings or authorize Challenge admission.
 

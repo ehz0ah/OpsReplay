@@ -22,7 +22,8 @@ for tool in ("findmnt", "lsblk", "mount", "umount", "nsenter", "runuser", "su", 
     assert "2.42.4" in result, (tool, result)
 for library in ("libblkid.so.1", "libmount.so.1", "libsmartcols.so.1", "libuuid.so.1"):
     ctypes.CDLL(library)
-subprocess.run(["dpkg", "--audit"], check=True, capture_output=True, text=True)
+audit = subprocess.run(["dpkg", "--audit"], check=True, capture_output=True, text=True)
+assert not (audit.stdout + audit.stderr).strip(), "Package configuration is incomplete"
 for package in packages:
     paths = subprocess.check_output(["dpkg-query", "-L", package], text=True).splitlines()
     for name in paths:
