@@ -2,6 +2,8 @@
 set -eu
 
 cd /build/util-linux-2.42.4
+# Regenerate release files with the Bookworm Automake version, as Debian does.
+AM_OPTS=--copy LT_OPTS=--copy sh ./autogen.sh
 export DEB_BUILD_MAINT_OPTIONS=hardening=+all
 export CFLAGS="$(dpkg-buildflags --get CFLAGS)"
 export CPPFLAGS="$(dpkg-buildflags --get CPPFLAGS)"

@@ -54,7 +54,7 @@ RUN sh /build/security/build-zlib-security.sh
 FROM security-build-base AS util-linux-build
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        bsdutils util-linux util-linux-extra mount libblkid1 libmount1 libsmartcols1 libuuid1 \
-       build-essential dpkg-dev pkg-config python3 libtool autoconf automake gettext \
+       build-essential dpkg-dev pkg-config python3 libtool autoconf automake gettext autopoint \
        libaudit-dev libcap-ng-dev libcrypt-dev libncurses-dev libpam0g-dev \
        libreadline-dev libselinux1-dev libsystemd-dev libudev-dev \
        libcryptsetup-dev zlib1g-dev bison flex \

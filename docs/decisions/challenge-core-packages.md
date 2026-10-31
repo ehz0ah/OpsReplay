@@ -15,6 +15,8 @@ libuuid1. Keep the bsdutils epoch, Bookworm paths, permissions, PAM configuratio
 and other non-ELF files. A missing replacement fails the build. Do not add
 libfdisk1 when it is not part of the existing runtime package set.
 
+Regenerate Autotools files with Bookworm's tools as in Debian's build recipe;
+the release's generated files otherwise request a newer Automake executable.
 Use Bookworm's build options where they affect existing tools. Check that the
 rebuilt libraries retain their original versioned symbols. Compute ELF runtime
 dependencies with `dpkg-shlibdeps`; retain existing package dependencies and add
