@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+31 October 2026: [Editor recovery backport](editor-recovery-backport.md) retains
+Debian's Tiny editor and applies the upstream recovery bounds fix. Normal editor
+compatibility checks and real Challenge suites run on hosted CI. Fresh image
+findings and AWS acceptance remain separate.
+
 31 October 2026: assistant benchmark reports distinguish attempted and completed
 latency, first visible streamed text, failed calls, missing usage and reserved cost.
 An exact-budget final reply completes the run; another call still requires its

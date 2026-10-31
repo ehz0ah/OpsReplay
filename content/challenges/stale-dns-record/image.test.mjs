@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { verifyEditorCompatibility } from '../../../scripts/editor-image-check.mjs';
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const image = process.env.OPSREPLAY_DNS_CHALLENGE_IMAGE ?? 'opsreplay/challenge-stale-dns-record:dev';
 const containers = new Set();
@@ -16,6 +17,10 @@ function success(result) {
   return result.stdout.trim();
 }
 const imageId = success(docker('image', 'inspect', image, '--format', '{{.Id}}'));
+
+test('derived DNS image preserves the patched editor and valid recovery', (t) => {
+  t.diagnostic(JSON.stringify(verifyEditorCompatibility(imageId)));
+});
 const exec = (id, ...args) => docker('exec', id, ...args);
 process.once('exit', () => {
   for (const id of containers) docker('rm', '-f', id);
