@@ -1,7 +1,8 @@
 # Debian editor recovery backport
 
 Date: 31 October 2026
-Status: source candidate; hosted build and compatibility checks pending.
+Status: hosted build, editor compatibility and service checks passed; exact-digest
+registry review and AWS acceptance pending.
 
 The Challenge keeps Debian Bookworm, Vim Tiny, its existing aliases and Nano as
 the default editor. Bookworm still publishes Vim Tiny `2:9.0.1378-2+deb12u2`;
@@ -43,6 +44,19 @@ The editor test has a 45-second bound. Always-run CI cleanup targets its own
 container label. Production allocations and deadlines do not change.
 
 ## Verification and remaining gates
+
+GitHub run `41200271452` passed all nine repository jobs at source `13bfe26`,
+plus the PR metadata check. The upstream suite passed 22 tests. The derived DNS
+suite passed its normal editor check and real service tests, followed by its
+Monitor suite. The reference Monitor/Gateway checks also passed. Editor results
+verified three editing aliases, valid swap recovery, unchanged Nano default and
+the rebuilt package hashes. These are hosted compatibility results, not registry
+clearance or an AWS deployment check.
+
+The first candidate's strict package verification failed because Debian slim
+omitted eight documentation/lintian files, including provenance. Exact-path
+diagnostics identified the omission. The package-specific include rule fixes it
+while retaining the verification assertion and the other packages' slim policy.
 
 Static patch application, syntax and repository checks are separate from hosted
 image compilation and real service tests. No editor process, Docker image build,
