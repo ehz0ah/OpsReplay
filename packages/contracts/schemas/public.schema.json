@@ -372,6 +372,10 @@
           "type": ["string", "null"],
           "format": "uuid"
         },
+        "challengeStartsEnabled": {
+          "type": "boolean",
+          "description": "Optional deployment admission status requested with include=admission. False pauses new start and recovery requests; existing attempts and saved results remain accessible. Default and older responses omit this field."
+        },
         "demoUpgradeExpiresAt": {
           "type": ["string", "null"],
           "format": "date-time",

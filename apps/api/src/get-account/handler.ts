@@ -11,14 +11,19 @@ export function createGetAccountHandler(
   now = Date.now,
   log?: (value: object) => void,
   demoPolicy?: DemoUpgradePolicy,
+  challengeStartsEnabled?: boolean,
 ) {
   return bootstrapHandler(
     'get_account',
     '/v1/me',
     true,
     async (event, owner, signal) => {
-      if (Object.keys(event.multiValueQueryStringParameters ?? event.queryStringParameters ?? {}).length)
-        throw new BootstrapError('INVALID_REQUEST');
+      const query =
+        event.multiValueQueryStringParameters ??
+        Object.fromEntries(Object.entries(event.queryStringParameters ?? {}).map(([key, value]) => [key, [value]]));
+      const includeAdmission =
+        Object.keys(query).length === 1 && query.include?.length === 1 && query.include[0] === 'admission';
+      if (Object.keys(query).length && !includeAdmission) throw new BootstrapError('INVALID_REQUEST');
       if (!owner) throw new BootstrapError('UNAUTHENTICATED');
       const request = new TransactGetCommand({
         TransactItems: [keys.plan(owner), keys.active(owner)].map((Key) => ({ Get: { TableName: table, Key } })),
@@ -50,6 +55,7 @@ export function createGetAccountHandler(
       return {
         ...effectivePlan(plan, clock),
         activeSessionId: active?.sessionId ?? null,
+        ...(includeAdmission && challengeStartsEnabled !== undefined ? { challengeStartsEnabled } : {}),
         ...(demoPolicy ? { demoUpgradeExpiresAt: demoUpgradeDeadline(demoPolicy, owner, clock) } : {}),
       };
     },

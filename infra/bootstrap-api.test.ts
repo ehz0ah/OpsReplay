@@ -22,6 +22,10 @@ test('bootstrap routes preserve public catalogue and authenticated read-only acc
       )!;
       assert.ok(fn);
       assert.equal(fn[1].Properties.VpcConfig, undefined);
+      assert.deepEqual(
+        fn[1].Properties.Environment.Variables.SESSION_ADMISSION_ENABLED,
+        prefix === 'GetAccount' ? { 'Fn::If': ['SessionAdmissionEnabled', 'true', 'false'] } : undefined,
+      );
       assert.deepEqual(fn[1].Properties.ReservedConcurrentExecutions, {
         'Fn::If': ['GatewayPathEnabled', { Ref: 'BootstrapReadBurstLimit' }, 0],
       });

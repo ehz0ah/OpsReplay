@@ -24,6 +24,12 @@ gateway frame, requires capture interval timestamps in playback, and defines
 
 ## Common rules
 
+`GET /v1/me?include=admission` can include `challengeStartsEnabled`, a deployment status independent
+of the learner's plan. False pauses new start and recovery requests. Existing
+attempts and saved results remain accessible. Clients preserve uncertain request
+IDs until their outcome is known. Default reads omit this optional field so existing clients retain their response shape. Deploy the updated backend before the browser that requests the status.
+The browser refreshes account state to check whether starts have reopened.
+
 The REST API is a Regional API Gateway REST API with Lambda handlers. Authenticated
 routes require a Cognito-issued ID token. API Gateway verifies the configured user pool;
 the action wrapper also requires `token_use=id` and the exact configured app-client

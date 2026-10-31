@@ -198,7 +198,9 @@ Publish only the reviewed immutable content record that binds the verified task 
 and image digests. Re-read the saved record before opening admission.
 
 Change only `EnableSessionAdmission` from `false` to `true`, review the diff, and deploy
-the same parameter set. Confirm that only StartSession reserved concurrency changes.
+the same parameter set. Confirm that only StartSession reserved concurrency and
+GetAccount's `SESSION_ADMISSION_ENABLED` environment value change. Read `GET /v1/me?include=admission`
+and verify `challengeStartsEnabled=true` before checking browser starts.
 Run the controlled full flow with the approved accounts and session count. Record real
 latency, retries, event delivery, cost, and failure evidence. Exercise duplicate start,
 harmful restart, Gateway replacement, interrupted recording, learner end, recovery, and
@@ -207,7 +209,7 @@ time limit without manually editing session state.
 ## 5. Close, drain, and remove
 
 First change only `EnableSessionAdmission` back to `false`. Confirm that StartSession is
-zero while Gateway, terminal tickets, hint release, owner end, reconciliation, sweep,
+zero and `GET /v1/me?include=admission` reports `challengeStartsEnabled=false`, while Gateway, terminal tickets, hint release, owner end, reconciliation, sweep,
 recording, and result reads remain enabled.
 
 Wait until every approved attempt has a terminal outcome, task stop is confirmed,

@@ -9,6 +9,7 @@ export const handler = withPublicApiPolicy(
     Date.now,
     (value) => console.info(JSON.stringify(value)),
     demoPolicyFromEnvironment(process.env, (value) => console.error(JSON.stringify(value))),
+    process.env.SESSION_ADMISSION_ENABLED === 'true',
   ),
   loadPublicApiPolicy(process.env),
 );

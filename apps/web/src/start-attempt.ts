@@ -4,7 +4,9 @@ export async function startAttempt(
   api: ApiClient,
   journal: MutationJournal,
   value: PendingMutation & { kind: 'start' },
+  startsEnabled = true,
 ) {
+  if (!startsEnabled) throw new Error('Challenges are temporarily unavailable. Check availability before starting.');
   const pending = journal.begin(value);
   if (pending.kind !== 'start') throw new Error('Invalid start request.');
   try {

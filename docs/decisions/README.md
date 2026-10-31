@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+1 November 2026: [Challenge start availability](challenge-admission-status.md)
+reports the deployment admission condition through the account read. The browser
+pauses start and recovery requests while preserving request identities and access
+to existing attempts and saved results. Backend concurrency still enforces admission.
+
 31 October 2026: [Editor recovery backport](editor-recovery-backport.md) retains
 Debian's Tiny editor and applies the upstream recovery bounds fix. Normal editor
 compatibility checks and real Challenge suites run on hosted CI. Fresh image
