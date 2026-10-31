@@ -33,6 +33,8 @@ proof of image security, and existing attempts retain their original image pins.
    Debian architecture patches first and retain the matching native loader.
    Refresh glibc when its runtime version guard detects a newer Bookworm update;
    do not remove the guard to install an older libc over that update.
+   Preserve the [loader pathname backport](../decisions/challenge-loader-path.md)
+   and check its production adaptation against the reviewed upstream commit.
 4. Run repository checks and the complete hosted Challenge, DNS, editor,
    compression, Monitor and Gateway suites. Use hosted CI for image and editor
    tests on the work Mac. Retain licences, recipes, descriptors and package hashes.

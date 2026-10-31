@@ -3,10 +3,14 @@ set -eu
 
 original_version=$(dpkg-query -W -f='${Version}' libc6)
 test "$original_version" = '2.36-9+deb12u14'
-version='2.36-9+deb12u14+opsreplay1'
+version='2.36-9+deb12u14+opsreplay2'
 cd /build/glibc-2.36
 make -f debian/rules patch DEB_BUILD_PROFILES=nobiarch
 patch --batch --fuzz=0 -p1 < /build/security/gettext-path-restriction.patch
+patch --batch --fuzz=0 -p1 < /build/security/loader-path-normalization.patch
+gcc -Wall -Wextra -Werror -I /build/glibc-2.36/elf \
+    -o /build/loader-path-compatibility /build/security/loader-path-compatibility.c
+/build/loader-path-compatibility
 # Silence routine compiler commands; errors remain visible and fail the build.
 make -s -f debian/rules build_libc DEB_BUILD_PROFILES=nobiarch DEB_BUILD_OPTIONS=parallel=2
 library=/build/glibc-2.36/build-tree/amd64-libc/libc.so
@@ -59,9 +63,12 @@ doc=usr/share/doc/libc6
 install -d "$doc"
 install -m 644 /build/glibc-2.36/COPYING.LIB "$doc/COPYING.LIB"
 install -m 644 /build/glibc_2.36-9+deb12u14.dsc "$doc/source.dsc"
-install -m 644 /build/security/build-glibc-security.sh /build/security/gettext-path-restriction.patch "$doc/"
+install -m 644 /build/security/build-glibc-security.sh /build/security/gettext-path-restriction.patch \
+    /build/security/loader-path-normalization.patch "$doc/"
 printf 'Debian source: 2.36-9+deb12u14\nBookworm local backport: %s\nUpstream proposal: v7, under review\nChanged payloads: libc.so.6 and matching native loader\n' \
     "$version" > "$doc/opsreplay-rebuild.txt"
+printf 'Loader backport: ed0c137b97eb940b4b64981e84ed806d3276edd9\nTargets: CVE-2026-86805 and CVE-2026-95818\n' \
+    >> "$doc/opsreplay-rebuild.txt"
 sed -i -e "s/^Version: .*/Version: $version/" -e "s/^Source: .*/Source: glibc ($version)/" \
     -e '/^Origin: /d' DEBIAN/control
 printf 'Origin: OpsReplay local backport\n' >> DEBIAN/control

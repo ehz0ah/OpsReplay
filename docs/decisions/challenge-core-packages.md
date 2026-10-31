@@ -37,7 +37,8 @@ native amd64 `build_libc` configuration. Replace libc.so.6 and its matching load
 in the original libc6 package after checking their versioned symbol sets. Other
 libc6 files remain from that same Bookworm source version. Retain the proposal,
 source descriptor, licence, recipe and complete package checksums. The local
-version is `2.36-9+deb12u14+opsreplay1`, with an explicit local origin.
+version is `2.36-9+deb12u14+opsreplay2` after the
+[reviewed loader pathname backport](challenge-loader-path.md), with an explicit local origin.
 After live runtime updates, require that same original libc6 version before
 installing the backport. A later Bookworm libc update must fail this recipe until
 the backport is refreshed; never overwrite a newer distro fix with older libc.

@@ -5,7 +5,7 @@ import json
 import locale
 import subprocess
 
-VERSION = "2.36-9+deb12u14+opsreplay1"
+VERSION = "2.36-9+deb12u14+opsreplay2"
 actual = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "libc6"], text=True)
 assert actual == VERSION, actual
 subprocess.run(

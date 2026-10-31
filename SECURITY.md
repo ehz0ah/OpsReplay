@@ -124,6 +124,13 @@ are required before merge. Other reported MEDIUM and LOW findings also require r
 Fresh exact-digest ECR clearance remains pending after merge and publication.
 Compatibility checks do not clear findings or authorize Challenge admission.
 
+The [loader pathname backport](docs/decisions/challenge-loader-path.md) also
+targets `CVE-2026-86805` (MEDIUM) and `CVE-2026-95818` (LOW) with their reviewed
+upstream production fix. It preserves the native Bookworm runtime and requires
+hosted compatibility checks. The Power8-only `CVE-2026-97399` does not apply to
+the published amd64 target. Its source-package finding remains visible for
+exact-image qualification.
+
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception
 needs explicit owner approval for its targets and window. Do not suppress findings,

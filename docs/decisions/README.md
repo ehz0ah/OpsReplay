@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+1 November 2026: [Challenge loader pathname backport](challenge-loader-path.md)
+applies the reviewed upstream normalization fix to native Bookworm libc and its
+loader. Hosted ordinary path and full service checks plus exact-digest
+qualification remain required.
+
 1 November 2026: [Challenge utility and libc rebuilds](challenge-core-packages.md)
 use fixed util-linux source and a narrow local backport of the pending upstream
 gettext proposal. Native hosted compilation, compatibility checks and exact-digest

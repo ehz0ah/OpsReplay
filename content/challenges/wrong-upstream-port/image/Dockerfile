@@ -78,7 +78,8 @@ RUN printf '%s\n' \
     && printf '%s\n' \
        'a543c02070d46ccaf866957efd13f10c924daa74c86a90a0254db09a92a708ee  glibc_2.36.orig.tar.xz' \
        'cf4ac9cd98185452cae3ef34e2e4ee12753e3d93fd0c62c61396d4a47eec902f  glibc_2.36-9+deb12u14.debian.tar.xz' | sha256sum -c -
-COPY security/build-glibc-security.sh security/gettext-path-restriction.patch security/gettext-compatibility.c /build/security/
+COPY security/build-glibc-security.sh security/gettext-path-restriction.patch security/gettext-compatibility.c \
+     security/loader-path-normalization.patch security/loader-path-compatibility.c /build/security/
 RUN sh /build/security/build-glibc-security.sh
 
 FROM debian AS runtime
