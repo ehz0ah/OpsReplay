@@ -6,7 +6,7 @@ const image = 'sha256:' + 'a'.repeat(64);
 const report = {
   editingAliases: 3,
   validSwapRecovery: true,
-  packageVersion: '2:9.0.1378-2+deb12u2+opsreplay1',
+  packageVersion: '2:9.2.0858-1+opsreplay1',
   packageHashesVerified: true,
   defaultEditor: 'nano',
 };

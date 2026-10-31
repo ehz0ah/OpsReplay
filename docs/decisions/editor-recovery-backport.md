@@ -1,8 +1,14 @@
 # Debian editor recovery backport
 
 Date: 31 October 2026
-Status: hosted build, editor compatibility and service checks passed; exact-digest
-registry review and AWS acceptance pending.
+Status: superseded by the
+[Challenge Vim source refresh](challenge-vim-refresh.md) on 1 November 2026.
+
+The current image rebuilds Vim Tiny and its matching common files from the newer
+fixed source. It includes the recovery fix upstream and no longer applies the
+standalone patch. The text below records the earlier implementation and its
+historical checks. Fresh exact-digest registry review and AWS acceptance remain
+pending for the replacement image.
 
 The Challenge keeps Debian Bookworm, Vim Tiny, its existing aliases and Nano as
 the default editor. Bookworm still publishes Vim Tiny `2:9.0.1378-2+deb12u2`;

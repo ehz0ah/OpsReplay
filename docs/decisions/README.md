@@ -18,6 +18,26 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+1 November 2026: the [Challenge rebuild runbook](../runbooks/challenge-security-rebuilds.md)
+pins build inputs and original packages to fixed Debian archive indexes. Runtime
+installation continues to apply current Bookworm updates. The older editor
+recovery backport is superseded by the newer Vim source rebuild.
+
+1 November 2026: [Challenge zlib refresh](challenge-zlib-refresh.md) rebuilds
+Debian's fixed compression library source on Bookworm, keeps its ABI and records
+the applied patch. Hosted compression and service checks plus fresh scans remain
+required.
+
+1 November 2026: [Challenge curl refresh](challenge-curl-refresh.md) rebuilds the
+fixed upstream curl release on Bookworm and retains matching libcurl packages and
+provenance. Hosted compatibility checks and fresh scans remain required. Other
+Challenge package findings are separate work.
+
+1 November 2026: [Challenge Vim source refresh](challenge-vim-refresh.md) builds
+the newer fixed editor source with Debian's Tiny configuration on Bookworm and
+replaces matching shared files. Ordinary hosted checks and exact image scans
+remain required before runtime admission.
+
 31 October 2026: [Editor recovery backport](editor-recovery-backport.md) retains
 Debian's Tiny editor and applies the upstream recovery bounds fix. Normal editor
 compatibility checks and real Challenge suites run on hosted CI. Fresh image

@@ -73,8 +73,8 @@ HIGH/CRITICAL/UNKNOWN for the Gateway and both Monitor targets, with 21 MEDIUM a
 scan. Current CA/timezone payloads and matching records replace the older files
 that introduced three UNKNOWN advisories in the earlier candidate. The metadata
 remains available to scanners.
-These local results are not new ECR scans or production clearance. The Challenge
-image is unchanged and its reported findings remain open.
+These local Node results are not new ECR scans or production clearance for the
+Challenge images.
 
 ### 29 October checkpoint and initial triage
 
@@ -88,14 +88,37 @@ Temporary repositories and images were removed after the run.
 The initial fresh local build on 29 October still resolved the same reported HIGH-package
 versions. The Dockerfiles already apply available Bookworm updates. Vim Tiny omits
 several affected features and plugins, and the Challenge has no DIGEST-MD5 plugin.
-These facts do not clear the entire source-package finding set. Swap recovery remains
-an open Vim concern. The zlib affected-range discrepancy also remains open. See the
-checkpoint for exact versions and source references.
+These initial observations did not clear the entire source-package finding set.
+See the checkpoint for historical versions and source references. The current
+Challenge rebuilds are listed below.
 
 The [31 October editor recovery backport](docs/decisions/editor-recovery-backport.md)
-covers only `CVE-2026-28421` and passed hosted editor and service compatibility
-checks. It preserves the Tiny editor, Nano default and package provenance. Other
-Vim findings and fresh exact-digest scan or ECR clearance remain pending.
+covered only `CVE-2026-28421` and passed hosted editor and service compatibility
+checks. It is superseded by the newer Vim source rebuild, which includes that
+fix upstream and removes the standalone patch.
+
+### 31 October scans and current Challenge rebuilds
+
+The 31 October scans of the exact published Challenge images at source
+`2eac2f2` reported two CRITICAL and 36 HIGH findings in each image. The current
+candidate rebuilds these packages on Bookworm:
+
+| Rebuild                                                                            | Reported findings targeted                                                                                                 |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [curl and libcurl4 8.23.0](docs/decisions/challenge-curl-refresh.md)               | Two CRITICAL (`CVE-2026-86414`, `CVE-2026-92388`) and nine HIGH curl source findings                                       |
+| [Vim Tiny and common 9.2.0858](docs/decisions/challenge-vim-refresh.md)            | Nineteen HIGH Vim source findings, including `CVE-2026-28421`                                                              |
+| [zlib 1.3.2 with Debian's fixed patches](docs/decisions/challenge-zlib-refresh.md) | One HIGH finding, `CVE-2026-85091`; the candidate uses the fixed source rather than waiving the affected-range discrepancy |
+
+The builders use fixed, signed Debian archive indexes for source, dependencies
+and original packages. See the [rebuild runbook](docs/runbooks/challenge-security-rebuilds.md).
+Runtime installation still applies current Bookworm package updates. Local
+origin, source descriptors, licences, recipes and complete checksum inventories
+remain available to scanners. The derived DNS image receives the same rebuilds.
+
+Util-linux's six HIGH findings and glibc's one HIGH finding remain open. Other
+reported MEDIUM and LOW findings also require review. Fresh exact-digest ECR
+clearance remains pending after merge and publication. Hosted compatibility checks
+do not clear these findings or authorize Challenge admission.
 
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception

@@ -10,6 +10,7 @@ import { verifyEditorCompatibility } from '../../../scripts/editor-image-check.m
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
 const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
+const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
 const recordingTest = readFileSync(new URL('./recording.test.py', import.meta.url), 'utf8');
 const shellIntegrationTest = readFileSync(new URL('./shell-integration.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
@@ -41,6 +42,14 @@ const imageId = success(docker('image', 'inspect', imageTag, '--format', '{{.Id}
 
 test('editor backport preserves aliases, Unicode editing and valid swap recovery', (t) => {
   t.diagnostic(JSON.stringify(verifyEditorCompatibility(imageId)));
+});
+
+test('fixed zlib preserves compression and its shared library ABI', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: zlibTest })));
+  assert.equal(report.runtimeVersion, '1.3.2');
+  assert.equal(report.roundTrip, true);
+  t.diagnostic(JSON.stringify(report));
 });
 
 process.once('exit', () => {
@@ -177,6 +186,30 @@ test('fresh image has real services, observable 502 evidence, and restricted loc
   }
   for (const tool of ['nano', 'vi', 'vim', 'curl', 'ss', 'ps', 'less', 'psql']) {
     success(exec(id, 'sh', '-ec', 'command -v "$1"', 'tool-check', tool));
+  }
+  const curlVersion = success(exec(id, 'curl', '--version'));
+  assert.match(curlVersion, /^curl 8\.23\.0 /);
+  assert.match(curlVersion, /libcurl\/8\.23\.0/);
+  assert.match(curlVersion, /OpenSSL\//);
+  for (const protocol of ['http', 'https', 'ftp', 'ftps', 'scp', 'sftp'])
+    assert.ok(
+      curlVersion
+        .match(/^Protocols: (.+)$/m)?.[1]
+        .split(' ')
+        .includes(protocol),
+      protocol,
+    );
+  success(
+    exec(
+      id,
+      'sh',
+      '-ec',
+      'cd / && md5sum -c /var/lib/dpkg/info/curl.md5sums /var/lib/dpkg/info/libcurl4:amd64.md5sums',
+    ),
+  );
+  for (const packageName of ['curl', 'libcurl4']) {
+    assert.equal(success(exec(id, 'dpkg-query', '-W', '-f=${Version}', packageName)), '8.23.0-1+opsreplay1');
+    success(exec(id, 'test', '-f', '/usr/share/doc/' + packageName + '/opsreplay-rebuild.txt'));
   }
   assert.equal(success(exec(id, 'id', '-u')), '0');
   assert.equal(sql(id, 'SELECT count(*) FROM orders'), '0');

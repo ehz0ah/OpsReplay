@@ -9,6 +9,7 @@ import { verifyEditorCompatibility } from '../../../scripts/editor-image-check.m
 const manifest = JSON.parse(readFileSync(new URL('./challenge.json', import.meta.url)));
 const image = process.env.OPSREPLAY_DNS_CHALLENGE_IMAGE ?? 'opsreplay/challenge-stale-dns-record:dev';
 const containers = new Set();
+const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
 function docker(...args) {
   return spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
 }
@@ -20,6 +21,22 @@ const imageId = success(docker('image', 'inspect', image, '--format', '{{.Id}}')
 
 test('derived DNS image preserves the patched editor and valid recovery', (t) => {
   t.diagnostic(JSON.stringify(verifyEditorCompatibility(imageId)));
+});
+test('derived DNS image preserves the fixed zlib and ordinary compression', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(
+      spawnSync('docker', ['exec', '--interactive', id, 'python3', '-'], {
+        input: zlibTest,
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      }),
+    ),
+  );
+  assert.equal(report.runtimeVersion, '1.3.2');
+  assert.equal(report.roundTrip, true);
+  t.diagnostic(JSON.stringify(report));
 });
 const exec = (id, ...args) => docker('exec', id, ...args);
 process.once('exit', () => {
