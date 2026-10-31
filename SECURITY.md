@@ -92,6 +92,11 @@ These facts do not clear the entire source-package finding set. Swap recovery re
 an open Vim concern. The zlib affected-range discrepancy also remains open. See the
 checkpoint for exact versions and source references.
 
+The [31 October editor recovery backport](docs/decisions/editor-recovery-backport.md)
+covers only `CVE-2026-28421` and passed hosted editor and service compatibility
+checks. It preserves the Tiny editor, Nano default and package provenance. Other
+Vim findings and fresh exact-digest scan or ECR clearance remain pending.
+
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception
 needs explicit owner approval for its targets and window. Do not suppress findings,
