@@ -420,6 +420,67 @@ host capacity/power, network and staff assumptions are missing. Complete steady
 use and class-burst comparisons before drawing a hosting-cost conclusion.}
 
 \newpage
+\subsection{On-premise service boundary and sensitivity}
+The code uses AWS SDKs for state, object storage, identity, task launch and timers.
+Running the three images on a server does not supply the complete SaaS. An
+equivalent deployment needs authenticated HTTPS ingress and action workers;
+verified-email identity; a transactional store with conditional request receipts
+and leases; private immutable recordings and backups; isolated task scheduling;
+durable deadline/reconciliation workers; and monitoring, secrets and deployment
+controls. DynamoDB Local tests do not establish a production state-store substitute.
+These are comparison requirements, not added MVP services.
+
+SP Group lists S\$0.2859/kWh before GST for Q4 2026 \cite{sp-tariff}.
+A Singapore T350 retail listing displays S\$4,955.80 for a Xeon E-2324, 8 GB RAM,
+2 TB HDD and non-redundant PSU \cite{host-listing}. Its memory/storage upgrades,
+tax, delivery and current availability require a qualified quote. Neither this
+listing nor maximum server specifications prove that the machine can host the
+complete workload. PSU capacity is not average power draw.
+
+Define a working case with two simultaneous attempts, 730 platform hours/month
+and total billable Challenge hours $H$. Use S\$4,000 capex over 36 months as a
+sensitivity input, not the quoted configuration. Assume 100 W average draw,
+1.4 power/cooling overhead, S\$50 network, S\$30 backup and S\$20 maintenance
+per month. Assume cloud operations take two hours/month and on-premise six, at
+S\$30/hour. Allow 60 hours of initial adapter work over 36 months. All inputs
+except the tariff and documented AWS rates are assumptions.
+
+\[
+\begin{array}{l}
+ C_{\rm cloud}=132.066855+0.083187H+40+60,\\
+ C_{\rm premise}=4000/36+0.1(730)(0.2859)(1.4)+50+30+20+180+50.
+\end{array}
+\]
+
+\begin{center}\small
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Challenge hours/month & Cloud projection (S\$) & On-premise working case (S\$)\\
+\midrule
+50 & 236.23 & 470.33\\
+400 & 265.34 & 470.33\\
+1200 & 331.89 & 470.33\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The table excludes equal external provider and content costs. Assigned labour
+and port effort materially affect it. At the same two hours of operations,
+on-premise falls to S\$350.33. With that labour and an already qualified deployment
+requiring no adapter work, it falls to S\$300.33, below cloud at 1,200 hours.
+This is not measured evidence that either host is cheaper.
+
+The base algebraic crossing is about 2,864 hours, beyond two tasks' 1,460-hour
+monthly arithmetic ceiling. Do not claim that crossing is achievable. The
+equal-labour, no-port case crosses near 821 hours, but peak capacity still needs
+measurement. Monthly hours alone cannot size a class burst. A larger host changes
+capex and power. A single non-redundant server also has different availability
+from managed multi-zone storage; backups do not provide continuous failover.
+The supporting working model records S\$1,000/S\$8,000 capex sensitivity and
+required qualification evidence. Final comparison must use actual workloads,
+power, operator time, availability and attributed cloud charges.
+
+\newpage
 \section{Code Explanation, Disclosure and Conclusion}
 \subsection{Repository and component boundaries}
 Public code: \url{https://github.com/ehz0ah/OpsReplay}. Keep this URL accessible
@@ -513,5 +574,10 @@ Rates and commercial assumptions are the dated proposal inputs.
 \url{https://aws.amazon.com/elasticloadbalancing/pricing/}.
 \bibitem{stripe} Stripe Singapore, ``Pricing.''
 \url{https://stripe.com/en-sg/pricing}.
+\bibitem{sp-tariff} SP Group, ``Tariff Information,'' Q4 2026, read 31 October 2026.
+\url{https://www.spgroup.com.sg/our-services/utilities/tariff-information}.
+\bibitem{host-listing} Sim Lim Square / Bizgram, ``Dell PowerEdge T350,''
+retail listing read 31 October 2026. Configuration and price require confirmation.
+\url{https://www.simlimsquare.com.sg/product/dell-poweredge-t350-poweredge-t350-xeon-e-2324-1x8gb-dim-9850}.
 \end{thebibliography}
 \end{document}

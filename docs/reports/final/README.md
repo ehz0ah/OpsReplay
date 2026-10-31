@@ -50,6 +50,11 @@ Private aggregate evidence was inspected for the draft. Raw recordings, account
 identifiers, provider responses and credentials must remain outside Git. The
 report cites public checkpoint summaries and labels the private aggregates' scope.
 
+The [on-premise working comparison](cost-comparison.md) defines the equivalent
+service boundary, a sourced electricity tariff and hardware-listing limits, and
+cost sensitivity. Its numerical cases are assumptions, not measured equivalent
+deployments or proof of the cheaper hosting option.
+
 ## Required completion work
 
 1. Update the source revision after relevant PRs merge. Record new exact image
