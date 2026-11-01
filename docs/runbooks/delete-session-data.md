@@ -1,6 +1,10 @@
 # Delete one completed session
 
-Status: implemented locally. Managed IAM and S3 deletion require the AWS checkpoint.
+Status: implemented and verified in the scoped
+[1 November AWS checkpoint](../checkpoints/2026-11-01-release-qualification.md).
+One disposable completed session returned `pending`, `deleted` and `absent` on
+repeat. Session/object/owner-reference absence and unrelated-row preservation
+were verified. Future operators must still check their exact target and IAM.
 
 The evaluation owner handles a learner's deletion request. Verify the requester and
 record the requested session IDs privately. This action deletes one session, terminal
