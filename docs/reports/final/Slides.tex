@@ -38,7 +38,7 @@
    -- ([xshift=-12mm,yshift=12mm]current page.south east);
  \node[anchor=south west,font=\fontsize{10}{12}\selectfont]
    at ([xshift=12mm,yshift=4.5mm]current page.south west)
-   {OPSREPLAY / CS5224 GROUP 26 / WORKING DRAFT 31 OCT 2026};
+   {OPSREPLAY / CS5224 GROUP 26 / WORKING DRAFT 1 NOV 2026};
  \node[anchor=south east,font=\fontsize{10}{12}\selectfont]
    at ([xshift=-12mm,yshift=4.5mm]current page.south east)
    {#3\quad\textbar\quad\thepage};
@@ -73,7 +73,7 @@
 \Small
 Lee Hao Zhe / Neeraj Kumbar / Neo Qi Hao / Poh Yu Wen / See Yang Zhi / Teo Kai Xiang
 \par
-\Evidence{Implemented source: 4df4842. Draft results have explicit environment and revision limits.}
+\Evidence{Implemented source: 5c33055. Draft results have explicit environment and revision limits.}
 
 \Slide{01 / PROBLEM}{The first production incident is a poor classroom.}{BLOCK A / 00:20--01:00}
 \begin{minipage}[t]{0.47\linewidth}
@@ -173,7 +173,7 @@ Usage and willingness to pay are unvalidated.
 \Small
 Static SPA: private S3 + CloudFront. Each Lambda has its own role and limits.\par
 Challenge: no task IAM role and no internet route. The Gateway owns recording.
-\Evidence{Architecture from merged source 4df4842. No runtime is currently deployed.}
+\Evidence{Architecture and bounded AWS qualification at merged source 5c33055. Runtime is removed after the campaign.}
 
 \Slide{03 / RELIABILITY}{One request identity. One attempt. One saved result.}{BLOCK C / 04:05--05:00}
 \begin{minipage}[t]{0.48\linewidth}
@@ -192,7 +192,7 @@ Commit debrief and release the matching lock.
 \end{minipage}\par
 \vspace{5mm}
 \Panel{282mm}{Pink}{Incomplete recording has no numeric score. A retry preserves the first attempt.}
-\Evidence{29 October: start-response loss and duplicate resolved-end requests passed. Further hosted loss/expiry cases remain pending.}
+\Evidence{1 November: lost/duplicate start, active end, token expiry, reconnect and controlled Gateway replacement passed. Larger recovery capacity is unmeasured.}
 
 \Slide{04 / CHALLENGE DEMO}{Investigate. Repair. Observe recovery.}{BLOCK D / 05:00--09:00}
 \begin{minipage}[t]{0.48\linewidth}
@@ -245,8 +245,9 @@ Unknown dispatch is not automatically resent.\par
 The terminal and investigation remain usable when the provider fails.
 \vspace{3mm}
 \Small
-Account permission is confirmed. Actual endpoint cap and paid benchmark are pending.
-\Evidence{One confirmed proposal was checked in the earlier AWS checkpoint. This does not measure model accuracy, latency or cost.}
+19 baseline attempts: 18 complete, 1 failed. Adapter p50 / p95: 4.62 / 6.01 s.\par
+Two deployed streams: 8.57 / 6.64 s. Repeated confirmation counted once.
+\Evidence{Manual rubric: 4/18 replies had unsupported facts. PR \#137 narrows instructions. Small sample; no accuracy guarantee or enforced billing cap.}
 
 \Slide{06 / SYSTEM RESULTS}{450 owned GETs passed. Capacity is still unmeasured.}{BLOCK F / 11:00--11:50}
 \begin{center}
@@ -318,12 +319,12 @@ Current frontend and component checks.}
 \begin{minipage}[t]{0.46\linewidth}
 \vspace{0pt}\raggedright
 \Panel{132mm}{Pink}{\textbf{Still required}\par
-Fresh exact-digest image qualification.\par
-Hosted disconnect, expiry and loss cases.\par
-Capped assistant and participant results.\par
-Final attributed cost and rehearsal.}
+Participant study and outcomes.\par
+Residual image-finding assessment.\par
+Host capacity and cost evidence.\par
+Final attributed charges and rehearsal.}
 \end{minipage}\par
-\Evidence{Historical image exception has expired. Source backport and CI do not clear all registry findings. New tests require current bounds.}
+\Evidence{1 November exact-image scans: Gateway/Monitor reported no findings; each Challenge had 1 HIGH, 3 MEDIUM, 3 LOW. Three named glibc findings have scoped owner acceptance.}
 
 \Slide{06 / DELIVERY}{Practice the failure. Learn from the recorded path.}{BLOCK F / 14:30--15:00}
 \vspace{4mm}
@@ -344,7 +345,7 @@ Recording generations fence stale writers. First outcome fixes the cutoff.\par
 Independent Monitor data determines recovery and raw impact components.\par
 Operator-only erasure waits 120 seconds after a saved marker, then verifies\par
 object-prefix, session-partition and owner-reference absence.
-\Evidence{Deletion source/static checks passed. Managed AWS erasure remains untested. One-session deletion is not complete account or backup erasure.}
+\Evidence{Scoped AWS deletion verification is in progress. One-session deletion is not complete account or backup erasure.}
 
 \Slide{BACKUP / CODE}{Separate action handlers. Shared ordinary modules.}{Q\&A BACKUP / NOT TIMED}
 \Small
@@ -370,8 +371,9 @@ object-prefix, session-partition and owner-reference absence.
 Google SRE: \url{https://sre.google/workbook/postmortem-culture/}\par
 SadServers: \url{https://sadservers.com/faq}\quad
 SimIncident: \url{https://simincident.com/}\par
-\textbf{OpsReplay evidence at source 4df4842}\par
+\textbf{OpsReplay evidence at source 5c33055}\par
 \texttt{docs/checkpoints/2026-10-29-saas-aws.md}\par
+\texttt{docs/checkpoints/2026-11-01-release-qualification.md}\par
 \texttt{docs/decisions/pricing-proposal.md}\par
 \texttt{docs/decisions/neobrutalist-discovery.md}\par
 \texttt{docs/evaluation/pilot/README.md}\par

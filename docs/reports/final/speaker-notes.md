@@ -81,9 +81,12 @@ Show a Learn entry and the demo access difference if time allows.
 
 **Slide 10, 45 seconds.** Explain public evidence context, typed proposal and
 separate confirmation. The assistant cannot determine scores or service truth.
-If the cap and hosted provider path are not verified, keep the provider off and
-describe the boundary. Do not show fixture text as a real-provider answer. An
-earlier single proposal is not a benchmark.
+State the measured baseline: 18 completions from 19 attempts, with four unsupported
+fact replies in manual review. Two deployed calls completed in 8.57 and 6.64 seconds;
+confirmation and repeated receipts counted once. The account is permitted for the
+demo; no enforced billing cap or accuracy guarantee is claimed. Use the assistant
+only within the next approved request/time bounds. Do not present fixtures as
+provider output or the tool-only fallback as a generated explanation.
 
 ## Block F
 

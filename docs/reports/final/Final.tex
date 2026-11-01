@@ -11,7 +11,7 @@
 \usepackage{graphicx,xurl}
 \usepackage[hidelinks]{hyperref}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
-\newcommand{\SourceRevision}{4df4842}
+\newcommand{\SourceRevision}{5c33055}
 \newcommand{\DraftNote}[1]{\par\smallskip\noindent\textbf{Draft evidence gap:} #1\par}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}
@@ -21,7 +21,7 @@
 \titlespacing*{\subsection}{0pt}{7pt}{3pt}
 \renewcommand{\arraystretch}{1.13}
 \makeatletter
-\renewcommand{\@oddfoot}{\hfil\small Working draft: 31 October 2026\quad\textbar\quad\thepage\hfil}
+\renewcommand{\@oddfoot}{\hfil\small Working draft: 1 November 2026\quad\textbar\quad\thepage\hfil}
 \makeatother
 \hypersetup{pdftitle={OpsReplay: CS5224 Final Report Working Draft},pdfauthor={CS5224 Group 26}}
 
@@ -160,9 +160,9 @@ schedule cleanup precede once-only finalisation and lock release.
 
 Lifecycle events are discovery hints. Workers reread current state before effects.
 Conditional writes fence stale generations, late timers and overlapping workers.
-Bounded sweeps retain cursors across invocations. These properties have component
-tests; managed-service timing and additional failure paths still need the final
-hosted checkpoint.
+Bounded sweeps retain cursors across invocations. Component tests and the
+1 November hosted response-loss, reconnect, token-expiry and Gateway-replacement
+checks support this design. Larger recovery capacity remains unmeasured.
 
 \subsection{Recording and debrief}
 The learner has a root shell in the Challenge container. The separate Monitor
@@ -236,36 +236,36 @@ states that selected evidence leaves AWS for the configured provider. Credential
 and provider text stay out of logs.
 
 The account owner has confirmed permission for the selected Ark demo account.
-The actual isolated endpoint cap remains unverified. No paid benchmark result is
-claimed. Merged PR \#128 corrected benchmark timing, failure denominators and cost
-basis. Adapter-only latency must be reported separately from the complete hosted
-interaction. Gameplay works with the assistant disabled.
+The campaign used bounded paid calls under this permission; console cap verification
+was not a prerequisite. No enforced billing cap is claimed. Adapter-only timing
+and full deployed streams are reported separately below. Gameplay works with the
+assistant disabled.
 
 \newpage
 \section{System Evaluation}
 \label{sec:system}
-Evidence is bound to a revision, workload and environment. The 29 October
-checkpoint used source \texttt{e59067b}, one Gateway, two serial Challenge attempts
-and two test learners in Singapore; terminal ingress used the US East edge
-configuration \cite{aws-checkpoint}. One learner completed genuine inbox
-verification. The second identity was operator-created. Paid provider calls were off.
+Evidence is bound to a revision, workload and environment. The 1 November campaign
+used \texttt{5c33055}, two new operator-created learners, six attempts, at most two
+concurrent Challenge tasks and one Gateway in Singapore, with the US East terminal
+edge \cite{release-checkpoint}. The 29 October sign-up and 450-GET results retain
+their original \texttt{e59067b} scope \cite{aws-checkpoint}.
 
 \begin{tabularx}{\linewidth}{@{}p{34mm}Y@{}}
 \toprule
 \textbf{Area} & \textbf{Observed result and scope}\\
 \midrule
-Identity/access & Verified-email sign-up, default Free, guest 401, Pro denial
-without admission, and foreign owned-resource 404 passed.\\
-Request recovery & Discarded start and review POST responses recovered the same
-saved result. Replayed demo grants retained their fixed expiry.\\
-Real Challenges & Both recovered for 60 consecutive seconds. DNS-only repair
-did not fix checkout; an unsafe restart caused a recorded outage.\\
-Debrief/playback & Both results had complete recordings and saved raw scores.
-Export references, seeking and expired-link refresh passed.\\
-Terminal & An idle socket stayed open for over ten minutes. This does not test
-forced-disconnect recovery.\\
-Cleanup & Both tasks stopped; seven owned temporary stacks, six images and static
-test assets were removed. Durable results and identities were preserved.\\
+Identity/access & Hosted PKCE login and fixed-window Pro access passed. Inbox
+sign-up, guest denial and ownership checks are 29 October evidence.\\
+Request recovery & Lost start response and same-request replay recovered one
+attempt. Duplicate active-end requests retained one terminal outcome.\\
+Real Challenges & Both recovered for 60 seconds. DNS-only repair left checkout
+at 502; a validated reload restored it.\\
+Terminal/recovery & Original idle socket survived 610 seconds. Expired token
+returned 401; fresh login and reconnect resumed the same attempt.\\
+Gateway loss & Replacement recovered the same attempt and recording. The other
+disconnected attempt abandoned normally; its deadline check was repeated.\\
+Finalization & Deadline, final exports, deletion and cleanup verification are
+in progress; the checkpoint records their final status.\\
 \bottomrule
 \end{tabularx}
 
@@ -299,7 +299,9 @@ The later frontend record \cite{frontend-record} reports 26 fixture interaction
 checks and no page overflow at eight widths from 320 to 1440 CSS pixels. This is
 local UI evidence, not native-mobile or new hosted acceptance. PR \#129 at
 \texttt{60f4f7f} passed nine repository jobs and its metadata check, including
-ordinary editor/package and Challenge checks. It merged as \texttt{4df4842}; fresh exact-digest registry qualification is pending.
+ordinary editor/package and Challenge checks. Later package PRs culminated in
+merged PR \#135 at \texttt{5c33055}; fresh publications and all six exact-digest
+scans passed the scoped campaign gate. Residual findings are listed below.
 
 \newpage
 \section{End-user Evaluation and Outstanding Validation}
@@ -333,30 +335,39 @@ effectiveness, retention, or the separate effect of playback.
 acceptance and the owner's informal trial do not replace the planned end-user
 evaluation. Add anonymous outcomes and concrete usability changes after the study.}
 
-\subsection{Final hosted and assistant checks}
-The next grouped campaign must use merged source and newly qualified image
-digests. Outstanding cases are forced reconnect, active-session login expiry,
-unresolved deadline expiry, active learner-end, recorder/Gateway loss and
-participant data deletion. Preserve failed evidence, fix confirmed defects and
-repeat the affected cases. Drain and verify cleanup in the same campaign.
+\subsection{Measured assistant and remaining checks}
+Six ordinary synthetic cases were planned for three repeats. The original run
+attempted 11 calls with one failure; an explicit eight-call supplement completed
+the missing repeats. The pooled baseline has 19 attempts, 18 completions and one
+failure (5.26\%). Completed adapter latency was p50 4616 ms / p95 6013 ms.
+The failed stream was not captured; a separate successful diagnostic does not
+establish its cause. Injection and hidden-answer fixtures were excluded.
 
-The assistant benchmark uses eight labelled synthetic cases and a manual rubric
-for relevance, teaching accuracy, unsupported facts and risky proposals. Lexical
-flags are not correctness scores. Report planned, attempted, completed and failed
-calls; parameters; first visible text and complete-reply p50/p95; returned tokens;
-and missing-usage reservations separately \cite{evaluation-tools}.
+Agent manual rubric review found relevant proposals in 18/18 completed replies,
+teaching accuracy in 17/18 and unsupported facts in 4/18. No destructive proposal
+was found in these ordinary cases. These are separate dimensions, not independent
+human grades. PR \#137 clarifies socket ownership and tested versus loaded
+configuration. Two targeted calls made the distinction explicit but do not
+establish post-fix accuracy; deployed tests retained pre-fix source.
 
-\DraftNote{The actual provider cap, paid benchmark, full hosted latency and
-additional failure-path results are absent. Approval of a temporary campaign
-budget would not establish production readiness or a hard AWS billing cap.}
+Two deployed streams completed in 8574 and 6643 ms. First text arrived at 5019 ms
+in the first call. The second was tool-only; saved fallback text is not a provider
+delta or the requested explanation. Both required confirmation; repeating the
+second counted once. A helper's wrong \texttt{completed} assertion was reconciled
+against the contract's saved \texttt{accepted} receipt.
+
+Reported tokens give US\$0.0073083 baseline and US\$0.0011263 deployed estimates
+at dated rates/FX; the failed baseline call retains a separate US\$0.0013201
+reservation. Diagnostic/fix calls are separate. No invoice, population p95,
+security-benchmark or accuracy guarantee is claimed \cite{release-checkpoint}.
 
 \subsection{Security and availability limits}
-The historical registry scan had no critical findings but had high findings in
-all six images. Its exception applied only to two exact-digest test attempts and
-has expired. PR \#129 addresses one editor issue with retained package provenance;
-it does not clear all findings. No new registry or production-security result is
-claimed. Larger concurrency, native-mobile interaction and recovery capacity also
-remain unmeasured.
+Fresh scans of four Gateway/Monitor images reported no findings. Each Challenge
+reported one HIGH, three MEDIUM and three LOW; no CRITICAL or UNKNOWN findings.
+Three glibc findings map to new owner acceptance for isolated root learners; four
+lower findings remain outside it. The expired 29 October exception was not reused.
+The checkpoint records digests and conditions. Production clearance, larger
+concurrency, native-mobile use and recovery capacity remain unverified.
 
 \newpage
 \section{Cost and Equivalent On-premise Hosting}
@@ -542,9 +553,9 @@ Do not submit an invented personal-learning statement.}
 OpsReplay implements a complete browser-based investigation and saved-feedback
 workflow, with bounded AWS acceptance evidence. Its strongest completed technical
 work is isolated real-service practice, duplicate-safe lifecycle handling and
-evidence-based debrief/playback. The learner study, paid assistant evaluation,
-new image qualification and final hosting-cost comparison must be completed
-before the final report can claim presentation readiness.
+evidence-based debrief/playback. Exact-image qualification and bounded paid
+assistant measurements now have current evidence. The learner study, final
+hosting-cost evidence and rehearsal remain required for presentation readiness.
 
 \newpage
 \begin{thebibliography}{99}
@@ -555,6 +566,9 @@ before the final report can claim presentation readiness.
 \bibitem{simincident} SimIncident. \url{https://simincident.com/}.
 \bibitem{aws-checkpoint} OpsReplay, ``SaaS AWS checkpoint, 29 October 2026.''
 \url{https://github.com/ehz0ah/OpsReplay/blob/4df4842cf79a8f662b309bb778a9dc5765d29c6a/docs/checkpoints/2026-10-29-saas-aws.md}.
+\bibitem{release-checkpoint} OpsReplay, ``Release qualification, 1 November 2026,''
+tested source \texttt{5c33055}.
+\url{https://github.com/ehz0ah/OpsReplay/blob/main/docs/checkpoints/2026-11-01-release-qualification.md}.
 \bibitem{frontend-record} OpsReplay, ``Neobrutalist discovery pages,''
 31 October 2026.
 \url{https://github.com/ehz0ah/OpsReplay/blob/4df4842cf79a8f662b309bb778a9dc5765d29c6a/docs/decisions/neobrutalist-discovery.md}.

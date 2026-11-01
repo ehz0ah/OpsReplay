@@ -30,9 +30,12 @@ that line matching is deterministic and written concerns are not automatically
 graded. Demo upgrade grants temporary Pro access without a payment or recurring
 subscription. Confirm its current expiry before rehearsal.
 
-The assistant is optional. Demonstrate a confirmed proposal only after the provider
-cap and hosted path pass. If the provider is off, use terminal investigation and
-explain the tested assistant boundary. Do not present fixture replies as live output.
+The assistant is optional. The 1 November deployed path and duplicate confirmation
+passed under bounded requests; the Ark account is permitted for this demo. A new
+live demonstration still needs its own request/token/time bounds. Console cap
+verification is not a prerequisite under the owner's instruction, and no hard
+billing cap is claimed. If the provider is off, use terminal investigation and
+explain the measured assistant limits. Do not present fixture replies as live output.
 
 Keep a redacted recording of the exact tested rehearsal as a fallback. Mark it
 "Recorded demonstration" and retain its source revision and test date. Use the
