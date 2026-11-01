@@ -768,8 +768,13 @@ export class DynamoAttemptStore {
         observation.cursor > recording.cursor ||
         observation.startedAt !== previous.readyAt ||
         observation.recovery.requiredSeconds !== previous.recovery?.requiredSeconds
-      )
+      ) {
+        // Outcome commits retire recording after the first state read. Recheck
+        // that boundary before treating the mixed read as store corruption.
+        const current = await this.session(id, signal);
+        if (!current || current.view.status !== 'ready') return;
         throw new AttemptStoreError('invalid_store');
+      }
       if (
         identity &&
         (identity.sessionId !== id ||
