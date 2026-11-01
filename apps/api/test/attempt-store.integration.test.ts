@@ -1378,6 +1378,28 @@ test('malformed public and private session relationships are rejected before eff
   }
 });
 
+test('a terminal outcome committed during observation reads is preserved without a store error', async (t) => {
+  for (const read of ['STATE', 'LIFECYCLE', 'MONITOR_OBSERVATION']) {
+    await t.test(read, async () => {
+      const f = await fixture();
+      await f.ready();
+      let ended = false;
+      const hooked = withReadHook(f, async (key) => {
+        if (key !== read || ended) return;
+        ended = true;
+        await f.store.outcome(f.id, 'ended', 'learner_ended', at(3), undefined, 'learner-1');
+      });
+      await hooked.store.observe(f.id, at(4));
+      assert.equal(ended, true);
+      const saved = await f.store.session(f.id);
+      assert.equal(saved?.view.status, 'ended');
+      assert.equal(saved?.view.endedAt, at(3));
+      assert.equal((await f.get('RECORDING')).cutoffAt, at(3));
+      assert.equal(hooked.writes.length, 0);
+    });
+  }
+});
+
 test('impossible recovery time is rejected and stale liveness cannot end a renewed attempt', async () => {
   const f = await fixture();
   await f.ready();
