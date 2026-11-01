@@ -1,7 +1,8 @@
 # Security and data handling
 
-No OpsReplay runtime is deployed. Both disposable AWS checkpoints were removed after
-validation. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
+No OpsReplay runtime is deployed. The latest 1 November campaign removed all eight
+temporary stacks and the browser bucket after validation. Earlier checkpoints are
+also closed. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
 contain checkpoint session or identity data. The selected retained resources are owned
 by `OpsReplayDurableResources`. The session table and learner user pool have
 service-level deletion protection enabled. The CDK bootstrap stacks in
@@ -119,8 +120,9 @@ The [utility rebuild](docs/decisions/challenge-core-packages.md) targets
 util-linux's six HIGH findings with fixed `2.42.4` source. Its builders retain
 original package paths, permissions, ABI symbols and scanner metadata. Native
 Debian libc and its matching loader remain on live Bookworm updates. Hosted
-compilation, compatibility checks and review are required before merge. Fresh
-exact-digest ECR clearance remains pending after merge and publication.
+compilation, compatibility checks and review passed before PR #135 merged.
+The 1 November checkpoint qualified fresh exact digests and verified deployed
+conditions. Residual findings remain below; this is not complete image clearance.
 
 ### Owner-accepted glibc risks, 1 November 2026
 
@@ -152,8 +154,44 @@ This is a new owner-approved risk acceptance, not a reuse of the expired
 29 October two-attempt exception. It covers only the three named findings in
 these Challenge images. Keep their scanner records and match them to fresh exact
 digests before qualification. Every other finding requires separate review.
-Exact-digest ECR clearance remains pending; this record alone does not open
-admission or establish production readiness.
+The 1 November scans matched these findings to the exact Challenge digests and
+deployed checks verified the acceptance conditions. This record alone does not
+open future admission or establish production readiness.
+
+### 1 November exact-image qualification
+
+At merged source `5c33055`, both Gateway and both Monitor image scans reported no
+findings. Each Challenge scan reported one HIGH, three MEDIUM and three LOW, with
+no CRITICAL or UNKNOWN findings. The three named glibc findings above retain their
+scoped acceptance. The remaining findings are not covered by that acceptance:
+
+| Finding          | Severity | Reported package/version |
+| ---------------- | -------- | ------------------------ |
+| `CVE-2026-85231` | MEDIUM   | libtirpc `1.3.3+ds-1`    |
+| `CVE-2026-85977` | MEDIUM   | libtirpc `1.3.3+ds-1`    |
+| `CVE-2026-97399` | LOW      | glibc `2.36-9+deb12u14`  |
+| `CVE-2026-27205` | LOW      | Flask `2.2.2-3`          |
+
+The [checkpoint](docs/checkpoints/2026-11-01-release-qualification.md) records all
+six digests, publication runs and measured limits. No finding was suppressed and
+no supported learner tool was removed to alter the scan. Ordinary vendor-page and
+source review found these narrower applicability limits:
+
+- The glibc finding describes a Power8-optimized `strncasecmp` path. The checked
+  deployment uses X86_64. This is an architecture distinction, not a package fix.
+- The Flask finding concerns session access and cache variation. The authored shop
+  uses no Flask sessions. Learner modifications and other applications can differ.
+- The libtirpc findings concern RPCSEC_GSS wrapped requests and `pmap_getmaps`
+  replies. No such call or service is configured in the authored shop; the learner
+  tool/package environment still needs broader dependency assessment.
+
+Sources: Debian tracker pages for
+[libtirpc wrapped requests](https://security-tracker.debian.org/tracker/CVE-2026-85231),
+[libtirpc mapping replies](https://security-tracker.debian.org/tracker/CVE-2026-85977),
+[Power8 string comparison](https://security-tracker.debian.org/tracker/CVE-2026-97399)
+and [Flask session variation](https://security-tracker.debian.org/tracker/CVE-2026-27205),
+read 1 November 2026. Their extracted pages did not provide complete distro-fix
+tables. Scanner findings remain visible; no additional acceptance is claimed.
 
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception
