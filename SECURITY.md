@@ -1,7 +1,8 @@
 # Security and data handling
 
-No OpsReplay runtime is deployed. Both disposable AWS checkpoints were removed after
-validation. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
+No OpsReplay runtime is deployed. The latest 1 November campaign removed all eight
+temporary stacks and the browser bucket after validation. Earlier checkpoints are
+also closed. Retained DynamoDB tables, S3 buckets, and Cognito user pools remain and can
 contain checkpoint session or identity data. The selected retained resources are owned
 by `OpsReplayDurableResources`. The session table and learner user pool have
 service-level deletion protection enabled. The CDK bootstrap stacks in

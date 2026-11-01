@@ -80,8 +80,8 @@ deployments or proof of the cheaper hosting option.
 
 1. Keep tested source, image digests, review fixes and later deployments distinct.
    Do not describe two targeted prompt calls as a complete post-fix benchmark.
-2. Complete final deadline, deletion and cleanup verification in the grouped
-   campaign; replace the temporary status text with exact results.
+2. Review the completed deadline, deletion and cleanup evidence. Merge focused
+   assistant/lifecycle fixes separately; their CI is not a new deployed checkpoint.
 3. Preserve assistant denominators, missing text deltas, failure reservations and
    dated usage estimates. Provider-console cap verification is not a prerequisite
    under the owner's instruction; no enforced billing cap is claimed.

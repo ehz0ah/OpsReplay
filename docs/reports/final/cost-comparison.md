@@ -1,8 +1,19 @@
 # Cloud and on-premise comparison working model
 
-Status: sourced inputs and sensitivity model, 31 October 2026. This is not a
+Status: sourced inputs and sensitivity model, updated 1 November 2026. This is not a
 measured comparison of equivalent deployments. Final campaign charges and a
 qualified on-premise configuration remain required.
+
+The [1 November campaign](../../checkpoints/2026-11-01-release-qualification.md)
+has a task-only estimate of US$0.11732 at the dated Singapore rates. Its six
+Challenge intervals total 4,010 seconds and two successive Gateway intervals
+5,688 seconds. Five Challenge intervals use ECS image-pull-start/stopped metadata;
+the older DNS task had aged out of ECS history, so its admission-to-confirmed-stop
+interval is a conservative substitute. This is not an exact aggregate billable
+duration or the whole AWS bill. Endpoints, ALB, WAF, requests, storage, logs,
+transfer and publication remain outside this amount. Provider usage is separate:
+US$0.0098441 reported-token estimate, plus US$0.0013201 for the failed-call
+reservation. Same-day account billing does not establish attributed final spend.
 
 ## Equivalent service boundary
 
