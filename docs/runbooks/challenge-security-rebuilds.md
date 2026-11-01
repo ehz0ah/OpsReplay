@@ -23,17 +23,25 @@ proof of image security, and existing attempts retain their original image pins.
    that contains the chosen source versions and required original binary packages.
 2. Update the shared build archive URLs in the Dockerfile together. Update source
    versions and SHA-256 pins when changing source. Keep both upstream and Debian
-   patch archive checks for zlib.
-3. Check the original Bookworm versions in all three build recipes. Review their
+   patch archive checks for zlib and util-linux.
+3. Check the original Bookworm versions in all build recipes. Review their
    control data, dependencies, matched packages and file paths before changing a
    version guard. A missing version must fail the build.
+   Preserve the bsdutils epoch and the existing util-linux-extra tools. Compute
+   rebuilt ELF dependencies and check original library symbols. Keep native Debian
+   libc and the loader on live Bookworm updates; do not install a local libc build
+   or add an exact runtime libc6 version guard.
 4. Run repository checks and the complete hosted Challenge, DNS, editor,
    compression, Monitor and Gateway suites. Use hosted CI for image and editor
    tests on the work Mac. Retain licences, recipes, descriptors and package hashes.
 5. After review and merge, use the
    [checkpoint publication and activation runbook](aws-checkpoint-activation.md)
    to publish immutable main-source images and inspect fresh scans of their exact
-   digests. Resolve the whole image gate before opening admission.
+   digests. Match the three owner-accepted glibc findings in
+   [SECURITY.md](../../SECURITY.md) to the exact Challenge images and verify the
+   root-learner and isolation conditions. Review every other finding separately.
+   Revisit the acceptance when a Bookworm fix is available or a privilege boundary
+   changes. Keep scanner metadata; resolve the whole image gate before admission.
 
 Archive service or network failures must fail the build. Do not fall back to a
 live sid index or silently select a newer package. Recheck archive availability

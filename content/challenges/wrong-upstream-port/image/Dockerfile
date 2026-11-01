@@ -50,6 +50,21 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bu
 COPY security/build-zlib-security.sh /build/security/build-zlib-security.sh
 RUN sh /build/security/build-zlib-security.sh
 
+# Rebuild the matching utilities and shared libraries with Bookworm dependencies.
+FROM security-build-base AS util-linux-build
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+       bsdutils util-linux util-linux-extra mount libblkid1 libmount1 libsmartcols1 libuuid1 \
+       build-essential dpkg-dev pkg-config python3 libtool autoconf automake gettext autopoint \
+       libaudit-dev libcap-ng-dev libcrypt-dev libncurses-dev libpam0g-dev \
+       libreadline-dev libselinux1-dev libsystemd-dev libudev-dev \
+       libcryptsetup-dev zlib1g-dev bison flex \
+    && apt-get source util-linux=2.42.4-1 \
+    && printf '%s\n' \
+       'fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  util-linux_2.42.4.orig.tar.xz' \
+       'a00f3ceaff58a4e2d1591c620ee5d7c8bcd435fd2cbd86db604d7b6c8e19b8c9  util-linux_2.42.4-1.debian.tar.xz' | sha256sum -c -
+COPY security/build-util-linux-security.sh security/repack-util-linux.py /build/security/
+RUN sh /build/security/build-util-linux-security.sh
+
 FROM debian AS runtime
 
 ENV LANG=C.UTF-8 \
@@ -67,12 +82,16 @@ COPY --from=vim-build /build/vim-retain-files.conf /etc/dpkg/dpkg.cfg.d/zz-opsre
 COPY --from=vim-build /build/vim-tiny-security.deb /build/vim-common-security.deb /tmp/
 COPY --from=curl-build /build/curl-security.deb /build/libcurl4-security.deb /tmp/
 COPY --from=zlib-build /build/zlib1g-security.deb /tmp/
+COPY --from=util-linux-build /build/util-linux-retain-files.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-util-linux-files
+COPY --from=util-linux-build /build/util-linux-packages/ /tmp/util-linux-packages/
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ca-certificates curl gunicorn iproute2 less nano nginx postgresql-15 \
        procps python3-flask python3-psycopg2 supervisor vim-tiny \
+    && dpkg -i /tmp/util-linux-packages/*.deb \
     && dpkg -i /tmp/zlib1g-security.deb /tmp/libcurl4-security.deb /tmp/curl-security.deb /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
+    && rm -r /tmp/util-linux-packages \
     && rm /tmp/zlib1g-security.deb /tmp/libcurl4-security.deb /tmp/curl-security.deb /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \

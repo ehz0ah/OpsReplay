@@ -115,10 +115,45 @@ Runtime installation still applies current Bookworm package updates. Local
 origin, source descriptors, licences, recipes and complete checksum inventories
 remain available to scanners. The derived DNS image receives the same rebuilds.
 
-Util-linux's six HIGH findings and glibc's one HIGH finding remain open. Other
-reported MEDIUM and LOW findings also require review. Fresh exact-digest ECR
-clearance remains pending after merge and publication. Hosted compatibility checks
-do not clear these findings or authorize Challenge admission.
+The [utility rebuild](docs/decisions/challenge-core-packages.md) targets
+util-linux's six HIGH findings with fixed `2.42.4` source. Its builders retain
+original package paths, permissions, ABI symbols and scanner metadata. Native
+Debian libc and its matching loader remain on live Bookworm updates. Hosted
+compilation, compatibility checks and review are required before merge. Fresh
+exact-digest ECR clearance remains pending after merge and publication.
+
+### Owner-accepted glibc risks, 1 November 2026
+
+The maintainer
+[recorded the owner's acceptance](https://github.com/ehz0ah/OpsReplay/pull/135#issuecomment-6553187929)
+for these findings in the current Challenge images:
+
+| Finding          | Scope                               |
+| ---------------- | ----------------------------------- |
+| `CVE-2026-84243` | gettext LANGUAGE catalogue lookup   |
+| `CVE-2026-86805` | AT_SECURE loader path normalization |
+| `CVE-2026-95818` | AT_SECURE loader path validation    |
+
+The learner shell already runs as uid 0 in an isolated task. SUID/AT_SECURE
+privilege-boundary changes inside that Challenge container give that learner no
+additional access. The authored shop service does not copy request data into
+LANGUAGE. Environment tasks have no task IAM role or internet route, and Monitor
+secrets and processes remain outside the learner container. These conditions
+must be verified for the exact deployed task; they do not prove that every
+vulnerability is harmless or approve a different deployment model.
+
+Debian has no fix in Bookworm for these findings. Keep the distribution libc and
+its companion objects rather than shipping local glibc backports. Revisit this
+acceptance when Debian supplies a fix, or before introducing a non-root learner,
+a meaningful setuid boundary, request-controlled locale environment or an
+isolation change.
+
+This is a new owner-approved risk acceptance, not a reuse of the expired
+29 October two-attempt exception. It covers only the three named findings in
+these Challenge images. Keep their scanner records and match them to fresh exact
+digests before qualification. Every other finding requires separate review.
+Exact-digest ECR clearance remains pending; this record alone does not open
+admission or establish production readiness.
 
 Before another runtime campaign, inspect fresh scans of its exact image digests,
 apply available fixes, and record unresolved findings. Any new temporary exception
