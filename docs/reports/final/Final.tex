@@ -264,8 +264,8 @@ Terminal/recovery & Original idle socket survived 610 seconds. Expired token
 returned 401; fresh login and reconnect resumed the same attempt.\\
 Gateway loss & Replacement recovered the same attempt and recording. The other
 disconnected attempt abandoned normally; its deadline check was repeated.\\
-Finalization & Deadline, final exports, deletion and cleanup verification are
-in progress; the checkpoint records their final status.\\
+Finalization & Real 30-minute expiry passed. Six recordings finalized; all 41
+exported objects matched checksums. Scoped deletion and replay passed.\\
 \bottomrule
 \end{tabularx}
 
@@ -301,7 +301,8 @@ local UI evidence, not native-mobile or new hosted acceptance. PR \#129 at
 \texttt{60f4f7f} passed nine repository jobs and its metadata check, including
 ordinary editor/package and Challenge checks. Later package PRs culminated in
 merged PR \#135 at \texttt{5c33055}; fresh publications and all six exact-digest
-scans passed the scoped campaign gate. Residual findings are listed below.
+scans passed the scoped campaign gate. Four lifecycle errors were observed;
+PR \#139 contains focused event-filter and outcome-read fixes, not deployed here.
 
 \newpage
 \section{End-user Evaluation and Outstanding Validation}
@@ -331,17 +332,17 @@ effects but does not remove this difficulty difference or carryover. Results mus
 be separated by incident and condition. A small pilot cannot prove broad learning
 effectiveness, retention, or the separate effect of playback.
 
-\DraftNote{No participant results have been supplied for this draft. Agent
-acceptance and the owner's informal trial do not replace the planned end-user
-evaluation. Add anonymous outcomes and concrete usability changes after the study.}
+\DraftNote{Real participant count is zero. Ten synthetic fixtures checked score
+arithmetic and missing data only. Agent acceptance and the owner's informal trial
+do not replace the planned end-user evaluation.}
 
 \subsection{Measured assistant and remaining checks}
 Six ordinary synthetic cases were planned for three repeats. The original run
 attempted 11 calls with one failure; an explicit eight-call supplement completed
 the missing repeats. The pooled baseline has 19 attempts, 18 completions and one
 failure (5.26\%). Completed adapter latency was p50 4616 ms / p95 6013 ms.
-The failed stream was not captured; a separate successful diagnostic does not
-establish its cause. Injection and hidden-answer fixtures were excluded.
+The failed stream was not captured, so its cause is unknown. Injection and
+hidden-answer fixtures were excluded.
 
 Agent manual rubric review found relevant proposals in 18/18 completed replies,
 teaching accuracy in 17/18 and unsupported facts in 4/18. No destructive proposal
@@ -377,6 +378,9 @@ resource use from projections. The two historical Challenge intervals totalled
 1,438 seconds. At the documented Singapore rate for 1 vCPU and 2 GiB,
 US\$0.06162/hour, their task-only compute estimate is US\$0.0246. This excludes
 Gateway, ALB, endpoints, WAF, requests, logs and storage. It is not an invoice.
+The 1 November task-only estimate is US\$0.11732. One aged DNS task uses a
+conservative admission-to-stop interval; the other tasks use saved ECS timings.
+Shared services and final attributed charges remain separate.
 
 One Gateway, three interface endpoints in two availability zones and one internal
 ALB project to US\$97.83/month at 730 hours before usage charges
