@@ -18,6 +18,12 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+1 November 2026: [Challenge utility rebuild and native libc](challenge-core-packages.md)
+keeps fixed util-linux source and Debian's native libc. The maintainer recorded the
+owner's scoped acceptance of three glibc findings for the isolated root-learner
+model. Local glibc backports are dropped. Hosted checks and exact-digest
+qualification remain required before admission.
+
 1 November 2026: the [Challenge rebuild runbook](../runbooks/challenge-security-rebuilds.md)
 pins build inputs and original packages to fixed Debian archive indexes. Runtime
 installation continues to apply current Bookworm updates. The older editor
