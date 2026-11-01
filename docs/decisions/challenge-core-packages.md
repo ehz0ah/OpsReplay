@@ -55,9 +55,11 @@ dependencies, package hashes, editor recovery and existing service behaviour.
 Monitor, Gateway, reference fixes, traps, root identity and isolation remain
 required checks. Native image checks run on hosted CI, not the work Mac.
 
-Fresh exact-digest ECR clearance remains pending after merge and publication.
-Map any reported accepted finding to those exact Challenge digests and confirm
-the acceptance's deployment conditions. All other findings need their own review.
+The [1 November checkpoint](../checkpoints/2026-11-01-release-qualification.md)
+qualified fresh exact digests after PR #135 merged and verified the deployed
+acceptance conditions. Residual lower findings remain listed separately in
+[SECURITY.md](../../SECURITY.md). For future publication, map every accepted
+finding to its exact digest and recheck those conditions.
 Do not suppress findings or reuse the expired exception. Existing attempts keep
 their original pins. Compatibility checks and this acceptance alone do not open
 admission or establish production readiness.
