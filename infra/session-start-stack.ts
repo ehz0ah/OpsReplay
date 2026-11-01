@@ -903,7 +903,11 @@ export class SessionStartStack extends Stack {
       eventPattern: {
         source: ['aws.ecs'],
         detailType: ['ECS Task State Change'],
-        detail: { clusterArn: [clusterArn.valueAsString], lastStatus: ['STOPPED'] },
+        detail: {
+          clusterArn: [clusterArn.valueAsString],
+          lastStatus: ['STOPPED'],
+          group: [{ prefix: 'family:' }],
+        },
       },
     });
     const lifecycleStoppedCfnRule = lifecycleStoppedRule.node.defaultChild as CfnRule;
