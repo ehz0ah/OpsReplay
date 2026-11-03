@@ -146,8 +146,7 @@ bindings and the publication variable were removed. The protected owner partitio
 was unchanged; both test identities, grants and five non-disposable attempts and
 recordings were preserved. The original credential file fingerprint matched after
 cleanup. Deletion of the exact tagged temporary secret copy was requested through
-Secrets Manager's asynchronous deletion path. Space 22 was closed; personal tabs,
-the primary checkout, unrelated worktrees and remote branches were preserved.
+Secrets Manager's asynchronous deletion path.
 
 The school SCP denied a detailed read of its retained StackSet. That action was
 not retried. The exact ID and stable status were verified in the permitted stack
