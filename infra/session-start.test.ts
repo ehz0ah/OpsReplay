@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { App } from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SessionStartStack } from './session-start-stack.js';
 
 test('the stack preserves separate inactive lifecycle, session-status, and terminal-ticket actions', () => {
@@ -13,6 +13,17 @@ test('the stack preserves separate inactive lifecycle, session-status, and termi
     const app = new App({ outdir: directory });
     const stack = new SessionStartStack(app, 'TestStart');
     const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::Events::Rule', {
+      EventPattern: Match.objectEquals({
+        source: ['aws.ecs'],
+        'detail-type': ['ECS Task State Change'],
+        detail: {
+          clusterArn: [{ Ref: 'EnvironmentClusterArn' }],
+          lastStatus: ['STOPPED'],
+          group: [{ prefix: 'family:' }],
+        },
+      }),
+    });
     template.resourceCountIs('AWS::Lambda::Function', 23);
     template.resourceCountIs('AWS::DynamoDB::Table', 0);
     template.resourceCountIs('AWS::S3::Bucket', 0);

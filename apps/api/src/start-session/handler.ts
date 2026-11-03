@@ -208,6 +208,8 @@ export function createStartHandler({
           accessGrant: { plan, admittedAt: createdAt, timeLimitSeconds },
           hintPlan: structuredClone(content.hintPlan),
           pins: { ...launchPins },
+          // Omit group so ECS uses family:<task-definition-family>, as required by
+          // the LifecycleTaskStopped event filter for standalone learner tasks.
           launchArguments: {
             cluster: launchConfiguration.clusterArn,
             taskDefinition: launchPins.taskDefinitionArn,

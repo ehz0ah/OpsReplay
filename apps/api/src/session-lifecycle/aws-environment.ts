@@ -18,6 +18,8 @@ export class FargateEnvironment implements EnvironmentPort {
   constructor(private readonly client: ECSClient) {}
 
   async launch(arguments_: EcsLaunchArguments, abortSignal?: AbortSignal): Promise<string> {
+    // Retain ECS's default family: group. LifecycleTaskStopped uses it to exclude
+    // service tasks; do not add a custom group to learner RunTask requests.
     const output = await this.client.send(new RunTaskCommand(arguments_), sendOptions(abortSignal));
     if (output.failures?.length && (output.tasks?.length ?? 0) === 0) {
       const reasons = [
