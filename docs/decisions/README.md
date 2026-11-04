@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+4 November 2026: Gateway CI pre-pulls the pinned DynamoDB Local image before
+bounded database setup and removes labelled test databases after failure or
+cancellation. Test assertions, timeouts and application behaviour are unchanged.
+This is hosted test preparation, not an AWS runtime change.
+
 1 November 2026: [Challenge utility rebuild and native libc](challenge-core-packages.md)
 keeps fixed util-linux source and Debian's native libc. The maintainer recorded the
 owner's scoped acceptance of three glibc findings for the isolated root-learner
