@@ -383,6 +383,7 @@ export interface Error {
     | 'HINT_NOT_AVAILABLE'
     | 'NO_HINTS_REMAINING'
     | 'TURN_IN_PROGRESS'
+    | 'ASSISTANT_UNAVAILABLE'
     | 'LIMIT_EXCEEDED'
     | 'PROVIDER_FAILED'
     | 'INTERNAL_ERROR'

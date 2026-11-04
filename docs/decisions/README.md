@@ -18,6 +18,15 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+5 November 2026: a confirmed terminal outcome closes the browser relay normally.
+If the private client closes first, stop input and polling, drain its cancelled
+poll, then read one fresh generation-fenced outcome within five seconds. Unknown
+outcomes, failed authorization and explicit transport errors remain failures.
+The public Error contract now includes the existing pre-stream
+`ASSISTANT_UNAVAILABLE` response. No provider retry, lifecycle mutation, IAM or
+product scope change is introduced. Focused regression checks pass locally;
+hosted CI and fresh temporary browser qualification remain separate.
+
 4 November 2026: [Fixed SQLite shared library](challenge-sqlite-rebuild.md) replaces
 the affected Challenge library with Debian 3.54.1 source built on Bookworm. Keep
 documented APIs, package paths and scanner provenance. New HIGH findings block

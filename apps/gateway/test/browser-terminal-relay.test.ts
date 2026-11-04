@@ -19,6 +19,7 @@ import {
   GatewayLiveTelemetryError,
   type GatewayLiveTelemetryCursor,
   type GatewayLiveTelemetryStore,
+  type GatewayLiveTelemetryUpdate,
 } from '../src/live-telemetry-store.js';
 
 const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -844,6 +845,281 @@ test('reports an internal private-terminal failure', async () => {
     },
   ]);
   assert.deepEqual(peer.closedWith, { code: 1011, reason: 'INTERNAL_ERROR' });
+});
+
+const terminalOutcomes = [
+  { type: 'terminal', status: 'resolved', reason: 'validators_passed' },
+  { type: 'terminal', status: 'failed', reason: 'time_limit' },
+  { type: 'terminal', status: 'ended', reason: 'learner_ended' },
+  { type: 'terminal', status: 'abandoned', reason: 'heartbeat_missed' },
+  { type: 'terminal', status: 'error', reason: 'environment_exited' },
+] as const;
+
+test('sends the confirmed session outcome when the private terminal closes before the next poll', async (t) => {
+  for (const outcome of terminalOutcomes) {
+    await t.test(outcome.status, async (t) => {
+      const peer = new AutoPeer();
+      const f = sessionFixture();
+      const reports: GatewayTerminalConnectionFailureEvent[] = [];
+      let reads = 0;
+      const connection = new GatewayBrowserTerminalConnection(peer, {
+        openSession: f.opener,
+        telemetry: {
+          read: async (binding) => {
+            assert.deepEqual(binding, {
+              sessionId,
+              connectionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              generation: 3,
+            });
+            return ++reads === 1 ? { type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] } : outcome;
+          },
+        },
+        telemetryIntervalMs: 60_000,
+        report: (event) => reports.push(event),
+        authTimeoutMs: 100,
+        sendTimeoutMs: 100,
+      });
+      t.after(() => connection.shutdown());
+      peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+      await waitFor(() => reads === 1);
+      f.terminalEnds[0]!.resolve({ reason: 'closed' });
+      await connection.closed;
+
+      assert.deepEqual(peerJson(peer).at(-1), { type: 'status', status: outcome.status, reason: outcome.reason });
+      assert.equal(reads, 2);
+      assert.deepEqual(reports, []);
+      assert.equal(peerJson(peer).filter((message) => message.type === 'error').length, 0);
+      assert.equal(peer.closedWith?.code, 1000);
+    });
+  }
+});
+
+test('cancels an earlier telemetry snapshot before reading the final terminal outcome', async (t) => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  let reads = 0;
+  let active = 0;
+  let maximumActive = 0;
+  let cancelled = false;
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry: {
+      read: async (_binding, _cursor, signal) => {
+        reads++;
+        active++;
+        maximumActive = Math.max(maximumActive, active);
+        try {
+          if (reads === 1) {
+            await new Promise<void>((resolve) => {
+              signal!.addEventListener(
+                'abort',
+                () => {
+                  cancelled = true;
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            return { type: 'telemetry', cursor: telemetryCursor, metric: telemetryMetric, events: [] };
+          }
+          return terminalOutcomes[0];
+        } finally {
+          active--;
+        }
+      },
+    },
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  t.after(() => connection.shutdown());
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => reads === 1);
+  f.terminalEnds[0]!.resolve({ reason: 'closed' });
+  await connection.closed;
+
+  assert.equal(cancelled, true);
+  assert.equal(maximumActive, 1);
+  assert.equal(reads, 2);
+  assert.deepEqual(peerJson(peer).at(-1), { type: 'status', status: 'resolved', reason: 'validators_passed' });
+  assert.equal(peerJson(peer).filter((message) => message.type === 'metrics').length, 0);
+  assert.equal(peer.closedWith?.code, 1000);
+});
+
+test('keeps an unconfirmed private-terminal close as a failure', async (t) => {
+  const cases: { name: string; read: GatewayLiveTelemetryStore['read']; code: string }[] = [
+    {
+      name: 'session still ready',
+      read: async () => ({ type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] }),
+      code: 'INTERNAL_ERROR',
+    },
+    {
+      name: 'telemetry unavailable',
+      read: async () => {
+        throw new GatewayLiveTelemetryError('telemetry_unavailable');
+      },
+      code: 'INTERNAL_ERROR',
+    },
+    {
+      name: 'authorization failed',
+      read: async () => {
+        throw new GatewayLiveTelemetryError('authorization_failed');
+      },
+      code: 'INTERNAL_ERROR',
+    },
+    {
+      name: 'generation replaced',
+      read: async () => {
+        throw new GatewayLiveTelemetryError('replaced');
+      },
+      code: 'REPLACED',
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async (t) => {
+      const peer = new AutoPeer();
+      const f = sessionFixture();
+      let reads = 0;
+      const connection = new GatewayBrowserTerminalConnection(peer, {
+        openSession: f.opener,
+        telemetry: {
+          read: async (...args) =>
+            ++reads === 1
+              ? { type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] }
+              : item.read(...args),
+        },
+        telemetryIntervalMs: 60_000,
+        authTimeoutMs: 100,
+        sendTimeoutMs: 100,
+      });
+      t.after(() => connection.shutdown());
+      peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+      await waitFor(() => reads === 1);
+      f.terminalEnds[0]!.resolve({ reason: 'closed' });
+      await connection.closed;
+
+      assert.equal(peerJson(peer).at(-1)?.code, item.code);
+      assert.equal(peerJson(peer).filter((message) => message.type === 'status').length, 0);
+      assert.equal(peer.closedWith?.code, item.code === 'REPLACED' ? 1008 : 1011);
+    });
+  }
+});
+
+test('closes normally after telemetry confirms the session outcome before terminal shutdown', async (t) => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  const reports: GatewayTerminalConnectionFailureEvent[] = [];
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry: { read: async () => terminalOutcomes[0] },
+    report: (event) => reports.push(event),
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  t.after(() => connection.shutdown());
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => peerJson(peer).some((message) => message.type === 'status'));
+  f.terminalEnds[0]!.resolve({ reason: 'closed' });
+  await connection.closed;
+
+  assert.deepEqual(reports, []);
+  assert.equal(peerJson(peer).filter((message) => message.type === 'status').length, 1);
+  assert.equal(peerJson(peer).filter((message) => message.type === 'error').length, 0);
+  assert.equal(peer.closedWith?.code, 1000);
+});
+
+test('preserves the resolved outcome when heartbeat authorization closes the private terminal', async (t) => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  let reads = 0;
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: async (options, signal) => {
+      const opened = await f.opener(options, signal);
+      opened.session.heartbeat = async () => {
+        f.terminalEnds[0]!.resolve({ reason: 'closed' });
+        throw new TerminalAdmissionError('session_terminal');
+      };
+      return opened;
+    },
+    telemetry: {
+      read: async () =>
+        ++reads === 1 ? { type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] } : terminalOutcomes[0],
+    },
+    heartbeatIntervalMs: 10,
+    telemetryIntervalMs: 60_000,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  t.after(() => connection.shutdown());
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await connection.closed;
+
+  assert.deepEqual(peerJson(peer).at(-1), { type: 'status', status: 'resolved', reason: 'validators_passed' });
+  assert.equal(peer.closedWith?.code, 1000);
+});
+
+test('cancels final outcome lookup when the browser disconnects', async (t) => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  const result = deferred<GatewayLiveTelemetryUpdate>();
+  let reads = 0;
+  let lookupSignal: AbortSignal | undefined;
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry: {
+      read: async (_binding, _cursor, signal) => {
+        if (++reads === 1) return { type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] };
+        lookupSignal = signal;
+        return result.promise;
+      },
+    },
+    telemetryIntervalMs: 60_000,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  t.after(() => connection.shutdown());
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => reads === 1);
+  f.terminalEnds[0]!.resolve({ reason: 'closed' });
+  await waitFor(() => reads === 2);
+  peer.close();
+  await connection.closed;
+  const sentAtClose = peer.sent.length;
+  result.resolve(terminalOutcomes[0]);
+  await delay(0);
+
+  assert.equal(lookupSignal?.aborted, true);
+  assert.equal(peer.sent.length, sentAtClose);
+  assert.equal(peerJson(peer).filter((message) => message.type === 'status').length, 0);
+});
+
+test('bounds final outcome lookup even when its adapter ignores cancellation', async (t) => {
+  const peer = new AutoPeer();
+  const f = sessionFixture();
+  let reads = 0;
+  let lookupSignal: AbortSignal | undefined;
+  const connection = new GatewayBrowserTerminalConnection(peer, {
+    openSession: f.opener,
+    telemetry: {
+      read: async (_binding, _cursor, signal) => {
+        if (++reads === 1) return { type: 'telemetry', cursor: telemetryCursor, metric: null, events: [] };
+        lookupSignal = signal;
+        return new Promise(() => {});
+      },
+    },
+    telemetryIntervalMs: 60_000,
+    authTimeoutMs: 100,
+    sendTimeoutMs: 100,
+  });
+  t.after(() => connection.shutdown());
+  peer.message(JSON.stringify({ type: 'auth', sessionId, ticket }));
+  await waitFor(() => reads === 1);
+  f.terminalEnds[0]!.resolve({ reason: 'closed' });
+  await connection.closed;
+
+  assert.equal(reads, 2);
+  assert.equal(lookupSignal?.aborted, true);
+  assert.equal(peerJson(peer).at(-1)?.code, 'INTERNAL_ERROR');
+  assert.equal(peer.closedWith?.code, 1011);
 });
 
 test('keeps telemetry reads non-overlapping and cancels the active read on shutdown', async () => {

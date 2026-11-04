@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { streamAssistant } from '../src/assistant/stream.js';
+import { ApiError } from '../src/api.js';
 const request = { requestId: randomUUID(), text: 'Inspect the errors' };
 const make = (events: unknown[], split = 7) => {
   const bytes = new TextEncoder().encode(events.map((event) => 'data: ' + JSON.stringify(event) + '\r\n\r\n').join(''));
@@ -78,4 +79,44 @@ test('EOF without completion remains provisional for saved GET recovery', async 
     async () => make([started, delta]),
   );
   assert.equal(observed.length, 2);
+});
+
+test('assistant stream preserves known JSON failures without retrying or emitting stream events', async (t) => {
+  for (const item of [
+    {
+      status: 503,
+      code: 'ASSISTANT_UNAVAILABLE',
+      message: 'The assistant is unavailable. Continue with the terminal and hints.',
+    },
+    { status: 429, code: 'LIMIT_EXCEEDED', message: 'The assistant turn limit was reached.' },
+  ]) {
+    await t.test(item.code, async () => {
+      const detail = { code: item.code, message: item.message, requestId: request.requestId };
+      const observed: unknown[] = [];
+      let calls = 0;
+      await assert.rejects(
+        streamAssistant(
+          'https://api.example',
+          'test',
+          randomUUID(),
+          request,
+          (event) => observed.push(event),
+          AbortSignal.timeout(1000),
+          async () => {
+            calls++;
+            return Response.json(detail, { status: item.status });
+          },
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof ApiError);
+          assert.equal(error.status, item.status);
+          assert.equal(error.message, item.message);
+          assert.deepEqual(error.detail, detail);
+          return true;
+        },
+      );
+      assert.equal(calls, 1);
+      assert.deepEqual(observed, []);
+    });
+  }
 });
