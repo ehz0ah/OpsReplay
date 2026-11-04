@@ -15,6 +15,7 @@ import {
   GatewayLiveTelemetryError,
   type GatewayLiveTelemetryCursor,
   type GatewayLiveTelemetryStore,
+  type GatewayLiveTelemetryUpdate,
 } from './live-telemetry-store.js';
 import {
   GatewayTerminalSession,
@@ -28,6 +29,7 @@ const DEFAULT_AUTH_TIMEOUT_MS = 5_000;
 const DEFAULT_SEND_TIMEOUT_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
 const DEFAULT_TELEMETRY_INTERVAL_MS = 5_000;
+const TERMINAL_OUTCOME_TIMEOUT_MS = 5_000;
 const DEFAULT_COLUMNS = 80;
 const DEFAULT_ROWS = 24;
 const MAX_BROWSER_INPUT_BYTES = 16 * 1024;
@@ -128,7 +130,7 @@ export interface GatewayBrowserTerminalConnectionOptions {
   terminalPort?: number;
 }
 
-type ConnectionState = 'awaiting_auth' | 'authenticating' | 'ready' | 'closing' | 'closed';
+type ConnectionState = 'awaiting_auth' | 'authenticating' | 'ready' | 'checking_outcome' | 'closing' | 'closed';
 type BrowserControlMessage = Exclude<GatewayClientMessage, { type: 'auth' }>;
 type PendingBrowserMessage =
   | { kind: 'input'; chunks: Buffer[]; bytes: number }
@@ -254,6 +256,8 @@ export class GatewayBrowserTerminalConnection {
   private peerClosed = false;
   private authenticated = false;
   private heartbeatQueued = false;
+  private telemetryTask: Promise<void> | undefined;
+  private outcomeRead: AbortController | undefined;
 
   constructor(
     private readonly peer: GatewayBrowserPeer,
@@ -399,7 +403,10 @@ export class GatewayBrowserTerminalConnection {
       this.authenticated = true;
       this.releaseOutputGate();
       this.scheduleHeartbeat();
-      if (this.options.telemetry !== undefined) this.startTask(this.streamTelemetry());
+      if (this.options.telemetry !== undefined) {
+        this.telemetryTask = this.streamTelemetry();
+        this.startTask(this.telemetryTask);
+      }
     } catch (error) {
       if (this.state !== 'authenticating') return;
       if (error instanceof TerminalAdmissionError) {
@@ -536,7 +543,74 @@ export class GatewayBrowserTerminalConnection {
       this.failFromError(code, 'terminal', result.error);
       return;
     }
+    if (this.options.telemetry !== undefined) {
+      this.state = 'checking_outcome';
+      this.clearHeartbeatTimer();
+      this.lifetime.abort(new Error('Private terminal closed; checking the saved outcome.'));
+      this.startTask(this.reconcileTerminalClose());
+      return;
+    }
     this.failInternal('terminal', new TerminalClientError('closed'));
+  }
+
+  private async reconcileTerminalClose(): Promise<void> {
+    const telemetry = this.options.telemetry;
+    const session = this.session;
+    if (telemetry === undefined || session === undefined) {
+      this.failInternal('terminal', new TerminalClientError('closed'));
+      return;
+    }
+    const controller = new AbortController();
+    this.outcomeRead = controller;
+    const signal = controller.signal;
+    const timeout = setTimeout(
+      () => controller.abort(new Error('Terminal outcome read timed out.')),
+      TERMINAL_OUTCOME_TIMEOUT_MS,
+    );
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(signal.reason);
+      signal.addEventListener('abort', cancel, { once: true });
+    });
+    try {
+      const update = await Promise.race([
+        (async () => {
+          // Drain the cancelled poll before taking a fresh, generation-fenced snapshot.
+          await this.telemetryTask;
+          signal.throwIfAborted();
+          return telemetry.read(
+            {
+              sessionId: session.sessionId,
+              connectionId: session.connectionId,
+              generation: session.generation,
+            },
+            undefined,
+            signal,
+          );
+        })(),
+        cancelled,
+      ]);
+      if (this.state !== 'checking_outcome') return;
+      if (update.type === 'terminal') this.sendTerminalOutcome(update);
+      else this.failInternal('terminal', new TerminalClientError('closed'));
+    } catch (error) {
+      if (this.state !== 'checking_outcome') return;
+      if (error instanceof GatewayLiveTelemetryError && error.code === 'replaced') this.fail('REPLACED', 1008);
+      else this.failInternal('terminal', error);
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', cancel);
+      controller.abort();
+      this.outcomeRead = undefined;
+    }
+  }
+
+  private sendTerminalOutcome(update: Extract<GatewayLiveTelemetryUpdate, { type: 'terminal' }>): void {
+    if (!this.beginClose()) return;
+    void this.sendJson({ type: 'status', status: update.status, reason: update.reason }).then(
+      () => this.closePeer(1000, 'SESSION_TERMINAL'),
+      () => this.terminatePeer(),
+    );
   }
 
   private async streamTelemetry(): Promise<void> {
@@ -558,7 +632,7 @@ export class GatewayBrowserTerminalConnection {
         );
         if (this.state !== 'ready') return;
         if (update.type === 'terminal') {
-          await this.sendJson({ type: 'status', status: update.status, reason: update.reason });
+          this.sendTerminalOutcome(update);
           return;
         }
         if (update.metric !== null) await this.sendJson(update.metric);
@@ -710,6 +784,7 @@ export class GatewayBrowserTerminalConnection {
     this.clearAuthTimer();
     this.clearHeartbeatTimer();
     this.lifetime.abort(new Error('Browser terminal connection closed.'));
+    this.outcomeRead?.abort(new Error('Browser terminal connection closed.'));
     this.session?.close();
     this.releaseOutputGate();
     this.pendingMessages.length = 0;

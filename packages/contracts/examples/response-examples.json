@@ -236,6 +236,11 @@
   ],
   "Error": [
     {
+      "code": "ASSISTANT_UNAVAILABLE",
+      "message": "The assistant is unavailable. Continue with the terminal and hints.",
+      "requestId": "55555555-5555-4555-8555-555555555555"
+    },
+    {
       "code": "ACTIVE_SESSION_EXISTS",
       "message": "Finish or end your current Challenge before starting another.",
       "requestId": "44444444-4444-4444-8444-444444444444",

@@ -423,7 +423,14 @@ in both directions. Text frames carry JSON that matches `GatewayClientMessage` o
    metrics. The timeline API owns reconnect catch-up. WebSocket delivery is neither a
    durable acknowledgement nor exactly once. `TELEMETRY_UNAVAILABLE` is nonfatal after
    authorization succeeds; failed authorization and replacement fail closed. A terminal
-   `status` stops the loop.
+   `status` stops the loop, closes the private client, and closes the browser
+   connection normally after sending the outcome. If the private client closes
+   first, the gateway stops input and polling, drains the cancelled poll, and
+   takes one fresh session/connection/generation-bound read within five seconds.
+   Only a confirmed terminal outcome uses normal closure. A still-ready session,
+   unavailable read, or unverified authorization remains a failure; replacement
+   retains `REPLACED`. Browser disconnection cancels the outcome read. Explicit
+   private transport errors and shell exits retain their existing error handling.
    Recording continues independently when the browser disconnects. Each input batch
    and proposal checks that the session is still active before forwarding. The outcome
    timestamp remains the scoring cutoff for any input already in flight.
@@ -495,7 +502,12 @@ synthetic claims, so Cognito and API Gateway were not exercised.
 turn ID, so recovery does not depend on receiving the first event.
 
 The server validates identity, ownership, and session status before opening the
-stream. It persists the turn, worker token, fixed expiry, and active-turn slot before
+stream. An unavailable provider or inactive session rejects a new turn with HTTP
+`503` and an `application/json` public `Error` with code `ASSISTANT_UNAVAILABLE`.
+No turn or provider call starts for that rejection. The client shows the returned
+fallback and clears its rejected request; the terminal and hints do not depend on
+the assistant. Saved request reattachment still precedes fresh-turn availability
+checks. It persists the turn, worker token, fixed expiry, and active-turn slot before
 calling the provider. A repeated request ID reattaches to the saved turn and never
 calls the provider again. Reads, new requests, and the sweep mark expired running turns
 `interrupted` and release their slot conditionally. A live running turn blocks another
