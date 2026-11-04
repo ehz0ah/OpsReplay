@@ -13,8 +13,8 @@ and session playback.
 new SQLite HIGH findings blocked both Challenge images. Runtime admission stayed
 closed. All four temporary preparation stacks and the browser bucket were removed,
 and durable settings and protected records were verified unchanged. [PR #141](https://github.com/ehz0ah/OpsReplay/pull/141)
-contains the focused library fix and passed ten CI checks. It needs independent approval and fresh
-image qualification. Earlier learner-path and assistant checks remain historical
+contains the focused library fix and passed all ten checks. It is merged; fresh
+merged-source ECR qualification is pending. Earlier learner-path and assistant checks remain historical
 evidence. Real learner study, equivalent-host measurements and rehearsal are pending.
 
 | Area                                     | Status                                                                              |

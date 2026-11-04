@@ -109,7 +109,8 @@ scores from an agent or the owner's informal trial.
 **Slide 14, 45 seconds.** Separate the historically verified learner loop from
 the three new SQLite HIGH findings that blocked 4 November activation. No fresh
 attempt or Ark call ran, and cleanup passed. Source remediation does not establish
-image clearance. Before
+image clearance. PR #141's SQLite fix is merged; fresh merged-source ECR qualification
+is pending, and three new GCC MEDIUM findings remain open. Before
 the final presentation, replace this draft status with the actual tested status;
 do not conceal a failed or unperformed evaluation.
 
