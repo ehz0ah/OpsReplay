@@ -12,6 +12,7 @@ const runScript = fileURLToPath(new URL('./run-local.sh', import.meta.url));
 const terminalTest = readFileSync(new URL('./terminal.test.py', import.meta.url), 'utf8');
 const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
 const utilLinuxTest = readFileSync(new URL('../../../scripts/util-linux-compatibility.py', import.meta.url), 'utf8');
+const sqliteTest = readFileSync(new URL('../../../scripts/sqlite-compatibility.py', import.meta.url), 'utf8');
 const recordingTest = readFileSync(new URL('./recording.test.py', import.meta.url), 'utf8');
 const shellIntegrationTest = readFileSync(new URL('./shell-integration.test.py', import.meta.url), 'utf8');
 const imageTag = process.env.OPSREPLAY_CHALLENGE_IMAGE ?? 'opsreplay/challenge-wrong-upstream-port:dev';
@@ -60,6 +61,18 @@ test('fixed utilities preserve identity, locking, mount inspection and library A
   );
   assert.equal(report.packagesVerified, 8);
   assert.equal(report.ordinaryUtilities, true);
+  t.diagnostic(JSON.stringify(report));
+});
+
+test('fixed SQLite preserves Python queries, extensions, session changesets and package hashes', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(run('docker', ['exec', '--interactive', id, 'python3', '-'], { input: sqliteTest })),
+  );
+  assert.equal(report.runtimeVersion, '3.54.1');
+  assert.equal(report.ordinaryQueries, true);
+  assert.equal(report.sessionChangeset, true);
+  assert.equal(report.packageHashes, true);
   t.diagnostic(JSON.stringify(report));
 });
 

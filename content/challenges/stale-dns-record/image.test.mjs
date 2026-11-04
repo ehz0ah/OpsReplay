@@ -11,6 +11,7 @@ const image = process.env.OPSREPLAY_DNS_CHALLENGE_IMAGE ?? 'opsreplay/challenge-
 const containers = new Set();
 const zlibTest = readFileSync(new URL('../../../scripts/zlib-compatibility.py', import.meta.url), 'utf8');
 const utilLinuxTest = readFileSync(new URL('../../../scripts/util-linux-compatibility.py', import.meta.url), 'utf8');
+const sqliteTest = readFileSync(new URL('../../../scripts/sqlite-compatibility.py', import.meta.url), 'utf8');
 function docker(...args) {
   return spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 });
 }
@@ -40,6 +41,24 @@ test('derived DNS image preserves the fixed zlib and ordinary compression', asyn
   t.diagnostic(JSON.stringify(report));
 });
 const exec = (id, ...args) => docker('exec', id, ...args);
+test('derived DNS image preserves fixed SQLite queries, extensions and package hashes', async (t) => {
+  const id = await fresh(t);
+  const report = JSON.parse(
+    success(
+      spawnSync('docker', ['exec', '--interactive', id, 'python3', '-'], {
+        input: sqliteTest,
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      }),
+    ),
+  );
+  assert.equal(report.runtimeVersion, '3.54.1');
+  assert.equal(report.ordinaryQueries, true);
+  assert.equal(report.sessionChangeset, true);
+  assert.equal(report.packageHashes, true);
+  t.diagnostic(JSON.stringify(report));
+});
 test('derived DNS image preserves fixed utility packages and normal operations', async (t) => {
   const id = await fresh(t);
   const report = JSON.parse(
