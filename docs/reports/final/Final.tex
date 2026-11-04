@@ -11,7 +11,7 @@
 \usepackage{graphicx,xurl}
 \usepackage[hidelinks]{hyperref}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
-\newcommand{\SourceRevision}{75db441}
+\newcommand{\SourceRevision}{71cf2d3}
 \newcommand{\DraftNote}[1]{\par\smallskip\noindent\textbf{Draft evidence gap:} #1\par}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}
@@ -366,9 +366,9 @@ findings do not. The expired October exception was not reused.
 4 November (\texttt{75db441}): each Challenge had 4 HIGH/12 MEDIUM/4 LOW;
 Gateway/Monitor clear. Three SQLite HIGHs stopped activation; no attempt or Ark
 call ran. New lower findings: SQLite (6 MEDIUM, 1 LOW), GCC (3 MEDIUM).
-PR \#141 targets SQLite; GCC remains open. All four preparation stacks and the
-browser bucket were removed; protected data/settings were unchanged. Independent
-approval, merge and fresh ECR qualification remain required \cite{image-gate}.
+PR \#141's SQLite fix is merged; fresh merged-source ECR qualification is pending.
+GCC remains open. All four preparation stacks and the browser bucket were removed;
+protected data/settings were unchanged \cite{image-gate}.
 
 \newpage
 \section{Cost and Equivalent On-premise Hosting}
@@ -562,7 +562,7 @@ Do not submit an invented personal-learning statement.}
 \subsection{Conclusion}
 OpsReplay implements isolated real-service practice, duplicate-safe lifecycle
 handling and evidence-based debrief/playback. Historical AWS and assistant results
-retain their stated limits. New SQLite findings block activation. Fresh
+retain their stated limits. The SQLite fix is merged, not registry-qualified. Fresh
 qualification, a real learner study, hosting-cost evidence and rehearsal remain required.
 
 \newpage

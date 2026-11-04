@@ -65,8 +65,10 @@ rebuilds the SQLite library from Debian `3.54.1-1` source on Bookworm, with norm
 compatibility checks in both image suites. At head `6836d5f`, run `41779083987`
 passed all nine repository jobs and the metadata title check. The upstream image
 suite passed 25 tests, including the SQLite 3.54.1 query, changeset and package-hash
-check. The DNS and combined Monitor/Gateway jobs also passed. Independent approval,
-merge and fresh merged-source qualification remain required. This checkpoint does not
+check. The DNS and combined Monitor/Gateway jobs also passed. The reviewed follow-up
+head `b91d6d0` passed run `41782343175` and all ten checks. PR #141 received
+independent approval and merged as `71cf2d3b95efcadb728c8a69ae579b5d585fc301`.
+Fresh merged-source ECR qualification is pending. This checkpoint does not
 claim that PR #141 has passed a new ECR gate or was deployed.
 
 ## Bounded preparation and cleanup
