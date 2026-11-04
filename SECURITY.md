@@ -202,7 +202,7 @@ proof that every finding is harmless. The local builds are not new ECR scan resu
 ### 4 November SQLite qualification blocker
 
 Fresh exact-image qualification at merged source `75db441` found new HIGH SQLite
-findings `CVE-2026-119373`, `CVE-2026-119374` and `CVE-2026-119379` in the
+findings `CVE-2026-119373`, `CVE-2026-119374` and `CVE-2026-119379` in
 both published Challenge images. Both Gateway and both Monitor scans reported no findings. The
 runtime was not activated and no learner attempt or provider call started.
 No new exception or expanded glibc acceptance applies.

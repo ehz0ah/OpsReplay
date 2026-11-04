@@ -1,8 +1,13 @@
 # Challenge security rebuilds
 
-The Challenge build stages use Debian's `20261031T000000Z` archives. Bookworm,
-Bookworm updates and Bookworm security supply binary dependencies and the exact
-original packages used by the rebuild recipes. Sid supplies source packages only.
+The Challenge build stages use Debian's `20261031T000000Z` Bookworm archives for
+binary dependencies and the exact original packages used by the rebuild recipes.
+The shared sid source archive also uses `20261031T000000Z` for Vim, curl, zlib and
+util-linux. The SQLite stage overrides only its sid source archive to
+`20261104T000000Z`: Debian `3.54.1-1` was uploaded after the shared snapshot.
+See the [SQLite rebuild decision](../decisions/challenge-sqlite-rebuild.md).
+Sid supplies source packages only; the SQLite override does not change its
+Bookworm binary dependencies.
 The shared build stage replaces the base image's live package index before any
 installation. Each `apt-get download` therefore uses the same frozen Bookworm
 index as its version guard.
@@ -21,9 +26,11 @@ proof of image security, and existing attempts retain their original image pins.
 
 1. Verify the upstream fix and Debian source descriptor. Select an archive time
    that contains the chosen source versions and required original binary packages.
-2. Update the shared build archive URLs in the Dockerfile together. Update source
-   versions and SHA-256 pins when changing source. Keep both upstream and Debian
-   patch archive checks for zlib and util-linux.
+2. Update the shared build archive URLs together only when changing the shared
+   build baseline. Review per-stage sid source overrides separately. Do not fold
+   SQLite into a shared snapshot unless that snapshot contains its chosen fixed
+   source version. Update source versions and SHA-256 pins when changing source.
+   Keep both upstream and Debian patch archive checks for zlib, util-linux and SQLite.
 3. Check the original Bookworm versions in all build recipes. Review their
    control data, dependencies, matched packages and file paths before changing a
    version guard. A missing version must fail the build.
@@ -32,7 +39,7 @@ proof of image security, and existing attempts retain their original image pins.
    libc and the loader on live Bookworm updates; do not install a local libc build
    or add an exact runtime libc6 version guard.
 4. Run repository checks and the complete hosted Challenge, DNS, editor,
-   compression, Monitor and Gateway suites. Use hosted CI for image and editor
+   compression, SQLite, Monitor and Gateway suites. Use hosted CI for image and editor
    tests on the work Mac. Retain licences, recipes, descriptors and package hashes.
 5. After review and merge, use the
    [checkpoint publication and activation runbook](aws-checkpoint-activation.md)

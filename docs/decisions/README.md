@@ -18,6 +18,11 @@ one PR. Do not quietly resolve a conflict by picking a convenient file.
 
 ## Change record
 
+4 November 2026: [Fixed SQLite shared library](challenge-sqlite-rebuild.md) replaces
+the affected Challenge library with Debian 3.54.1 source built on Bookworm. Keep
+documented APIs, package paths and scanner provenance. New HIGH findings block
+runtime activation; hosted compatibility and fresh exact-image qualification remain required.
+
 4 November 2026: Gateway CI pre-pulls the pinned DynamoDB Local image before
 bounded database setup and removes labelled test databases after failure or
 cancellation. Test assertions, timeouts and application behaviour are unchanged.
@@ -237,11 +242,6 @@ screen and never resends input. Replacement waits for explicit takeover. Browser
 and paste size are bounded; no clipboard or automatic-command addon is enabled.
 
 ## Product decisions
-
-4 November 2026: [Fixed SQLite shared library](challenge-sqlite-rebuild.md) replaces
-the affected Challenge library with Debian 3.54.1 source built on Bookworm. Keep
-documented APIs, package paths and scanner provenance. New HIGH findings block
-runtime activation; hosted compatibility and fresh exact-image qualification remain required.
 
 26 October 2026: [Presentation SaaS experience](saas-experience.md) adds the
 incident-lab identity, labelled demo checkout and server-owned account view.
