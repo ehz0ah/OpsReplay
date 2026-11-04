@@ -335,12 +335,10 @@ arithmetic and missing data only. Agent acceptance and the owner's informal tria
 do not replace the planned end-user evaluation.}
 
 \subsection{Measured assistant and remaining checks}
-Six ordinary synthetic cases were planned for three repeats. The original run
-attempted 11 calls with one failure; an explicit eight-call supplement completed
-the missing repeats. The pooled baseline has 19 attempts, 18 completions and one
-failure (5.26\%). Completed adapter latency was p50 4616 ms / p95 6013 ms.
-The failed stream was not captured, so its cause is unknown. Injection and
-hidden-answer fixtures were excluded.
+Six ordinary synthetic cases had three planned repeats. An 11-call run with one
+failure and an explicit eight-call supplement produced 19 attempts: 18 completions,
+one failure (5.26\%). Completed adapter p50/p95 was 4616/6013 ms. The failed stream
+was not captured; its cause is unknown. Injection/hidden-answer fixtures were excluded.
 
 Agent manual rubric review found relevant proposals in 18/18 completed replies,
 teaching accuracy in 17/18 and unsupported facts in 4/18. No destructive proposal
@@ -365,11 +363,12 @@ On 1 November, Gateway/Monitor scans had no findings; each Challenge had 1 HIGH,
 3 MEDIUM and 3 LOW. Three glibc findings have scoped owner acceptance; four lower
 findings do not. The expired October exception was not reused.
 
-4 November at \texttt{75db441}: each Challenge had 4 HIGH/12 MEDIUM/4 LOW,
-Gateway/Monitor none. Three SQLite HIGHs blocked runtime. No attempt or Ark call
-ran. Four preparation stacks and the browser bucket were removed; protected
-records and durable settings were preserved. PR \#141 passed ten CI checks but
-needs independent approval, merge and fresh ECR qualification \cite{image-gate}.
+4 November (\texttt{75db441}): each Challenge had 4 HIGH/12 MEDIUM/4 LOW;
+Gateway/Monitor clear. Three SQLite HIGHs stopped activation; no attempt or Ark
+call ran. New lower findings: SQLite (6 MEDIUM, 1 LOW), GCC (3 MEDIUM).
+PR \#141 targets SQLite; GCC remains open. All four preparation stacks and the
+browser bucket were removed; protected data/settings were unchanged. Independent
+approval, merge and fresh ECR qualification remain required \cite{image-gate}.
 
 \newpage
 \section{Cost and Equivalent On-premise Hosting}

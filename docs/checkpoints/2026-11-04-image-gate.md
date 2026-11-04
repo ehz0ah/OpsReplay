@@ -34,6 +34,31 @@ The new unaccepted HIGH findings were `CVE-2026-119373`, `CVE-2026-119374` and
 `CVE-2026-119379`, reported against SQLite source version `3.40.1-2+deb12u2`.
 The remaining HIGH was the previously scoped glibc finding `CVE-2026-84243`.
 
+Both Challenge scans contain the same findings. Relative to 1 November, the nine
+new MEDIUM findings and one new LOW finding are listed below. The seven earlier
+findings retain the same CVEs, severities and package versions; the dated
+[1 November residual table](../../SECURITY.md#1-november-exact-image-qualification)
+does not describe the additions.
+
+| Finding           | Severity | Reported source package/version | Remediation status                |
+| ----------------- | -------- | ------------------------------- | --------------------------------- |
+| `CVE-2026-119371` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119372` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119375` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119376` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119378` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119591` | MEDIUM   | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-119377` | LOW      | sqlite3 `3.40.1-2+deb12u2`      | SQLite rebuild; fresh ECR pending |
+| `CVE-2026-114690` | MEDIUM   | gcc-12 `12.2.0-14+deb12u1`      | Unrelated to SQLite; open         |
+| `CVE-2026-114691` | MEDIUM   | gcc-12 `12.2.0-14+deb12u1`      | Unrelated to SQLite; open         |
+| `CVE-2026-115455` | MEDIUM   | gcc-12 `12.2.0-14+deb12u1`      | Unrelated to SQLite; open         |
+
+The scan descriptions place these SQLite findings before `3.54.0`. PR #141
+replaces the affected library with `3.54.1`, so the six SQLite MEDIUMs and one LOW
+are expected to clear along with the three HIGHs. This is a version-based
+expectation, not a fresh scan result. The three GCC MEDIUMs are outside that fix
+and remain open for separate assessment. No new acceptance covers them.
+
 Runtime admission stayed closed. No new waiver was requested or applied. No
 scanner finding or package metadata was suppressed. [PR #141](https://github.com/ehz0ah/OpsReplay/pull/141)
 rebuilds the SQLite library from Debian `3.54.1-1` source on Bookworm, with normal
@@ -55,8 +80,7 @@ static assets were uploaded; application configuration was never published.
 
 The image failure stopped activation. No SessionStart runtime stack, Challenge
 attempt, Gateway service, assistant credential copy, demo Pro grant or Ark call
-was created. Ego was updated with explicit approval and the replacement agent-only
-space was prepared, but app/browser QA did not run.
+was created. App/browser QA did not run.
 
 Cleanup removed all four exact run-owned stack IDs, their ECR repositories/images,
 and the empty temporary browser bucket after checking its 35 object keys and ETags.
