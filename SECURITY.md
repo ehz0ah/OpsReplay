@@ -199,6 +199,20 @@ needs explicit owner approval for its targets and window. Do not suppress findin
 remove supported investigation tools just to reduce counts, or treat isolation as
 proof that every finding is harmless. The local builds are not new ECR scan results.
 
+### 4 November SQLite qualification blocker
+
+Fresh exact-image qualification at merged source `75db441` found new HIGH SQLite
+findings `CVE-2026-119373`, `CVE-2026-119374` and `CVE-2026-119379` in the
+both published Challenge images. Both Gateway and both Monitor scans reported no findings. The
+runtime was not activated and no learner attempt or provider call started.
+No new exception or expanded glibc acceptance applies.
+
+The [SQLite rebuild](docs/decisions/challenge-sqlite-rebuild.md) replaces the
+affected shared library with Debian `3.54.1-1` source built on Bookworm. It retains
+the package's actual version, source descriptor, recipes, licences and checksums.
+Hosted compatibility checks and fresh exact-digest ECR scans remain required.
+The source change is not yet a passed registry gate or production clearance.
+
 ### Historical 10 October findings
 
 The first ECR scan on 10 October 2026 reported six critical findings in each Node runtime

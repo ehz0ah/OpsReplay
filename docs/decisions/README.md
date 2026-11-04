@@ -238,6 +238,11 @@ and paste size are bounded; no clipboard or automatic-command addon is enabled.
 
 ## Product decisions
 
+4 November 2026: [Fixed SQLite shared library](challenge-sqlite-rebuild.md) replaces
+the affected Challenge library with Debian 3.54.1 source built on Bookworm. Keep
+documented APIs, package paths and scanner provenance. New HIGH findings block
+runtime activation; hosted compatibility and fresh exact-image qualification remain required.
+
 26 October 2026: [Presentation SaaS experience](saas-experience.md) adds the
 incident-lab identity, labelled demo checkout and server-owned account view.
 [S$12/month pricing](pricing-proposal.md) is a proposal with cost assumptions and

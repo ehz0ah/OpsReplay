@@ -65,6 +65,21 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 COPY security/build-util-linux-security.sh security/repack-util-linux.py /build/security/
 RUN sh /build/security/build-util-linux-security.sh
 
+# Replace the affected SQLite shared library using fixed source and Bookworm ABI.
+FROM security-build-base AS sqlite-build
+RUN printf '%s\n' \
+       'deb-src [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://snapshot.debian.org/archive/debian/20261104T000000Z/ sid main' \
+       > /etc/apt/sources.list.d/opsreplay-sid.list \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+       build-essential dpkg-dev libsqlite3-0 tcl8.6-dev libreadline-dev python3 \
+    && apt-get source sqlite3=3.54.1-1 \
+    && printf '%s\n' \
+       'faeff7682200b3dd58c8f0f229892a7271c73c1fdabc86e7315eb31eb7cb6e83  sqlite3_3.54.1.orig.tar.xz' \
+       '3f05602b0f4e1441b88f92e9afb2980e148659842565b1f1e27012988433a1d9  sqlite3_3.54.1-1.debian.tar.xz' | sha256sum -c -
+COPY security/build-sqlite-security.sh security/repack-sqlite.py /build/security/
+RUN sh /build/security/build-sqlite-security.sh
+
 FROM debian AS runtime
 
 ENV LANG=C.UTF-8 \
@@ -84,6 +99,8 @@ COPY --from=curl-build /build/curl-security.deb /build/libcurl4-security.deb /tm
 COPY --from=zlib-build /build/zlib1g-security.deb /tmp/
 COPY --from=util-linux-build /build/util-linux-retain-files.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-util-linux-files
 COPY --from=util-linux-build /build/util-linux-packages/ /tmp/util-linux-packages/
+COPY --from=sqlite-build /build/sqlite-retain-files.conf /etc/dpkg/dpkg.cfg.d/zz-opsreplay-sqlite-files
+COPY --from=sqlite-build /build/libsqlite3-0-security.deb /tmp/
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -91,6 +108,8 @@ RUN apt-get update \
        procps python3-flask python3-psycopg2 supervisor vim-tiny \
     && dpkg -i /tmp/util-linux-packages/*.deb \
     && dpkg -i /tmp/zlib1g-security.deb /tmp/libcurl4-security.deb /tmp/curl-security.deb /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
+    && dpkg -i /tmp/libsqlite3-0-security.deb \
+    && rm /tmp/libsqlite3-0-security.deb \
     && rm -r /tmp/util-linux-packages \
     && rm /tmp/zlib1g-security.deb /tmp/libcurl4-security.deb /tmp/curl-security.deb /tmp/vim-common-security.deb /tmp/vim-tiny-security.deb \
     && apt-get clean \
