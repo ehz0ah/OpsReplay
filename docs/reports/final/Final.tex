@@ -11,7 +11,7 @@
 \usepackage{graphicx,xurl}
 \usepackage[hidelinks]{hyperref}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
-\newcommand{\SourceRevision}{5c33055}
+\newcommand{\SourceRevision}{75db441}
 \newcommand{\DraftNote}[1]{\par\smallskip\noindent\textbf{Draft evidence gap:} #1\par}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}
@@ -21,7 +21,7 @@
 \titlespacing*{\subsection}{0pt}{7pt}{3pt}
 \renewcommand{\arraystretch}{1.13}
 \makeatletter
-\renewcommand{\@oddfoot}{\hfil\small Working draft: 1 November 2026\quad\textbar\quad\thepage\hfil}
+\renewcommand{\@oddfoot}{\hfil\small Working draft: 4 November 2026\quad\textbar\quad\thepage\hfil}
 \makeatother
 \hypersetup{pdftitle={OpsReplay: CS5224 Final Report Working Draft},pdfauthor={CS5224 Group 26}}
 
@@ -42,6 +42,7 @@ misconfigured services. A learner investigates an alert, repairs the fault,
 observes measured recovery, then reviews a deterministic debrief and synchronized
 recording. This draft describes merged source \texttt{\SourceRevision}; test
 revisions and limits are stated separately. Required evaluations remain incomplete.
+Production, scale and native-mobile clearance remain unverified.
 
 \section{Motivation and Business Case}
 Students and junior software, DevOps and SRE engineers rarely have safe access to
@@ -307,11 +308,10 @@ PR \#139 contains focused event-filter and outcome-read fixes, not deployed here
 \newpage
 \section{End-user Evaluation and Outstanding Validation}
 \subsection{Formative learner protocol}
-The prepared pilot targets five to ten computer science students or junior
-engineers \cite{pilot}. Each participant uses the complete interactive workflow
-for one incident and studies a static explanation for the other. Four assignment
-sequences counterbalance condition and order. The assistant is off in both core
-conditions. Common tutorial and study times are fixed.
+The pilot targets five to ten students or junior engineers \cite{pilot}. Each
+uses interactive investigation for one incident and a static explanation for the
+other. Four assignment sequences counterbalance condition and order. The
+assistant is off; tutorial and study times are fixed.
 
 Each condition has baseline questions, twelve minutes of study and post-condition
 questions. Interactive study allocates eight minutes to investigation/repair and
@@ -321,16 +321,14 @@ Brief product tasks cover Learn, Code Review and saved results; SUS and intervie
 assess usability. Total planned participation is approximately 65 minutes.
 
 Report recruited/completed counts, exclusions, experience, assignment, incident,
-hints, completion, rubric scores and SUS. Keep interrupted learning scores missing.
-Use participant pseudonyms and aggregate examples. Names, consent, identity
-mappings and recordings remain in restricted storage outside Git. The facilitator,
-contact and deletion date must be set before consent; application deletion and
-backup retention must be verified before participant testing.
+hints, completion, rubric scores and SUS. Interrupted scores stay missing. Use
+pseudonyms and aggregates; consent, identity mappings and recordings stay outside
+Git in restricted storage. Set the facilitator, contact and deletion date before
+consent, and verify application deletion and backup retention before testing.
 
-The upstream incident is Easy and DNS is Medium. Counterbalancing reduces order
-effects but does not remove this difficulty difference or carryover. Results must
-be separated by incident and condition. A small pilot cannot prove broad learning
-effectiveness, retention, or the separate effect of playback.
+Upstream is Easy and DNS is Medium. Counterbalancing does not remove that
+difference or carryover; separate results by incident and condition. This small
+pilot cannot prove broad effectiveness, retention or playback's separate effect.
 
 \DraftNote{Real participant count is zero. Ten synthetic fixtures checked score
 arithmetic and missing data only. Agent acceptance and the owner's informal trial
@@ -351,11 +349,11 @@ human grades. PR \#137 clarifies socket ownership and tested versus loaded
 configuration. Two targeted calls made the distinction explicit but do not
 establish post-fix accuracy; deployed tests retained pre-fix source.
 
-Two deployed streams completed in 8574 and 6643 ms. First text arrived at 5019 ms
-in the first call. The second was tool-only; saved fallback text is not a provider
-delta or the requested explanation. Both required confirmation; repeating the
-second counted once. A helper's wrong \texttt{completed} assertion was reconciled
-against the contract's saved \texttt{accepted} receipt.
+Two deployed streams completed in 8574 and 6643 ms; first text arrived at 5019 ms
+in the first. The second was tool-only: fallback text is not a provider delta or
+the requested explanation. Confirmation was required and repeating it counted
+once. The helper's wrong \texttt{completed} assertion was reconciled with its saved
+\texttt{accepted} receipt.
 
 Reported tokens give US\$0.0073083 baseline and US\$0.0011263 deployed estimates
 at dated rates/FX; the failed baseline call retains a separate US\$0.0013201
@@ -363,12 +361,15 @@ reservation. Diagnostic/fix calls are separate. No invoice, population p95,
 security-benchmark or accuracy guarantee is claimed \cite{release-checkpoint}.
 
 \subsection{Security and availability limits}
-Fresh scans of four Gateway/Monitor images reported no findings. Each Challenge
-reported one HIGH, three MEDIUM and three LOW; no CRITICAL or UNKNOWN findings.
-Three glibc findings map to new owner acceptance for isolated root learners; four
-lower findings remain outside it. The expired 29 October exception was not reused.
-The checkpoint records digests and conditions. Production clearance, larger
-concurrency, native-mobile use and recovery capacity remain unverified.
+On 1 November, Gateway/Monitor scans had no findings; each Challenge had 1 HIGH,
+3 MEDIUM and 3 LOW. Three glibc findings have scoped owner acceptance; four lower
+findings do not. The expired October exception was not reused.
+
+4 November at \texttt{75db441}: each Challenge had 4 HIGH/12 MEDIUM/4 LOW,
+Gateway/Monitor none. Three SQLite HIGHs blocked runtime. No attempt or Ark call
+ran. Four preparation stacks and the browser bucket were removed; protected
+records and durable settings were preserved. PR \#141 passed ten CI checks but
+needs independent approval, merge and fresh ECR qualification \cite{image-gate}.
 
 \newpage
 \section{Cost and Equivalent On-premise Hosting}
@@ -381,6 +382,12 @@ Gateway, ALB, endpoints, WAF, requests, logs and storage. It is not an invoice.
 The 1 November task-only estimate is US\$0.11732. One aged DNS task uses a
 conservative admission-to-stop interval; the other tasks use saved ECS timings.
 Shared services and final attributed charges remain separate.
+
+Account-filtered data read on 4 November still marked 1 November ECS usage as
+estimated: 1.815 vCPU-hours and 3.630 GB-hours totalled US\$0.1118403. Effective
+regional rates matched the model, but its US\$0.0054773333 difference remains
+unreconciled. The two Gateway intervals overlap by 103.51 seconds. Empty
+campaign-tag groups do not establish final attribution or zero campaign cost.
 
 One Gateway, three interface endpoints in two availability zones and one internal
 ALB project to US\$97.83/month at 730 hours before usage charges
@@ -554,12 +561,10 @@ results. The team must verify the final disclosure against its own contributions
 Do not submit an invented personal-learning statement.}
 
 \subsection{Conclusion}
-OpsReplay implements a complete browser-based investigation and saved-feedback
-workflow, with bounded AWS acceptance evidence. Its strongest completed technical
-work is isolated real-service practice, duplicate-safe lifecycle handling and
-evidence-based debrief/playback. Exact-image qualification and bounded paid
-assistant measurements now have current evidence. The learner study, final
-hosting-cost evidence and rehearsal remain required for presentation readiness.
+OpsReplay implements isolated real-service practice, duplicate-safe lifecycle
+handling and evidence-based debrief/playback. Historical AWS and assistant results
+retain their stated limits. New SQLite findings block activation. Fresh
+qualification, a real learner study, hosting-cost evidence and rehearsal remain required.
 
 \newpage
 \begin{thebibliography}{99}
@@ -573,6 +578,9 @@ hosting-cost evidence and rehearsal remain required for presentation readiness.
 \bibitem{release-checkpoint} OpsReplay, ``Release qualification, 1 November 2026,''
 tested source \texttt{5c33055}.
 \url{https://github.com/ehz0ah/OpsReplay/blob/main/docs/checkpoints/2026-11-01-release-qualification.md}.
+\bibitem{image-gate} OpsReplay, ``Image gate and early cleanup, 4 November 2026,''
+source \texttt{75db441}.\newline
+\url{https://github.com/ehz0ah/OpsReplay/blob/main/docs/checkpoints/2026-11-04-image-gate.md}.
 \bibitem{frontend-record} OpsReplay, ``Neobrutalist discovery pages,''
 31 October 2026.
 \url{https://github.com/ehz0ah/OpsReplay/blob/4df4842cf79a8f662b309bb778a9dc5765d29c6a/docs/decisions/neobrutalist-discovery.md}.

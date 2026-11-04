@@ -38,7 +38,7 @@
    -- ([xshift=-12mm,yshift=12mm]current page.south east);
  \node[anchor=south west,font=\fontsize{10}{12}\selectfont]
    at ([xshift=12mm,yshift=4.5mm]current page.south west)
-   {OPSREPLAY / CS5224 GROUP 26 / WORKING DRAFT 1 NOV 2026};
+   {OPSREPLAY / CS5224 GROUP 26 / WORKING DRAFT 4 NOV 2026};
  \node[anchor=south east,font=\fontsize{10}{12}\selectfont]
    at ([xshift=-12mm,yshift=4.5mm]current page.south east)
    {#3\quad\textbar\quad\thepage};
@@ -73,7 +73,7 @@
 \Small
 Lee Hao Zhe / Neeraj Kumbar / Neo Qi Hao / Poh Yu Wen / See Yang Zhi / Teo Kai Xiang
 \par
-\Evidence{Implemented source: 5c33055. Draft results have explicit environment and revision limits.}
+\Evidence{Implemented source: 75db441. Historical runtime results keep their own source limits. The 4 November image gate blocked new activation.}
 
 \Slide{01 / PROBLEM}{The first production incident is a poor classroom.}{BLOCK A / 00:20--01:00}
 \begin{minipage}[t]{0.47\linewidth}
@@ -307,10 +307,10 @@ Missing results stay missing.
 \end{minipage}\par
 \Evidence{Ten synthetic fixtures checked score calculations only; no person participated. Real testing needs a study contact, consent and deletion date.}
 
-\Slide{06 / READINESS}{The main learner loop works. Final gates remain open.}{BLOCK F / 13:45--14:30}
+\Slide{06 / READINESS}{The learner loop was verified. New image gates failed.}{BLOCK F / 13:45--14:30}
 \begin{minipage}[t]{0.48\linewidth}
 \vspace{0pt}\raggedright
-\Panel{132mm}{Signal}{\textbf{Verified}\par
+\Panel{132mm}{Signal}{\textbf{Historical verification}\par
 Email sign-up and access checks.\par
 Both real Challenge recovery paths.\par
 Debrief, playback and temporary cleanup.\par
@@ -320,11 +320,11 @@ Current frontend and component checks.}
 \vspace{0pt}\raggedright
 \Panel{132mm}{Pink}{\textbf{Still required}\par
 Participant study and outcomes.\par
-Residual image-finding assessment.\par
+SQLite fix and fresh image qualification.\par
 Host capacity and cost evidence.\par
 Final attributed charges and rehearsal.}
 \end{minipage}\par
-\Evidence{1 November exact-image scans: Gateway/Monitor reported no findings; each Challenge had 1 HIGH, 3 MEDIUM, 3 LOW. Three named glibc findings have scoped owner acceptance.}
+\Evidence{4 November: each Challenge had 4 HIGH, 12 MEDIUM, 4 LOW. Three new SQLite HIGHs blocked runtime; Gateway/Monitor scans were clear. No attempt or Ark call ran. Cleanup passed.}
 
 \Slide{06 / DELIVERY}{Practice the failure. Learn from the recorded path.}{BLOCK F / 14:30--15:00}
 \vspace{4mm}
@@ -371,9 +371,10 @@ object-prefix, session-partition and owner-reference absence.
 Google SRE: \url{https://sre.google/workbook/postmortem-culture/}\par
 SadServers: \url{https://sadservers.com/faq}\quad
 SimIncident: \url{https://simincident.com/}\par
-\textbf{OpsReplay evidence at source 5c33055}\par
+\textbf{Historical evidence: 5c33055. New image gate: 75db441.}\par
 \texttt{docs/checkpoints/2026-10-29-saas-aws.md}\par
 \texttt{docs/checkpoints/2026-11-01-release-qualification.md}\par
+\texttt{docs/checkpoints/2026-11-04-image-gate.md}\par
 \texttt{docs/decisions/pricing-proposal.md}\par
 \texttt{docs/decisions/neobrutalist-discovery.md}\par
 \texttt{docs/evaluation/pilot/README.md}\par

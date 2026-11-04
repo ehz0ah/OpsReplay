@@ -1,14 +1,16 @@
 # Final report draft
 
-Status: working draft, 1 November 2026. This is not a submission-ready report.
+Status: working draft, 4 November 2026. This is not a submission-ready report.
 
 [Final.tex](Final.tex) describes the implemented product at merged revision
-`5c33055c59846c784f978ababd2075fe2b3dad90`. The
+`75db441331afae0fcf45ab16a27fbe549881c5b2`. The
 [1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)
 records fresh image qualification, hosted recovery and paid assistant measurements.
 The 29 October sign-up and GET measurements retain their separate source/workload.
 PR #137 is a narrow assistant instruction fix; its targeted calls are not a
-post-fix accuracy benchmark.
+post-fix accuracy benchmark. The [4 November image gate](../../checkpoints/2026-11-04-image-gate.md)
+blocked activation on new SQLite HIGH findings. No fresh gameplay/browser or
+provider test ran. Early cleanup and durable preservation were verified.
 
 The adopted preliminary report is version 5. The older `Preliminary.tex` contains
 an earlier simulated-engine design and must not be used as the final architecture.
@@ -65,6 +67,7 @@ results to make the report appear complete.
 | Proposed price, delivery assumptions and break-even                                | [Pricing proposal](../../decisions/pricing-proposal.md)                               | Price and demand unvalidated; rate projection is not an invoice                          |
 | Pilot procedure and counterbalancing limits                                        | [Pilot package](../../evaluation/pilot/README.md)                                     | No participant outcome supplied for this draft                                           |
 | Exact-image qualification and current hosted recovery                              | [1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)        | Scoped glibc acceptance; residual lower findings and larger capacity remain open         |
+| New exact-source image gate and early cleanup                                      | [4 November checkpoint](../../checkpoints/2026-11-04-image-gate.md)                   | PR #141 passed CI; independent review, merge and a fresh registry gate remain required   |
 | Paid assistant baseline and deployed streams                                       | Same checkpoint; private rubric, receipts and CloudWatch usage                        | Small sample; agent manual grades; original failure retained; no security-fixture result |
 
 Private aggregate evidence was inspected for the draft. Raw recordings, account
@@ -80,8 +83,9 @@ deployments or proof of the cheaper hosting option.
 
 1. Keep tested source, image digests, review fixes and later deployments distinct.
    Do not describe two targeted prompt calls as a complete post-fix benchmark.
-2. Review the completed deadline, deletion and cleanup evidence. Merge focused
-   assistant/lifecycle fixes separately; their CI is not a new deployed checkpoint.
+2. Fix the new SQLite HIGH findings, pass exact-head hosted CI and independent
+   review, then qualify fresh merged-source images. Existing CI and historical
+   runtime evidence do not open the new gate.
 3. Preserve assistant denominators, missing text deltas, failure reservations and
    dated usage estimates. Provider-console cap verification is not a prerequisite
    under the owner's instruction; no enforced billing cap is claimed.
