@@ -9,11 +9,13 @@ and session playback.
 
 ## Current status
 
-**Current phase, 29 October 2026:** the grouped AWS checkpoint checked verified-email
-sign-up, the SaaS interface, no-payment Pro activation, inline Code Review, both
-Challenges, debrief and playback. All temporary resources from that campaign were
-removed. Image findings remain unresolved. The assistant benchmark, additional hosted
-failure paths, learner pilot and final cost comparison remain pending.
+**Current phase, 4 November 2026:** exact-source image publication passed, but three
+new SQLite HIGH findings blocked both Challenge images. Runtime admission stayed
+closed. All four temporary preparation stacks and the browser bucket were removed,
+and durable settings and protected records were verified unchanged. [PR #141](https://github.com/ehz0ah/OpsReplay/pull/141)
+contains the focused library fix and passed ten CI checks. It needs independent approval and fresh
+image qualification. Earlier learner-path and assistant checks remain historical
+evidence. Real learner study, equivalent-host measurements and rehearsal are pending.
 
 | Area                                     | Status                                                                              |
 | ---------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -34,7 +36,8 @@ capacity, learning effectiveness or complete failure-path coverage.
 See the [23 October learner checkpoint](docs/checkpoints/2026-10-23-learner-experience.md)
 and [26 October local status](docs/checkpoints/2026-10-26-saas-local.md) for earlier
 evidence. The [29 October AWS checkpoint](docs/checkpoints/2026-10-29-saas-aws.md)
-records the latest results, image risks, cleanup and remaining gates.
+records its results and limits. The [4 November image gate](docs/checkpoints/2026-11-04-image-gate.md)
+records the current blocker, exact images and verified early cleanup.
 
 ## Product scope
 

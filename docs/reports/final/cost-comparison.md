@@ -1,19 +1,33 @@
 # Cloud and on-premise comparison working model
 
-Status: sourced inputs and sensitivity model, updated 1 November 2026. This is not a
+Status: sourced inputs and sensitivity model, updated 4 November 2026. This is not a
 measured comparison of equivalent deployments. Final campaign charges and a
 qualified on-premise configuration remain required.
 
 The [1 November campaign](../../checkpoints/2026-11-01-release-qualification.md)
 has a task-only estimate of US$0.11732 at the dated Singapore rates. Its six
-Challenge intervals total 4,010 seconds and two successive Gateway intervals
+Challenge intervals total 4,010 seconds and two overlapping Gateway intervals
 5,688 seconds. Five Challenge intervals use ECS image-pull-start/stopped metadata;
 the older DNS task had aged out of ECS history, so its admission-to-confirmed-stop
 interval is a conservative substitute. This is not an exact aggregate billable
 duration or the whole AWS bill. Endpoints, ALB, WAF, requests, storage, logs,
 transfer and publication remain outside this amount. Provider usage is separate:
 US$0.0098441 reported-token estimate, plus US$0.0013201 for the failed-call
-reservation. Same-day account billing does not establish attributed final spend.
+reservation. The Gateway intervals overlap by 103.51 seconds; retain both task
+intervals in compute accounting rather than treating them as one serial lifetime.
+
+On 4 November, account-filtered Cost Explorer data for 1 November UTC remained
+estimated. Singapore ECS reported 1.815 vCPU-hours and 3.630 GB-hours:
+US$0.0917664 CPU plus US$0.0200739 memory, or US$0.1118403 compute. Its effective
+rates match the dated US$0.05056/vCPU-hour and US$0.00553/GB-hour inputs. The
+US$0.0054773333 difference from the interval model remains unreconciled. No matching
+campaign-tag groups were returned; empty groups do not prove zero campaign cost.
+Do not allocate shared services by account-wide subtraction or call this a final invoice.
+
+The [4 November window](../../checkpoints/2026-11-04-image-gate.md) stopped at the
+image gate and created no learner or Gateway runtime. Its preparation resources
+were removed. US$5 was a planning target, not a verified charge or enforceable cap.
+Its final attributable charges remain pending.
 
 ## Equivalent service boundary
 
@@ -49,10 +63,13 @@ No purchase, account change or local infrastructure test was performed.
 | Retail configuration       | [Sim Lim Square / Bizgram T350 listing](https://www.simlimsquare.com.sg/product/dell-poweredge-t350-poweredge-t350-xeon-e-2324-1x8gb-dim-9850): S$4,955.80 displayed for Xeon E-2324, 8 GB RAM, 2 TB SATA HDD, single non-redundant PSU       | A dated advertised configuration, not a qualified quote. RAM/storage upgrades, tax, delivery, current stock and warranty must be confirmed. Do not substitute this unmodified machine for the full service |
 | AWS regional rates         | [Pricing proposal](../../decisions/pricing-proposal.md)                                                                                                                                                                                       | Dated list-rate projection; final use and billed charges remain separate                                                                                                                                   |
 
-Dell's direct T160 product page was blocked during fetch. Its search-result
-starting price was not used as a qualified quote. The PSU watt rating is maximum
-capacity, not measured power draw. No retailer payment details or copied product
-assets belong in this report.
+The direct [Dell Singapore T160 page](https://www.dell.com/en-sg/shop/cty/pdp/spd/poweredge-t160/pet16010a)
+was fetched on 4 November. It displayed S$3,776.99 including 9% GST and free shipping
+for a Pentium G7400T, 16 GB ECC, 2 TB HDD, no RAID and no selected OS. This is an
+advertised base configuration, not a configured equivalent-service quote or
+measured capacity. Keep it separate from the model's before-GST sensitivity inputs.
+The 300 W PSU rating is maximum capacity, not measured power draw. No purchase,
+payment details or copied product assets belong in this report.
 
 ## Defined workload and capacity limit
 

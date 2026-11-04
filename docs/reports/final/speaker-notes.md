@@ -106,8 +106,10 @@ counterbalancing does not remove that difference. Replace the missing-results
 content only after real data and manual rubric scoring exist. Do not fill blank
 scores from an agent or the owner's informal trial.
 
-**Slide 14, 45 seconds.** State the completed learner loop and exact remaining
-gates. Source remediation does not establish complete image clearance. Before
+**Slide 14, 45 seconds.** Separate the historically verified learner loop from
+the three new SQLite HIGH findings that blocked 4 November activation. No fresh
+attempt or Ark call ran, and cleanup passed. Source remediation does not establish
+image clearance. Before
 the final presentation, replace this draft status with the actual tested status;
 do not conceal a failed or unperformed evaluation.
 
