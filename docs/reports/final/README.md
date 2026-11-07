@@ -9,10 +9,9 @@ recommit it after every material change to `Final.tex`. It describes the product
 at merged revision `8dcff83` (after PR #144) and cites the 29 October, 1 November
 and 4 November checkpoints for measured results.
 
-The report has no open TODO boxes. Section 4.7 states that the planned learner
-pilot did not run (no participants) and reports only the team's hands-on trial,
-scripted learner journeys and layout checks; do not add synthetic or invented
-participant data. Each member should still confirm the AI-use declaration and
+The report has no open TODO boxes. Section 4.7 reports only the team's hands-on
+trial, scripted learner journeys and layout checks. No learner study ran; do not
+add synthetic or invented participant data. Each member should still confirm the AI-use declaration and
 its learning statement before submission.
 
 The adopted preliminary report is version 5. The older `Preliminary.tex` contains

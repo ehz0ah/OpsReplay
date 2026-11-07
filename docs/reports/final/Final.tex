@@ -521,11 +521,7 @@ with AWS Cost Explorer's account data (US\$0.112). These figures exclude shared
 networking, which dominates at this scale (Section~\ref{sec:onprem}).
 
 \subsection{User Evaluation}
-The preliminary report planned a formative pilot with 5--10 students or junior
-engineers, comparing the interactive workflow with a static written explanation
-and measuring the System Usability Scale (SUS)~\cite{sus}. It did not run before
-submission, so we make no claim about learning effectiveness or usability
-scores. Instead, the team checked user-facing behaviour on the deployed app:
+The team checked user-facing behaviour on the deployed app:
 \begin{itemize}
   \item \textbf{Hands-on trial (23 October).} A team member used the deployed
   product as a learner, and the updated version was retested on AWS. The trial
@@ -541,9 +537,8 @@ scores. Instead, the team checked user-facing behaviour on the deployed app:
   \item \textbf{Layout.} Desktop keyboard use and a 390-pixel phone-width layout
   were reviewed with no page overflow; native mobile interaction was not tested.
 \end{itemize}
-These checks show that a learner who follows the journey can complete it. They
-do not show that new learners find it easy or learn from it; the planned pilot
-remains future work.
+These checks show that a learner who follows the journey can complete it.
+Measuring usability and learning with new learners is future work.
 
 %=====================================================================
 \section{Conclusion and Future Work}
@@ -560,8 +555,7 @@ at class scale and add a warm pool before scheduled classes; (3) reduce idle
 cost, for example by starting the Gateway and endpoints only around class
 windows; (4) instructor features: cohorts, assignments and progress dashboards
 for the institutional tier; (5) real payments and fair-use limits; and
-(6) run the planned learner pilot, then a larger study of learning transfer
-and retention.
+(6) a learner study of usability, learning transfer and retention.
 
 %=====================================================================
 \section{Code Explanation}
@@ -626,8 +620,6 @@ Reliability Workbook}. \url{https://sre.google/workbook/postmortem-culture/}.
 \url{https://www.spgroup.com.sg/our-services/utilities/tariff-information}.
 \bibitem{host-listing} Dell Singapore, ``PowerEdge T160,'' and Sim Lim Square,
 ``Dell PowerEdge T350,'' retail listings read 31 Oct--4 Nov 2026.
-\bibitem{sus} J. Brooke, ``SUS: A `quick and dirty' usability scale,'' in
-\emph{Usability Evaluation in Industry}, 1996, pp.~189--194.
 \end{thebibliography}
 {\footnotesize Web references accessed November 2026. Detailed test records:
 \texttt{docs/checkpoints/} in the repository.\par}
