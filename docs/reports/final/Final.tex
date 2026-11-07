@@ -568,43 +568,108 @@ for the institutional tier; (5) real payments and fair-use limits; and
 %=====================================================================
 \section{Code Explanation}
 \textbf{Repository:} \Repo{} (public until marks and feedback are released).
-It is an npm workspace in TypeScript (Node 22), with Python for the
-in-container terminal server.
+It is a single npm workspace in TypeScript (Node 22) with about 40,000 lines of
+application source and 170 test files; the in-container terminal server and
+recorder are Python, and the Challenge images are Dockerfiles with shell scripts.
+The 63 records in \nolinkurl{docs/decisions/} explain why each major design choice was made.
+
+\subsection{Repository Layout}
 \begin{center}\footnotesize
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{34mm}Y@{}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{30mm}Yrr@{}}
 \toprule
-\textbf{Path} & \textbf{Contents}\\
+\textbf{Path} & \textbf{Contents} & \textbf{Src lines} & \textbf{Tests}\\
 \midrule
-\texttt{apps/web/} & React + Mantine single-page app: catalogue, briefing,
-xterm.js workspace, telemetry, debrief, playback, Learn, Code Review, History, account.\\
-\texttt{apps/api/src/} & One folder per Lambda action (e.g.\ \texttt{start-session},
-\texttt{end-session}, \texttt{create-terminal-ticket}, \texttt{get-debrief},
-\texttt{assistant}, \texttt{submit-review}) plus lifecycle handlers
-(\texttt{session-lifecycle}, \texttt{sweep-sessions}, \texttt{reconcile-session}).\\
-\texttt{apps/gateway/} & Fargate Gateway: ticket admission, browser terminal relay,
-terminal and monitor recording, proposal delivery.\\
-\texttt{apps/monitor/} & Monitor container: traffic, measurements, validators,
-sustained-recovery checks and file captures.\\
-\texttt{packages/session/} & Shared lifecycle, recording and deterministic debrief
-logic (\texttt{finalise.ts}, \texttt{debrief.ts}).\\
-\texttt{packages/contracts/} & JSON Schemas, OpenAPI spec and generated public types.\\
-\texttt{content/} & Challenge manifests and Docker images, Learn lessons, Code Review exercises.\\
-\texttt{infra/} & AWS CDK stacks: durable data, browser hosting, session API,
-environments, terminal edge, deletion.\\
-\texttt{scripts/evaluation/} & Scenario repeats, load tests and assistant evaluation.\\
-\texttt{docs/} & Architecture, API, data model, decisions, runbooks, test checkpoints.\\
+\nolinkurl{apps/web/} & React + Mantine single-page app: catalogue, briefing,
+xterm.js workspace, telemetry, assistant panel, debrief, playback, Learn, Code
+Review, History, account. & 6.1k & 24\\
+\nolinkurl{apps/api/src/} & One folder per Lambda action (e.g.\ \nolinkurl{start-session},
+\nolinkurl{create-terminal-ticket}, \nolinkurl{get-debrief}, \nolinkurl{assistant},
+\nolinkurl{submit-review}) plus lifecycle handlers (\nolinkurl{session-lifecycle},
+\nolinkurl{sweep-sessions}, \nolinkurl{reconcile-session}). & 7.6k & 38\\
+\nolinkurl{apps/gateway/} & Fargate Gateway: ticket admission, browser terminal relay,
+terminal and monitor recording, page sealing, proposal delivery. & 10.4k & 34\\
+\nolinkurl{apps/monitor/} & Monitor container: traffic, measurements, validators,
+sustained-recovery checks and file captures. & 1.6k & 11\\
+\nolinkurl{packages/} & \nolinkurl{session} (lifecycle, recording, deterministic debrief),
+\nolinkurl{contracts} (JSON Schemas, OpenAPI, generated types), \nolinkurl{content}
+(publication and validation), \nolinkurl{dynamodb} (conflict retry). & 7.1k & 20\\
+\nolinkurl{content/} & Challenge manifests and Docker images, Learn lessons, Code Review
+exercises. & 0.8k & 8\\
+\nolinkurl{infra/} & AWS CDK stacks: durable data, browser hosting, session API,
+environments, terminal edge, deletion. & 3.6k & 23\\
+\nolinkurl{scripts/} & Builds, publication, scenario repeats, load tests and
+assistant evaluation. & 2.9k & 15\\
+\nolinkurl{docs/} & Architecture, API, data model, decisions, runbooks, test checkpoints. & -- & --\\
 \bottomrule
 \end{tabularx}
 \end{center}
-\textbf{Running locally:} \texttt{npm ci}, then \texttt{npm run quality}
-(lint, format, type checks), \texttt{npm run check} and the component suites
-(\texttt{api:test}, \texttt{gateway:test}, \texttt{web:test},
-\texttt{content:test}, \texttt{infra:test}). Docker is needed for the Challenge
-image tests (\texttt{challenge:build}, \texttt{challenge:test}) and the DynamoDB
+
+\subsection{Following One Challenge Attempt Through the Code}
+\begin{enumerate}[leftmargin=*,label=\arabic*.]
+  \item \textbf{Start.} The browser posts to \nolinkurl{apps/api/src/start-session/}.
+  \nolinkurl{validation.ts} checks the input, \nolinkurl{handler.ts} resolves the request
+  receipt and entitlement, and \nolinkurl{store.ts} writes the receipt, active-attempt
+  lock, session and launch arguments in one DynamoDB transaction before
+  \nolinkurl{session-lifecycle/provision.ts} calls ECS \nolinkurl{RunTask} and creates
+  the deadline schedule (\nolinkurl{aws-schedule.ts}).
+  \item \textbf{Ready.} ECS events reach \nolinkurl{session-lifecycle/}; the session
+  becomes ready only after the Gateway has seen both the terminal and the Monitor.
+  \item \textbf{Connect.} The browser asks \nolinkurl{create-terminal-ticket/} for a
+  short-lived ticket and opens a WebSocket. In the Gateway,
+  \nolinkurl{terminal-admission-store.ts} consumes the ticket and claims a new
+  connection generation, and \nolinkurl{browser-terminal-relay.ts} with
+  \nolinkurl{terminal-client.ts} relays bytes to the Python terminal server in the
+  Challenge container, applying backpressure.
+  \item \textbf{Record.} \nolinkurl{terminal-recorder.ts} and \nolinkurl{monitor-recorder.ts}
+  store checksummed pages in S3. Shell-integration markers written by the image
+  (\nolinkurl{shell-integration.bash}) are stripped from the learner's view by
+  \nolinkurl{shell-marker-filter.ts} and turned into command events by
+  \nolinkurl{command-parser.ts}.
+  \item \textbf{Recover.} In the Monitor, \nolinkurl{checks.ts} runs the manifest's
+  validators against live traffic and \nolinkurl{recovery.ts} reports recovery only
+  after every validator has passed continuously for its sustain period. The Gateway
+  persists that verdict, which fixes the outcome.
+  \item \textbf{Finalise.} Once the recording is sealed or the drain times out,
+  \nolinkurl{packages/session/src/finalise.ts} confirms task stop and schedule
+  deletion, derives the debrief with \nolinkurl{debrief.ts} and commits the result once.
+  \nolinkurl{get-debrief/} and \nolinkurl{get-playback/} serve it, and
+  \nolinkurl{apps/web/src/playback/} replays the terminal in sync with telemetry.
+\end{enumerate}
+\nolinkurl{reconcile-session/} and \nolinkurl{sweep-sessions/} repair any step that was
+interrupted, e.g.\ a lost Lambda invocation or a stopped Gateway.
+
+\subsection{Adding a Challenge}
+An author writes an image under \nolinkurl{content/challenges/<id>/image/} (services,
+one planted fault, \nolinkurl{service} wrappers and shell integration) and a
+\nolinkurl{challenge.json} manifest validated by
+\nolinkurl{packages/contracts/schemas/challenge.schema.json}. Image tests check that the
+fault is present, the reference fix passes and each trap causes its outage. The
+\emph{Publish checkpoint images} workflow builds and tests the images, pushes them
+to ECR and records their digests; \nolinkurl{scripts/publish-reference-release.ts}
+then publishes a pinned, immutable release that the API can launch.
+
+\subsection{Testing and Continuous Integration}
+Every pull request runs nine GitHub Actions jobs: \nolinkurl{quality} (oxlint,
+Prettier, TypeScript); \nolinkurl{contracts} (schemas, OpenAPI and generated types in
+sync); \nolinkurl{session-start} and \nolinkurl{browser} (API and web app, with
+DynamoDB Local); \nolinkurl{challenge-image} and \nolinkurl{dns-challenge} (fault,
+reference fix, traps and recording in each image); and \nolinkurl{challenge-monitor},
+\nolinkurl{gateway-monitor} and \nolinkurl{gateway-runtime} (Monitor and Gateway against
+real containers). Main is protected by review. Pull request titles are checked against the \texttt{type(scope): summary}
+convention. Hosted behaviour (IAM, CloudFront, Fargate, the LLM provider) cannot
+be tested in CI, so it is covered by the dated AWS campaigns in
+\nolinkurl{docs/checkpoints/}, each tied to an exact commit and image digests.
+
+\subsection{Running and Deploying}
+Run \texttt{npm ci}, then \texttt{npm run quality}, \texttt{npm run check} and
+the component suites (\nolinkurl{api:test}, \nolinkurl{gateway:test}, \nolinkurl{web:test},
+\nolinkurl{content:test}, \nolinkurl{infra:test}). Docker is needed for the Challenge
+image tests (\nolinkurl{challenge:build}, \nolinkurl{challenge:test}) and the DynamoDB
 Local integration tests; \texttt{npm run web:dev} starts the web app.
-Deployment uses \texttt{npm run infra:cdk} with the parameters described in
-\texttt{infra/README.md} and \texttt{docs/runbooks/}; runtime stacks are
-deployed only for bounded test windows and torn down afterwards.
+Deployment uses \texttt{npm run infra:cdk} with the parameters in
+\nolinkurl{infra/README.md}; \nolinkurl{docs/runbooks/} covers activation, verification and
+data deletion. Runtime stacks are deployed only for bounded test windows and torn
+down afterwards, while a durable stack keeps learner data.
 
 \textbf{Assumptions.} Prices are AWS Singapore list prices in USD, before
 credits and 9\% GST; FX is S\$1.28/US\$1 (November 2026); usage, conversion and labour figures in
