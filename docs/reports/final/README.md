@@ -31,10 +31,11 @@ This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
 The generated PDF and logs belong in the ignored `build` directory.
 
-The [startup pitch deck][pitch-deck] has twelve slides.
-The [Markdown speaker script](speaker-notes.md) gives each of six speakers two
-slides and 2 minutes 30 seconds. Slides 5 and 6 reserve space for real app
-screenshots. Rehearse the walkthrough against the captures used on those slides.
+The [startup pitch deck][pitch-deck] has twenty slides. The
+[Markdown speaker script](speaker-notes.md) allocates 2 minutes 30 seconds to
+each of six speakers. Slides 8 and 9 reserve space for real screenshots.
+Speaker 3 presents the demo on slide 10 from 5:00 to 7:30. Rehearse with a
+prepared lab or a recording of a real run.
 
 The course limit is ten pages for the complete `Final.pdf`, including references
 and cover material. Check the actual PDF page count, tables, diagram labels,
@@ -90,4 +91,4 @@ deployments or proof of the cheaper hosting option.
 No new service, live payment system, institutional dashboard or scenario
 generation feature is implied by this report work.
 
-[pitch-deck]: <OpsReplay Startup Pitch.pptx>
+[pitch-deck]: <OpsReplay Startup Pitch - Final.pptx>
