@@ -31,23 +31,11 @@ This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
 The generated PDF and logs belong in the ignored `build` directory.
 
-The presentation source is [Slides.tex](Slides.tex), with
-[speaker notes](speaker-notes.md) and the [demo plan](demo.md). Build it with:
-
-```sh
-tectonic --only-cached --untrusted --keep-logs --outdir build Slides.tex
-```
-
-The slide build currently uses locally installed Arial and Menlo fonts. They
-are embedded in the generated PDF but are not copied into the repository. The
-TeX source requires those fonts in another build environment, or an explicitly
-reviewed substitute with a fresh layout check. Tectonic reports this portability
-limit. No font or package installation is part of the build command.
-
-The deck has fifteen main slides and three Q&A backups. Its six speaking blocks
-sum to a planned fifteen minutes, including a four-minute Challenge segment.
-This is not measured rehearsal time. Assign all six speakers and rehearse with
-the actual deployment and a redacted fallback recording before submission.
+The [startup pitch deck][pitch-deck] has twenty presentation slides followed by six hidden appendix slides. The
+[Markdown speaker script](speaker-notes.md) allocates 2 minutes 30 seconds to
+each of six speakers. Slides 8 and 9 reserve space for real screenshots.
+Speaker 3 presents the demo on slide 10 from 5:00 to 7:30. Rehearse with a
+prepared lab or a recording of a real run.
 
 The course limit is ten pages for the complete `Final.pdf`, including references
 and cover material. Check the actual PDF page count, tables, diagram labels,
@@ -97,8 +85,10 @@ deployments or proof of the cheaper hosting option.
    cloud/on-premise comparison without asserting that cloud is always cheaper.
 6. The team must verify the AI-use scope, add its own learning statement and
    confirm the final author list. Do not invent these statements.
-7. Build, inspect and export the completed report as `Final.pdf`. Prepare
-   `Slides.pdf` and the [demo sequence](demo.md), with every member presenting.
+7. Build, inspect and export the completed report as `Final.pdf`. Rehearse
+   the [pitch script](speaker-notes.md) with all six speakers.
 
 No new service, live payment system, institutional dashboard or scenario
 generation feature is implied by this report work.
+
+[pitch-deck]: <OpsReplay Business Pitch.pptx>
