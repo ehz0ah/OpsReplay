@@ -1,22 +1,21 @@
 # Final report draft
 
-Status: working draft, 4 November 2026. This is not a submission-ready report.
+Status: review draft, 7 November 2026 (PR #145). Not yet submission-ready.
 
-[Final.tex](Final.tex) describes the implemented product at merged revision
-`71cf2d3b95efcadb728c8a69ae579b5d585fc301`. The
-[1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)
-records fresh image qualification, hosted recovery and paid assistant measurements.
-The 29 October sign-up and GET measurements retain their separate source/workload.
-PR #137 is a narrow assistant instruction fix; its targeted calls are not a
-post-fix accuracy benchmark. The [4 November image gate](../../checkpoints/2026-11-04-image-gate.md)
-blocked activation on new SQLite HIGH findings. No fresh gameplay/browser or
-provider test ran. Early cleanup and durable preservation were verified.
-PR #141's SQLite fix is merged; fresh merged-source ECR qualification is pending.
+[Final.tex](Final.tex) is the final report, restructured to the course's suggested
+sections in the preliminary report's LaTeX format. A reviewed build is committed as
+[Final.pdf](Final.pdf) so the team can read it without compiling; rebuild and
+recommit it after every material change to `Final.tex`. It describes the product
+at merged revision `8dcff83` (after PR #144) and cites the 29 October, 1 November
+and 4 November checkpoints for measured results.
+
+The report has no open TODO boxes. Section 4.7 reports only the team's hands-on
+trial, scripted learner journeys and layout checks. No learner study ran; do not
+add synthetic or invented participant data. Each member should still confirm the AI-use declaration and
+its learning statement before submission.
 
 The adopted preliminary report is version 5. The older `Preliminary.tex` contains
-an earlier simulated-engine design and must not be used as the final architecture.
-The current implementation uses isolated real services, recording playback and
-fresh-task retries.
+an earlier simulated-engine design and is not the comparison baseline.
 
 ## Build and review
 
@@ -29,7 +28,8 @@ tectonic --only-cached --untrusted --keep-logs --outdir build Final.tex
 
 This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
-The generated PDF and logs belong in the ignored `build` directory.
+Intermediate build output and logs belong in the ignored `build` directory; copy
+the reviewed `build/Final.pdf` to `Final.pdf` when it is ready to commit.
 
 The presentation source is [Slides.tex](Slides.tex), with
 [speaker notes](speaker-notes.md) and the [demo plan](demo.md). Build it with:
@@ -66,7 +66,7 @@ results to make the report appear complete.
 | Neobrutalist frontend behaviour and responsive checks                              | [Frontend decision](../../decisions/neobrutalist-discovery.md), 1 November checkpoint | Fixture widths plus hosted History/debrief/playback; native mobile untested              |
 | Assistant timing and cost-accounting corrections                                   | [Evaluation runbook](../../runbooks/evaluation-tools.md), merged PR #128              | Fake-provider verification, not a model benchmark or provider cap                        |
 | Proposed price, delivery assumptions and break-even                                | [Pricing proposal](../../decisions/pricing-proposal.md)                               | Price and demand unvalidated; rate projection is not an invoice                          |
-| Pilot procedure and counterbalancing limits                                        | [Pilot package](../../evaluation/pilot/README.md)                                     | No participant outcome supplied for this draft                                           |
+| Pilot procedure and counterbalancing limits                                        | [Pilot package](../../evaluation/pilot/README.md)                                     | Pilot not run; no participant outcome reported                                           |
 | Exact-image qualification and current hosted recovery                              | [1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)        | Scoped glibc acceptance; residual lower findings and larger capacity remain open         |
 | New exact-source image gate and early cleanup                                      | [4 November checkpoint](../../checkpoints/2026-11-04-image-gate.md)                   | PR #141 merged; fresh merged-source ECR qualification pending                            |
 | Paid assistant baseline and deployed streams                                       | Same checkpoint; private rubric, receipts and CloudWatch usage                        | Small sample; agent manual grades; original failure retained; no security-fixture result |
