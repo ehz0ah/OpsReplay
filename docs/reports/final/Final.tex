@@ -1,7 +1,7 @@
 % OpsReplay -- CS5224 Final Report, Group 26.
 % Same preamble and layout as the preliminary report. Compile with XeLaTeX or pdfLaTeX.
 % Needs catalogue.png in the same folder. The complete report must stay within ten pages.
-% Search for \TODO before submission: every red box is team input that must be completed.
+% Rebuild and recommit Final.pdf after every change to this file.
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=20mm]{geometry}
 \usepackage[T1]{fontenc}
@@ -17,7 +17,6 @@
 \newcommand{\Group}{Group 26}
 \newcommand{\Members}{Lee Hao Zhe, Neeraj Kumbar, Neo Qi Hao, Poh Yu Wen, See Yang Zhi, Teo Kai Xiang}
 \newcommand{\Repo}{\url{https://github.com/ehz0ah/OpsReplay}}
-\newcommand{\TODO}[1]{\par\smallskip\noindent\fcolorbox{red}{red!6}{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\small\textcolor{red!70!black}{\textbf{TODO (team):} #1}}}\par\smallskip}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{4pt}
@@ -326,7 +325,8 @@ monitor shortly after a risky command), not by matching expected commands.
 \draw[arrow] (life.south) |- node[lab,pos=0.3,right]{StopTask} (task.east);
 \end{tikzpicture}
 \caption{Deployed architecture (Region ap-southeast-1; terminal edge protection
-in us-east-1). The Gateway is the only component that talks to attempt tasks.
+in us-east-1). The Gateway is the only component that connects to attempt tasks;
+the API and lifecycle handlers only ask ECS to start and stop them.
 CloudWatch logs, metrics and alarms cover all components (not drawn).}
 \label{fig:arch}
 \end{figure}
@@ -367,8 +367,10 @@ $\rightarrow$ result saved}. Key design choices:
   generations and overlapping workers.
   \item \textbf{Confirmed cleanup.} The result is finalised only after the task
   stop and schedule deletion are confirmed, so no environment is left running.
-  \item \textbf{Terminal resilience.} The shell survives browser disconnects and
-  Gateway replacement; a reconnect resumes it.
+  \item \textbf{Terminal resilience.} A learner's shell survives browser
+  disconnects and replacement of the Gateway serving it; a reconnect resumes it.
+  A replacement can still end other concurrent attempts
+  (Section~\ref{sec:hosted}).
 \end{itemize}
 
 \subsection{Recording, Debrief, Scoring and Playback}
@@ -434,6 +436,7 @@ Gateway, Monitor, content, web and infrastructure, run by CI (nine jobs) on
 every pull request.
 
 \subsection{Hosted Functional and Reliability Tests}
+\label{sec:hosted}
 Two hosted campaigns (29 October and 1 November) exercised the full product
 with test learners. The 1 November campaign ran six attempts, at most two
 concurrent, with one Gateway. The results are summarised in the table below.
@@ -518,31 +521,29 @@ with AWS Cost Explorer's account data (US\$0.112). These figures exclude shared
 networking, which dominates at this scale (Section~\ref{sec:onprem}).
 
 \subsection{User Evaluation}
-\textbf{Protocol.} A formative pilot with 5--10 students or junior engineers
-compares the full interactive workflow (8 minutes investigating and repairing
-plus 4 minutes of debrief and playback) with a static written explanation of the
-other incident, with equal study time and equivalent causal information. Four
-assignment sequences counterbalance condition and order; the assistant is off.
-Before and after each condition, participants answer diagnosis and recovery
-questions scored with a common 0--8 rubric, then a transfer question on a new
-case. Short tasks cover Learn, Code Review and saved results, followed by the
-System Usability Scale (SUS)~\cite{sus} and a brief interview. Participants use
-pseudonyms; consent and raw data are kept outside the repository.
-
-\TODO{Insert pilot results here: number recruited/completed and their experience;
-a table of pre/post rubric scores per participant by condition and incident
-(interactive vs.\ static; Upstream vs.\ DNS); mean paired difference; transfer
-scores; completion and self-inflicted outages; mean and range of SUS; and the
-top 3--5 usability problems from interviews with the changes made. Do not
-include synthetic or invented data. If the pilot cannot run before submission,
-replace this box with an honest statement and the informal feedback actually
-collected.}
-
-\textbf{Limitations.} The Upstream Challenge is Easy and DNS is Medium, so
-results are reported per incident; counterbalancing does not remove difficulty
-differences or carryover. A pilot of this size can guide improvements but
-cannot establish broad learning effectiveness, retention, or the separate
-effect of playback.
+The preliminary report planned a formative pilot with 5--10 students or junior
+engineers, comparing the interactive workflow with a static written explanation
+and measuring the System Usability Scale (SUS)~\cite{sus}. It did not run before
+submission, so we make no claim about learning effectiveness or usability
+scores. Instead, the team checked user-facing behaviour on the deployed app:
+\begin{itemize}
+  \item \textbf{Hands-on trial (23 October).} A team member used the deployed
+  product as a learner, and the updated version was retested on AWS. The trial
+  found six usability problems, all fixed: there was no self-service sign-up
+  (now Cognito registration with email verification); a saved Code Review draft
+  comment was lost on refresh; the comment editor opened below the whole diff
+  instead of at the selected line; a submitted review stayed on a temporary page
+  instead of its saved result; recovery time jumped in five-second steps; and
+  the account controls overflowed the header on small screens.
+  \item \textbf{Scripted learner journeys (29 October, 1 November).} Test learner
+  accounts completed sign-up, both Challenges, the debrief, playback and History
+  (Section~\ref{sec:hosted}).
+  \item \textbf{Layout.} Desktop keyboard use and a 390-pixel phone-width layout
+  were reviewed with no page overflow; native mobile interaction was not tested.
+\end{itemize}
+These checks show that a learner who follows the journey can complete it. They
+do not show that new learners find it easy or learn from it; the planned pilot
+remains future work.
 
 %=====================================================================
 \section{Conclusion and Future Work}
@@ -559,7 +560,8 @@ at class scale and add a warm pool before scheduled classes; (3) reduce idle
 cost, for example by starting the Gateway and endpoints only around class
 windows; (4) instructor features: cohorts, assignments and progress dashboards
 for the institutional tier; (5) real payments and fair-use limits; and
-(6) a larger learner study of learning transfer and retention.
+(6) run the planned learner pilot, then a larger study of learning transfer
+and retention.
 
 %=====================================================================
 \section{Code Explanation}
@@ -636,11 +638,10 @@ implementation code, tests, UI refinements and review fixes, with drafting
 documentation and this report, and with language refinement and LaTeX
 preparation. All AI-proposed changes were checked against the source, contracts
 and test results; AI summaries were not treated as measured results.
-\TODO{Confirm this declaration matches what each member actually did, and replace
-or confirm this draft learning statement: ``Using AI showed us that generated code
-and summaries are only as good as their verification: tests, hosted checks and
-review repeatedly caught claims that the evidence did not support, and it
-reinforced the difference between repeatable system results and learning outcomes
-that need real users.''}
+\textbf{What we learned.} Using AI showed us that generated code and summaries
+are only as good as their verification: tests, hosted checks and review
+repeatedly caught claims that the evidence did not support, and it reinforced
+the difference between repeatable system results and learning outcomes that
+need real users.
 
 \end{document}

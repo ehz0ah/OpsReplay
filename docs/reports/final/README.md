@@ -9,12 +9,11 @@ recommit it after every material change to `Final.tex`. It describes the product
 at merged revision `8dcff83` (after PR #144) and cites the 29 October, 1 November
 and 4 November checkpoints for measured results.
 
-Red `TODO (team)` boxes in the PDF mark work only the team can supply:
-
-1. Pilot results in section 4.7. Real participant count is still zero; do not add
-   synthetic or invented data.
-2. Each member's confirmation of the AI-use declaration and the team's own
-   learning statement (a draft sentence is provided for editing).
+The report has no open TODO boxes. Section 4.7 states that the planned learner
+pilot did not run (no participants) and reports only the team's hands-on trial,
+scripted learner journeys and layout checks; do not add synthetic or invented
+participant data. Each member should still confirm the AI-use declaration and
+its learning statement before submission.
 
 The adopted preliminary report is version 5. The older `Preliminary.tex` contains
 an earlier simulated-engine design and is not the comparison baseline.
@@ -68,7 +67,7 @@ results to make the report appear complete.
 | Neobrutalist frontend behaviour and responsive checks                              | [Frontend decision](../../decisions/neobrutalist-discovery.md), 1 November checkpoint | Fixture widths plus hosted History/debrief/playback; native mobile untested              |
 | Assistant timing and cost-accounting corrections                                   | [Evaluation runbook](../../runbooks/evaluation-tools.md), merged PR #128              | Fake-provider verification, not a model benchmark or provider cap                        |
 | Proposed price, delivery assumptions and break-even                                | [Pricing proposal](../../decisions/pricing-proposal.md)                               | Price and demand unvalidated; rate projection is not an invoice                          |
-| Pilot procedure and counterbalancing limits                                        | [Pilot package](../../evaluation/pilot/README.md)                                     | No participant outcome supplied for this draft                                           |
+| Pilot procedure and counterbalancing limits                                        | [Pilot package](../../evaluation/pilot/README.md)                                     | Pilot not run; no participant outcome reported                                           |
 | Exact-image qualification and current hosted recovery                              | [1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)        | Scoped glibc acceptance; residual lower findings and larger capacity remain open         |
 | New exact-source image gate and early cleanup                                      | [4 November checkpoint](../../checkpoints/2026-11-04-image-gate.md)                   | PR #141 merged; fresh merged-source ECR qualification pending                            |
 | Paid assistant baseline and deployed streams                                       | Same checkpoint; private rubric, receipts and CloudWatch usage                        | Small sample; agent manual grades; original failure retained; no security-fixture result |
