@@ -7,9 +7,9 @@ Companion to the [PowerPoint deck][pitch-deck]. Each speaker has 2 minutes 30 se
 | 1 | 1 to 4 | 0:00 to 2:30 | The hook, problem and customer |
 | 2 | 5 to 9 | 2:30 to 5:00 | Learning evidence and product overview |
 | 3 | 10 | 5:00 to 7:30 | Demo |
-| 4 | 11 to 13 | 7:30 to 10:00 | Competitive advantage and student interest |
+| 4 | 11 to 13 | 7:30 to 10:00 | Competitive advantage and positioning |
 | 5 | 14 to 17 | 10:00 to 12:30 | Growth, pricing and operating costs |
-| 6 | 18 to 20 | 12:30 to 15:00 | Proof, pilot and closing hook |
+| 6 | 18 to 20 | 12:30 to 15:00 | Prototype and interview close |
 
 ## Speaker 1 | The hook, problem and customer | 0:00 to 2:30
 
@@ -47,9 +47,9 @@ Think of a mental model as your working picture of how a request moves through a
 
 ### Slide 6. What incident practice can teach | 3:02 to 3:35
 
-There’s a reason to test hands-on practice. In a cybersecurity exercise with 50 students, the mean test score rose from 62% before training to 83% afterwards. We want to learn whether practising a service outage helps a learner choose a better first check when they encounter a different incident.
+In a cybersecurity exercise with 50 students, mean test scores rose from 62% before training to 83% afterwards. The scores were specific to that exercise. For OpsReplay, the design idea is straightforward: give the learner a failure, let them choose a first check, and let them see what happened. Here’s how a Challenge puts that into practice.
 
-**Source note.** [Glas, Vielberth and Pernul, Train as you Fight, CHI 2023](https://epub.uni-regensburg.de/54029/1/3544548.3581046.pdf). Related classroom evidence: [Michaeli and Romeike, Improving Debugging Skills in the Classroom](https://cris.fau.de/publications/228376370/). Their school-level study found improved debugging performance following explicit instruction compared with the control group.
+**Source note.** [Glas, Vielberth and Pernul, Train as you Fight, CHI 2023](https://epub.uni-regensburg.de/54029/1/3544548.3581046.pdf). The study measured scores immediately before and after a cybersecurity exercise.
 
 ### Slide 7. Inside an OpsReplay Challenge | 3:35 to 4:10
 
@@ -105,65 +105,65 @@ Here’s what the customer-facing check recorded. This is how I would decide whe
 
 That’s the decision I’d revisit. In an interview, I can now show exactly why I made it.
 
-## Speaker 4 | Competitive advantage and student interest | 7:30 to 10:00
+## Speaker 4 | Competitive advantage and positioning | 7:30 to 10:00
 
 ### Slide 11. Competitive advantage | 7:30 to 8:20
 
-You just saw checkout recover. In an interview, the next question is often harder: why did you choose that fix? Two candidates can reach the same result. One can point to the request that failed, explain the clue that changed their mind, and show what happened after the repair. OpsReplay records the attempt so the learner can revisit those moments, practise that explanation aloud, and try a different first check. That’s the advantage we want to offer someone preparing for a systems interview.
+You just saw checkout recover. Now imagine two candidates who both got it working. One restored service quickly. The other restarted a healthy service first and more orders failed while they investigated. A final success indicator looks the same for both. OpsReplay records failed requests and time to recovery. A candidate can use those observations to explain what their approach cost customers and what they would check earlier the next time.
 
-**Source note.** OpsReplay product requirements, P09 and P10. Interview preparation is a proposed use case.
+**Source note.** OpsReplay product requirements P05 to P10. The two-candidate example illustrates the product and describes no measured learner outcomes.
 
 ### Slide 12. Where OpsReplay fits | 8:20 to 9:10
 
-SadServers gives learners live Linux and DevOps faults to troubleshoot. KodeKloud offers structured tasks with automated checks. Both give engineers hands-on practice. Our pitch is about the moment after a repair. A student can line up their own actions with the service signals, explain why they acted, and replay the decision they would change. That makes OpsReplay a good fit for someone preparing for the interviewer’s follow-up. We still need to test whether students value that review enough to come back.
+SadServers has live troubleshooting, progressive clues and a solution check. KodeKloud offers validated DevOps tasks and repeat attempts. Those are established reasons to use either platform. Our specific offer is for an engineer who needs to explain an incident afterwards. They can inspect customer impact, revisit the signals available when they made a choice, and try a different recovery while keeping the first result. That combination gives them concrete material for an interview answer.
 
-**Source note.** [SadServers](https://sadservers.com/) and [KodeKloud 100 Days of DevOps](https://kodekloud.com/100-days-of-devops). The comparison describes each provider’s published offering.
+**Source note.** [SadServers FAQ](https://sadservers.com/faq) and [KodeKloud 100 Days of DevOps](https://kodekloud.com/100-days-of-devops). OpsReplay product requirements P05 to P10. Comparison uses documented workflows.
 
-### Slide 13. What students told us | 9:10 to 10:00
+### Slide 13. What replay adds | 9:10 to 10:00
 
-We surveyed 25 students over one week. Roughly nine in ten said they would try OpsReplay, and students saw a use for it in interview preparation. That gives us a reason to start with interview practice groups. We’d offer one free incident and see who actually starts it. Then we’d track whether a classmate joins through a referral. Those two observations would tell us how much of the interest in our survey turns into use. The next numbers are a scenario for what that could look like.
+Replay earns its place when the learner can answer a question about timing. Did the errors start before I ran that command? Had requests already begun to recover when I changed the configuration? The command, logs and service metrics share a timeline, so the learner can inspect their sequence. A retry starts fresh and keeps the original debrief. That lets someone try an earlier check and see how the two attempts differ. A free first incident includes that whole experience. Here’s what students could pay for next.
 
-**Source note.** Team-reported informal survey of 25 students over one week. About 90% is a rounded figure. The team supplied no respondent-level data or observed conversion rate.
+**Source note.** OpsReplay product requirements P09 and P10. Events that occur close together in a recording do not establish causation.
 
 ## Speaker 5 | Growth, pricing and operating costs | 10:00 to 12:30
 
 ### Slide 14. A free first incident | 10:00 to 10:30
 
-A student can try a full incident, review the debrief and replay their decisions for free. We’re using S$11.99 a month as the placeholder Pro price for more exercises and longer sessions. The first purchase would test whether another case is worth paying for. We haven’t collected payments. Here’s how the survey week might translate into a year of sign-ups if we kept reaching new students.
+A free learner can investigate an incident, review the debrief, replay the timeline and retry. We’re using S$11.99 per month as the placeholder Pro price for more exercises and longer sessions. We haven’t collected payments. Our model starts with an acquisition assumption: how many new learners might try that first incident each week?
 
-**Source note.** S$11.99 per month is the presentation pricing assumption. Existing product scope includes free playback, retry and a future institutional offer.
+**Source note.** S$11.99 is the pitch pricing assumption. Product scope includes free playback, retry and a future per-seat institutional offer.
 
 ### Slide 15. How many learners could we reach? | 10:30 to 11:10
 
-Suppose we reach 25 new students every week for 52 weeks. That’s 1,300 students. If the survey’s interest level holds, about 1,170 would express interest. We assume half actually try a lab, giving us 585 direct sign-ups. If every four direct users bring in one additional classmate, that adds about 146. Together, that’s roughly 731 distinct sign-ups over a year. We count only first-generation referrals and assume those classmates are new to the product.
+Start with 25 new direct users per week. Over 52 weeks, that gives 1,300 distinct sign-ups. We keep word of mouth simple: assume each group of four direct users brings in one new classmate who signs up. That adds 325 referrals, for 1,625 first-year users. Each referred user counts once, and we stop at the first referral. These are acquisition assumptions we would track against actual sign-ups.
 
-**Source note.** Illustrative acquisition model. Direct sign-ups = 25 × 52 × 90% × 50% = 585. Referrals = 585 ÷ 4 ≈ 146. Total ≈ 731. Outreach pace, future interest, follow-through and referrals are assumptions.
+**Source note.** Direct sign-ups = 25 × 52 = 1,300. First-generation referral sign-ups = 1,300 ÷ 4 = 325. Total = 1,625. The 25 weekly direct sign-ups exclude referrals.
 
 ### Slide 16. What those sign-ups could earn | 11:10 to 11:46
 
-For the revenue scenario, suppose ten percent of all first-year sign-ups are still paying at year-end. That assumption includes both conversion and retention. It gives us about 73 paying subscribers. At S$11.99 a month, that’s S$875 of year-end monthly subscription revenue. If that monthly level held for twelve months, the annualized run rate would be about S$10,503. That’s a hypothetical year-end pace. Cash collected during year one depends on when subscribers join and how long they stay.
+Suppose 15% of those 1,625 sign-ups are active paid subscribers at year-end. That gives about 244 subscribers, allowing for both upgrades and cancellations. At S$11.99 per month, their subscription revenue would be about S$2,926 a month. Holding that level for twelve months gives a projected annualized run rate of S$35,107. The amount actually collected during year one would depend on when people joined and how long they stayed.
 
-**Source note.** Projected year-end MRR = 73 × S$11.99 = S$875.27. Illustrative exit ARR = S$875.27 × 12 = S$10,503.24. The 10% active-paid share at year-end is an assumption, not a survey result.
+**Source note.** Illustrative projection. 1,625 × 15% = 243.75, rounded to 244 subscribers. Year-end MRR = 244 × S$11.99 = S$2,925.56. Exit ARR = S$2,925.56 × 12 = S$35,106.72.
 
 ### Slide 17. Would that cover our costs? | 11:46 to 12:30
 
-Our budget allocates about S$972 a month to shared infrastructure, content, support and acquisition. At the new price, each paying subscriber contributes about S$9.18 after estimated variable delivery costs, free use and payment fees. The 73-subscriber scenario covers about S$670, leaving S$302 a month to cover. We’d need 106 paying subscribers, or 33 more than the projection, to meet that budget before engineering payroll. That’s why measuring paid retention and actual lab usage matters as much as finding the next cohort.
+In this scenario, yes. Our budget allocates about S$972 per month to shared costs, content, support and acquisition. Each paying subscriber contributes about S$9.18 after estimated delivery costs, free use and payment fees. The budget breaks even at 106 subscribers. At 244, the monthly contribution is about S$2,239, leaving roughly S$1,267 above that budget. That margin depends on reaching the assumed paid uptake and keeping lab usage near the modeled level. Engineering payroll is outside this budget.
 
-**Source note.** Recalculated from the October pricing proposal using the S$11.99 placeholder. Fixed allocation S$972.066855/month. Per paid subscriber: S$1.8208395 variable delivery and free subsidy, S$0.99159 assumed payment fees, S$9.1775705 contribution. Base usage includes six paid lab hours/month and five active free users per payer. Engineering payroll is excluded.
+**Source note.** October pricing model recalculated at S$11.99. Per paid subscriber: S$1.8208395 variable delivery and free subsidy, S$0.99159 assumed payment fees, S$9.1775705 contribution. Fixed allocation S$972.066855/month. At 244 paid, contribution S$2,239.33 and modeled surplus S$1,267.26/month. The base assumes six paid lab hours/month and five active free users per payer.
 
-## Speaker 6 | Proof, pilot and closing hook | 12:30 to 15:00
+## Speaker 6 | Prototype and interview close | 12:30 to 15:00
 
 ### Slide 18. What we have tested | 12:30 to 13:20
 
-In a temporary AWS deployment, a test user started a Challenge, repaired a service, reviewed the result, replayed the attempt and tried again. The team took that deployment down. The updated build needs fresh qualification before the learner pilot. We’ve seen the workflow run. What we still want to measure is whether someone can use that experience to explain a different failure.
+In a temporary AWS deployment, the team started a Challenge, repaired a real service, opened the debrief, replayed the attempt and retried in a fresh environment. That verified the path behind the demo. The deployment was taken down after testing. The updated build still needs qualification before the runtime can reopen. The reason to build this workflow is the kind of answer it lets an engineer give when someone asks how they diagnosed an incident.
 
-**Source note.** OpsReplay README, 4 November 2026 status and cited AWS checkpoints.
+**Source note.** OpsReplay README and cited AWS checkpoints. Runtime status is from the 4 November 2026 project checkpoint.
 
-### Slide 19. What the pilot would measure | 13:20 to 14:10
+### Slide 19. An interview answer you can defend | 13:20 to 14:10
 
-We plan to work with five to ten learners. Each gets an interactive incident and static material for a different case, with the assistant off. We’ll ask which dependency failed, which clue supports that explanation, and what they would check first on a new case. Since the incidents differ in difficulty, we’ll examine the answers by case and assignment.
+Think about three follow-up questions an interviewer could ask. First, where did the request stop? Second, which clue made you change that service? Third, how do you know the customer could buy again? In OpsReplay, those questions connect to specific moments in your attempt. You can show what you observed, why you acted and what the recovery check recorded. That’s a more concrete answer than listing the commands you know.
 
-**Source note.** OpsReplay formative pilot protocol and transfer rubric. This small study has no measured results yet.
+**Source note.** Interview prompts illustrate how a candidate can explain their own Challenge attempt.
 
 ### Slide 20. Checkout is down. What do you check first? | 14:10 to 15:00
 
@@ -171,4 +171,4 @@ Picture the interview. The storefront loads, but every order fails. The intervie
 
 **Source note.** Closing scenario for illustration.
 
-[pitch-deck]: <OpsReplay Startup Pitch - Final.pptx>
+[pitch-deck]: <OpsReplay Business Pitch.pptx>
