@@ -144,41 +144,49 @@ $\rightarrow$ debrief $\rightarrow$ replay}.
   enforced on the server, not just hidden in the interface.
   \item \textbf{Institutional}: Pro seats licensed to a class or cohort (future).
 \end{itemize}
-The price is benchmarked against SadServers (US\$9--11/month for Pro
-tiers~\cite{sadservers}); it is a hypothesis that still needs willingness-to-pay
-testing. The prototype implements accounts, plans and a time-limited
+S\$12 matches comparable labs: SadServers Pro/Pro+ at US\$9--11/month
+(S\$11.50--14.10)~\cite{sadservers}, iximiuz Labs at US\$10/month
+annually~\cite{iximiuz}, KodeKloud at US\$15--29/month~\cite{kodekloud}. Our
+library is far smaller, so the price needs willingness-to-pay testing. The prototype implements accounts, plans and a time-limited
 ``demo Pro'' grant, but deliberately collects no payment.
 
 \subsection{Unit Economics}
 Each Challenge attempt runs its own Fargate task (1~vCPU, 2~GiB), costing
-US\$0.0616 per hour at Singapore list prices~\cite{aws-fargate}; in our hosted
-tests an attempt averaged about 11 minutes from image pull to stop, or about
-US\$0.011 of compute. An assistant reply cost about US\$0.0004 in tokens.
-Variable cost is therefore small; the dominant cost at small scale is
-\emph{idle shared infrastructure} (Gateway task, internal load balancer, VPC
-interface endpoints), about US\$97.8 (S\$132) per month~\cite{aws-vpc,aws-alb}.
+US\$0.0616 per hour at Singapore (\texttt{ap-southeast-1}) list
+prices~\cite{aws-fargate}; in our hosted tests an attempt averaged about
+11 minutes from image pull to stop: US\$0.011 (S\$0.015) of Challenge compute
+alone. An assistant reply cost about US\$0.0004 in tokens. Variable cost is therefore
+small; the dominant cost at small scale is \emph{idle shared infrastructure}
+(Gateway task, internal load balancer, three VPC interface endpoints in two
+zones), about US\$97.8 (S\$125) per month~\cite{aws-vpc,aws-alb}; usage-based
+load-balancer, endpoint, WAF and log charges sit in the S\$40 allowance below.
 
-Assumptions (planning FX S\$1.35/US\$1): a Pro user consumes 6 Challenge-hours,
+Assumptions: AWS prices in USD, converted at S\$1.28/US\$1, the November 2026
+market rate~\cite{fx}; a Pro user consumes 6 Challenge-hours,
 US\$0.30 of assistant use and US\$0.15 of API/storage per month; each subscriber
-subsidises five active Free users (0.5 hours plus US\$0.075 of assistant and API use each); future card fees are
-4.1\% + S\$0.50~\cite{stripe}. Variable cost per subscriber is then S\$1.82 and
-contribution S\$9.19. Monthly fixed cost is S\$972 (S\$132 shared infrastructure,
-S\$40 other services, S\$600 content and support, S\$200 acquisition).
+subsidises five active Free users (0.5 hours plus US\$0.075 of assistant and API
+use each); future card fees are 4.1\% + S\$0.50 for domestic cards, with 0.5\%
+more for international cards and 2\% for currency conversion~\cite{stripe}.
+Variable cost per subscriber is then S\$1.73 and contribution S\$9.28. Monthly
+fixed cost is S\$965 (S\$125 shared infrastructure, S\$40 other services,
+S\$600 content and support, S\$200 acquisition). Figures exclude the 9\% GST AWS
+Singapore adds~\cite{aws-gst}, which a non-GST-registered business cannot reclaim (last row).
 
 \begin{center}\small
 \begin{tabular}{@{}lrr@{}}
 \toprule
 Scenario & Contribution / subscriber & Break-even subscribers\\
 \midrule
-Base case, S\$12 & S\$9.19 & 106\\
-Heavy use: 60 Challenge-hours / subscriber & S\$4.70 & 208\\
-20 Free users per subscriber & S\$7.04 & 138\\
-US\$3 assistant spend / subscriber & S\$5.54 & 176\\
-Price S\$8 / S\$16 & S\$5.35 / S\$13.02 & 182 / 75\\
+Base case, S\$12 & S\$9.28 & 104\\
+Heavy use: 60 Challenge-hours / subscriber & S\$5.02 & 193\\
+20 Free users per subscriber & S\$7.25 & 134\\
+US\$3 assistant spend / subscriber & S\$5.83 & 166\\
+Price S\$8 / S\$16 & S\$5.45 / S\$13.12 & 178 / 74\\
+AWS and model costs plus 9\% GST & S\$9.13 & 108\\
 \bottomrule
 \end{tabular}
 \end{center}
-Infrastructure alone breaks even at 19 subscribers. The main commercial risk
+Infrastructure alone breaks even at 18 subscribers. The main commercial risk
 is heavy use: unlimited runtime cannot be offered, so a launch needs fair-use
 limits on monthly Challenge hours.
 
@@ -201,13 +209,13 @@ values S\$/month, before GST):
 \toprule
 \textbf{Cloud} & & \textbf{On-premise} & \\
 \midrule
-Shared infrastructure (Gateway, ALB, endpoints) & 132.07 & Server, S\$4,000 over 36 months & 111.11\\
-Challenge compute per hour $H$ & $0.0832H$ & Power, 100 W $\times$ 1.4 at S\$0.2859/kWh & 29.22\\
+Shared infrastructure (Gateway, ALB, endpoints) & 125.22 & Server, S\$4,000 over 36 months & 111.11\\
+Challenge compute per hour $H$ & $0.0789H$ & Power, 100 W $\times$ 1.4 at S\$0.2859/kWh & 29.22\\
 API, identity, storage, logs & 40.00 & Network, backup, maintenance & 100.00\\
 Operations, 2 h at S\$30 & 60.00 & Operations, 6 h at S\$30 & 180.00\\
  & & Port off AWS, 60 h over 36 months & 50.00\\
 \midrule
-\textbf{Total} & $232.07+0.0832H$ & \textbf{Total} & 470.33\\
+\textbf{Total} & $225.22+0.0789H$ & \textbf{Total} & 470.33\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -216,8 +224,8 @@ server is a sensitivity input informed by local retail listings for entry
 servers (S\$3,777--4,956)~\cite{host-listing}, not a quote. Operator time is
 valued at S\$30/hour.
 
-At $H=50$, 400 and 1,200 Challenge-hours per month, cloud costs S\$236, S\$265
-and S\$332, against S\$470 on-premise, or S\$300 if both need equal operator
+At $H=50$, 400 and 1,200 Challenge-hours per month, cloud costs S\$229, S\$257
+and S\$320, against S\$470 on-premise, or S\$300 if both need equal operator
 time and no port work.
 
 \textbf{Justification.} For OpsReplay's demand profile, cloud is the better
@@ -236,8 +244,8 @@ choice, but not because it is unconditionally cheaper:
 \end{itemize}
 On-premise becomes competitive when an institution already owns qualified
 hardware and staff: with equal operator effort and no port work, it is cheaper
-above roughly 821 Challenge-hours per month. In the base case the crossover
-(about 2,864 hours) exceeds the two-attempt server's capacity (1,460 hours), so
+above roughly 952 Challenge-hours per month. In the base case the crossover
+(about 3,108 hours) exceeds the two-attempt server's capacity (1,460 hours), so
 it is not reachable. The model's assumptions (labour, server price, power draw)
 are not measurements and are the main sources of uncertainty.
 
@@ -516,9 +524,9 @@ gate correctly blocked activation; the team rebuilt SQLite from a fixed source
 
 \subsection{Measured Cloud Cost}
 The six 1 November attempts used 4,010 Challenge-task seconds and 5,688 Gateway
-seconds: an estimated US\$0.117 of Fargate compute at list prices, consistent
-with AWS Cost Explorer's account data (US\$0.112). These figures exclude shared
-networking, which dominates at this scale (Section~\ref{sec:onprem}).
+seconds: US\$0.117 (S\$0.15) of Fargate compute at Singapore list rates, against
+US\$0.112 in Cost Explorer (an estimate when read on 4 November). Both exclude
+GST and shared networking, which dominates at this scale (Section~\ref{sec:onprem}).
 
 \subsection{User Evaluation}
 The team checked user-facing behaviour on the deployed app:
@@ -598,8 +606,8 @@ Deployment uses \texttt{npm run infra:cdk} with the parameters described in
 \texttt{infra/README.md} and \texttt{docs/runbooks/}; runtime stacks are
 deployed only for bounded test windows and torn down afterwards.
 
-\textbf{Assumptions.} Prices are AWS list prices for Singapore before credits
-and tax; FX is S\$1.35/US\$1; usage, conversion and labour figures in
+\textbf{Assumptions.} Prices are AWS Singapore list prices in USD, before
+credits and 9\% GST; FX is S\$1.28/US\$1 (November 2026); usage, conversion and labour figures in
 Section~2 are planning assumptions, not measurements. The hosted tests were
 bounded acceptance tests, not production capacity or security certification.
 
@@ -611,10 +619,14 @@ bounded acceptance tests, not production capacity or security certification.
 Reliability Workbook}. \url{https://sre.google/workbook/postmortem-culture/}.
 \bibitem{sadservers} SadServers, ``FAQ'' and ``Pricing.'' \url{https://sadservers.com/pricing}.
 \bibitem{simincident} SimIncident. \url{https://simincident.com/}.
+\bibitem{iximiuz} iximiuz Labs, ``Plans \& Pricing.'' \url{https://labs.iximiuz.com/pricing}.
+\bibitem{kodekloud} PricingSaaS, ``KodeKloud.'' \url{https://pricingsaas.com/companies/kodekloud}.
 \bibitem{aws-fargate} AWS, ``AWS Fargate Pricing.'' \url{https://aws.amazon.com/fargate/pricing/}.
 \bibitem{aws-vpc} AWS, ``Amazon VPC Pricing.'' \url{https://aws.amazon.com/vpc/pricing/}.
 \bibitem{aws-alb} AWS, ``Elastic Load Balancing Pricing.''
 \url{https://aws.amazon.com/elasticloadbalancing/pricing/}.
+\bibitem{aws-gst} AWS, ``Singapore Tax Help.'' \url{https://aws.amazon.com/tax-help/singapore/}.
+\bibitem{fx} Pound Sterling Live, ``USD--SGD History: 2026.'' \url{https://www.poundsterlinglive.com/history/USD-SGD-2026}.
 \bibitem{stripe} Stripe Singapore, ``Pricing.'' \url{https://stripe.com/en-sg/pricing}.
 \bibitem{sp-tariff} SP Group, ``Tariff Information,'' Q4 2026.
 \url{https://www.spgroup.com.sg/our-services/utilities/tariff-information}.
