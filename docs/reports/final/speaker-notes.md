@@ -171,4 +171,66 @@ Picture the interview. The storefront loads, but every order fails. The intervie
 
 **Source note.** Closing scenario for illustration.
 
+<details>
+
+<summary>Hidden appendix: audience questions and AWS architecture (slides 21–26)</summary>
+
+Use these slides during Q&A. The timed presentation ends on slide 20.
+
+### Slide 21. Audience and alternatives
+
+**Who would try OpsReplay first?**
+
+A student preparing for a systems interview or a junior engineer approaching a first on-call shift. One free incident gives them a concrete decision to explain. We would start with interview-preparation groups. A useful demand signal is whether someone voluntarily starts a second incident.
+
+**Why use this if SadServers and KodeKloud already offer labs?**
+
+OpsReplay lets learners line up their own commands with failed requests and recovery time, then try a different repair while preserving the first result. SadServers offers live troubleshooting and KodeKloud offers structured tasks and checks. Our case for interview preparation is that the learner can show the reasoning behind a specific repair.
+
+### Slide 22. Demand and pricing
+
+**Where do the 25 weekly users and 15% paid uptake come from?**
+
+Both are planning assumptions. The scenario starts with 1,300 direct sign-ups in a year, adds 325 distinct referrals and assumes 244 users are paying at year-end. The referral assumption is one additional user per four direct users, counted once. The 15% figure includes both upgrades and retention through year-end.
+
+**What would justify paying S$11.99 a month?**
+
+Free includes one complete incident with debrief, replay and retry. Pro is a proposed offer for learners who want more incidents and longer sessions. We would measure the share who start another case, upgrade and remain subscribed. The prototype demonstrates access levels and has collected no subscription revenue.
+
+### Slide 23. Revenue and costs
+
+**How much of the S$35,107 would we actually earn in year one?**
+
+S$35,107 annualizes one projected month at 244 subscribers. First-year receipts depend on when each subscriber joins and how long they stay. At the S$11.99 placeholder, 244 subscribers would generate S$2,925.56 per month. Multiplying by twelve gives an exit run rate of S$35,106.72.
+
+**What happens if far fewer people pay?**
+
+The pitch model needs 106 paying subscribers to cover its S$972 monthly budget. At 5% uptake, about 81 subscribers would leave a shortfall of roughly S$229 a month. This sensitivity uses 1,625 sign-ups and S$9.1775705 contribution per paid subscriber. It holds usage and costs fixed. Heavy lab use would lower contribution, and the budget excludes engineering payroll.
+
+### Slide 24. Recovery and AI
+
+**How do you know the learner fixed the incident?**
+
+A separate monitor tests the customer-facing operation. In the checkout exercise, recovery requires successful checkouts for 60 consecutive seconds. The check can accept a valid alternative repair. Terminal output alone cannot establish recovery. The debrief reports time to recovery, failed requests and observed actions.
+
+**Could the AI assistant solve or grade the exercise?**
+
+It can explain visible evidence and suggest a command. The learner confirms the exact command before it runs. The monitor determines recovery, and the learner can complete the lab with AI off. The optional model sees public evidence. Hidden faults, validators and unreleased hints stay outside its context. Scores come from the platform’s recorded evidence.
+
+### Slide 25. Safety and scale
+
+**Why give a learner a real shell?**
+
+Commands need real consequences. Each attempt runs in a private Fargate task without a task IAM role or internet route. Only the Gateway can connect to the task. The Gateway validates the terminal ticket, relays the shell traffic and records evidence outside the learner’s writable environment. The following diagram shows the access path.
+
+**What has been tested, and could a whole class use it?**
+
+The report documents six hosted attempts with at most two concurrent. All six recordings finalized. Capacity for a full class remains unmeasured. The November campaign verified recovery, playback and cleanup. Replacing one Gateway also disrupted another active attempt, an observed reliability limit. Hosted checks show the workflow ran. Learning gains and classroom capacity remain unmeasured.
+
+### Slide 26. AWS architecture
+
+The slide reproduces Figure 2 from page 5 of the [final report](https://github.com/ehz0ah/OpsReplay/blob/2cd24a5cb9b2766fe72160646f3e5fe628bb0cfb/docs/reports/final/Final.pdf#page=5). Follow the terminal connection from the browser through CloudFront to the Gateway and then to the per-attempt task.
+
+</details>
+
 [pitch-deck]: <OpsReplay Business Pitch.pptx>

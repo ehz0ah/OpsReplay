@@ -31,7 +31,7 @@ This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
 The generated PDF and logs belong in the ignored `build` directory.
 
-The [startup pitch deck][pitch-deck] has twenty slides. The
+The [startup pitch deck][pitch-deck] has twenty presentation slides followed by six hidden appendix slides. The
 [Markdown speaker script](speaker-notes.md) allocates 2 minutes 30 seconds to
 each of six speakers. Slides 8 and 9 reserve space for real screenshots.
 Speaker 3 presents the demo on slide 10 from 5:00 to 7:30. Rehearse with a
