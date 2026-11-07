@@ -1,22 +1,23 @@
 # Final report draft
 
-Status: working draft, 4 November 2026. This is not a submission-ready report.
+Status: review draft, 7 November 2026 (PR #145). Not yet submission-ready.
 
-[Final.tex](Final.tex) describes the implemented product at merged revision
-`71cf2d3b95efcadb728c8a69ae579b5d585fc301`. The
-[1 November checkpoint](../../checkpoints/2026-11-01-release-qualification.md)
-records fresh image qualification, hosted recovery and paid assistant measurements.
-The 29 October sign-up and GET measurements retain their separate source/workload.
-PR #137 is a narrow assistant instruction fix; its targeted calls are not a
-post-fix accuracy benchmark. The [4 November image gate](../../checkpoints/2026-11-04-image-gate.md)
-blocked activation on new SQLite HIGH findings. No fresh gameplay/browser or
-provider test ran. Early cleanup and durable preservation were verified.
-PR #141's SQLite fix is merged; fresh merged-source ECR qualification is pending.
+[Final.tex](Final.tex) is the final report, restructured to the course's suggested
+sections in the preliminary report's LaTeX format. A reviewed build is committed as
+[Final.pdf](Final.pdf) so the team can read it without compiling; rebuild and
+recommit it after every material change to `Final.tex`. It describes the product
+at merged revision `8dcff83` (after PR #144) and cites the 29 October, 1 November
+and 4 November checkpoints for measured results.
+
+Red `TODO (team)` boxes in the PDF mark work only the team can supply:
+
+1. Pilot results in section 4.7. Real participant count is still zero; do not add
+   synthetic or invented data.
+2. Each member's confirmation of the AI-use declaration and the team's own
+   learning statement (a draft sentence is provided for editing).
 
 The adopted preliminary report is version 5. The older `Preliminary.tex` contains
-an earlier simulated-engine design and must not be used as the final architecture.
-The current implementation uses isolated real services, recording playback and
-fresh-task retries.
+an earlier simulated-engine design and is not the comparison baseline.
 
 ## Build and review
 
@@ -29,7 +30,8 @@ tectonic --only-cached --untrusted --keep-logs --outdir build Final.tex
 
 This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
-The generated PDF and logs belong in the ignored `build` directory.
+Intermediate build output and logs belong in the ignored `build` directory; copy
+the reviewed `build/Final.pdf` to `Final.pdf` when it is ready to commit.
 
 The presentation source is [Slides.tex](Slides.tex), with
 [speaker notes](speaker-notes.md) and the [demo plan](demo.md). Build it with:

@@ -10,7 +10,7 @@
 \usepackage{enumitem,titlesec}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
-\usepackage{graphicx,xcolor}
+\usepackage{graphicx,xcolor,caption}
 \usepackage{xurl}
 \usepackage[hidelinks]{hyperref}
 \hyphenation{OpsReplay}
@@ -95,9 +95,20 @@ they found or missed, harmful actions, recommended recovery) and can replay
 their terminal session beside the recorded metrics, or retry in a fresh
 environment without overwriting the first result.
 
+\subsection{Changes since the Preliminary Report}
+The product follows the preliminary design (real services in per-attempt
+Fargate containers, an independent monitor, debrief, playback, freemium).
+Changes: terminals now enter through a CloudFront edge with WAF, a VPC origin
+and an \emph{internal} load balancer instead of a public load balancer behind
+Route 53; results report score components instead of one combined score; two
+Challenges were published while the Hard one stayed a draft; the assistant
+covers Challenges only (Code Review chat was deferred); and the 10/50/100-session
+load tests, warm pool and multi-model LLM comparison were not done
+(Section~\ref{sec:eval}).
+
 \subsection{Comparison with Existing Services}
 \begin{center}\small
-\begin{tabularx}{\linewidth}{@{}p{28mm}YY@{}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{28mm}YY@{}}
 \toprule
 \textbf{Service} & \textbf{What it offers} & \textbf{Gap OpsReplay addresses}\\
 \midrule
@@ -121,16 +132,6 @@ category is new. The differentiator is the closed loop of
 \emph{investigate $\rightarrow$ act $\rightarrow$ observe measured consequence
 $\rightarrow$ debrief $\rightarrow$ replay}.
 
-\subsection{Changes since the Preliminary Report}
-An early version of our design simulated incidents with a deterministic state
-machine and authored metric rules. We replaced it with real services in
-per-attempt containers because authored rules could only reward anticipated
-actions, whereas real systems respond correctly to any valid fix or mistake.
-This raised the engineering cost (container isolation, recording, cleanup) but
-made the learning experience authentic. The scope was also reduced to two
-published Challenges so that the full workflow could be hardened and tested
-on AWS; the third (connection exhaustion, Hard) remains a draft.
-
 %=====================================================================
 \section{Business Model}
 \subsection{Freemium Offer}
@@ -138,8 +139,9 @@ on AWS; the third (connection exhaustion, Hard) remains a draft.
   \item \textbf{Free}: a complete sample of every mode, including the Easy
   Challenge with full debrief, playback and fresh retries, so a learner
   experiences the core value before paying. Sessions last 20 minutes.
-  \item \textbf{Pro} (proposed S\$12/month): the expanded library (Medium/Hard
-  Challenges, Pro lessons and reviews) and 30-minute sessions. Entitlements are
+  \item \textbf{Pro} (proposed S\$12/month): currently the Medium DNS Challenge and a
+  Pro lesson, growing into the planned library of Medium/Hard Challenges and Pro
+  Code Reviews, plus 30-minute sessions. Entitlements are
   enforced on the server, not just hidden in the interface.
   \item \textbf{Institutional}: Pro seats licensed to a class or cohort (future).
 \end{itemize}
@@ -159,7 +161,7 @@ interface endpoints), about US\$97.8 (S\$132) per month~\cite{aws-vpc,aws-alb}.
 
 Assumptions (planning FX S\$1.35/US\$1): a Pro user consumes 6 Challenge-hours,
 US\$0.30 of assistant use and US\$0.15 of API/storage per month; each subscriber
-subsidises five active Free users (0.5 hours each); future card fees are
+subsidises five active Free users (0.5 hours plus US\$0.075 of assistant and API use each); future card fees are
 4.1\% + S\$0.50~\cite{stripe}. Variable cost per subscriber is then S\$1.82 and
 contribution S\$9.19. Monthly fixed cost is S\$972 (S\$132 shared infrastructure,
 S\$40 other services, S\$600 content and support, S\$200 acquisition).
@@ -195,32 +197,29 @@ management. The code calls AWS SDKs directly, so a port also needs adapter work.
 \textbf{Model.} We model one small server sized for two simultaneous attempts
 plus the platform, against $H$ total Challenge-hours per month (all monetary
 values S\$/month, before GST):
-\[
-\begin{array}{l}
-C_{\rm cloud} = \underbrace{132.07}_{\rm shared\ infra} + 0.0832H
- + \underbrace{40}_{\rm API, storage, logs} + \underbrace{60}_{\rm 2\,h\ ops},\\[2pt]
-C_{\rm on\text{-}prem} = \underbrace{4000/36}_{\rm server,\ 3\,yr}
- + \underbrace{29.22}_{\rm 100\,W\times1.4\ @\ S\$0.2859/kWh}
- + \underbrace{100}_{\rm network, backup, maint.}
- + \underbrace{180}_{\rm 6\,h\ ops} + \underbrace{50}_{\rm port\ work/36}.
-\end{array}
-\]
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}Yr@{\hspace{6mm}}Yr@{}}
+\toprule
+\textbf{Cloud} & & \textbf{On-premise} & \\
+\midrule
+Shared infrastructure (Gateway, ALB, endpoints) & 132.07 & Server, S\$4,000 over 36 months & 111.11\\
+Challenge compute per hour $H$ & $0.0832H$ & Power, 100 W $\times$ 1.4 at S\$0.2859/kWh & 29.22\\
+API, identity, storage, logs & 40.00 & Network, backup, maintenance & 100.00\\
+Operations, 2 h at S\$30 & 60.00 & Operations, 6 h at S\$30 & 180.00\\
+ & & Port off AWS, 60 h over 36 months & 50.00\\
+\midrule
+\textbf{Total} & $232.07+0.0832H$ & \textbf{Total} & 470.33\\
+\bottomrule
+\end{tabularx}
+\end{center}
 Electricity uses the SP Group Q4~2026 tariff~\cite{sp-tariff}; the S\$4,000
 server is a sensitivity input informed by local retail listings for entry
 servers (S\$3,777--4,956)~\cite{host-listing}, not a quote. Operator time is
 valued at S\$30/hour.
 
-\begin{center}\small
-\begin{tabular}{@{}rrrr@{}}
-\toprule
-Challenge-hours / month & Cloud & On-premise (base) & On-premise (equal ops, no port)\\
-\midrule
-50   & S\$236 & S\$470 & S\$300\\
-400  & S\$265 & S\$470 & S\$300\\
-1200 & S\$332 & S\$470 & S\$300\\
-\bottomrule
-\end{tabular}
-\end{center}
+At $H=50$, 400 and 1,200 Challenge-hours per month, cloud costs S\$236, S\$265
+and S\$332, against S\$470 on-premise, or S\$300 if both need equal operator
+time and no port work.
 
 \textbf{Justification.} For OpsReplay's demand profile, cloud is the better
 choice, but not because it is unconditionally cheaper:
@@ -246,6 +245,7 @@ are not measurements and are the main sources of uncertainty.
 %=====================================================================
 \section{Architecture and Implementation}
 \subsection{User Journey}
+\noindent\begin{minipage}[t]{0.56\linewidth}\vspace{0pt}
 A learner browses the catalogue (Figure~\ref{fig:catalogue}), reads a public
 briefing that lists the services and where their logs and configuration live
 (without revealing the fault), signs in and starts the attempt. The workspace
@@ -254,24 +254,19 @@ errors, latency). A notice explains that leaving the page does not pause the
 incident. Once the monitor confirms sustained recovery, or the time limit
 passes, the attempt ends and the learner sees the debrief, playback and a retry
 option. History keeps every saved result.
-
-\begin{figure}[ht]
-\centering
-\fbox{\includegraphics[width=0.52\linewidth]{catalogue.png}}
-\caption{Challenge catalogue in the deployed web app (desktop width).
-Difficulty, access tier and category filters come from server metadata.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.41\linewidth}\vspace{2pt}\centering
+\fbox{\includegraphics[width=0.96\linewidth]{catalogue.png}}
+\captionof{figure}{Challenge catalogue in the deployed web app.}
 \label{fig:catalogue}
-\end{figure}
-\TODO{Optional but recommended: add one screenshot of the Challenge workspace
-(terminal + telemetry) and one of the debrief/playback page from the demo
-deployment. Keep the report within 10 pages.}
+\end{minipage}
 
 \subsection{Challenges}
 Each Challenge is a versioned container image with a small service stack under
 a process supervisor, plus one planted misconfiguration, described by a JSON
 manifest (traffic journeys, validators, traps, hints, debrief content).
 \begin{center}\small
-\begin{tabularx}{\linewidth}{@{}p{30mm}YY@{}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{30mm}YY@{}}
 \toprule
 \textbf{Challenge} & \textbf{Planted fault} & \textbf{Why action order matters}\\
 \midrule
@@ -305,12 +300,12 @@ monitor shortly after a risky command), not by matching expected commands.
 \node[box,minimum width=30mm] (cf) at (-5.6,-1.9) {CloudFront + S3\\static web app};
 \node[box,minimum width=30mm] (cog) at (-2.0,-1.9) {Cognito\\sign-up, sign-in};
 \node[box,minimum width=32mm] (api) at (1.8,-1.9) {API Gateway (REST)\\Lambda per action};
-\node[box,minimum width=27mm] (llm) at (5.6,-1.9) {External LLM\\(optional)};
+\node[box,minimum width=27mm] (llm) at (5.8,-1.9) {External LLM\\(optional)};
 \node[box,minimum width=38mm] (tcf) at (-5.0,-3.9) {CloudFront terminal edge\\VPC origin, internal ALB};
-\node[box,minimum width=32mm] (ddb) at (0.9,-3.9) {DynamoDB\\sessions, receipts};
-\node[box,minimum width=28mm] (s3) at (4.8,-3.9) {Private S3\\content, recordings};
+\node[box,minimum width=32mm] (ddb) at (2.4,-3.9) {DynamoDB\\sessions, receipts};
+\node[box,minimum width=28mm] (s3) at (6.0,-3.9) {Private S3\\content, recordings};
 \node[box,minimum width=38mm] (gw) at (-5.0,-5.9) {Gateway service (Fargate)\\terminal relay, recorder};
-\node[box,minimum width=36mm] (life) at (4.0,-5.9) {EventBridge + Scheduler\\lifecycle, deadlines};
+\node[box,minimum width=36mm] (life) at (4.7,-5.9) {EventBridge + Scheduler\\deadlines, reconciliation};
 \node[box,minimum width=48mm] (task) at (-1.6,-8.5) {\textbf{Per-attempt Fargate task}\\challenge container $|$ monitor container};
 \begin{scope}[on background layer]
 \node[draw,dashed,rounded corners,fit=(gw)(task),inner sep=6pt] (vpc) {};
@@ -321,14 +316,14 @@ monitor shortly after a risky command), not by matching expected commands.
 \draw[arrow] (browser) -- (api);
 \draw[arrow] (browser.west) -- (-7.6,0) node[lab,pos=0.5,above]{terminal WebSocket} |- (tcf.west);
 \draw[arrow] (api) -- (llm);
-\draw[arrow] (api.south -| 1.0,0) -- (ddb.north -| 1.0,0);
+\draw[arrow] (api.south -| 2.7,0) -- (ddb.north -| 2.7,0);
 \draw[arrow] (api.south east) -- (s3.north);
-\draw[side] (api.south -| 2.95,0) -- node[lab,right,pos=0.3]{start} (life.north -| 2.95,0);
+\draw[arrow] (api.south -| 0.4,0) -- node[lab,pos=0.62,right]{RunTask} (task.north -| 0.4,0);
 \draw[arrow] (tcf) -- (gw);
 \draw[arrow] (gw.north east) -- (ddb.south west);
-\draw[arrow] (life.north -| 2.35,0) -- (ddb.south -| 2.35,0);
+\draw[arrow] (life.north -| 3.5,0) -- (ddb.south -| 3.5,0);
 \draw[arrow] (gw.south) |- node[lab,pos=0.3,left]{terminal, metrics} (task.west);
-\draw[arrow] (life.south) |- node[lab,pos=0.3,right]{RunTask / StopTask} (task.east);
+\draw[arrow] (life.south) |- node[lab,pos=0.3,right]{StopTask} (task.east);
 \end{tikzpicture}
 \caption{Deployed architecture (Region ap-southeast-1; terminal edge protection
 in us-east-1). The Gateway is the only component that talks to attempt tasks.
@@ -372,9 +367,8 @@ $\rightarrow$ result saved}. Key design choices:
   generations and overlapping workers.
   \item \textbf{Confirmed cleanup.} The result is finalised only after the task
   stop and schedule deletion are confirmed, so no environment is left running.
-  \item \textbf{Terminal resilience.} The shell survives browser disconnects;
-  a reconnect resumes it with a newer connection generation, and if the Gateway
-  is replaced, the new Gateway resumes recording.
+  \item \textbf{Terminal resilience.} The shell survives browser disconnects and
+  Gateway replacement; a reconnect resumes it.
 \end{itemize}
 
 \subsection{Recording, Debrief, Scoring and Playback}
@@ -417,15 +411,15 @@ through the REST API, and each turn is guarded by a request receipt so a retry
 never calls the provider twice.
 
 \subsection{Security and Isolation}
-Challenge tasks have no IAM role (a root shell exposes no AWS credentials),
-run in private subnets with no internet route, and accept traffic only from the
-Gateway. Every read and mutation checks identity, ownership and entitlement;
+Challenge tasks have no IAM role, run in private subnets with no internet
+route, and accept traffic only from the Gateway. Every read and mutation checks identity, ownership and entitlement;
 public API responses use explicit projections defined in JSON Schema/OpenAPI
 contracts. Images are pinned by digest and must pass an Amazon ECR vulnerability
 scan gate before any deployment is activated.
 
 %=====================================================================
 \section{Evaluation}
+\label{sec:eval}
 Each result below is tied to a source revision, workload and environment; all
 hosted tests ran in \texttt{ap-southeast-1} in bounded, time-boxed deployments
 that were torn down afterwards.
@@ -442,9 +436,20 @@ every pull request.
 \subsection{Hosted Functional and Reliability Tests}
 Two hosted campaigns (29 October and 1 November) exercised the full product
 with test learners. The 1 November campaign ran six attempts, at most two
-concurrent, with one Gateway.
-\begin{center}\small
-\begin{tabularx}{\linewidth}{@{}p{30mm}Y@{}}
+concurrent, with one Gateway. The results are summarised in the table below.
+Testing also found real problems. (1) Replacing the Gateway disconnected
+the heartbeat of a second, concurrent attempt, which then ended as
+\emph{abandoned}: a Gateway replacement can end other learners' active
+attempts, a limitation that needs a grace period or multiple Gateways.
+(2) Four reconciliation errors (mis-filtered Gateway service events and an
+outcome read race) were addressed in PR~\#139 with regression tests, not yet
+re-run on AWS. (3) Two learner-visible bugs were fixed in PR~\#144: a successful
+Challenge could show a terminal error before its outcome reached the browser,
+and the browser rejected the assistant's ``unavailable'' fallback response
+because it was missing from the public error contract.
+
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{26mm}Y@{}}
 \toprule
 \textbf{Test} & \textbf{Result}\\
 \midrule
@@ -458,9 +463,9 @@ Lost responses & Discarding the start (and review-submit) response and replaying
 recovered the same attempt and single task (the same submission).\\
 Disconnects & An idle socket survived 610 s; an expired token returned 401 and a fresh
 sign-in resumed the same shell; killing the Gateway task let ECS replace it and the
-same attempt resumed and resolved.\\
+same attempt resumed and resolved (but see problem (1) above).\\
 Outcomes & Duplicate end requests kept one outcome; a real 30-minute deadline ended the
-attempt as \emph{time limit}; a missed heartbeat ended one as \emph{abandoned}.\\
+attempt as \emph{time limit}.\\
 Results & All six recordings finalised; all 41 exported objects matched their SHA-256
 checksums; debrief, playback seeking and History were checked in the browser.\\
 Isolation & No credentials in the task environment; EC2 metadata and the internet
@@ -469,18 +474,14 @@ Cleanup & All temporary stacks and images removed; durable data preserved.\\
 \bottomrule
 \end{tabularx}
 \end{center}
-The campaign also surfaced four reconciliation errors (mis-filtered Gateway
-service events and an outcome read race), which were fixed afterwards with
-regression tests.
-
 \subsection{Performance}
 A read-load test sent 450 authenticated GET requests (one worker: 150; two
-learners: 300) with two-seconds think time; all passed HTTP, schema and ownership checks, with no Lambda errors or
+learners: 300) with two-second think time; all passed HTTP, schema and ownership checks, with no Lambda errors or
 throttles.
 \begin{center}\small
 \begin{tabular}{@{}lrr@{}}
 \toprule
-Endpoint & 1 worker p50 / p95 (ms) & 2 workers p50 / p95 (ms)\\
+Endpoint & 1 worker p50 / p95 (ms) & 2 learners p50 / p95 (ms)\\
 \midrule
 Catalogue & 75 / 249 & 60 / 231\\
 Account   & 66 / 221 & 54 / 219\\
@@ -498,8 +499,9 @@ production adapter (19 attempts: 18 completed, 1 failed). Completed replies had
 p50/p95 latency of 4.6/6.0~s. Rubric review found a relevant command proposal
 in 18/18 replies, accurate teaching in 17/18, at least one unsupported factual
 claim in 4/18, and no destructive proposal. Two full deployed streams completed in
-8.6~s and 6.6~s; the confirmed proposal executed exactly once even when the
-confirmation was repeated. Total token cost for all 24 provider calls was about
+8.6~s and 6.6~s (the second returned only a command proposal, so the saved
+fallback text was shown); the confirmed proposal was accepted exactly once even
+when the confirmation was repeated. Total token cost for all 24 provider calls was about
 US\$0.01. Prompt changes followed to reduce unsupported claims.
 
 \subsection{Security Gate}
@@ -564,8 +566,8 @@ for the institutional tier; (5) real payments and fair-use limits; and
 \textbf{Repository:} \Repo{} (public until marks and feedback are released).
 It is an npm workspace in TypeScript (Node 22), with Python for the
 in-container terminal server.
-\begin{center}\small
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{36mm}Y@{}}
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{34mm}Y@{}}
 \toprule
 \textbf{Path} & \textbf{Contents}\\
 \midrule
@@ -586,7 +588,7 @@ logic (\texttt{finalise.ts}, \texttt{debrief.ts}).\\
 \texttt{infra/} & AWS CDK stacks: durable data, browser hosting, session API,
 environments, terminal edge, deletion.\\
 \texttt{scripts/evaluation/} & Scenario repeats, load tests and assistant evaluation.\\
-\texttt{docs/} & Architecture, API, data model, design decisions, runbooks and test checkpoints.\\
+\texttt{docs/} & Architecture, API, data model, decisions, runbooks, test checkpoints.\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -607,7 +609,7 @@ bounded acceptance tests, not production capacity or security certification.
 
 %=====================================================================
 \begin{thebibliography}{99}
-\small
+\footnotesize
 \setlength{\itemsep}{0pt}
 \bibitem{sre} Google, ``Postmortem Culture: Learning from Failure,'' \emph{The Site
 Reliability Workbook}. \url{https://sre.google/workbook/postmortem-culture/}.
@@ -634,8 +636,11 @@ implementation code, tests, UI refinements and review fixes, with drafting
 documentation and this report, and with language refinement and LaTeX
 preparation. All AI-proposed changes were checked against the source, contracts
 and test results; AI summaries were not treated as measured results.
-\TODO{Confirm this declaration matches what each member actually did, and add the
-team's own statement of what it learned from using AI (required by the module's
-plagiarism policy).}
+\TODO{Confirm this declaration matches what each member actually did, and replace
+or confirm this draft learning statement: ``Using AI showed us that generated code
+and summaries are only as good as their verification: tests, hosted checks and
+review repeatedly caught claims that the evidence did not support, and it
+reinforced the difference between repeatable system results and learning outcomes
+that need real users.''}
 
 \end{document}
