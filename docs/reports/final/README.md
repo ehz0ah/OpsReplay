@@ -31,11 +31,11 @@ This command does not install tools or fetch TeX packages. If required packages
 are absent, keep the source draft and use the team's existing TeX environment.
 The generated PDF and logs belong in the ignored `build` directory.
 
-The [startup pitch deck][pitch-deck] has twenty presentation slides followed by six hidden appendix slides. The
+The [redesigned pitch deck][pitch-deck] contains 20 timed slides. Slide 6 is
+hidden and untimed, and slides 22 to 27 form the hidden appendix. The
 [Markdown speaker script](speaker-notes.md) allocates 2 minutes 30 seconds to
-each of six speakers. Slides 8 and 9 reserve space for real screenshots.
-Speaker 3 presents the demo on slide 10 from 5:00 to 7:30. Rehearse with a
-prepared lab or a recording of a real run.
+each of six presenters. Slides 8 to 10 show the app. Neeraj presents the demo
+on slide 11 from 5:00 to 7:30, using a prepared lab or an actual recording.
 
 The course limit is ten pages for the complete `Final.pdf`, including references
 and cover material. Check the actual PDF page count, tables, diagram labels,
@@ -91,4 +91,4 @@ deployments or proof of the cheaper hosting option.
 No new service, live payment system, institutional dashboard or scenario
 generation feature is implied by this report work.
 
-[pitch-deck]: <OpsReplay Business Pitch.pptx>
+[pitch-deck]: <OpsReplay_Final_Presentation.pptx>
