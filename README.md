@@ -7,26 +7,67 @@ engineers. A learner enters an isolated, deliberately misconfigured environment,
 investigates it with real tools, repairs the fault, and reviews a deterministic debrief
 and session playback.
 
+![OpsReplay home page](docs/screenshots/home.png)
+
+## Product tour
+
+These screenshots show the AWS demo on 15 November 2026. They remain available
+here after the temporary deployment is removed. [Capture details](docs/screenshots/README.md).
+
+**Investigate real services.** Use the terminal alongside live request, error and
+latency measurements. Each attempt runs in its own isolated environment.
+
+![Challenge workspace with terminal and live telemetry](docs/screenshots/workspace.png)
+
+**Understand the recovery.** The debrief shows measured response results, the root
+cause, observed evidence and recommended recovery steps.
+
+![Resolved Challenge debrief](docs/screenshots/debrief.png)
+
+**Replay the investigation.** Recorded terminal output and telemetry share a
+playback position. Seeking through the recording does not execute commands.
+
+![Recorded terminal output beside recovery graphs](docs/screenshots/playback.png)
+
+<details>
+<summary>Explore the Challenge catalogue, Learn and Code Review</summary>
+
+**Challenge catalogue.** Browse the published exercises by difficulty, access and category.
+
+![Challenge catalogue with Free and Pro exercises](docs/screenshots/challenges.png)
+
+**Learn.** Read curated incident explanations, practical lessons and original sources.
+
+![Learn lesson with recovery guidance and source links](docs/screenshots/learn.png)
+
+**Code Review.** Add concerns to lines in a diff, then compare them with the
+reference findings after submission. Written concerns are not automatically graded.
+
+![Code Review diff with an example inline comment](docs/screenshots/code-review.png)
+
+</details>
+
 ## Current status
 
-**Current phase, 4 November 2026:** exact-source image publication passed, but three
-new SQLite HIGH findings blocked both Challenge images. Runtime admission stayed
-closed. All four temporary preparation stacks and the browser bucket were removed,
-and durable settings and protected records were verified unchanged. [PR #141](https://github.com/ehz0ah/OpsReplay/pull/141)
-contains the focused library fix and passed all ten checks. It is merged; fresh
-merged-source ECR qualification is pending. Earlier learner-path and assistant checks remain historical
-evidence. Real learner study, equivalent-host measurements and rehearsal are pending.
+**Latest demo checks, 15 November 2026:** both published Challenges passed
+investigation, repair, sustained recovery, saved debrief and recording checks on
+AWS. Browser sign-in, debrief and playback were also checked. The rebuilt images
+fixed all 64 reported PostgreSQL HIGH findings; 16 library HIGH findings remained
+under a restricted demo exception. This does not establish production clearance.
+The optional assistant's latest live replies failed; terminal investigation and
+hints remain available. Learner evaluation, larger capacity tests and final cost
+comparison remain pending. See the [demo checkpoint](docs/checkpoints/2026-11-15-demo.md).
 
 | Area                                     | Status                                                                              |
 | ---------------------------------------- | ----------------------------------------------------------------------------------- |
 | Reference Challenge, Monitor and Gateway | Implemented; real fault, harmful action and recovery checked on AWS                 |
 | Session lifecycle and results            | Implemented; start, resume, end, debrief, playback and retry checked on AWS         |
 | Web application and account APIs         | Fresh inbox sign-up checked; two test learners used for access and ownership checks |
-| AWS infrastructure                       | Temporary deployment and teardown checked; no runtime is deployed                   |
+| AWS infrastructure                       | Temporary AWS deployment and teardown checked; demo availability is temporary       |
 | Learn library                            | Implemented; one Free and one Pro lesson have retained published metadata           |
 | Code Review reads and submissions        | Inline editing, draft persistence, saved result and lost-response recovery checked  |
 | Learner history                          | Implemented; saved review reopened through History in the 23 October checkpoint     |
-| Challenge assistant                      | Implemented; one confirmed proposal checked on AWS, not a benchmark                 |
+| Challenge assistant                      | Implemented; historical AWS proposal check passed; latest demo replies failed       |
 | SaaS identity and demo upgrade           | Checked on AWS; default-off, fixed-window grant, no payment or subscription created |
 | Scenario and system evaluation           | Full local repeats and 450 AWS GETs passed; capacity, final costs and pilot pending |
 
@@ -37,7 +78,7 @@ See the [23 October learner checkpoint](docs/checkpoints/2026-10-23-learner-expe
 and [26 October local status](docs/checkpoints/2026-10-26-saas-local.md) for earlier
 evidence. The [29 October AWS checkpoint](docs/checkpoints/2026-10-29-saas-aws.md)
 records its results and limits. The [4 November image gate](docs/checkpoints/2026-11-04-image-gate.md)
-records the current blocker, exact images and verified early cleanup.
+records the earlier blocker, exact images and verified early cleanup.
 
 ## Product scope
 
